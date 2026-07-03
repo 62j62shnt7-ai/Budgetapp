@@ -584,6 +584,7 @@ label {
 
   .sidebar {
     min-height: auto;
+    min-width: 0;
     padding: max(16px, env(safe-area-inset-top)) 18px 14px;
   }
 
