@@ -18,24 +18,13 @@ const DateUtils = {
   getShortMonth: (ymString) => ymString.slice(5)
 };
 
-const defaultSalaryPattern = [
-  { monthOffset: 0, day: 15, amount: 27000 },
-  { monthOffset: 0, day: 30, amount: 15500 },
-  { monthOffset: 1, day: 15, amount: 18400 },
-  { monthOffset: 1, day: 30, amount: 14500 },
-  { monthOffset: 2, day: 15, amount: 18000 },
-  { monthOffset: 2, day: 30, amount: 20000 }
-];
+const defaultSalaryPattern = [];
 
 const defaultCashEntries = [];
 
 const defaultInstallments = [];
 
-const defaultStorage = [
-  { name: "Gold", quantity: 23.3, unit: "grams", rate: 5530 },
-  { name: "USD", quantity: 2900, unit: "dollars", rate: 49 },
-  { name: "EUR", quantity: 3280, unit: "euros", rate: 55.9 }
-];
+const defaultStorage = [];
 
 // Safe deep-clone with fallback for environments without structuredClone
 function clone(value) {
@@ -82,43 +71,33 @@ const keys = {
   salaryMaterialized: "budget-control-salary-materialized",
   resetBackup: "budget-control-reset-backup"
 };
-const seedVersion = "current-forecast-storage-focus-v1";
+const seedVersion = "blank-template-v1";
 
 const defaultAccountBalances = {
-  cib: { name: "CIB", balance: 20000, maturityDay: 15 },
-  hsbc: { name: "HSBC", balance: 27200, maturityDay: 30 }
+  cib: { name: "CIB", balance: 0, maturityDay: 15 },
+  hsbc: { name: "HSBC", balance: 0, maturityDay: 30 }
 };
 
-const defaultAsf = [
-  { date: "2024-10-01", invoice: 1320, actual: 1406.5, egp: 74544.5 },
-  { date: "2024-11-01", invoice: 2100, actual: 2180.74, egp: 115579.22 },
-  { date: "2024-11-01", invoice: 300, actual: 268.74, egp: 14243.22 },
-  { date: "2024-12-01", invoice: 3240, actual: 3658.74, egp: 193913.22 },
-  { date: "2025-01-01", invoice: 2040, actual: 2008.5, egp: 106450.5 }
-];
+const defaultAsf = [];
 
 const defaultRates = {
   currencies: [
-    { name: "USD", sell: 51.29, buy: 51.56 },
-    { name: "EUR", sell: 58.29, buy: 58.79 },
-    { name: "SAR", sell: 13.68, buy: 13.88 },
-    { name: "AED", sell: 13.97, buy: 14.17 },
-    { name: "GBP", sell: 67.12, buy: 67.62 }
+    { name: "USD", sell: 0, buy: 0 },
+    { name: "EUR", sell: 0, buy: 0 },
+    { name: "SAR", sell: 0, buy: 0 },
+    { name: "AED", sell: 0, buy: 0 },
+    { name: "GBP", sell: 0, buy: 0 }
   ],
   gold: [
-    { name: "Gold 24", sell: 5280, buy: 5314 },
-    { name: "Gold 22", sell: 4840, buy: 4871 },
-    { name: "Gold 21", sell: 4620, buy: 4650 },
-    { name: "Gold 18", sell: 3960, buy: 3986 },
-    { name: "Gold coin", sell: 36960, buy: 37200 }
+    { name: "Gold 24", sell: 0, buy: 0 },
+    { name: "Gold 22", sell: 0, buy: 0 },
+    { name: "Gold 21", sell: 0, buy: 0 },
+    { name: "Gold 18", sell: 0, buy: 0 },
+    { name: "Gold coin", sell: 0, buy: 0 }
   ]
 };
 
-const defaultIrq = [
-  { label: "Received", value: 42980, note: "EGP collected" },
-  { label: "Remaining", value: 71100, note: "Open balance" },
-  { label: "USD remaining", value: 1350, note: "Tracked separately" }
-];
+const defaultIrq = [];
 
 const defaultArchivedEntries = [];
 
@@ -1835,7 +1814,7 @@ function updateUndoResetVisibility() {
 
 document.getElementById("resetData").addEventListener("click", () => {
   const confirmed = confirm(
-    "Reset the salary schedule, forecast entries, installments, and storage assets to the sample data?\n\nYou'll be able to undo this right after, until you reset again."
+    "Reset all data (salary schedule, forecast entries, installments, storage assets, account balances, ASF invoices, IRQ jobs, and rates) to blank?\n\nYou'll be able to undo this right after, until you reset again."
   );
   if (!confirmed) return;
 
@@ -1844,18 +1823,30 @@ document.getElementById("resetData").addEventListener("click", () => {
     salaryPattern: clone(salaryPattern),
     cashEntries: clone(cashEntries),
     installments: clone(installments),
-    storageAssets: clone(storageAssets)
+    storageAssets: clone(storageAssets),
+    accountBalances: clone(accountBalances),
+    asfJobs: clone(asfJobs),
+    irqJobs: clone(irqJobs),
+    ratesData: clone(ratesData)
   });
 
   salaryPattern = clone(defaultSalaryPattern);
   cashEntries = clone(defaultCashEntries);
   installments = clone(defaultInstallments);
   storageAssets = clone(defaultStorage);
+  accountBalances = clone(defaultAccountBalances);
+  asfJobs = clone(defaultAsf);
+  irqJobs = clone(defaultIrq);
+  ratesData = clone(defaultRates);
   localStorage.setItem(keys.seedVersion, seedVersion);
   saveSetting(keys.salary, salaryPattern);
   saveSetting(keys.entries, cashEntries);
   saveSetting(keys.installments, installments);
   saveSetting(keys.storage, storageAssets);
+  saveSetting(keys.accounts, accountBalances);
+  saveSetting(keys.asf, asfJobs);
+  saveSetting(keys.irq, irqJobs);
+  saveSetting(keys.rates, ratesData);
   updateUndoResetVisibility();
   renderAll();
 });
@@ -1868,11 +1859,19 @@ document.getElementById("undoReset").addEventListener("click", () => {
   cashEntries = normalizeCashEntries(backup.cashEntries);
   installments = backup.installments;
   storageAssets = backup.storageAssets;
+  accountBalances = backup.accountBalances || accountBalances;
+  asfJobs = backup.asfJobs || asfJobs;
+  irqJobs = backup.irqJobs || irqJobs;
+  ratesData = backup.ratesData || ratesData;
 
   saveSetting(keys.salary, salaryPattern);
   saveSetting(keys.entries, cashEntries);
   saveSetting(keys.installments, installments);
   saveSetting(keys.storage, storageAssets);
+  saveSetting(keys.accounts, accountBalances);
+  saveSetting(keys.asf, asfJobs);
+  saveSetting(keys.irq, irqJobs);
+  saveSetting(keys.rates, ratesData);
 
   // Single-level undo: once used, the backup is gone.
   localStorage.removeItem(keys.resetBackup);
