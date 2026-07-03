@@ -212,8 +212,9 @@ function buildSalaryEntries(startYearMonth, quarters) {
 function buildInstallmentEntries() {
   return installments.flatMap((installment) => {
     const [startYear, startMonth] = DateUtils.parseYearMonth(installment.startMonth);
+    const frequency = Number(installment.frequency) || 1;
     return Array.from({ length: Number(installment.months) || 0 }, (_, index) => {
-      const zeroBasedMonth = startMonth - 1 + index;
+      const zeroBasedMonth = startMonth - 1 + index * frequency;
       const year = startYear + Math.floor(zeroBasedMonth / 12);
       const month = ((zeroBasedMonth % 12) + 12) % 12;
       const lastDay = DateUtils.getLastDayOfMonth(year, month + 1);
@@ -879,6 +880,18 @@ function renderSalarySchedule() {
   document.getElementById("salaryQuarterTotal").textContent = money(quarterTotal);
 }
 
+const frequencyLabels = {
+  1: "monthly",
+  2: "every 2 months",
+  3: "quarterly",
+  6: "semi-annually",
+  12: "annually"
+};
+
+function frequencyLabel(frequency) {
+  return frequencyLabels[Number(frequency) || 1] || `every ${Number(frequency) || 1} months`;
+}
+
 function renderInstallments() {
   const list = document.getElementById("installmentList");
   if (!installments.length) {
@@ -889,7 +902,7 @@ function renderInstallments() {
   list.innerHTML = installments
     .map((item, index) => `
       <div class="list-row">
-        <span>${item.name}<br><small>${money(item.amount)} monthly from ${item.startMonth} for ${item.months} months</small></span>
+        <span>${item.name}<br><small>${money(item.amount)} ${frequencyLabel(item.frequency)} from ${item.startMonth} for ${item.months} payments</small></span>
         <button class="delete-button" data-installment-delete="${index}" type="button">Delete</button>
       </div>
     `)
@@ -1765,6 +1778,7 @@ document.getElementById("addInstallment").addEventListener("click", () => {
   form.elements.startMonth.value = new Date().toISOString().slice(0, 7);
   form.elements.day.value = 30;
   form.elements.months.value = 12;
+  form.elements.frequency.value = "1";
   document.getElementById("installmentDialog").showModal();
 });
 
@@ -1778,7 +1792,8 @@ document.getElementById("installmentDialog").addEventListener("close", () => {
     amount: Number(form.elements.amount.value),
     day: Number(form.elements.day.value),
     startMonth: form.elements.startMonth.value,
-    months: Number(form.elements.months.value)
+    months: Number(form.elements.months.value),
+    frequency: Number(form.elements.frequency.value) || 1
   });
   saveSetting(keys.installments, installments);
   renderAll();
