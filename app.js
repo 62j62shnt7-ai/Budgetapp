@@ -451,20 +451,8 @@ function getCreditDueMonthOptions(selectedMonthKey) {
   return options.join("");
 }
 
-function calculateActualCash(referenceDate = new Date()) {
-  const cutoff = referenceDate.toISOString().slice(0, 10);
-  const openingBalance = Object.values(accountBalances).reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
-  const seenIds = new Set();
-  const actualEntries = [...cashEntries, ...actualizedEntries()]
-    .filter((entry) => {
-      if (!entry || !entry.date || entry.date > cutoff) return false;
-      const id = getEntryId(entry);
-      if (seenIds.has(id)) return false;
-      seenIds.add(id);
-      return true;
-    });
-  const net = actualEntries.reduce((sum, entry) => sum + signedAmount(entry), 0);
-  return openingBalance + net;
+function calculateActualCash() {
+  return Object.values(accountBalances).reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
 }
 
 function renderAll() {
