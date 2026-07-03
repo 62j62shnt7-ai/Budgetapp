@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Budget Control</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">BC</div>
+        <div>
+          <h1>Budget Control</h1>
+          <p>Cash, jobs, storage</p>
+        </div>
+      </div>
+      <nav class="nav" aria-label="Main views">
+        <button class="nav-item active" data-view="dashboard" type="button">Dashboard</button>
+        <button class="nav-item" data-view="cashflow" type="button">Cash Flow</button>
+        <button class="nav-item" data-view="history" type="button">History</button>
+        <button class="nav-item" data-view="accounts" type="button">Accounts</button>
+        <button class="nav-item" data-view="storage" type="button">Storage</button>
+        <button class="nav-item" data-view="jobs" type="button">Jobs</button>
+        <button class="nav-item" data-view="rates" type="button">Rates</button>
+      </nav>
+    </aside>
+
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Personal budget</p>
+          <h2 id="viewTitle">Dashboard</h2>
+        </div>
+        <div class="top-actions">
+          <button class="ghost-button" id="exportData" type="button">Export data</button>
+          <button class="ghost-button" id="importData" type="button">Import data</button>
+          <input type="file" id="importDataFile" accept="application/json" hidden>
+          <button class="ghost-button" id="resetData" type="button">Reset sample data</button>
+          <button class="ghost-button" id="undoReset" type="button" hidden>Undo reset</button>
+          <button class="ghost-button" id="addIncome" type="button">Add income</button>
+          <button class="primary-button" id="addEntry" type="button">Add expense</button>
+        </div>
+      </header>
+
+      <section class="view active" id="dashboard">
+        <div class="metrics-grid">
+          <article class="metric">
+            <span>Cash balance</span>
+            <strong id="cashBalance">0</strong>
+            <small>Cashflow only, storage excluded</small>
+          </article>
+          <article class="metric">
+            <span>Actual cash today</span>
+            <strong id="actualCashToday">0</strong>
+            <small>Without forecasted salary or income</small>
+          </article>
+          <article class="metric">
+            <span>CIB credit due</span>
+            <strong id="cibCreditDue">0</strong>
+            <small>Selected credit month</small>
+          </article>
+          <article class="metric">
+            <span>HSBC credit due</span>
+            <strong id="hsbcCreditDue">0</strong>
+            <small>Selected credit month</small>
+          </article>
+          <article class="metric">
+            <span>Combined credit due</span>
+            <strong id="creditDueTotal">0</strong>
+            <small>Selected month total</small>
+          </article>
+          <article class="metric">
+            <span>Stored assets</span>
+            <strong id="storageTotal">0</strong>
+            <small>Gold, USD, EUR</small>
+          </article>
+          <article class="metric">
+            <span>Forecast low point</span>
+            <strong id="forecastLow">0</strong>
+            <small id="forecastLowDate">Lowest projected cash</small>
+          </article>
+          <article class="metric">
+            <span>Cashflow status</span>
+            <strong id="cashflowStatus">OK</strong>
+            <small id="cashflowStatusNote">Projected after expenses</small>
+          </article>
+        </div>
+
+        <div class="content-grid">
+          <section class="panel wide">
+            <div class="panel-heading">
+              <h3>Balance forecast</h3>
+              <span id="forecastRange"></span>
+            </div>
+            <div class="chart" id="balanceChart"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-heading">
+              <h3>Forecast warning</h3>
+            </div>
+            <div id="forecastWarnings" class="stack-list"></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view" id="cashflow">
+        <div class="content-grid salary-layout">
+          <section class="panel">
+            <div class="panel-heading">
+              <h3>Salary structure</h3>
+              <span>Repeats every quarter</span>
+            </div>
+            <div class="salary-controls">
+              <label>
+                Start month
+                <input id="salaryPeriodStart" type="month">
+              </label>
+              <label>
+                Quarters
+                <input id="salaryPeriodQuarters" type="number" min="1" max="24" value="8">
+              </label>
+              <button class="ghost-button" id="refreshSalaryEntries" type="button">Update salary</button>
+            </div>
+            <p style="color: var(--muted); font-size: 13px; margin: -4px 0 12px;">Adds or refreshes salary payments only within the range above. Existing payments outside this range are left untouched — delete a payment individually if you no longer need it.</p>
+            <div id="salarySchedule" class="salary-grid"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-heading">
+              <h3>Quarter total</h3>
+            </div>
+            <div class="summary-block">
+              <span>Fixed salary per quarter</span>
+              <strong id="salaryQuarterTotal">0</strong>
+              <p>Paid on the 15th and 30th of each month.</p>
+            </div>
+          </section>
+        </div>
+        <div class="content-grid salary-layout">
+          <section class="panel">
+            <div class="panel-heading">
+              <h3>Installments</h3>
+              <button class="ghost-button" id="addInstallment" type="button">Add installment</button>
+            </div>
+            <div id="installmentList" class="stack-list"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-heading">
+              <h3>Expense mix</h3>
+            </div>
+            <div id="expenseList" class="stack-list"></div>
+          </section>
+        </div>
+        <section class="panel">
+          <div class="panel-heading">
+            <h3>Forecast entries</h3>
+            <div class="filters">
+              <select id="typeFilter" aria-label="Filter by type">
+                <option value="all">All types</option>
+                <option value="income">Income</option>
+                <option value="expense">Expense</option>
+              </select>
+              <input id="searchEntries" type="search" placeholder="Search category">
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Category</th>
+                  <th>Account</th>
+                  <th>Type</th>
+                  <th>Source</th>
+                  <th class="number">Amount</th>
+                  <th class="number">Actual</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="entriesTable"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section class="view" id="history">
+        <section class="panel">
+          <div class="panel-heading">
+            <h3>Monthly income and expenses</h3>
+          </div>
+          <div class="table-wrap compact">
+            <table>
+              <thead>
+                <tr>
+                  <th>Month</th>
+                  <th class="number">Income</th>
+                  <th class="number">Expenses</th>
+                  <th class="number">Net</th>
+                </tr>
+              </thead>
+              <tbody id="historyTable"></tbody>
+            </table>
+          </div>
+        </section>
+        <section class="panel" style="margin-top: 18px;">
+          <div class="panel-heading">
+            <h3>Actualized entries</h3>
+          </div>
+          <div class="table-wrap compact">
+            <table>
+              <thead>
+                <tr>
+                  <th>Month</th>
+                  <th>Category</th>
+                  <th>Type</th>
+                  <th class="number">Actual</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="historyEntriesTable"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section class="view" id="accounts">
+        <div class="content-grid">
+          <section class="panel">
+            <div class="panel-heading">
+              <h3>Account Settings</h3>
+            </div>
+            <div id="accountsList" class="stack-list"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-heading">
+              <h3>Manual expense note</h3>
+            </div>
+            <div class="summary-block">
+              <span>Add credit payments as regular expenses from the cashflow tab.</span>
+              <p>Use the Add expense button to log them manually.</p>
+            </div>
+          </section>
+        </div>
+        <section class="panel" style="margin-top: 18px;">
+            <div class="panel-heading">
+              <h3>Quick Summary</h3>
+            </div>
+            <div class="summary-block">
+              <span>Combined Starting Balance</span>
+              <strong id="totalOpeningBalance">0</strong>
+              <p>Aggregated from all registered bank accounts.</p>
+            </div>
+          </section>
+      </section>
+
+      <section class="view" id="storage">
+        <div class="content-grid">
+          <section class="panel">
+            <div class="panel-heading">
+              <h3>Stored assets</h3>
+              <button class="ghost-button" id="addStorage" type="button">Add asset</button>
+            </div>
+            <div id="storageCards" class="asset-grid"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-heading">
+              <h3>Summary</h3>
+            </div>
+            <div class="summary-block">
+              <span>Stored assets total</span>
+              <strong id="storageSummary">0</strong>
+              <p>Gold, USD, EUR</p>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view" id="jobs">
+        <div class="content-grid">
+          <section class="panel">
+            <div class="panel-heading">
+              <h3>ASF invoices</h3>
+              <button class="ghost-button" id="addAsf" type="button">Add invoice</button>
+            </div>
+            <div class="table-wrap compact">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th class="number">Invoice</th>
+                    <th class="number">Actual</th>
+                    <th class="number">EGP</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="asfTable"></tbody>
+              </table>
+            </div>
+          </section>
+          <section class="panel">
+            <div class="panel-heading">
+              <h3>IRQ work</h3>
+              <button class="ghost-button" id="addIrq" type="button">Add work</button>
+            </div>
+            <div id="irqCards" class="stack-list"></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view" id="rates">
+        <div class="content-grid">
+          <section class="panel">
+            <div class="panel-heading">
+              <h3>Currency rates</h3>
+              <button class="ghost-button" id="editCurrencies" type="button">Update Rates</button>
+            </div>
+            <div id="currencyRates" class="rate-grid"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-heading">
+              <h3>Gold rates</h3>
+              <button class="ghost-button" id="editGold" type="button">Update Rates</button>
+            </div>
+            <div id="goldRates" class="rate-grid"></div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="entryDialog">
+      <form method="dialog" class="entry-form" id="entryForm">
+        <div class="dialog-heading">
+          <h3 id="entryDialogTitle">Add budget entry</h3>
+          <button class="icon-button" value="cancel" aria-label="Close" formnovalidate type="submit">x</button>
+        </div>
+        <label>
+          Credit type
+          <select name="creditType">
+            <option value="">None</option>
+            <option value="cib">CIB credit due</option>
+            <option value="hsbc">HSBC credit due</option>
+          </select>
+        </label>
+        <label>
+          Date
+          <input name="date" type="date" required>
+        </label>
+        <label id="categoryField" class="entry-field">
+          Category
+          <input name="category" type="text" list="expenseCategories" placeholder="home, training, kids (optional for credit due)">
+        </label>
+        <datalist id="expenseCategories">
+          <option value="Home"></option>
+          <option value="Training"></option>
+          <option value="Kids"></option>
+          <option value="Transportation"></option>
+          <option value="Garage"></option>
+          <option value="Bills"></option>
+          <option value="Other"></option>
+        </datalist>
+        <label>
+          Account
+          <input name="account" type="text" placeholder="cib, hsbc, cash">
+        </label>
+        <label id="typeField" class="entry-field">
+          Type
+          <select name="type">
+            <option value="income">Income</option>
+            <option value="expense">Expense</option>
+          </select>
+        </label>
+        <label>
+          Amount
+          <input name="amount" type="number" step="0.01" min="0" required>
+        </label>
+        <label>
+          Actual amount
+          <input name="actualAmount" type="number" step="0.01" min="0" placeholder="0">
+        </label>
+        <div id="recurringField" class="entry-field">
+          <label class="check-row">
+            <input name="recurring" type="checkbox">
+            Repeat monthly
+          </label>
+          <label class="recurring-field">
+            Number of months
+            <input name="months" type="number" min="1" max="120" value="12">
+          </label>
+        </div>
+        <div class="dialog-actions">
+          <button class="ghost-button" value="cancel" formnovalidate type="submit">Cancel</button>
+          <button class="primary-button" id="entrySubmitButton" value="save" type="submit">Save entry</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="storageDialog">
+      <form method="dialog" class="entry-form" id="storageForm">
+        <div class="dialog-heading">
+          <h3>Add storage asset</h3>
+          <button class="icon-button" value="cancel" aria-label="Close" formnovalidate type="submit">x</button>
+        </div>
+        <label>
+          Asset name
+          <input name="name" type="text" required placeholder="USD, gold, savings">
+        </label>
+        <label>
+          Quantity
+          <input name="quantity" type="number" step="0.01" min="0" required>
+        </label>
+        <label>
+          Unit
+          <input name="unit" type="text" placeholder="grams, dollars, euros">
+        </label>
+        <label>
+          Rate source
+          <select name="rateSource" id="storageFormRateSource">
+            <option value="manual">Manual entry</option>
+          </select>
+        </label>
+        <label>
+          Rate
+          <input name="rate" type="number" step="0.01" min="0" required>
+        </label>
+        <div class="dialog-actions">
+          <button class="ghost-button" value="cancel" formnovalidate type="submit">Cancel</button>
+          <button class="primary-button" value="save" type="submit">Save asset</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="installmentDialog">
+      <form method="dialog" class="entry-form" id="installmentForm">
+        <div class="dialog-heading">
+          <h3>Add installment</h3>
+          <button class="icon-button" value="cancel" aria-label="Close" formnovalidate type="submit">x</button>
+        </div>
+        <label>
+          Name
+          <input name="name" type="text" required placeholder="car, school, phone">
+        </label>
+        <label>
+          Monthly amount
+          <input name="amount" type="number" step="0.01" min="0" required>
+        </label>
+        <label>
+          Payment day
+          <input name="day" type="number" min="1" max="31" value="30" required>
+        </label>
+        <label>
+          Start month
+          <input name="startMonth" type="month" required>
+        </label>
+        <label>
+          Number of months
+          <input name="months" type="number" min="1" max="120" value="12" required>
+        </label>
+        <div class="dialog-actions">
+          <button class="ghost-button" value="cancel" formnovalidate type="submit">Cancel</button>
+          <button class="primary-button" value="save" type="submit">Save installment</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="asfDialog">
+      <form method="dialog" class="entry-form" id="asfForm">
+        <div class="dialog-heading">
+          <h3>ASF Invoice</h3>
+          <button class="icon-button" value="cancel" aria-label="Close" formnovalidate type="submit">x</button>
+        </div>
+        <label>Date <input name="date" type="date" required></label>
+        <label>Invoice (USD) <input name="invoice" type="number" step="0.01" required></label>
+        <label>Actual (USD) <input name="actual" type="number" step="0.01" required></label>
+        <label>EGP Value <input name="egp" type="number" step="0.01" required></label>
+        <div class="dialog-actions">
+          <button class="ghost-button" value="cancel" formnovalidate type="submit">Cancel</button>
+          <button class="primary-button" value="save" type="submit">Save invoice</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="irqDialog">
+      <form method="dialog" class="entry-form" id="irqForm">
+        <div class="dialog-heading">
+          <h3>IRQ Work</h3>
+          <button class="icon-button" value="cancel" aria-label="Close" formnovalidate type="submit">x</button>
+        </div>
+        <label>Label <input name="label" type="text" required placeholder="e.g. Received"></label>
+        <label>Value <input name="value" type="number" step="0.01" required></label>
+        <label>Note <input name="note" type="text" placeholder="Details..."></label>
+        <div class="dialog-actions">
+          <button class="ghost-button" value="cancel" formnovalidate type="submit">Cancel</button>
+          <button class="primary-button" value="save" type="submit">Save entry</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="rateDialog">
+      <form method="dialog" class="entry-form" id="rateForm">
+        <div class="dialog-heading">
+          <h3>Update Rate</h3>
+          <button class="icon-button" value="cancel" aria-label="Close" formnovalidate type="submit">x</button>
+        </div>
+        <input type="hidden" name="rateId" value="-1">
+        <label>
+          Name
+          <input name="name" type="text" required>
+        </label>
+        <label>
+          Sell
+          <input name="sell" type="number" step="0.01" required>
+        </label>
+        <label>
+          Buy
+          <input name="buy" type="number" step="0.01" required>
+        </label>
+        <div class="dialog-actions">
+          <button class="ghost-button" value="cancel" formnovalidate type="submit">Cancel</button>
+          <button class="primary-button" value="save" type="submit">Save rate</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="app.js"></script>
+  </body>
+</html>
