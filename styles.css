@@ -613,6 +613,7 @@ label {
 
   .nav-item {
     flex: 0 0 auto;
+    width: auto;
     scroll-snap-align: start;
     white-space: nowrap;
     text-align: center;
