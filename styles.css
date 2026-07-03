@@ -584,14 +584,39 @@ label {
 
   .sidebar {
     min-height: auto;
+    padding: max(16px, env(safe-area-inset-top)) 18px 14px;
   }
 
+  .brand {
+    margin-bottom: 18px;
+  }
+
+  /* Horizontally scrolling tab strip instead of a cramped grid — this is
+     the mobile-native pattern and avoids the old 5-col/2-leftover wrap. */
   .nav {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    display: flex;
+    grid-template-columns: none;
+    gap: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+    padding-bottom: 2px;
+    margin: 0 -18px;
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .nav::-webkit-scrollbar {
+    display: none;
   }
 
   .nav-item {
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+    white-space: nowrap;
     text-align: center;
+    min-height: 44px;
   }
 
   .metrics-grid,
@@ -610,11 +635,43 @@ label {
   .storage-fields {
     grid-template-columns: 1fr;
   }
+
+  /* Bigger, thumb-friendly tap targets on touch devices. */
+  .primary-button,
+  .ghost-button,
+  .icon-button,
+  select,
+  input {
+    min-height: 44px;
+  }
+
+  /* Prevents iOS Safari from auto-zooming the page when a form field
+     is focused — it does this whenever a field's font-size is under 16px. */
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
+  dialog {
+    max-height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 32px);
+    overflow-y: auto;
+  }
+
+  .entry-form {
+    padding: 16px;
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+
+  .app-shell {
+    padding-bottom: max(24px, env(safe-area-inset-bottom));
+  }
 }
 
 @media (max-width: 720px) {
   .app-shell {
     padding: 16px;
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
   }
 
   .topbar,
@@ -623,20 +680,74 @@ label {
     flex-direction: column;
   }
 
+  .topbar h2 {
+    font-size: 24px;
+  }
+
   .metrics-grid,
   .content-grid,
-  .salary-grid,
-  .nav {
+  .salary-grid {
     grid-template-columns: 1fr;
   }
 
+  /* A tall stack of full-width buttons pushes real content off-screen on
+     a phone. A horizontally scrollable action bar keeps every action one
+     tap away without dominating the header. */
   .top-actions,
   .filters {
-    width: 100%;
+    width: auto;
+    margin: 0 -16px;
+    padding: 2px 16px 6px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .top-actions::-webkit-scrollbar,
+  .filters::-webkit-scrollbar {
+    display: none;
   }
 
   .top-actions > *,
   .filters > * {
-    flex: 1;
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .table-wrap {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .chart {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@media (max-width: 480px) {
+  .brand-mark {
+    width: 40px;
+    height: 40px;
+  }
+
+  .brand h1 {
+    font-size: 16px;
+  }
+
+  .topbar h2 {
+    font-size: 20px;
+  }
+
+  .metric,
+  .panel {
+    padding: 14px;
+  }
+
+  .credit-due-controls {
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .dialog-heading h3 {
+    font-size: 16px;
   }
 }
