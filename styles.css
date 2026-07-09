@@ -577,6 +577,69 @@ label {
   height: 18px;
 }
 
+.alert-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  margin-bottom: 18px;
+  border: 1px solid #f0c4a8;
+  border-radius: 8px;
+  background: #fdf0e6;
+}
+
+.alert-banner-icon {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--amber);
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.alert-banner-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.alert-banner-body strong {
+  color: #7a4a12;
+}
+
+.alert-banner-body p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.overdue-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  color: #7a201a;
+  background: #ffe0dc;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.deficit-row {
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.deficit-row .deficit-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
 @media (max-width: 980px) {
   body {
     grid-template-columns: 1fr;
@@ -722,6 +785,14 @@ label {
 
   .chart {
     -webkit-overflow-scrolling: touch;
+  }
+
+  .alert-banner {
+    flex-wrap: wrap;
+  }
+
+  .alert-banner #deficitBannerAction {
+    width: 100%;
   }
 }
 

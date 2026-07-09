@@ -15,7 +15,19 @@ const DateUtils = {
   
   parseDate: (dateString) => dateString.split("-").map(Number),
   
-  getShortMonth: (ymString) => ymString.slice(5)
+  getShortMonth: (ymString) => ymString.slice(5),
+
+  todayString: () => {
+    const now = new Date();
+    return DateUtils.formatDate(now.getFullYear(), now.getMonth() + 1, now.getDate());
+  },
+
+  daysBetween: (earlierDateString, laterDateString) => {
+    const [y1, m1, d1] = earlierDateString.split("-").map(Number);
+    const [y2, m2, d2] = laterDateString.split("-").map(Number);
+    const ms = Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1);
+    return Math.round(ms / (1000 * 60 * 60 * 24));
+  }
 };
 
 const defaultSalaryPattern = [];
@@ -198,7 +210,7 @@ function buildSalaryEntries(startYearMonth, quarters) {
       result.push({
         date: DateUtils.formatDate(year, month + 1, day),
         category: "salary",
-        account: "cib",
+        account: "hsbc",
         type: "income",
         amount: Number(payment.amount) || 0,
         source: "salary"
@@ -315,7 +327,9 @@ function getRemainingForecastAmount(entry) {
 }
 
 function forecastEntries() {
+  const today = DateUtils.todayString();
   return getForecastCandidateEntries()
+    .filter((entry) => !entry.date || entry.date >= today)
     .filter((entry) => {
       if (entry.type === "expense") {
         const actualAmount = getEntryActualAmount(entry);
@@ -576,6 +590,10 @@ function renderDashboard() {
   renderBalanceChart(forecast);
   renderExpenseMix(entries);
   renderWarnings(forecast);
+
+  const deficitSummary = getDeficitSummary();
+  renderDeficitBanner(deficitSummary);
+  renderDeficits(deficitSummary);
 }
 
 function getForecastMovement(entry) {
@@ -648,6 +666,131 @@ function renderWarnings(forecast) {
     .join("");
 }
 
+// --- Deficits ---
+// Three independent signals, unified into one place:
+//  1. Forecast risk: months where the *projected* running balance goes negative.
+//  2. Overdue & unpaid: individual entries past their due date with no (or
+//     partial) actual amount recorded against them.
+//  3. Actual shortfalls: months where the *realized* running balance (using
+//     only entries actually marked paid/received) already went negative.
+
+function getForecastDeficitMonths() {
+  return calculateForecast(forecastEntries()).filter((item) => item.balance < 0);
+}
+
+function getOverdueItems() {
+  const today = DateUtils.todayString();
+  return getForecastCandidateEntries()
+    .filter((entry) => entry.date && entry.date < today)
+    .map((entry) => {
+      const isExpense = entry.type === "expense";
+      const remaining = isExpense ? getRemainingForecastAmount(entry) : Number(entry.amount || 0);
+      const settled = isExpense ? remaining <= 0 : getEntryActualAmount(entry) > 0;
+      return { entry, remaining, settled, daysOverdue: DateUtils.daysBetween(entry.date, today) };
+    })
+    .filter((item) => !item.settled)
+    .sort((a, b) => b.daysOverdue - a.daysOverdue);
+}
+
+function getActualDeficitMonths() {
+  const today = DateUtils.todayString();
+  const realized = actualizedEntries().filter((entry) => entry.date && entry.date <= today);
+  const months = groupByMonth(realized, getActualMovement);
+  const ordered = Object.keys(months).sort();
+  const totalOpeningBalance = Object.values(accountBalances).reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
+  let running = totalOpeningBalance;
+  const balances = [];
+  ordered.forEach((month) => {
+    running += months[month];
+    balances.push({ month, balance: running, net: months[month] });
+  });
+  return balances.filter((item) => item.balance < 0);
+}
+
+function getDeficitSummary() {
+  return {
+    forecastMonths: getForecastDeficitMonths(),
+    overdueItems: getOverdueItems(),
+    actualMonths: getActualDeficitMonths()
+  };
+}
+
+function renderDeficitBanner(summary) {
+  const banner = document.getElementById("deficitBanner");
+  if (!banner) return;
+  const { forecastMonths, overdueItems, actualMonths } = summary;
+  const hasAny = forecastMonths.length || overdueItems.length || actualMonths.length;
+
+  if (!hasAny) {
+    banner.hidden = true;
+    return;
+  }
+
+  const parts = [];
+  if (forecastMonths.length) parts.push(`${forecastMonths.length} month${forecastMonths.length === 1 ? "" : "s"} projected to go negative`);
+  if (overdueItems.length) parts.push(`${overdueItems.length} item${overdueItems.length === 1 ? "" : "s"} overdue`);
+  if (actualMonths.length) parts.push(`${actualMonths.length} past month${actualMonths.length === 1 ? "" : "s"} with an actual shortfall`);
+
+  banner.hidden = false;
+  document.getElementById("deficitBannerSummary").textContent = parts.join(" · ");
+}
+
+function renderDeficits(summary) {
+  const { forecastMonths, overdueItems, actualMonths } = summary;
+
+  document.getElementById("deficitForecastCount").textContent = String(forecastMonths.length);
+  document.getElementById("deficitOverdueCount").textContent = String(overdueItems.length);
+  document.getElementById("deficitActualCount").textContent = String(actualMonths.length);
+
+  const forecastList = document.getElementById("deficitForecastList");
+  forecastList.innerHTML = forecastMonths.length
+    ? forecastMonths
+        .map(
+          (item) => `
+            <div class="list-row danger-row">
+              <span>${item.month}</span>
+              <strong>${money(item.balance)}</strong>
+            </div>
+          `
+        )
+        .join("")
+    : `<div class="list-row success-row"><span>No forecasted deficit</span><strong>Balance stays positive</strong></div>`;
+
+  const overdueList = document.getElementById("deficitOverdueList");
+  overdueList.innerHTML = overdueItems.length
+    ? overdueItems
+        .map(
+          (item) => `
+            <div class="list-row danger-row deficit-row">
+              <span>
+                <strong>${item.entry.category}</strong><br>
+                <small>Due ${item.entry.date}</small>
+              </span>
+              <div class="deficit-meta">
+                <span class="overdue-pill">${item.daysOverdue}d overdue</span>
+                <strong>${money(item.remaining)}</strong>
+              </div>
+            </div>
+          `
+        )
+        .join("")
+    : `<div class="list-row success-row"><span>Nothing overdue</span><strong>All settled</strong></div>`;
+
+  const actualList = document.getElementById("deficitActualList");
+  actualList.innerHTML = actualMonths.length
+    ? actualMonths
+        .map(
+          (item) => `
+            <div class="list-row danger-row">
+              <span>${item.month}</span>
+              <strong>${money(item.balance)}</strong>
+            </div>
+          `
+        )
+        .join("")
+    : `<div class="list-row success-row"><span>No actual shortfall on record</span><strong>Realized balance stayed positive</strong></div>`;
+}
+
 function renderExpenseMix(entries) {
   const totals = entries
     .filter((entry) => entry.type === "expense")
@@ -715,12 +858,53 @@ function focusAccountBalance(accountId) {
   }
 }
 
+function renderCashflowSummary() {
+  const fromInput = document.getElementById("cfSummaryFrom");
+  const toInput = document.getElementById("cfSummaryTo");
+  const from = fromInput && fromInput.value ? fromInput.value : null;
+  const to = toInput && toInput.value ? toInput.value : null;
+
+  const entries = forecastEntries().filter((entry) => {
+    if (!entry.date) return true;
+    if (from && entry.date < from) return false;
+    if (to && entry.date > to) return false;
+    return true;
+  });
+
+  const income = entries.filter((entry) => entry.type === "income").reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+  const expenses = entries.filter((entry) => entry.type === "expense").reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+  const dated = entries.filter((entry) => entry.date).map((entry) => entry.date).sort();
+
+  document.getElementById("cfSummaryIncome").textContent = money(income);
+  document.getElementById("cfSummaryExpenses").textContent = money(expenses);
+  const netEl = document.getElementById("cfSummaryNet");
+  netEl.textContent = money(income - expenses);
+  netEl.classList.toggle("danger-text", income - expenses < 0);
+  document.getElementById("cfSummaryCount").textContent = String(entries.length);
+  document.getElementById("cfSummaryRange").textContent = dated.length ? `${dated[0]} to ${dated[dated.length - 1]}` : "No entries";
+
+  const periodNote = document.getElementById("cfPeriodNote");
+  if (periodNote) {
+    periodNote.textContent = from || to ? `${from || "start"} to ${to || "end"}` : "Full forecast list";
+  }
+}
+
+on("cfSummaryFrom", "change", renderCashflowSummary);
+on("cfSummaryTo", "change", renderCashflowSummary);
+on("cfSummaryReset", "click", () => {
+  document.getElementById("cfSummaryFrom").value = "";
+  document.getElementById("cfSummaryTo").value = "";
+  renderCashflowSummary();
+});
+
 function renderEntries() {
   const table = document.getElementById("entriesTable");
   const typeFilter = document.getElementById("typeFilter").value;
+  const categoryFilter = document.getElementById("categoryFilter").value;
   const search = document.getElementById("searchEntries").value.trim().toLowerCase();
   const matchesFilters = (entry) =>
     (typeFilter === "all" || entry.type === typeFilter) &&
+    (categoryFilter === "all" || entry.category === categoryFilter) &&
     (!search || entry.category.toLowerCase().includes(search));
 
   // Opening balance rows are pinned at the top, in account order, with no
@@ -731,6 +915,13 @@ function renderEntries() {
     .sort((a, b) => a.date.localeCompare(b.date));
 
   const filtered = [...openingRows, ...forecastRows];
+
+  const categorySelect = document.getElementById("categoryFilter");
+  const allCategories = [...new Set([...openingBalanceEntries(), ...forecastEntries()].map((entry) => entry.category))].sort();
+  const previousValue = categorySelect.value;
+  categorySelect.innerHTML = `<option value="all">All categories</option>${allCategories
+    .map((category) => `<option value="${category}"${category === previousValue ? " selected" : ""}>${category}</option>`)
+    .join("")}`;
 
   table.innerHTML = filtered
     .map((entry) => {
@@ -759,6 +950,8 @@ function renderEntries() {
       `;
     })
     .join("");
+
+  renderCashflowSummary();
 }
 
 function renderHistory() {
@@ -903,7 +1096,10 @@ function renderInstallments() {
     .map((item, index) => `
       <div class="list-row">
         <span>${item.name}<br><small>${money(item.amount)} ${frequencyLabel(item.frequency)} from ${item.startMonth} for ${item.months} payments</small></span>
-        <button class="delete-button" data-installment-delete="${index}" type="button">Delete</button>
+        <div class="deficit-meta">
+          <button class="ghost-button" data-installment-edit="${index}" type="button">Edit</button>
+          <button class="delete-button" data-installment-delete="${index}" type="button">Delete</button>
+        </div>
       </div>
     `)
     .join("");
@@ -1311,7 +1507,12 @@ document.querySelectorAll(".nav-item").forEach((button) => {
   });
 });
 
+on("deficitBannerAction", "click", () => {
+  activateView("deficits");
+});
+
 on("typeFilter", "change", renderEntries);
+on("categoryFilter", "change", renderEntries);
 on("searchEntries", "input", renderEntries);
 
 on("salarySchedule", "input", (event) => {
@@ -1772,29 +1973,69 @@ document.getElementById("storageDialog").addEventListener("close", () => {
   renderAll();
 });
 
+let editingInstallmentIndex = null;
+
 document.getElementById("addInstallment").addEventListener("click", () => {
+  editingInstallmentIndex = null;
   const form = document.getElementById("installmentForm");
   form.reset();
   form.elements.startMonth.value = new Date().toISOString().slice(0, 7);
   form.elements.day.value = 30;
   form.elements.months.value = 12;
   form.elements.frequency.value = "1";
+  document.getElementById("installmentDialogTitle").textContent = "Add installment";
+  document.getElementById("installmentDialog").showModal();
+});
+
+on("installmentList", "click", (event) => {
+  const editButton = event.target.closest("[data-installment-edit]");
+  if (!editButton) return;
+  const index = Number(editButton.dataset.installmentEdit);
+  const item = installments[index];
+  if (!item) return;
+  editingInstallmentIndex = index;
+  const form = document.getElementById("installmentForm");
+  form.reset();
+  form.elements.name.value = item.name;
+  form.elements.amount.value = item.amount;
+  form.elements.frequency.value = String(item.frequency || 1);
+  form.elements.day.value = item.day;
+  form.elements.startMonth.value = item.startMonth;
+  form.elements.months.value = item.months;
+  document.getElementById("installmentDialogTitle").textContent = "Edit installment";
   document.getElementById("installmentDialog").showModal();
 });
 
 document.getElementById("installmentDialog").addEventListener("close", () => {
   const dialog = document.getElementById("installmentDialog");
-  if (dialog.returnValue !== "save") return;
+  if (dialog.returnValue !== "save") {
+    editingInstallmentIndex = null;
+    return;
+  }
   const form = document.getElementById("installmentForm");
-  installments.push({
-    id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+  const values = {
     name: form.elements.name.value.trim(),
     amount: Number(form.elements.amount.value),
     day: Number(form.elements.day.value),
     startMonth: form.elements.startMonth.value,
     months: Number(form.elements.months.value),
     frequency: Number(form.elements.frequency.value) || 1
-  });
+  };
+
+  if (editingInstallmentIndex !== null && installments[editingInstallmentIndex]) {
+    // Keep the original id so any actuals already recorded against this
+    // installment's generated entries stay matched after the edit.
+    installments[editingInstallmentIndex] = {
+      ...installments[editingInstallmentIndex],
+      ...values
+    };
+  } else {
+    installments.push({
+      id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+      ...values
+    });
+  }
+  editingInstallmentIndex = null;
   saveSetting(keys.installments, installments);
   renderAll();
 });

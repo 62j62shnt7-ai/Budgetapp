@@ -17,6 +17,7 @@
       </div>
       <nav class="nav" aria-label="Main views">
         <button class="nav-item active" data-view="dashboard" type="button">Dashboard</button>
+        <button class="nav-item" data-view="deficits" type="button">Deficits</button>
         <button class="nav-item" data-view="cashflow" type="button">Cash Flow</button>
         <button class="nav-item" data-view="history" type="button">History</button>
         <button class="nav-item" data-view="accounts" type="button">Accounts</button>
@@ -44,6 +45,14 @@
       </header>
 
       <section class="view active" id="dashboard">
+        <div class="alert-banner" id="deficitBanner" hidden>
+          <div class="alert-banner-icon">!</div>
+          <div class="alert-banner-body">
+            <strong>Deficiencies detected</strong>
+            <p id="deficitBannerSummary"></p>
+          </div>
+          <button class="ghost-button" id="deficitBannerAction" type="button">View Deficits</button>
+        </div>
         <div class="metrics-grid">
           <article class="metric">
             <span>Cash balance</span>
@@ -104,7 +113,92 @@
         </div>
       </section>
 
+      <section class="view" id="deficits">
+        <div class="metrics-grid">
+          <article class="metric">
+            <span>Forecast risk months</span>
+            <strong id="deficitForecastCount">0</strong>
+            <small id="deficitForecastNote">Projected months balance goes negative</small>
+          </article>
+          <article class="metric">
+            <span>Overdue & unpaid</span>
+            <strong id="deficitOverdueCount">0</strong>
+            <small id="deficitOverdueNote">Past due, not yet settled</small>
+          </article>
+          <article class="metric">
+            <span>Actual deficit months</span>
+            <strong id="deficitActualCount">0</strong>
+            <small id="deficitActualNote">Already happened, based on recorded actuals</small>
+          </article>
+        </div>
+
+        <div class="content-grid">
+          <section class="panel">
+            <div class="panel-heading">
+              <h3>Forecast risk</h3>
+              <span>Months where projected balance goes negative</span>
+            </div>
+            <div id="deficitForecastList" class="stack-list"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-heading">
+              <h3>Overdue &amp; unpaid</h3>
+              <span>Past their due date, no actual amount recorded</span>
+            </div>
+            <div id="deficitOverdueList" class="stack-list"></div>
+          </section>
+        </div>
+
+        <section class="panel" style="margin-top: 18px;">
+          <div class="panel-heading">
+            <h3>Actual shortfalls</h3>
+            <span>Real running balance using only entries marked as actually paid or received</span>
+          </div>
+          <div id="deficitActualList" class="stack-list"></div>
+        </section>
+      </section>
+
       <section class="view" id="cashflow">
+        <div class="panel" style="margin-bottom: 18px;">
+          <div class="panel-heading">
+            <h3>Summary period</h3>
+            <span id="cfPeriodNote">Full forecast list</span>
+          </div>
+          <div class="salary-controls">
+            <label>
+              From
+              <input id="cfSummaryFrom" type="date">
+            </label>
+            <label>
+              To
+              <input id="cfSummaryTo" type="date">
+            </label>
+            <button class="ghost-button" id="cfSummaryReset" type="button">Use full list</button>
+          </div>
+        </div>
+        <div class="metrics-grid" id="cashflowSummary">
+          <article class="metric">
+            <span>Forecast income</span>
+            <strong id="cfSummaryIncome">0</strong>
+            <small>Total across the period above</small>
+          </article>
+          <article class="metric">
+            <span>Forecast expenses</span>
+            <strong id="cfSummaryExpenses">0</strong>
+            <small>Includes installments &amp; credit dues</small>
+          </article>
+          <article class="metric">
+            <span>Net</span>
+            <strong id="cfSummaryNet">0</strong>
+            <small>Income minus expenses</small>
+          </article>
+          <article class="metric">
+            <span>Entries</span>
+            <strong id="cfSummaryCount">0</strong>
+            <small id="cfSummaryRange">—</small>
+          </article>
+        </div>
         <div class="content-grid salary-layout">
           <section class="panel">
             <div class="panel-heading">
@@ -142,6 +236,7 @@
               <h3>Installments</h3>
               <button class="ghost-button" id="addInstallment" type="button">Add installment</button>
             </div>
+            <p style="color: var(--muted); font-size: 13px; margin: -4px 0 12px;">Recurring payments — edit one to change its amount, day, or schedule going forward. Past entries already recorded as paid are unaffected.</p>
             <div id="installmentList" class="stack-list"></div>
           </section>
           <section class="panel">
@@ -160,9 +255,13 @@
                 <option value="income">Income</option>
                 <option value="expense">Expense</option>
               </select>
+              <select id="categoryFilter" aria-label="Filter by category">
+                <option value="all">All categories</option>
+              </select>
               <input id="searchEntries" type="search" placeholder="Search category">
             </div>
           </div>
+          <p style="color: var(--muted); font-size: 13px; margin: -8px 0 12px;">Every planned income and expense, including salary, installments, and credit dues. Type an <strong>Actual</strong> amount once something really happens — the forecast amount auto-adjusts to whatever's still remaining.</p>
           <div class="table-wrap">
             <table>
               <thead>
@@ -432,7 +531,7 @@
     <dialog id="installmentDialog">
       <form method="dialog" class="entry-form" id="installmentForm">
         <div class="dialog-heading">
-          <h3>Add installment</h3>
+          <h3 id="installmentDialogTitle">Add installment</h3>
           <button class="icon-button" value="cancel" aria-label="Close" formnovalidate type="submit">x</button>
         </div>
         <label>
