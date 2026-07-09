@@ -908,16 +908,26 @@ function renderEntries() {
     (!search || entry.category.toLowerCase().includes(search));
 
   // Opening balance rows are pinned at the top, in account order, with no
-  // date sort applied. The rest of the forecast is sorted by date below them.
+  // date sort applied. The rest is sorted by date below them. We use the
+  // full candidate list here (not forecastEntries()) so past-dated and
+  // already-settled entries still show up and can be deleted — they're
+  // only excluded from the forward-looking Cash balance calculation.
   const openingRows = openingBalanceEntries().filter(matchesFilters);
-  const forecastRows = forecastEntries()
+  const forecastRows = getForecastCandidateEntries()
+    .map((entry) => {
+      const actualAmount = getEntryActualAmount(entry);
+      if (entry.type === "expense" && actualAmount > 0) {
+        return { ...entry, amount: getRemainingForecastAmount(entry) };
+      }
+      return entry;
+    })
     .filter(matchesFilters)
     .sort((a, b) => a.date.localeCompare(b.date));
 
   const filtered = [...openingRows, ...forecastRows];
 
   const categorySelect = document.getElementById("categoryFilter");
-  const allCategories = [...new Set([...openingBalanceEntries(), ...forecastEntries()].map((entry) => entry.category))].sort();
+  const allCategories = [...new Set([...openingBalanceEntries(), ...getForecastCandidateEntries()].map((entry) => entry.category))].sort();
   const previousValue = categorySelect.value;
   categorySelect.innerHTML = `<option value="all">All categories</option>${allCategories
     .map((category) => `<option value="${category}"${category === previousValue ? " selected" : ""}>${category}</option>`)
