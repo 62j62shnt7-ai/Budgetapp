@@ -30,9 +30,10 @@ const DateUtils = {
   }
 };
 
-// 3 rotating groups (monthOffset 0/1/2, cycling every 3 months from the
-// chosen start month) x 2 paydays (15th/30th) = 6 slots. Amounts start at
-// 0 — no real figures baked into the public source.
+// 3 rotating groups (monthOffset 0/1/2, cycling every 3 months, fixed to
+// salaryAnchorMonth regardless of whatever start month is chosen when
+// generating) x 2 paydays (15th/30th) = 6 slots. Amounts start at 0 — no
+// real figures baked into the public source.
 const defaultSalaryPattern = [
   { monthOffset: 0, day: 15, amount: 0 },
   { monthOffset: 0, day: 30, amount: 0 },
@@ -91,6 +92,7 @@ const keys = {
   deletedForecasts: "budget-control-deleted-forecasts",
   archivedEntries: "budget-control-archived-entries",
   salaryMaterialized: "budget-control-salary-materialized",
+  salaryAnchor: "budget-control-salary-anchor",
   resetBackup: "budget-control-reset-backup"
 };
 const seedVersion = "blank-template-v1";
@@ -128,6 +130,16 @@ let forecastQuarters = 12;
 const formatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 const money = (value) => `${formatter.format(Math.round(value))} EGP`;
 const usd = (value) => `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(value)} USD`;
+
+// The salary groups (G1/G2/G3) are anchored to fixed calendar months so
+// changing the forecast/salary start month never reshuffles which real
+// months a group falls in. Set once on first run and never recomputed
+// afterward, even though forecastStartMonth itself is "today" every load.
+let salaryAnchorMonth = loadSetting(keys.salaryAnchor, null);
+if (!salaryAnchorMonth) {
+  salaryAnchorMonth = DateUtils.currentYearMonth();
+  saveSetting(keys.salaryAnchor, salaryAnchorMonth);
+}
 
 let salaryPattern = loadSetting(keys.salary, defaultSalaryPattern);
 let cashEntries = normalizeCashEntries(loadSetting(keys.entries, defaultCashEntries));
@@ -206,26 +218,46 @@ function saveSetting(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
+// Which absolute calendar month a group (monthOffset 0/1/2) falls in is
+// fixed to salaryAnchorMonth's 3-month cycle, not to whatever start month
+// you happen to generate from. E.g. if G1 lands on Jan/Apr/Jul/Oct today,
+// it still lands on Jan/Apr/Jul/Oct even if you later set the generation
+// start month to March.
+function monthIndexFromYearMonth(ymString) {
+  const [year, month] = DateUtils.parseYearMonth(ymString);
+  return year * 12 + (month - 1);
+}
+
+function groupPhaseForMonthIndex(absoluteMonthIndex) {
+  const anchorIndex = monthIndexFromYearMonth(salaryAnchorMonth || DateUtils.currentYearMonth());
+  return (((absoluteMonthIndex - anchorIndex) % 3) + 3) % 3;
+}
+
 function buildSalaryEntries(startYearMonth, quarters) {
-  const [startYear, startMonth] = DateUtils.parseYearMonth(startYearMonth);
+  const startIndex = monthIndexFromYearMonth(startYearMonth);
+  const totalMonths = Math.max(1, Number(quarters) || 1) * 3;
   const result = [];
 
-  for (let quarter = 0; quarter < quarters; quarter += 1) {
-    salaryPattern.forEach((payment) => {
-      const zeroBasedMonth = startMonth - 1 + quarter * 3 + payment.monthOffset;
-      const year = startYear + Math.floor(zeroBasedMonth / 12);
-      const month = ((zeroBasedMonth % 12) + 12) % 12;
-      const lastDay = DateUtils.getLastDayOfMonth(year, month + 1);
-      const day = Math.min(Number(payment.day), lastDay);
-      result.push({
-        date: DateUtils.formatDate(year, month + 1, day),
-        category: "salary",
-        account: "hsbc",
-        type: "income",
-        amount: Number(payment.amount) || 0,
-        source: "salary"
+  for (let offset = 0; offset < totalMonths; offset += 1) {
+    const absoluteMonthIndex = startIndex + offset;
+    const phase = groupPhaseForMonthIndex(absoluteMonthIndex);
+    const year = Math.floor(absoluteMonthIndex / 12);
+    const month = ((absoluteMonthIndex % 12) + 12) % 12; // 0-based
+
+    salaryPattern
+      .filter((payment) => (Number(payment.monthOffset) || 0) === phase)
+      .forEach((payment) => {
+        const lastDay = DateUtils.getLastDayOfMonth(year, month + 1);
+        const day = Math.min(Number(payment.day), lastDay);
+        result.push({
+          date: DateUtils.formatDate(year, month + 1, day),
+          category: "salary",
+          account: "hsbc",
+          type: "income",
+          amount: Number(payment.amount) || 0,
+          source: "salary"
+        });
       });
-    });
   }
 
   return result;
@@ -1083,10 +1115,15 @@ function renderSalarySchedule() {
     return;
   }
 
-  const [, startMonth] = DateUtils.parseYearMonth(forecastStartMonth);
   const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const anchorIndex = monthIndexFromYearMonth(salaryAnchorMonth || DateUtils.currentYearMonth());
   const groupMonthsLabel = (offset) => {
-    const months = [0, 1, 2, 3].map((q) => monthNames[(startMonth - 1 + offset + q * 3 + 1200) % 12]);
+    // Find the first absolute month (from the anchor) whose phase matches this
+    // group, then list every 3rd month from there — fixed regardless of
+    // whatever start month is currently selected in the salary controls.
+    let firstMatch = anchorIndex;
+    while (groupPhaseForMonthIndex(firstMatch) !== offset) firstMatch += 1;
+    const months = [0, 1, 2, 3].map((q) => monthNames[((firstMatch + q * 3) % 12 + 12) % 12]);
     return months.join(", ");
   };
 
@@ -1712,6 +1749,7 @@ document.addEventListener("click", (event) => {
 
   // Delete the actual amount record - use getEntryId to match what getEntryActualAmount uses
   delete entryActuals[getEntryId(entry)];
+  saveSetting(keys.entryActuals, entryActuals);
   // If archived, also remove from archived entries
   if (isArchived && archivedIndex !== -1) {
     archivedEntries.splice(archivedIndex, 1);
@@ -1720,6 +1758,7 @@ document.addEventListener("click", (event) => {
 
   renderDashboard();
   renderHistory();
+  renderEntries();
 });
 
 on("entriesTable", "click", (event) => {
@@ -2127,16 +2166,23 @@ document.getElementById("resetData").addEventListener("click", () => {
   // Snapshot exactly what this reset touches, so Undo can restore it.
   saveSetting(keys.resetBackup, {
     salaryPattern: clone(salaryPattern),
+    salaryAnchorMonth,
     cashEntries: clone(cashEntries),
     installments: clone(installments),
     storageAssets: clone(storageAssets),
     accountBalances: clone(accountBalances),
     asfJobs: clone(asfJobs),
     irqJobs: clone(irqJobs),
-    ratesData: clone(ratesData)
+    ratesData: clone(ratesData),
+    creditDues: clone(creditDues),
+    creditDueMonths: clone(creditDueMonths),
+    entryActuals: clone(entryActuals),
+    deletedForecasts: clone(deletedForecasts),
+    archivedEntries: clone(archivedEntries)
   });
 
   salaryPattern = clone(defaultSalaryPattern);
+  salaryAnchorMonth = DateUtils.currentYearMonth();
   cashEntries = clone(defaultCashEntries);
   installments = clone(defaultInstallments);
   storageAssets = clone(defaultStorage);
@@ -2144,8 +2190,14 @@ document.getElementById("resetData").addEventListener("click", () => {
   asfJobs = clone(defaultAsf);
   irqJobs = clone(defaultIrq);
   ratesData = clone(defaultRates);
+  creditDues = {};
+  creditDueMonths = {};
+  entryActuals = {};
+  deletedForecasts = [];
+  archivedEntries = clone(defaultArchivedEntries);
   localStorage.setItem(keys.seedVersion, seedVersion);
   saveSetting(keys.salary, salaryPattern);
+  saveSetting(keys.salaryAnchor, salaryAnchorMonth);
   saveSetting(keys.entries, cashEntries);
   saveSetting(keys.installments, installments);
   saveSetting(keys.storage, storageAssets);
@@ -2153,6 +2205,11 @@ document.getElementById("resetData").addEventListener("click", () => {
   saveSetting(keys.asf, asfJobs);
   saveSetting(keys.irq, irqJobs);
   saveSetting(keys.rates, ratesData);
+  saveSetting(keys.creditDues, creditDues);
+  saveSetting(keys.creditDueMonths, creditDueMonths);
+  saveSetting(keys.entryActuals, entryActuals);
+  saveSetting(keys.deletedForecasts, deletedForecasts);
+  saveSetting(keys.archivedEntries, archivedEntries);
   updateUndoResetVisibility();
   renderAll();
 });
@@ -2162,6 +2219,7 @@ document.getElementById("undoReset").addEventListener("click", () => {
   if (!backup) return;
 
   salaryPattern = backup.salaryPattern;
+  salaryAnchorMonth = backup.salaryAnchorMonth || salaryAnchorMonth;
   cashEntries = normalizeCashEntries(backup.cashEntries);
   installments = backup.installments;
   storageAssets = backup.storageAssets;
@@ -2169,8 +2227,14 @@ document.getElementById("undoReset").addEventListener("click", () => {
   asfJobs = backup.asfJobs || asfJobs;
   irqJobs = backup.irqJobs || irqJobs;
   ratesData = backup.ratesData || ratesData;
+  creditDues = backup.creditDues || {};
+  creditDueMonths = backup.creditDueMonths || {};
+  entryActuals = backup.entryActuals || {};
+  deletedForecasts = backup.deletedForecasts || [];
+  archivedEntries = backup.archivedEntries || clone(defaultArchivedEntries);
 
   saveSetting(keys.salary, salaryPattern);
+  saveSetting(keys.salaryAnchor, salaryAnchorMonth);
   saveSetting(keys.entries, cashEntries);
   saveSetting(keys.installments, installments);
   saveSetting(keys.storage, storageAssets);
@@ -2178,6 +2242,11 @@ document.getElementById("undoReset").addEventListener("click", () => {
   saveSetting(keys.asf, asfJobs);
   saveSetting(keys.irq, irqJobs);
   saveSetting(keys.rates, ratesData);
+  saveSetting(keys.creditDues, creditDues);
+  saveSetting(keys.creditDueMonths, creditDueMonths);
+  saveSetting(keys.entryActuals, entryActuals);
+  saveSetting(keys.deletedForecasts, deletedForecasts);
+  saveSetting(keys.archivedEntries, archivedEntries);
 
   // Single-level undo: once used, the backup is gone.
   localStorage.removeItem(keys.resetBackup);
@@ -2191,6 +2260,7 @@ document.getElementById("undoReset").addEventListener("click", () => {
 // so it can be carried between machines or browsers by hand.
 const exportableDataKeys = {
   salaryPattern: keys.salary,
+  salaryAnchorMonth: keys.salaryAnchor,
   cashEntries: keys.entries,
   installments: keys.installments,
   storageAssets: keys.storage,
@@ -2212,6 +2282,7 @@ document.getElementById("exportData").addEventListener("click", () => {
     seedVersion,
     data: {
       salaryPattern,
+      salaryAnchorMonth,
       cashEntries,
       installments,
       storageAssets,

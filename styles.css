@@ -588,6 +588,10 @@ label {
   background: #fdf0e6;
 }
 
+.alert-banner[hidden] {
+  display: none;
+}
+
 .alert-banner-icon {
   flex: 0 0 auto;
   width: 30px;
