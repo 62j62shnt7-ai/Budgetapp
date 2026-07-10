@@ -410,11 +410,12 @@ function actualizedEntries() {
 }
 
 function openingBalanceEntries() {
-  // Dateless and persistent: these are not tied to the forecast window and
-  // don't move as forecastStartMonth changes. They're locked so they can
-  // only be changed from the Accounts page, not edited inline here.
+  // Not tied to the forecast window and don't move as forecastStartMonth
+  // changes — the date shown is always "today" (recomputed on each
+  // render), not a fixed stored date. They're locked so they can only be
+  // changed from the Accounts page, not edited inline here.
   return Object.entries(accountBalances).map(([id, acc]) => ({
-    date: "",
+    date: DateUtils.todayString(),
     category: `${acc.name} Opening Balance`,
     account: id,
     type: "income",
@@ -850,6 +851,27 @@ function renderExpenseMix(entries) {
   document.getElementById("expenseList").innerHTML = rows || `<div class="list-row"><span>No expenses yet</span><strong>0</strong></div>`;
 }
 
+// Fully removes an entry so it can never reappear in Cash Flow: manual
+// entries are spliced out of cashEntries, template-generated ones
+// (salary/installments/credit dues) are added to deletedForecasts. Its
+// actual-amount record is cleared entirely — this is a permanent delete,
+// not an "un-actualize back to forecast".
+function permanentlyRemoveEntry(entry) {
+  const deleteKey = getEntryId(entry);
+
+  const index = cashEntries.findIndex((item) => getEntryId(item) === deleteKey);
+  if (index !== -1) {
+    cashEntries.splice(index, 1);
+    saveSetting(keys.entries, cashEntries);
+  } else if (!deletedForecasts.includes(deleteKey)) {
+    deletedForecasts.push(deleteKey);
+    saveSetting(keys.deletedForecasts, deletedForecasts);
+  }
+
+  delete entryActuals[deleteKey];
+  saveSetting(keys.entryActuals, entryActuals);
+}
+
 function canDeleteEntry(entry) {
   return !entry.locked && entry.source !== "starting balance";
 }
@@ -990,9 +1012,12 @@ function renderEntries() {
       const editable = isEditableEntry(entry);
       const clickable = editable || isOpeningBalance;
       const actualCell = editable
-        ? `<input class="inline-actual-input" data-entry-actual-input="${deleteKey}" type="number" min="0" step="0.01" value="${actualValue || ""}" placeholder="0">`
+        ? `<div>
+            <input class="inline-actual-input" data-entry-actual-input="${deleteKey}" type="number" min="0" step="0.01" value="" placeholder="Add spend">
+            ${actualValue > 0 ? `<small style="display:block;color:var(--muted);margin-top:4px;white-space:nowrap;">Spent so far: ${money(actualValue)}</small>` : ""}
+          </div>`
         : `<span>${actualValue > 0 ? money(actualValue) : "—"}</span>`;
-      const dateCell = isOpeningBalance ? "—" : entry.date;
+      const dateCell = entry.date;
       return `
         <tr data-entry-id="${deleteKey}" class="entry-row${isOpeningBalance ? " opening-balance-row" : ""}" style="cursor:${clickable ? "pointer" : "default"};" title="${isOpeningBalance ? "Edit on the Accounts page" : ""}">
           <td>${dateCell}</td>
@@ -1034,25 +1059,43 @@ function renderHistory() {
 
   table.innerHTML = rows.join("") || `<tr><td colspan="4">No actual activity yet</td></tr>`;
 
-  const detailRows = actualEntries
-    .slice()
-    .sort((a, b) => `${a.date}-${a.category}`.localeCompare(`${b.date}-${b.category}`))
-    .map((entry) => {
-      const deleteKey = getEntryId(entry);
-      const actualValue = getEntryActualAmount(entry);
-      const editable = isEditableEntry(entry);
-      const actualCell = editable
-        ? `<input class="inline-actual-input" data-history-actual-input="${deleteKey}" type="number" min="0" step="0.01" value="${actualValue || ""}" placeholder="0">`
-        : `<span>${actualValue > 0 ? money(actualValue) : "—"}</span>`;
-      const action = editable && entry.source !== "starting balance"
-        ? `<button class="delete-button" data-history-delete-key="${deleteKey}" type="button">Remove</button>`
+  const groups = new Map();
+  actualEntries.forEach((entry) => {
+    const month = DateUtils.getMonthKey(entry.date);
+    const groupKey = `${month}|${entry.type}`;
+    if (!groups.has(groupKey)) {
+      groups.set(groupKey, {
+        month,
+        type: entry.type,
+        total: 0,
+        editable: true,
+        canRemove: false,
+        memberIds: []
+      });
+    }
+    const group = groups.get(groupKey);
+    group.total += getEntryActualAmount(entry);
+    group.editable = group.editable && isEditableEntry(entry);
+    group.canRemove = group.canRemove || (isEditableEntry(entry) && entry.source !== "starting balance");
+    group.memberIds.push(getEntryId(entry));
+  });
+
+  const detailRows = [...groups.values()]
+    .sort((a, b) => `${a.month}-${a.type}`.localeCompare(`${b.month}-${b.type}`))
+    .map((group) => {
+      const groupKey = group.memberIds.join(",");
+      const actualCell = group.editable
+        ? `<input class="inline-actual-input" data-history-actual-input="${groupKey}" type="number" min="0" step="0.01" value="${group.total || ""}" placeholder="0">`
+        : `<span>${group.total > 0 ? money(group.total) : "—"}</span>`;
+      const action = group.canRemove
+        ? `<button class="delete-button" data-history-delete-key="${groupKey}" type="button">Remove</button>`
         : "";
 
       return `
         <tr>
-          <td>${DateUtils.getMonthKey(entry.date)}</td>
-          <td>${entry.category}</td>
-          <td><span class="pill ${entry.type}">${entry.type}</span></td>
+          <td>${group.month}</td>
+          <td>${group.type === "expense" ? "All expenses" : "All income"}</td>
+          <td><span class="pill ${group.type}">${group.type}</span></td>
           <td class="number">${actualCell}</td>
           <td class="number">${action}</td>
         </tr>
@@ -1679,41 +1722,79 @@ on("refreshSalaryEntries", "click", () => {
   );
 });
 
-on("entriesTable", "change", (event) => {
-  const input = event.target.closest("[data-entry-actual-input]");
+function commitEntryActualInput(input) {
   if (!input) return;
-  event.stopPropagation();
   const entryId = input.dataset.entryActualInput;
   const entry = findEntryById(entryId);
   if (!entry || !isEditableEntry(entry)) return;
 
-  const actualAmount = input.value === "" ? 0 : Number(input.value);
-  if (actualAmount > 0) {
-    setEntryActualAmount(entry, actualAmount);
-  } else {
-    delete entryActuals[getEntryId(entry)];
-    saveSetting(keys.entryActuals, entryActuals);
+  // Additive: what's typed here is a new spend to log now, added on top of
+  // whatever's already recorded for this entry — so you can enter partial
+  // spends one at a time as they happen instead of retyping a running
+  // total. Combines into the same History line rather than creating a
+  // separate one. The field always clears after committing so it's ready
+  // for the next entry.
+  const typedAmount = input.value === "" ? 0 : Number(input.value);
+  if (typedAmount > 0) {
+    const previousActual = getEntryActualAmount(entry);
+    setEntryActualAmount(entry, previousActual + typedAmount);
   }
+  input.value = "";
 
   renderDashboard();
   renderHistory();
   renderEntries();
+}
+
+on("entriesTable", "change", (event) => {
+  const input = event.target.closest("[data-entry-actual-input]");
+  if (!input) return;
+  event.stopPropagation();
+  commitEntryActualInput(input);
+});
+
+on("entriesTable", "keydown", (event) => {
+  const input = event.target.closest("[data-entry-actual-input]");
+  if (!input || event.key !== "Enter") return;
+  event.preventDefault();
+  event.stopPropagation();
+  commitEntryActualInput(input);
 });
 
 function commitHistoryActualInput(input) {
   if (!input) return;
-  const entryId = input.dataset.historyActualInput;
-  const { entry } = findHistoryEntry(entryId);
-  if (!entry || !isEditableEntry(entry)) return;
+  const entryIds = input.dataset.historyActualInput.split(",").filter(Boolean);
+  const members = entryIds
+    .map((id) => findHistoryEntry(id))
+    .filter((m) => m.entry && isEditableEntry(m.entry));
+  if (!members.length) return;
 
-  const actualAmount = input.value === "" ? 0 : Number(input.value);
-  // Use getEntryId to match what getEntryActualAmount uses for reading
-  const entryKey = getEntryId(entry);
-  if (actualAmount > 0) {
-    entryActuals[entryKey] = actualAmount;
-  } else {
-    delete entryActuals[entryKey];
-  }
+  const newTotal = input.value === "" ? 0 : Number(input.value);
+  const previousTotal = members.reduce((sum, m) => sum + getEntryActualAmount(m.entry), 0);
+
+  members.forEach((member, index) => {
+    const entryKey = getEntryId(member.entry);
+    if (newTotal <= 0) {
+      delete entryActuals[entryKey];
+      return;
+    }
+    // Single member (the common case): set directly. Multiple members
+    // sharing this month+category+type: scale each proportionally to its
+    // previous share so the edited total is preserved without losing the
+    // relative split between the underlying entries.
+    if (members.length === 1) {
+      entryActuals[entryKey] = newTotal;
+    } else if (previousTotal > 0) {
+      const share = getEntryActualAmount(member.entry) / previousTotal;
+      const amount = index === members.length - 1
+        ? newTotal - members.slice(0, -1).reduce((sum, m) => sum + Math.round((getEntryActualAmount(m.entry) / previousTotal) * newTotal * 100) / 100, 0)
+        : Math.round(share * newTotal * 100) / 100;
+      entryActuals[entryKey] = Math.max(0, amount);
+    } else {
+      entryActuals[entryKey] = index === 0 ? newTotal : 0;
+    }
+  });
+
   saveSetting(keys.entryActuals, entryActuals);
   renderDashboard();
   renderHistory();
@@ -1742,20 +1823,26 @@ document.addEventListener("click", (event) => {
   const button = event.target.closest("[data-history-delete-key]");
   if (!button) return;
   event.stopPropagation();
-  const entryId = button.dataset.historyDeleteKey;
+  const entryIds = button.dataset.historyDeleteKey.split(",").filter(Boolean);
 
-  const { entry, isArchived, archivedIndex } = findHistoryEntry(entryId);
-  if (!entry || !isEditableEntry(entry)) return;
+  entryIds.forEach((entryId) => {
+    const { entry, isArchived, archivedIndex } = findHistoryEntry(entryId);
+    if (!entry || !isEditableEntry(entry)) return;
 
-  // Delete the actual amount record - use getEntryId to match what getEntryActualAmount uses
-  delete entryActuals[getEntryId(entry)];
+    if (isArchived && archivedIndex !== -1) {
+      // Already out of Cash Flow entirely — just drop the History record.
+      archivedEntries.splice(archivedIndex, 1);
+      delete entryActuals[getEntryId(entry)];
+    } else {
+      // Still a live entry — remove it outright so it can't pop back into
+      // Cash Flow (as opposed to just clearing the actual amount, which
+      // would leave it sitting there as a pending forecast item again).
+      permanentlyRemoveEntry(entry);
+    }
+  });
+
+  saveSetting(keys.archivedEntries, archivedEntries);
   saveSetting(keys.entryActuals, entryActuals);
-  // If archived, also remove from archived entries
-  if (isArchived && archivedIndex !== -1) {
-    archivedEntries.splice(archivedIndex, 1);
-    saveSetting(keys.archivedEntries, archivedEntries);
-  }
-
   renderDashboard();
   renderHistory();
   renderEntries();
