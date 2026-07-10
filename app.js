@@ -30,7 +30,17 @@ const DateUtils = {
   }
 };
 
-const defaultSalaryPattern = [];
+// 3 rotating groups (monthOffset 0/1/2, cycling every 3 months from the
+// chosen start month) x 2 paydays (15th/30th) = 6 slots. Amounts start at
+// 0 — no real figures baked into the public source.
+const defaultSalaryPattern = [
+  { monthOffset: 0, day: 15, amount: 0 },
+  { monthOffset: 0, day: 30, amount: 0 },
+  { monthOffset: 1, day: 15, amount: 0 },
+  { monthOffset: 1, day: 30, amount: 0 },
+  { monthOffset: 2, day: 15, amount: 0 },
+  { monthOffset: 2, day: 30, amount: 0 }
+];
 
 const defaultCashEntries = [];
 
@@ -908,12 +918,17 @@ function renderEntries() {
     (!search || entry.category.toLowerCase().includes(search));
 
   // Opening balance rows are pinned at the top, in account order, with no
-  // date sort applied. The rest is sorted by date below them. We use the
-  // full candidate list here (not forecastEntries()) so past-dated and
-  // already-settled entries still show up and can be deleted — they're
-  // only excluded from the forward-looking Cash balance calculation.
+  // date sort applied. The rest is sorted by date below them. Past-dated
+  // expense entries stay visible (with their remaining unpaid amount) so
+  // they can still be deleted, but once an entry — income or expense — is
+  // fully actualized, it drops out of Cash Flow and lives only in History.
   const openingRows = openingBalanceEntries().filter(matchesFilters);
   const forecastRows = getForecastCandidateEntries()
+    .filter((entry) => {
+      const actualAmount = getEntryActualAmount(entry);
+      if (actualAmount <= 0) return true;
+      return entry.type === "expense" && getRemainingForecastAmount(entry) > 0;
+    })
     .map((entry) => {
       const actualAmount = getEntryActualAmount(entry);
       if (entry.type === "expense" && actualAmount > 0) {
@@ -1061,13 +1076,36 @@ function renderSalarySchedule() {
   syncSalaryPeriodControls();
   const schedule = document.getElementById("salarySchedule");
   const quarterTotal = salaryPattern.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-  const labels = ["Month 1", "Month 1", "Month 2", "Month 2", "Month 3", "Month 3"];
+
+  if (!salaryPattern.length) {
+    schedule.innerHTML = `<div class="list-row"><span>No salary payments yet</span><strong>Click "Add payment"</strong></div>`;
+    document.getElementById("salaryQuarterTotal").textContent = money(0);
+    return;
+  }
+
+  const [, startMonth] = DateUtils.parseYearMonth(forecastStartMonth);
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const groupMonthsLabel = (offset) => {
+    const months = [0, 1, 2, 3].map((q) => monthNames[(startMonth - 1 + offset + q * 3 + 1200) % 12]);
+    return months.join(", ");
+  };
 
   schedule.innerHTML = salaryPattern
     .map((payment, index) => `
       <article class="salary-card">
-        <small>${labels[index]} - payment day</small>
-        <div class="inline-fields">
+        <div class="asset-heading">
+          <small>Payment ${index + 1} — ${groupMonthsLabel(Number(payment.monthOffset) || 0)}</small>
+          <button class="delete-button" data-salary-delete="${index}" type="button">Delete</button>
+        </div>
+        <div class="inline-fields" style="grid-template-columns: 60px 56px 1fr;">
+          <label>
+            Group
+            <select data-salary-index="${index}" data-salary-field="monthOffset">
+              <option value="0"${Number(payment.monthOffset) === 0 ? " selected" : ""}>G1</option>
+              <option value="1"${Number(payment.monthOffset) === 1 ? " selected" : ""}>G2</option>
+              <option value="2"${Number(payment.monthOffset) === 2 ? " selected" : ""}>G3</option>
+            </select>
+          </label>
           <label>
             Day
             <input data-salary-index="${index}" data-salary-field="day" type="number" min="1" max="31" value="${payment.day}">
@@ -1541,6 +1579,20 @@ on("salarySchedule", "change", (event) => {
   const index = Number(input.dataset.salaryIndex);
   const field = input.dataset.salaryField;
   salaryPattern[index][field] = Number(input.value);
+  saveSetting(keys.salary, salaryPattern);
+  renderAll();
+});
+
+on("salarySchedule", "click", (event) => {
+  const button = event.target.closest("[data-salary-delete]");
+  if (!button) return;
+  salaryPattern.splice(Number(button.dataset.salaryDelete), 1);
+  saveSetting(keys.salary, salaryPattern);
+  renderAll();
+});
+
+on("addSalaryPayment", "click", () => {
+  salaryPattern.push({ monthOffset: 0, day: 30, amount: 0 });
   saveSetting(keys.salary, salaryPattern);
   renderAll();
 });
