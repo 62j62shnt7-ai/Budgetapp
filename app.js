@@ -1,6 +1,6 @@
 /* ==========================================================================
    Budget Control — Core Application Logic
-   Fully compatible with direct file:// opening and http:// web servers.
+   Fully compatible with direct file:// desktop double-click and HTTP web servers.
    ========================================================================== */
 
 // --- Storage Keys & Defaults ---
@@ -19,13 +19,15 @@ const keys = {
   entryActuals: "budget-control-entry-actuals",
   deletedForecasts: "budget-control-deleted-forecasts",
   archivedEntries: "budget-control-archived-entries",
+  categoryCaps: "budget-control-category-caps",
+  savingsGoals: "budget-control-savings-goals",
   salaryMaterialized: "budget-control-salary-materialized",
   salaryAnchor: "budget-control-salary-anchor",
   resetBackup: "budget-control-reset-backup",
   theme: "budget-control-theme"
 };
 
-const seedVersion = "blank-template-v1";
+const seedVersion = "blank-template-v2";
 
 const defaultSalaryPattern = [
   { monthOffset: 0, day: 15, amount: 0 },
@@ -43,20 +45,29 @@ const defaultAccountBalances = {
 
 const defaultRates = {
   currencies: [
-    { name: "USD", sell: 0, buy: 0 },
-    { name: "EUR", sell: 0, buy: 0 },
-    { name: "SAR", sell: 0, buy: 0 },
-    { name: "AED", sell: 0, buy: 0 },
-    { name: "GBP", sell: 0, buy: 0 }
+    { name: "USD", sell: 48.5, buy: 48.4 },
+    { name: "EUR", sell: 52.1, buy: 52.0 },
+    { name: "SAR", sell: 12.9, buy: 12.8 },
+    { name: "AED", sell: 13.2, buy: 13.1 },
+    { name: "GBP", sell: 61.5, buy: 61.3 }
   ],
   gold: [
-    { name: "Gold 24", sell: 0, buy: 0 },
-    { name: "Gold 22", sell: 0, buy: 0 },
-    { name: "Gold 21", sell: 0, buy: 0 },
-    { name: "Gold 18", sell: 0, buy: 0 },
-    { name: "Gold coin", sell: 0, buy: 0 }
+    { name: "Gold 24", sell: 3600, buy: 3580 },
+    { name: "Gold 22", sell: 3300, buy: 3280 },
+    { name: "Gold 21", sell: 3150, buy: 3130 },
+    { name: "Gold 18", sell: 2700, buy: 2680 },
+    { name: "Gold coin", sell: 25200, buy: 25000 }
   ]
 };
+
+const defaultCategoryCaps = [
+  { category: "Home", cap: 15000 },
+  { category: "Bills", cap: 5000 }
+];
+
+const defaultSavingsGoals = [
+  { id: "g1", name: "Emergency Reserve", target: 50000, current: 15000 }
+];
 
 const exportableDataKeys = {
   salaryPattern: keys.salary,
@@ -72,7 +83,9 @@ const exportableDataKeys = {
   creditDueMonths: keys.creditDueMonths,
   entryActuals: keys.entryActuals,
   deletedForecasts: keys.deletedForecasts,
-  archivedEntries: keys.archivedEntries
+  archivedEntries: keys.archivedEntries,
+  categoryCaps: keys.categoryCaps,
+  savingsGoals: keys.savingsGoals
 };
 
 // --- Date Utilities ---
@@ -248,10 +261,12 @@ let creditDueMonths = loadSetting(keys.creditDueMonths, {});
 let entryActuals = loadSetting(keys.entryActuals, {});
 let deletedForecasts = loadSetting(keys.deletedForecasts, []);
 let archivedEntries = loadSetting(keys.archivedEntries, []);
+let categoryCaps = loadSetting(keys.categoryCaps, defaultCategoryCaps);
+let savingsGoals = loadSetting(keys.savingsGoals, defaultSavingsGoals);
 let editingEntry = null;
 let editingInstallmentIndex = null;
 
-// --- State Calculation Logic ---
+// --- Calculation Logic ---
 function monthIndexFromYearMonth(ymString) {
   const [year, month] = DateUtils.parseYearMonth(ymString);
   return year * 12 + (month - 1);
@@ -514,6 +529,13 @@ function getCreditDueAmount(id) {
   return (creditDues[id] && creditDues[id][monthKey]) || 0;
 }
 
+// --- Foreign Exchange Conversion Helper ---
+function getCurrencyRate(code) {
+  if (!code || code.toUpperCase() === "EGP") return 1;
+  const match = (ratesData.currencies || []).find((c) => c.name.toUpperCase() === code.toUpperCase());
+  return match && Number(match.sell) > 0 ? Number(match.sell) : 1;
+}
+
 // --- Live Rates API Functions ---
 const CURRENCY_RATES_ENDPOINT = "https://open.er-api.com/v6/latest/USD";
 const GOLD_PRICE_ENDPOINT = "https://api.gold-api.com/price/XAU";
@@ -610,6 +632,8 @@ function renderDashboard() {
     { month: forecastStartMonth, balance: totalOpeningBalance }
   );
   const storageTotal = storageAssets.reduce((sum, item) => sum + storageValue(item), 0);
+  const totalNetWorth = actualCashNow + storageTotal;
+
   const cibCredit = getCreditDueAmount("cib");
   const hsbcCredit = getCreditDueAmount("hsbc");
   const totalCreditDue = cibCredit + hsbcCredit;
@@ -623,6 +647,17 @@ function renderDashboard() {
     .filter((entry) => (entry.creditType || "").toLowerCase() === "hsbc")
     .reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
 
+  // Financial Analytics metrics
+  const netWorthEl = document.getElementById("totalNetWorth");
+  if (netWorthEl) netWorthEl.textContent = money(totalNetWorth);
+
+  const totalIncome = entries.filter((e) => e.type === "income").reduce((s, e) => s + Number(e.amount || 0), 0);
+  const totalExpense = entries.filter((e) => e.type === "expense").reduce((s, e) => s + Number(e.amount || 0), 0);
+  const savingsRatePct = totalIncome > 0 ? Math.max(0, Math.round(((totalIncome - totalExpense) / totalIncome) * 100)) : 0;
+
+  const savingsRateEl = document.getElementById("savingsRate");
+  if (savingsRateEl) savingsRateEl.textContent = `${savingsRatePct}%`;
+
   const cashBalanceEl = document.getElementById("cashBalance");
   if (cashBalanceEl) cashBalanceEl.textContent = money(currentCash);
 
@@ -634,9 +669,6 @@ function renderDashboard() {
 
   const hsbcCreditEl = document.getElementById("hsbcCreditDue");
   if (hsbcCreditEl) hsbcCreditEl.textContent = money(hsbcCredit + manualHsbcCredit);
-
-  const creditDueTotalEl = document.getElementById("creditDueTotal");
-  if (creditDueTotalEl) creditDueTotalEl.textContent = money(totalCreditDue + manualCibCredit + manualHsbcCredit);
 
   const storageTotalEl = document.getElementById("storageTotal");
   if (storageTotalEl) storageTotalEl.textContent = money(storageTotal);
@@ -660,12 +692,52 @@ function renderDashboard() {
   }
 
   renderBalanceChart(forecast);
+  renderCategoryBreakdown(entries);
   renderExpenseMix(entries);
   renderWarnings(forecast);
 
   const deficitSummary = getDeficitSummary();
   renderDeficitBanner(deficitSummary);
   renderDeficits(deficitSummary);
+}
+
+function renderCategoryBreakdown(entries) {
+  const container = document.getElementById("categoryBreakdownList");
+  if (!container) return;
+
+  const totals = entries
+    .filter((entry) => entry.type === "expense")
+    .reduce((groups, entry) => {
+      const cat = entry.category || "Other";
+      groups[cat] = (groups[cat] || 0) + Number(entry.amount || 0);
+      return groups;
+    }, {});
+
+  const totalExpense = Object.values(totals).reduce((a, b) => a + b, 0);
+  if (totalExpense <= 0) {
+    container.innerHTML = `<div class="list-row"><span>No expense categories yet</span><strong>0</strong></div>`;
+    return;
+  }
+
+  const rows = Object.entries(totals)
+    .sort((a, b) => b[1] - a[1])
+    .map(([cat, amount]) => {
+      const pct = Math.round((amount / totalExpense) * 100);
+      return `
+        <div class="list-row" style="flex-direction:column; align-items:stretch; gap:6px;">
+          <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:700;">
+            <span>${escapeHtml(cat)}</span>
+            <span>${escapeHtml(money(amount))} (${pct}%)</span>
+          </div>
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" style="width:${pct}%;"></div>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+
+  container.innerHTML = rows;
 }
 
 function calculateForecast(entries) {
@@ -844,6 +916,7 @@ function renderDeficits(summary) {
                 <div class="deficit-meta">
                   <span class="overdue-pill">${item.daysOverdue}d overdue</span>
                   <strong>${escapeHtml(money(item.remaining))}</strong>
+                  <button class="settle-button" data-settle-id="${escapeHtml(getEntryId(item.entry))}" data-settle-amount="${item.remaining}" type="button">Mark Paid</button>
                 </div>
               </div>
             `
@@ -867,6 +940,108 @@ function renderDeficits(summary) {
           .join("")
       : `<div class="list-row success-row"><span>No actual shortfall on record</span><strong>Realized balance stayed positive</strong></div>`;
   }
+}
+
+// --- Category Budget Caps Renderer ---
+function renderCategoryCaps() {
+  const container = document.getElementById("categoryCapsList");
+  if (!container) return;
+
+  if (!categoryCaps.length) {
+    container.innerHTML = `<div class="list-row"><span>No budget caps set</span><strong>Click "Set cap"</strong></div>`;
+    return;
+  }
+
+  const currentMonth = DateUtils.currentYearMonth();
+  const currentMonthEntries = forecastEntries().filter(
+    (e) => e.type === "expense" && DateUtils.getMonthKey(e.date) === currentMonth
+  );
+
+  container.innerHTML = categoryCaps
+    .map((item, index) => {
+      const spent = currentMonthEntries
+        .filter((e) => (e.category || "").toLowerCase() === (item.category || "").toLowerCase())
+        .reduce((sum, e) => sum + Number(e.amount || 0), 0);
+      const cap = Number(item.cap || 0);
+      const pct = cap > 0 ? Math.min(100, Math.round((spent / cap) * 100)) : 0;
+      const colorClass = pct >= 100 ? "red" : pct >= 75 ? "amber" : "";
+
+      return `
+        <div class="list-row" style="flex-direction:column; align-items:stretch; gap:6px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span><strong>${escapeHtml(item.category)}</strong> <small>(${money(spent)} / ${money(cap)})</small></span>
+            <button class="delete-button" data-cap-delete="${index}" type="button">Delete</button>
+          </div>
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill ${colorClass}" style="width:${pct}%;"></div>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+// --- Savings Goals Renderer ---
+function renderSavingsGoals() {
+  const container = document.getElementById("savingsGoalsList");
+  if (!container) return;
+
+  if (!savingsGoals.length) {
+    container.innerHTML = `<div class="list-row"><span>No savings goals yet</span><strong>Click "Add goal"</strong></div>`;
+    return;
+  }
+
+  container.innerHTML = savingsGoals
+    .map((goal, index) => {
+      const target = Number(goal.target || 0);
+      const current = Number(goal.current || 0);
+      const pct = target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
+
+      return `
+        <div class="list-row" style="flex-direction:column; align-items:stretch; gap:6px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span><strong>${escapeHtml(goal.name)}</strong> <small>(${money(current)} of ${money(target)})</small></span>
+            <button class="delete-button" data-goal-delete="${index}" type="button">Delete</button>
+          </div>
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" style="width:${pct}%;"></div>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+// --- CSV Exporter ---
+function exportToCSV() {
+  const allEntries = [...cashEntries, ...archivedEntries];
+  if (!allEntries.length) {
+    alert("No entries to export.");
+    return;
+  }
+
+  const headers = ["Date", "Category", "Account", "Type", "Source", "Planned Amount (EGP)", "Actual Amount (EGP)"];
+  const rows = allEntries.map((e) => [
+    `"${e.date || ""}"`,
+    `"${e.category || ""}"`,
+    `"${e.account || ""}"`,
+    `"${e.type || ""}"`,
+    `"${e.source || ""}"`,
+    Number(e.amount || 0),
+    getEntryActualAmount(e)
+  ]);
+
+  const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const stamp = new Date().toISOString().slice(0, 10);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `budget-control-export-${stamp}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 function renderCashflowSummary() {
@@ -1459,6 +1634,8 @@ function renderAll() {
   renderJobs();
   renderRates();
   renderHistory();
+  renderCategoryCaps();
+  renderSavingsGoals();
 }
 
 function activateView(viewId) {
@@ -1529,6 +1706,24 @@ function syncEntryFormMode() {
   }
 }
 
+function updateCurrencyConversionNote() {
+  const form = document.getElementById("entryForm");
+  if (!form) return;
+  const curr = form.elements.currency.value;
+  const amt = Number(form.elements.amount.value || 0);
+  const noteEl = document.getElementById("currencyConversionNote");
+  if (!noteEl) return;
+
+  if (curr !== "EGP" && amt > 0) {
+    const rate = getCurrencyRate(curr);
+    const convertedEgp = amt * rate;
+    noteEl.textContent = `${amt} ${curr} @ ${rate} = ${money(convertedEgp)}`;
+    noteEl.hidden = false;
+  } else {
+    noteEl.hidden = true;
+  }
+}
+
 function openEntryDialog(type, entry = null) {
   const form = document.getElementById("entryForm");
   if (!form) return;
@@ -1536,8 +1731,10 @@ function openEntryDialog(type, entry = null) {
   editingEntry = entry;
   form.elements.date.value = new Date().toISOString().slice(0, 10);
   form.elements.type.value = type;
+  form.elements.currency.value = "EGP";
   form.elements.months.value = 12;
   form.elements.actualAmount.value = "";
+  updateCurrencyConversionNote();
 
   if (entry) {
     form.elements.date.value = entry.date || form.elements.date.value;
@@ -1591,7 +1788,10 @@ function persistEntryForm(event) {
     return;
   }
 
-  const plannedAmount = Number(form.elements.amount.value);
+  const rawAmount = Number(form.elements.amount.value);
+  const selectedCurrency = form.elements.currency.value;
+  const rate = getCurrencyRate(selectedCurrency);
+  const plannedAmountInEgp = rawAmount * rate;
 
   if (editingEntry) {
     const idx = cashEntries.findIndex((entry) => getEntryId(entry) === getEntryId(editingEntry));
@@ -1602,7 +1802,7 @@ function persistEntryForm(event) {
       category: form.elements.category.value.trim(),
       account: form.elements.account.value.trim() || "cash",
       type: form.elements.type.value,
-      amount: plannedAmount,
+      amount: plannedAmountInEgp,
       creditType: form.elements.creditType.value || "",
       source: form.elements.type.value === "expense" ? "expense" : "income"
     };
@@ -1611,7 +1811,7 @@ function persistEntryForm(event) {
       cashEntries[idx] = updatedEntry;
       const actualAmount = Number(form.elements.actualAmount.value || 0);
       if (actualAmount > 0) {
-        setEntryActualAmount(updatedEntry, actualAmount);
+        setEntryActualAmount(updatedEntry, actualAmount * rate);
       } else {
         delete entryActuals[getEntryId(editingEntry)];
       }
@@ -1619,7 +1819,7 @@ function persistEntryForm(event) {
       const actualAmount = Number(form.elements.actualAmount.value || 0);
       const originalId = getEntryId(editingEntry);
       if (actualAmount > 0) {
-        entryActuals[originalId] = Number(actualAmount);
+        entryActuals[originalId] = Number(actualAmount * rate);
       } else {
         delete entryActuals[originalId];
       }
@@ -1632,7 +1832,7 @@ function persistEntryForm(event) {
       category: form.elements.category.value.trim(),
       account: form.elements.account.value.trim() || "cash",
       type: form.elements.type.value,
-      amount: plannedAmount,
+      amount: plannedAmountInEgp,
       creditType: form.elements.creditType.value || "",
       source: form.elements.type.value === "expense" ? "expense" : "income"
     };
@@ -1641,7 +1841,7 @@ function persistEntryForm(event) {
 
     const actualAmount = Number(form.elements.actualAmount.value || 0);
     if (actualAmount > 0) {
-      setEntryActualAmount(cashEntries[cashEntries.length - months], actualAmount);
+      setEntryActualAmount(cashEntries[cashEntries.length - months], actualAmount * rate);
     }
   }
 
@@ -1664,6 +1864,7 @@ function setupEventListeners() {
   });
 
   on("themeToggle", "click", toggleTheme);
+  on("exportCSV", "click", exportToCSV);
 
   on("deficitBannerAction", "click", () => {
     activateView("deficits");
@@ -1688,7 +1889,9 @@ function setupEventListeners() {
         creditDueMonths,
         entryActuals,
         deletedForecasts,
-        archivedEntries
+        archivedEntries,
+        categoryCaps,
+        savingsGoals
       }
     };
 
@@ -1781,7 +1984,9 @@ function setupEventListeners() {
       creditDueMonths: clone(creditDueMonths),
       entryActuals: clone(entryActuals),
       deletedForecasts: clone(deletedForecasts),
-      archivedEntries: clone(archivedEntries)
+      archivedEntries: clone(archivedEntries),
+      categoryCaps: clone(categoryCaps),
+      savingsGoals: clone(savingsGoals)
     });
 
     salaryPattern = clone(defaultSalaryPattern);
@@ -1793,6 +1998,8 @@ function setupEventListeners() {
     asfJobs = [];
     irqJobs = [];
     ratesData = clone(defaultRates);
+    categoryCaps = clone(defaultCategoryCaps);
+    savingsGoals = clone(defaultSavingsGoals);
     creditDues = {};
     creditDueMonths = {};
     entryActuals = {};
@@ -1809,6 +2016,8 @@ function setupEventListeners() {
     saveSetting(keys.asf, asfJobs);
     saveSetting(keys.irq, irqJobs);
     saveSetting(keys.rates, ratesData);
+    saveSetting(keys.categoryCaps, categoryCaps);
+    saveSetting(keys.savingsGoals, savingsGoals);
     saveSetting(keys.creditDues, creditDues);
     saveSetting(keys.creditDueMonths, creditDueMonths);
     saveSetting(keys.entryActuals, entryActuals);
@@ -1832,6 +2041,8 @@ function setupEventListeners() {
     asfJobs = backup.asfJobs || [];
     irqJobs = backup.irqJobs || [];
     ratesData = backup.ratesData || defaultRates;
+    categoryCaps = backup.categoryCaps || defaultCategoryCaps;
+    savingsGoals = backup.savingsGoals || defaultSavingsGoals;
     creditDues = backup.creditDues || {};
     creditDueMonths = backup.creditDueMonths || {};
     entryActuals = backup.entryActuals || {};
@@ -1847,6 +2058,8 @@ function setupEventListeners() {
     saveSetting(keys.asf, asfJobs);
     saveSetting(keys.irq, irqJobs);
     saveSetting(keys.rates, ratesData);
+    saveSetting(keys.categoryCaps, categoryCaps);
+    saveSetting(keys.savingsGoals, savingsGoals);
     saveSetting(keys.creditDues, creditDues);
     saveSetting(keys.creditDueMonths, creditDueMonths);
     saveSetting(keys.entryActuals, entryActuals);
@@ -1866,8 +2079,99 @@ function setupEventListeners() {
     if (entryForm.elements && entryForm.elements.creditType) {
       entryForm.elements.creditType.addEventListener("change", syncEntryFormMode);
     }
+    on("entryCurrencySelect", "change", updateCurrencyConversionNote);
+    on("entryAmountInput", "input", updateCurrencyConversionNote);
     entryForm.addEventListener("submit", persistEntryForm);
   }
+
+  // Category Caps listeners
+  on("setCategoryCap", "click", () => {
+    const form = document.getElementById("capForm");
+    if (form) form.reset();
+    const dlg = document.getElementById("capDialog");
+    if (dlg) dlg.showModal();
+  });
+
+  on("capDialog", "close", () => {
+    const dialog = document.getElementById("capDialog");
+    if (!dialog || dialog.returnValue !== "save") return;
+    const form = document.getElementById("capForm");
+    if (!form) return;
+
+    const category = form.elements.category.value.trim();
+    const cap = Number(form.elements.cap.value);
+
+    const existingIdx = categoryCaps.findIndex((item) => item.category.toLowerCase() === category.toLowerCase());
+    if (existingIdx !== -1) {
+      categoryCaps[existingIdx].cap = cap;
+    } else {
+      categoryCaps.push({ category, cap });
+    }
+
+    saveSetting(keys.categoryCaps, categoryCaps);
+    renderAll();
+  });
+
+  on("categoryCapsList", "click", async (event) => {
+    const button = event.target.closest("[data-cap-delete]");
+    if (!button) return;
+    const index = Number(button.dataset.capDelete);
+    const confirmed = await confirmAction("Delete Budget Cap", "Remove this category budget limit?");
+    if (!confirmed) return;
+    categoryCaps.splice(index, 1);
+    saveSetting(keys.categoryCaps, categoryCaps);
+    renderAll();
+  });
+
+  // Savings Goals listeners
+  on("addSavingsGoal", "click", () => {
+    const form = document.getElementById("goalForm");
+    if (form) form.reset();
+    const dlg = document.getElementById("goalDialog");
+    if (dlg) dlg.showModal();
+  });
+
+  on("goalDialog", "close", () => {
+    const dialog = document.getElementById("goalDialog");
+    if (!dialog || dialog.returnValue !== "save") return;
+    const form = document.getElementById("goalForm");
+    if (!form) return;
+
+    savingsGoals.push({
+      id: generateId(),
+      name: form.elements.name.value.trim(),
+      target: Number(form.elements.target.value),
+      current: Number(form.elements.current.value || 0)
+    });
+
+    saveSetting(keys.savingsGoals, savingsGoals);
+    renderAll();
+  });
+
+  on("savingsGoalsList", "click", async (event) => {
+    const button = event.target.closest("[data-goal-delete]");
+    if (!button) return;
+    const index = Number(button.dataset.goalDelete);
+    const confirmed = await confirmAction("Delete Savings Goal", "Remove this savings goal?");
+    if (!confirmed) return;
+    savingsGoals.splice(index, 1);
+    saveSetting(keys.savingsGoals, savingsGoals);
+    renderAll();
+  });
+
+  // Deficits 1-click Quick Settlement
+  on("deficitOverdueList", "click", (event) => {
+    const button = event.target.closest("[data-settle-id]");
+    if (!button) return;
+    const entryId = button.dataset.settleId;
+    const amount = Number(button.dataset.settleAmount || 0);
+
+    const entry = findEntryById(entryId);
+    if (!entry) return;
+
+    setEntryActualAmount(entry, amount);
+    renderAll();
+  });
 
   on("typeFilter", "change", renderEntries);
   on("categoryFilter", "change", renderEntries);
@@ -2086,7 +2390,6 @@ function setupEventListeners() {
     renderAll();
   });
 
-  // Accounts List (Single registration - no duplicate!)
   on("accountsList", "input", (event) => {
     const input = event.target.closest("[data-account-id]");
     if (!input) return;

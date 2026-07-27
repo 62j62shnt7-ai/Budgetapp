@@ -35,8 +35,9 @@
         </div>
         <div class="top-actions">
           <button class="ghost-button" id="themeToggle" type="button" aria-label="Toggle theme">🌙 Dark mode</button>
-          <button class="ghost-button" id="exportData" type="button">Export data</button>
-          <button class="ghost-button" id="importData" type="button">Import data</button>
+          <button class="ghost-button" id="exportCSV" type="button">Export CSV</button>
+          <button class="ghost-button" id="exportData" type="button">Export JSON</button>
+          <button class="ghost-button" id="importData" type="button">Import JSON</button>
           <input type="file" id="importDataFile" accept="application/json" hidden>
           <button class="ghost-button" id="resetData" type="button">Reset sample data</button>
           <button class="ghost-button" id="undoReset" type="button" hidden>Undo reset</button>
@@ -55,6 +56,11 @@
           <button class="ghost-button" id="deficitBannerAction" type="button">View Deficits</button>
         </div>
         <div class="metrics-grid">
+          <article class="metric highlight-metric">
+            <span>Total Net Worth</span>
+            <strong id="totalNetWorth">0</strong>
+            <small>Cash + Stored assets</small>
+          </article>
           <article class="metric">
             <span>Cash balance</span>
             <strong id="cashBalance">0</strong>
@@ -66,6 +72,11 @@
             <small>Sum of account balances only</small>
           </article>
           <article class="metric">
+            <span>Monthly Savings Rate</span>
+            <strong id="savingsRate">0%</strong>
+            <small id="savingsRateNote">Of forecast income</small>
+          </article>
+          <article class="metric">
             <span>CIB credit due</span>
             <strong id="cibCreditDue">0</strong>
             <small>Selected credit month</small>
@@ -74,11 +85,6 @@
             <span>HSBC credit due</span>
             <strong id="hsbcCreditDue">0</strong>
             <small>Selected credit month</small>
-          </article>
-          <article class="metric">
-            <span>Combined credit due</span>
-            <strong id="creditDueTotal">0</strong>
-            <small>Selected month total</small>
           </article>
           <article class="metric">
             <span>Stored assets</span>
@@ -105,6 +111,15 @@
             </div>
             <div class="chart" id="balanceChart"></div>
           </section>
+          <section class="panel">
+            <div class="panel-heading">
+              <h3>Category expense breakdown</h3>
+            </div>
+            <div id="categoryBreakdownList" class="stack-list"></div>
+          </section>
+        </div>
+        
+        <div class="content-grid" style="margin-top: 18px;">
           <section class="panel">
             <div class="panel-heading">
               <h3>Forecast warning</h3>
@@ -200,6 +215,26 @@
             <small id="cfSummaryRange">—</small>
           </article>
         </div>
+
+        <div class="content-grid salary-layout">
+          <section class="panel">
+            <div class="panel-heading">
+              <h3>Category budget caps</h3>
+              <button class="ghost-button" id="setCategoryCap" type="button">Set cap</button>
+            </div>
+            <p style="color: var(--muted); font-size: 13px; margin: -4px 0 12px;">Monthly spending limits per category with progress tracking.</p>
+            <div id="categoryCapsList" class="stack-list"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-heading">
+              <h3>Savings goals</h3>
+              <button class="ghost-button" id="addSavingsGoal" type="button">Add goal</button>
+            </div>
+            <p style="color: var(--muted); font-size: 13px; margin: -4px 0 12px;">Track target funds and emergency reserve savings goals.</p>
+            <div id="savingsGoalsList" class="stack-list"></div>
+          </section>
+        </div>
+
         <div class="content-grid salary-layout">
           <section class="panel">
             <div class="panel-heading">
@@ -470,9 +505,21 @@
           </select>
         </label>
         <label>
-          Amount
-          <input name="amount" type="number" step="0.01" min="0" required>
+          Currency
+          <select name="currency" id="entryCurrencySelect">
+            <option value="EGP">EGP (Local)</option>
+            <option value="USD">USD ($)</option>
+            <option value="EUR">EUR (€)</option>
+            <option value="SAR">SAR (﷼)</option>
+            <option value="AED">AED (د.إ)</option>
+            <option value="GBP">GBP (£)</option>
+          </select>
         </label>
+        <label>
+          Amount
+          <input name="amount" id="entryAmountInput" type="number" step="0.01" min="0" required>
+        </label>
+        <small id="currencyConversionNote" style="color: var(--muted); font-size: 12px; margin: -4px 0 0;" hidden></small>
         <label>
           Actual amount
           <input name="actualAmount" type="number" step="0.01" min="0" placeholder="0">
@@ -490,6 +537,52 @@
         <div class="dialog-actions">
           <button class="ghost-button" value="cancel" formnovalidate type="submit">Cancel</button>
           <button class="primary-button" id="entrySubmitButton" value="save" type="submit">Save entry</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="capDialog">
+      <form method="dialog" class="entry-form" id="capForm">
+        <div class="dialog-heading">
+          <h3>Set Category Budget Cap</h3>
+          <button class="icon-button" value="cancel" aria-label="Close" formnovalidate type="submit">x</button>
+        </div>
+        <label>
+          Category
+          <input name="category" type="text" list="expenseCategories" required placeholder="e.g. Home, Bills">
+        </label>
+        <label>
+          Monthly Cap Limit (EGP)
+          <input name="cap" type="number" step="100" min="0" required placeholder="e.g. 10000">
+        </label>
+        <div class="dialog-actions">
+          <button class="ghost-button" value="cancel" formnovalidate type="submit">Cancel</button>
+          <button class="primary-button" value="save" type="submit">Save cap</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="goalDialog">
+      <form method="dialog" class="entry-form" id="goalForm">
+        <div class="dialog-heading">
+          <h3>Add Savings Goal</h3>
+          <button class="icon-button" value="cancel" aria-label="Close" formnovalidate type="submit">x</button>
+        </div>
+        <label>
+          Goal Name
+          <input name="name" type="text" required placeholder="e.g. Emergency Reserve">
+        </label>
+        <label>
+          Target Amount (EGP)
+          <input name="target" type="number" step="100" min="0" required placeholder="e.g. 50000">
+        </label>
+        <label>
+          Current Saved (EGP)
+          <input name="current" type="number" step="100" min="0" value="0" placeholder="0">
+        </label>
+        <div class="dialog-actions">
+          <button class="ghost-button" value="cancel" formnovalidate type="submit">Cancel</button>
+          <button class="primary-button" value="save" type="submit">Save goal</button>
         </div>
       </form>
     </dialog>
