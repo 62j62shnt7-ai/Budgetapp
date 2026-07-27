@@ -1,81 +1,9 @@
-const DateUtils = {
-  formatDate: (year, month, day) => `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+/* ==========================================================================
+   Budget Control — Core Application Logic
+   Fully compatible with direct file:// opening and http:// web servers.
+   ========================================================================== */
 
-  currentYearMonth: () => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  },
-  
-  getMonthKey: (dateString) => dateString.slice(0, 7),
-  
-  // Accepts a 1-based `month` (1-12) and returns the last day of that month
-  getLastDayOfMonth: (year, month) => new Date(year, month, 0).getDate(),
-  
-  parseYearMonth: (ymString) => ymString.split("-").map(Number),
-  
-  parseDate: (dateString) => dateString.split("-").map(Number),
-  
-  getShortMonth: (ymString) => ymString.slice(5),
-
-  todayString: () => {
-    const now = new Date();
-    return DateUtils.formatDate(now.getFullYear(), now.getMonth() + 1, now.getDate());
-  },
-
-  daysBetween: (earlierDateString, laterDateString) => {
-    const [y1, m1, d1] = earlierDateString.split("-").map(Number);
-    const [y2, m2, d2] = laterDateString.split("-").map(Number);
-    const ms = Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1);
-    return Math.round(ms / (1000 * 60 * 60 * 24));
-  }
-};
-
-// 3 rotating groups (monthOffset 0/1/2, cycling every 3 months, fixed to
-// salaryAnchorMonth regardless of whatever start month is chosen when
-// generating) x 2 paydays (15th/30th) = 6 slots. Amounts start at 0 — no
-// real figures baked into the public source.
-const defaultSalaryPattern = [
-  { monthOffset: 0, day: 15, amount: 0 },
-  { monthOffset: 0, day: 30, amount: 0 },
-  { monthOffset: 1, day: 15, amount: 0 },
-  { monthOffset: 1, day: 30, amount: 0 },
-  { monthOffset: 2, day: 15, amount: 0 },
-  { monthOffset: 2, day: 30, amount: 0 }
-];
-
-const defaultCashEntries = [];
-
-const defaultInstallments = [];
-
-const defaultStorage = [];
-
-// Safe deep-clone with fallback for environments without structuredClone
-function clone(value) {
-  if (typeof structuredClone === "function") return structuredClone(value);
-  return JSON.parse(JSON.stringify(value));
-}
-
-// Helper to safely attach event listeners to elements that may not exist
-function on(id, event, handler) {
-  const el = document.getElementById(id);
-  if (el) el.addEventListener(event, handler);
-}
-
-// Keep focus stable while typing, but avoid forcing a re-render loop.
-document.addEventListener("input", (e) => {
-  const target = e.target;
-  if (!target || !(target instanceof HTMLElement)) return;
-  const tag = target.tagName;
-  if (!/(INPUT|TEXTAREA|SELECT)/.test(tag)) return;
-  if (target.dataset && target.dataset.commitOnEnter === "true") return;
-  setTimeout(() => {
-    if (document.activeElement !== target && document.body.contains(target)) {
-      try { target.focus(); } catch (err) { /* ignore */ }
-    }
-  }, 0);
-}, true);
-
-// Seed data is now handled via loadSetting and default constants
+// --- Storage Keys & Defaults ---
 const keys = {
   salary: "budget-control-salary-pattern",
   entries: "budget-control-cash-entries",
@@ -93,16 +21,25 @@ const keys = {
   archivedEntries: "budget-control-archived-entries",
   salaryMaterialized: "budget-control-salary-materialized",
   salaryAnchor: "budget-control-salary-anchor",
-  resetBackup: "budget-control-reset-backup"
+  resetBackup: "budget-control-reset-backup",
+  theme: "budget-control-theme"
 };
+
 const seedVersion = "blank-template-v1";
+
+const defaultSalaryPattern = [
+  { monthOffset: 0, day: 15, amount: 0 },
+  { monthOffset: 0, day: 30, amount: 0 },
+  { monthOffset: 1, day: 15, amount: 0 },
+  { monthOffset: 1, day: 30, amount: 0 },
+  { monthOffset: 2, day: 15, amount: 0 },
+  { monthOffset: 2, day: 30, amount: 0 }
+];
 
 const defaultAccountBalances = {
   cib: { name: "CIB", balance: 0, maturityDay: 15 },
   hsbc: { name: "HSBC", balance: 0, maturityDay: 30 }
 };
-
-const defaultAsf = [];
 
 const defaultRates = {
   currencies: [
@@ -121,83 +58,125 @@ const defaultRates = {
   ]
 };
 
-const defaultIrq = [];
+const exportableDataKeys = {
+  salaryPattern: keys.salary,
+  salaryAnchorMonth: keys.salaryAnchor,
+  cashEntries: keys.entries,
+  installments: keys.installments,
+  storageAssets: keys.storage,
+  accountBalances: keys.accounts,
+  asfJobs: keys.asf,
+  ratesData: keys.rates,
+  irqJobs: keys.irq,
+  creditDues: keys.creditDues,
+  creditDueMonths: keys.creditDueMonths,
+  entryActuals: keys.entryActuals,
+  deletedForecasts: keys.deletedForecasts,
+  archivedEntries: keys.archivedEntries
+};
 
-const defaultArchivedEntries = [];
-
-let forecastStartMonth = DateUtils.currentYearMonth();
-let forecastQuarters = 12;
-const formatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
-const money = (value) => `${formatter.format(Math.round(value))} EGP`;
-const usd = (value) => `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(value)} USD`;
-
-// The salary groups (G1/G2/G3) are anchored to fixed calendar months so
-// changing the forecast/salary start month never reshuffles which real
-// months a group falls in. Set once on first run and never recomputed
-// afterward, even though forecastStartMonth itself is "today" every load.
-let salaryAnchorMonth = loadSetting(keys.salaryAnchor, null);
-if (!salaryAnchorMonth) {
-  salaryAnchorMonth = DateUtils.currentYearMonth();
-  saveSetting(keys.salaryAnchor, salaryAnchorMonth);
-}
-
-let salaryPattern = loadSetting(keys.salary, defaultSalaryPattern);
-let cashEntries = normalizeCashEntries(loadSetting(keys.entries, defaultCashEntries));
-let installments = loadSetting(keys.installments, defaultInstallments);
-let storageAssets = loadSetting(keys.storage, defaultStorage);
-let accountBalances = loadSetting(keys.accounts, defaultAccountBalances);
-let asfJobs = loadSetting(keys.asf, defaultAsf);
-let ratesData = loadSetting(keys.rates, defaultRates);
-let irqJobs = loadSetting(keys.irq, defaultIrq);
-let creditDues = loadSetting(keys.creditDues, {});
-let creditDueMonths = loadSetting(keys.creditDueMonths, {});
-let entryActuals = loadSetting(keys.entryActuals, {});
-let deletedForecasts = loadSetting(keys.deletedForecasts, []);
-let archivedEntries = loadSetting(keys.archivedEntries, defaultArchivedEntries);
-let editingEntry = null;
-
-// One-time migration: salary entries used to be regenerated live on every
-// render from salaryPattern + the global forecast window, rather than
-// stored. That's what made "Update salary" wipe/rebuild everything. This
-// converts whatever salary entries were currently visible into real,
-// persisted cashEntries (preserving any actual amounts already recorded),
-// so future updates only ever touch the specific range requested.
-function materializeLegacySalaryEntries() {
-  if (localStorage.getItem(keys.salaryMaterialized) === "true") return;
-
-  const deletedSet = new Set(deletedForecasts || []);
-  const legacyEntries = buildSalaryEntries(forecastStartMonth, forecastQuarters)
-    .filter((entry) => !deletedSet.has(getEntryId(entry)))
-    .map((entry) => {
-      const legacyId = getEntryId(entry); // old composite fallback id
-      const newId = generateId();
-      if (entryActuals[legacyId] !== undefined) {
-        entryActuals[newId] = entryActuals[legacyId];
-        delete entryActuals[legacyId];
-      }
-      return { ...entry, id: newId };
-    });
-
-  if (legacyEntries.length) {
-    cashEntries.push(...legacyEntries);
-    saveSetting(keys.entries, cashEntries);
-    saveSetting(keys.entryActuals, entryActuals);
+// --- Date Utilities ---
+const DateUtils = {
+  formatDate: (year, month, day) => `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+  currentYearMonth: () => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  },
+  getMonthKey: (dateString) => (dateString ? dateString.slice(0, 7) : ""),
+  getLastDayOfMonth: (year, month) => new Date(year, month, 0).getDate(),
+  parseYearMonth: (ymString) => (ymString ? ymString.split("-").map(Number) : [new Date().getFullYear(), new Date().getMonth() + 1]),
+  parseDate: (dateString) => (dateString ? dateString.split("-").map(Number) : [new Date().getFullYear(), new Date().getMonth() + 1, new Date().getDate()]),
+  getShortMonth: (ymString) => (ymString ? ymString.slice(5) : ""),
+  todayString: () => {
+    const now = new Date();
+    return DateUtils.formatDate(now.getFullYear(), now.getMonth() + 1, now.getDate());
+  },
+  daysBetween: (earlierDateString, laterDateString) => {
+    if (!earlierDateString || !laterDateString) return 0;
+    const [y1, m1, d1] = earlierDateString.split("-").map(Number);
+    const [y2, m2, d2] = laterDateString.split("-").map(Number);
+    const ms = Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1);
+    return Math.round(ms / (1000 * 60 * 60 * 24));
   }
-  localStorage.setItem(keys.salaryMaterialized, "true");
-}
-materializeLegacySalaryEntries();
+};
 
-function generateId() {
-  return crypto && crypto.randomUUID ? crypto.randomUUID() : `entry-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+// --- Formatters & Helpers ---
+const numberFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
+const usdFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
+const money = (value) => `${numberFormatter.format(Math.round(Number(value) || 0))} EGP`;
+const usd = (value) => `${usdFormatter.format(Number(value) || 0)} USD`;
+
+function escapeHtml(str) {
+  if (str === null || str === undefined) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
-function normalizeCashEntries(entries) {
-  return entries.map((entry) => ({
-    ...entry,
-    id: entry.id || generateId()
-  }));
+function clone(value) {
+  if (typeof structuredClone === "function") return structuredClone(value);
+  return JSON.parse(JSON.stringify(value));
 }
 
+function on(idOrElement, event, handler) {
+  const el = typeof idOrElement === "string" ? document.getElementById(idOrElement) : idOrElement;
+  if (el) el.addEventListener(event, handler);
+}
+
+// --- Theme Management ---
+function initTheme() {
+  const savedTheme = localStorage.getItem(keys.theme);
+  const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const theme = savedTheme || (prefersDark ? "dark" : "light");
+  setTheme(theme);
+}
+
+function setTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  localStorage.setItem(keys.theme, theme);
+  const toggleBtn = document.getElementById("themeToggle");
+  if (toggleBtn) {
+    toggleBtn.textContent = theme === "dark" ? "☀️ Light mode" : "🌙 Dark mode";
+    toggleBtn.setAttribute("aria-label", `Switch to ${theme === "dark" ? "light" : "dark"} mode`);
+  }
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute("data-theme") || "light";
+  setTheme(current === "dark" ? "light" : "dark");
+}
+
+// --- Promise-based Modal Confirmation ---
+function confirmAction(title, message, confirmButtonText = "Delete") {
+  return new Promise((resolve) => {
+    const dialog = document.getElementById("confirmDialog");
+    if (!dialog) {
+      resolve(window.confirm(`${title}\n\n${message}`));
+      return;
+    }
+
+    const titleEl = document.getElementById("confirmTitle");
+    const messageEl = document.getElementById("confirmMessage");
+    const confirmBtn = document.getElementById("confirmOkButton");
+
+    if (titleEl) titleEl.textContent = title;
+    if (messageEl) messageEl.textContent = message;
+    if (confirmBtn) confirmBtn.textContent = confirmButtonText;
+
+    const handleClose = () => {
+      dialog.removeEventListener("close", handleClose);
+      resolve(dialog.returnValue === "confirm");
+    };
+
+    dialog.addEventListener("close", handleClose);
+    dialog.showModal();
+  });
+}
+
+// --- Storage Helpers ---
 function loadSetting(key, fallback) {
   const saved = localStorage.getItem(key);
   if (!saved) {
@@ -215,14 +194,64 @@ function loadSetting(key, fallback) {
 }
 
 function saveSetting(key, value) {
-  localStorage.setItem(key, JSON.stringify(value));
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (e) {
+    console.error(`Error saving to localStorage key "${key}":`, e);
+  }
 }
 
-// Which absolute calendar month a group (monthOffset 0/1/2) falls in is
-// fixed to salaryAnchorMonth's 3-month cycle, not to whatever start month
-// you happen to generate from. E.g. if G1 lands on Jan/Apr/Jul/Oct today,
-// it still lands on Jan/Apr/Jul/Oct even if you later set the generation
-// start month to March.
+function readResetBackup() {
+  const raw = localStorage.getItem(keys.resetBackup);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    return null;
+  }
+}
+
+function generateId() {
+  return typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `entry-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function normalizeCashEntries(entries) {
+  if (!Array.isArray(entries)) return [];
+  return entries.map((entry) => ({
+    ...entry,
+    id: entry.id || generateId()
+  }));
+}
+
+// --- App State ---
+let forecastStartMonth = DateUtils.currentYearMonth();
+let forecastQuarters = 12;
+
+let salaryAnchorMonth = loadSetting(keys.salaryAnchor, null);
+if (!salaryAnchorMonth) {
+  salaryAnchorMonth = DateUtils.currentYearMonth();
+  saveSetting(keys.salaryAnchor, salaryAnchorMonth);
+}
+
+let salaryPattern = loadSetting(keys.salary, defaultSalaryPattern);
+let cashEntries = normalizeCashEntries(loadSetting(keys.entries, []));
+let installments = loadSetting(keys.installments, []);
+let storageAssets = loadSetting(keys.storage, []);
+let accountBalances = loadSetting(keys.accounts, defaultAccountBalances);
+let asfJobs = loadSetting(keys.asf, []);
+let ratesData = loadSetting(keys.rates, defaultRates);
+let irqJobs = loadSetting(keys.irq, []);
+let creditDues = loadSetting(keys.creditDues, {});
+let creditDueMonths = loadSetting(keys.creditDueMonths, {});
+let entryActuals = loadSetting(keys.entryActuals, {});
+let deletedForecasts = loadSetting(keys.deletedForecasts, []);
+let archivedEntries = loadSetting(keys.archivedEntries, []);
+let editingEntry = null;
+let editingInstallmentIndex = null;
+
+// --- State Calculation Logic ---
 function monthIndexFromYearMonth(ymString) {
   const [year, month] = DateUtils.parseYearMonth(ymString);
   return year * 12 + (month - 1);
@@ -242,7 +271,7 @@ function buildSalaryEntries(startYearMonth, quarters) {
     const absoluteMonthIndex = startIndex + offset;
     const phase = groupPhaseForMonthIndex(absoluteMonthIndex);
     const year = Math.floor(absoluteMonthIndex / 12);
-    const month = ((absoluteMonthIndex % 12) + 12) % 12; // 0-based
+    const month = ((absoluteMonthIndex % 12) + 12) % 12;
 
     salaryPattern
       .filter((payment) => (Number(payment.monthOffset) || 0) === phase)
@@ -326,6 +355,36 @@ function creditDueEntries() {
   return entries;
 }
 
+function getEntryId(entry) {
+  return entry.id || `${entry.date}-${entry.category}-${entry.amount}-${entry.type}-${entry.account || "cash"}`;
+}
+
+function getEntryActualAmount(entry) {
+  const id = getEntryId(entry);
+  const rawValue = entryActuals[id];
+  if (rawValue !== undefined && rawValue !== null && rawValue !== "") {
+    return Number(rawValue);
+  }
+  if (entry && entry.actualAmount !== undefined && entry.actualAmount !== null && entry.actualAmount !== "") {
+    return Number(entry.actualAmount);
+  }
+  return 0;
+}
+
+function setEntryActualAmount(entry, value) {
+  const id = getEntryId(entry);
+  entryActuals[id] = value === "" || value === null || value === undefined ? 0 : Number(value);
+  saveSetting(keys.entryActuals, entryActuals);
+}
+
+function getRemainingForecastAmount(entry) {
+  const actualAmount = getEntryActualAmount(entry);
+  if (entry.type === "expense" && actualAmount > 0) {
+    return Math.max(0, Number(entry.amount || 0) - actualAmount);
+  }
+  return Number(entry.amount || 0);
+}
+
 function syncForecastPeriodSettings() {
   const startInput = document.getElementById("salaryPeriodStart");
   const quartersInput = document.getElementById("salaryPeriodQuarters");
@@ -349,8 +408,6 @@ function syncForecastPeriodSettings() {
 
 function getForecastCandidateEntries() {
   syncForecastPeriodSettings();
-  // Salary entries are materialized into cashEntries by upsertSalaryEntriesForPeriod
-  // (the "Update salary" button), so they're already included via ...cashEntries.
   const all = [
     ...cashEntries,
     ...buildInstallmentEntries(),
@@ -358,14 +415,6 @@ function getForecastCandidateEntries() {
   ];
   const deletedSet = new Set(deletedForecasts || []);
   return all.filter((entry) => !deletedSet.has(getEntryId(entry)));
-}
-
-function getRemainingForecastAmount(entry) {
-  const actualAmount = getEntryActualAmount(entry);
-  if (entry.type === "expense" && actualAmount > 0) {
-    return Math.max(0, Number(entry.amount || 0) - actualAmount);
-  }
-  return Number(entry.amount || 0);
 }
 
 function forecastEntries() {
@@ -389,31 +438,7 @@ function forecastEntries() {
     });
 }
 
-function getDeletedEntriesWithActuals() {
-  // Return archived entries that have actual amounts recorded
-  return archivedEntries.filter((entry) => getEntryActualAmount(entry) > 0);
-}
-
-function actualizedEntries() {
-  // Get all forecast candidates (active entries with actual amounts)
-  syncForecastPeriodSettings();
-  const activeCandidates = [
-    ...cashEntries,
-    ...buildInstallmentEntries(),
-    ...creditDueEntries()
-  ].filter((entry) => getEntryActualAmount(entry) > 0);
-  
-  // Also include archived entries that have actual amounts
-  const archivedWithActuals = getDeletedEntriesWithActuals();
-  
-  return [...activeCandidates, ...archivedWithActuals];
-}
-
 function openingBalanceEntries() {
-  // Not tied to the forecast window and don't move as forecastStartMonth
-  // changes — the date shown is always "today" (recomputed on each
-  // render), not a fixed stored date. They're locked so they can only be
-  // changed from the Accounts page, not edited inline here.
   return Object.entries(accountBalances).map(([id, acc]) => ({
     date: DateUtils.todayString(),
     category: `${acc.name} Opening Balance`,
@@ -425,38 +450,40 @@ function openingBalanceEntries() {
   }));
 }
 
-function getEntryId(entry) {
-  return entry.id || `${entry.date}-${entry.category}-${entry.amount}-${entry.type}-${entry.account || "cash"}`;
+function actualizedEntries() {
+  syncForecastPeriodSettings();
+  const activeCandidates = [
+    ...cashEntries,
+    ...buildInstallmentEntries(),
+    ...creditDueEntries()
+  ].filter((entry) => getEntryActualAmount(entry) > 0);
+  
+  const archivedWithActuals = archivedEntries.filter((entry) => getEntryActualAmount(entry) > 0);
+  return [...activeCandidates, ...archivedWithActuals];
 }
 
-function getEntryActualAmount(entry) {
-  const id = getEntryId(entry);
-  const rawValue = entryActuals[id];
-  if (rawValue !== undefined && rawValue !== null && rawValue !== "") {
-    return Number(rawValue);
+function materializeLegacySalaryEntries() {
+  if (localStorage.getItem(keys.salaryMaterialized) === "true") return;
+
+  const deletedSet = new Set(deletedForecasts || []);
+  const legacyEntries = buildSalaryEntries(forecastStartMonth, forecastQuarters)
+    .filter((entry) => !deletedSet.has(getEntryId(entry)))
+    .map((entry) => {
+      const legacyId = getEntryId(entry);
+      const newId = generateId();
+      if (entryActuals[legacyId] !== undefined) {
+        entryActuals[newId] = entryActuals[legacyId];
+        delete entryActuals[legacyId];
+      }
+      return { ...entry, id: newId };
+    });
+
+  if (legacyEntries.length) {
+    cashEntries.push(...legacyEntries);
+    saveSetting(keys.entries, cashEntries);
+    saveSetting(keys.entryActuals, entryActuals);
   }
-  if (entry && entry.actualAmount !== undefined && entry.actualAmount !== null && entry.actualAmount !== "") {
-    return Number(entry.actualAmount);
-  }
-  return 0;
-}
-
-function setEntryActualAmount(entry, value) {
-  const id = getEntryId(entry);
-  entryActuals[id] = value === "" || value === null || value === undefined ? 0 : Number(value);
-  saveSetting(keys.entryActuals, entryActuals);
-}
-
-function getActualMovement(entry) {
-  const actualAmount = getEntryActualAmount(entry);
-  if (!actualAmount) return 0;
-  return entry.type === "income" ? actualAmount : -actualAmount;
-}
-
-function signedAmount(entry) {
-  const actualAmount = getEntryActualAmount(entry);
-  const effectiveAmount = actualAmount > 0 ? actualAmount : Number(entry.amount || 0);
-  return entry.type === "income" ? effectiveAmount : -effectiveAmount;
+  localStorage.setItem(keys.salaryMaterialized, "true");
 }
 
 function getSavedCreditDueMonths(id) {
@@ -487,148 +514,150 @@ function getCreditDueAmount(id) {
   return (creditDues[id] && creditDues[id][monthKey]) || 0;
 }
 
-function getCreditDueMonthOptions(selectedMonthKey) {
-  const start = new Date();
-  const options = [];
-  let hasSelected = false;
+// --- Live Rates API Functions ---
+const CURRENCY_RATES_ENDPOINT = "https://open.er-api.com/v6/latest/USD";
+const GOLD_PRICE_ENDPOINT = "https://api.gold-api.com/price/XAU";
+const TROY_OUNCE_GRAMS = 31.1035;
 
-  for (let i = 0; i < 18; i += 1) {
-    const date = new Date(start.getFullYear(), start.getMonth() + i, 1);
-    const key = DateUtils.getMonthKey(DateUtils.formatDate(date.getFullYear(), date.getMonth() + 1, 1));
-    const label = date.toLocaleString("en-US", { month: "long", year: "numeric" });
-    if (key === selectedMonthKey) hasSelected = true;
-    options.push(`<option value="${key}" ${key === selectedMonthKey ? "selected" : ""}>${label}</option>`);
+function computeSpreadPct(sell, buy) {
+  const mid = (Number(sell) + Number(buy)) / 2;
+  if (!mid) return 0.006;
+  return (Number(buy) - Number(sell)) / mid;
+}
+
+function applySpread(mid, spreadPct) {
+  return {
+    sell: Math.round(mid * (1 - spreadPct / 2) * 100) / 100,
+    buy: Math.round(mid * (1 + spreadPct / 2) * 100) / 100
+  };
+}
+
+async function fetchLiveCurrencyRates() {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(CURRENCY_RATES_ENDPOINT, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (!response.ok) throw new Error(`Currency rate request failed (${response.status})`);
+    const data = await response.json();
+    if (data.result !== "success" || !data.rates || typeof data.rates.EGP !== "number") {
+      throw new Error("Unexpected currency rate response");
+    }
+    return data.rates;
+  } catch (err) {
+    clearTimeout(timeoutId);
+    throw err;
   }
+}
 
-  if (selectedMonthKey && !hasSelected) {
-    const [year, month] = DateUtils.parseYearMonth(selectedMonthKey);
-    const label = new Date(year, month - 1, 1).toLocaleString("en-US", { month: "long", year: "numeric" });
-    options.unshift(`<option value="${selectedMonthKey}" selected>${label}</option>`);
+function egpPerUnit(liveRates, code) {
+  if (code === "USD") return liveRates.EGP;
+  const perUsd = liveRates[code];
+  if (!perUsd) return null;
+  return liveRates.EGP / perUsd;
+}
+
+async function fetchLiveGoldSpotUsd() {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(GOLD_PRICE_ENDPOINT, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (!response.ok) throw new Error(`Gold price request failed (${response.status})`);
+    const data = await response.json();
+    const price = Number(data.price ?? data.price_usd ?? data.rate ?? data.spotPrice);
+    if (!price || Number.isNaN(price)) throw new Error("Unexpected gold price response");
+    return price;
+  } catch (err) {
+    clearTimeout(timeoutId);
+    throw err;
   }
-
-  return options.join("");
 }
 
-function calculateActualCash() {
-  return Object.values(accountBalances).reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
+function resolveRateSourceValue(sourceValue) {
+  if (!sourceValue || sourceValue === "manual") return null;
+  const sep = sourceValue.indexOf(":");
+  if (sep === -1) return null;
+  const type = sourceValue.slice(0, sep);
+  const name = sourceValue.slice(sep + 1);
+  const list = type === "gold" ? ratesData.gold : ratesData.currencies;
+  const match = (list || []).find((item) => item.name === name);
+  return match ? match.sell : null;
 }
 
-function renderAll() {
-  renderDashboard();
-  renderSalarySchedule();
-  renderEntries();
-  renderInstallments();
-  renderAccounts();
-  renderStorage();
-  renderJobs();
-  renderRates();
-  renderHistory();
+function syncStorageRates() {
+  let changed = false;
+  storageAssets.forEach((item) => {
+    const resolved = resolveRateSourceValue(item.rateSource);
+    if (resolved !== null && resolved !== item.rate) {
+      item.rate = resolved;
+      changed = true;
+    }
+  });
+  if (changed) saveSetting(keys.storage, storageAssets);
 }
 
-function renderAccounts() {
-  const list = document.getElementById("accountsList");
-  const totalOpening = Object.values(accountBalances).reduce((sum, acc) => sum + acc.balance, 0);
-  
-  list.innerHTML = Object.entries(accountBalances)
-    .map(([id, acc]) => `
-      <div class="list-row">
-        <span>
-          <strong>${acc.name}</strong><br>
-          <small>Maturity Day: ${acc.maturityDay}</small>
-        </span>
-        <div class="inline-fields" style="grid-template-columns: 120px 100px; gap: 10px; margin: 0;">
-          <label>
-            Balance
-            <input data-account-id="${id}" data-account-field="balance" type="number" value="${acc.balance}">
-          </label>
-          <label>
-            Day
-            <input data-account-id="${id}" data-account-field="maturityDay" type="number" min="1" max="31" value="${acc.maturityDay}">
-          </label>
-        </div>
-      </div>
-    `)
-    .join("");
-    
-  document.getElementById("totalOpeningBalance").textContent = money(totalOpening);
-}
-
-on("accountsList", "change", (event) => {
-  const input = event.target.closest("[data-account-id]");
-  if (!input) return;
-  const id = input.dataset.accountId;
-  const field = input.dataset.accountField;
-  accountBalances[id][field] = Number(input.value);
-  saveSetting(keys.accounts, accountBalances);
-  const totalOpening = Object.values(accountBalances).reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
-  const totalEl = document.getElementById("totalOpeningBalance");
-  if (totalEl) totalEl.textContent = money(totalOpening);
-  renderDashboard();
-});
-
-on("accountsList", "input", (event) => {
-  const input = event.target.closest("[data-account-id]");
-  if (!input) return;
-  input.dataset.commitOnEnter = "true";
-  const id = input.dataset.accountId;
-  const field = input.dataset.accountField;
-  accountBalances[id][field] = Number(input.value);
-  saveSetting(keys.accounts, accountBalances);
-  const totalOpening = Object.values(accountBalances).reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
-  const totalEl = document.getElementById("totalOpeningBalance");
-  if (totalEl) totalEl.textContent = money(totalOpening);
-});
-
-on("accountsList", "keydown", (event) => {
-  const input = event.target.closest("[data-account-id]");
-  if (!input || event.key !== "Enter") return;
-  event.preventDefault();
-  renderDashboard();
-});
-
-on("accountsList", "change", (event) => {
-  const input = event.target.closest("[data-account-id]");
-  if (!input) return;
-  const id = input.dataset.accountId;
-  const field = input.dataset.accountField;
-  accountBalances[id][field] = Number(input.value);
-  saveSetting(keys.accounts, accountBalances);
-  const totalOpening = Object.values(accountBalances).reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
-  const totalEl = document.getElementById("totalOpeningBalance");
-  if (totalEl) totalEl.textContent = money(totalOpening);
-  renderDashboard();
-});
-
-
+// --- View Renderers ---
 function renderDashboard() {
   const entries = forecastEntries();
   const forecast = calculateForecast(entries);
 
-  const actualCashNow = calculateActualCash();
+  const actualCashNow = Object.values(accountBalances).reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
   const totalOpeningBalance = Object.values(accountBalances).reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
   const currentCash = forecast.length ? forecast[forecast.length - 1].balance : totalOpeningBalance;
-  const lowPoint = forecast.reduce((lowest, item) => (item.balance < lowest.balance ? item : lowest), { month: forecastStartMonth, balance: totalOpeningBalance });
+  const lowPoint = forecast.reduce(
+    (lowest, item) => (item.balance < lowest.balance ? item : lowest),
+    { month: forecastStartMonth, balance: totalOpeningBalance }
+  );
   const storageTotal = storageAssets.reduce((sum, item) => sum + storageValue(item), 0);
   const cibCredit = getCreditDueAmount("cib");
   const hsbcCredit = getCreditDueAmount("hsbc");
   const totalCreditDue = cibCredit + hsbcCredit;
-  const manualCreditExpenses = cashEntries.filter((entry) => entry.type === "expense" && ["cib", "hsbc"].includes((entry.creditType || "").toLowerCase()));
-  const manualCibCredit = manualCreditExpenses.filter((entry) => (entry.creditType || "").toLowerCase() === "cib").reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
-  const manualHsbcCredit = manualCreditExpenses.filter((entry) => (entry.creditType || "").toLowerCase() === "hsbc").reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+  const manualCreditExpenses = cashEntries.filter(
+    (entry) => entry.type === "expense" && ["cib", "hsbc"].includes((entry.creditType || "").toLowerCase())
+  );
+  const manualCibCredit = manualCreditExpenses
+    .filter((entry) => (entry.creditType || "").toLowerCase() === "cib")
+    .reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+  const manualHsbcCredit = manualCreditExpenses
+    .filter((entry) => (entry.creditType || "").toLowerCase() === "hsbc")
+    .reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
 
-  document.getElementById("cashBalance").textContent = money(currentCash);
-  document.getElementById("actualCashToday").textContent = money(actualCashNow);
-  document.getElementById("cibCreditDue").textContent = money(cibCredit + manualCibCredit);
-  document.getElementById("hsbcCreditDue").textContent = money(hsbcCredit + manualHsbcCredit);
-  document.getElementById("creditDueTotal").textContent = money(totalCreditDue + manualCibCredit + manualHsbcCredit);
-  document.getElementById("storageTotal").textContent = money(storageTotal);
-  document.getElementById("forecastLow").textContent = money(lowPoint.balance);
-  document.getElementById("forecastLowDate").textContent = `Lowest in ${lowPoint.month}`;
+  const cashBalanceEl = document.getElementById("cashBalance");
+  if (cashBalanceEl) cashBalanceEl.textContent = money(currentCash);
+
+  const actualCashEl = document.getElementById("actualCashToday");
+  if (actualCashEl) actualCashEl.textContent = money(actualCashNow);
+
+  const cibCreditEl = document.getElementById("cibCreditDue");
+  if (cibCreditEl) cibCreditEl.textContent = money(cibCredit + manualCibCredit);
+
+  const hsbcCreditEl = document.getElementById("hsbcCreditDue");
+  if (hsbcCreditEl) hsbcCreditEl.textContent = money(hsbcCredit + manualHsbcCredit);
+
+  const creditDueTotalEl = document.getElementById("creditDueTotal");
+  if (creditDueTotalEl) creditDueTotalEl.textContent = money(totalCreditDue + manualCibCredit + manualHsbcCredit);
+
+  const storageTotalEl = document.getElementById("storageTotal");
+  if (storageTotalEl) storageTotalEl.textContent = money(storageTotal);
+
+  const forecastLowEl = document.getElementById("forecastLow");
+  if (forecastLowEl) forecastLowEl.textContent = money(lowPoint.balance);
+
+  const forecastLowDateEl = document.getElementById("forecastLowDate");
+  if (forecastLowDateEl) forecastLowDateEl.textContent = `Lowest in ${escapeHtml(lowPoint.month)}`;
 
   const isNegative = forecast.some((item) => item.balance < 0);
-  document.getElementById("cashflowStatus").textContent = isNegative ? "Risk" : "OK";
-  document.getElementById("cashflowStatus").classList.toggle("danger-text", isNegative);
-  document.getElementById("cashflowStatusNote").textContent = isNegative ? "Expenses exceed cash in forecast" : "Cash stays above zero";
+  const cashflowStatusEl = document.getElementById("cashflowStatus");
+  if (cashflowStatusEl) {
+    cashflowStatusEl.textContent = isNegative ? "Risk" : "OK";
+    cashflowStatusEl.classList.toggle("danger-text", isNegative);
+  }
+
+  const cashflowNoteEl = document.getElementById("cashflowStatusNote");
+  if (cashflowNoteEl) {
+    cashflowNoteEl.textContent = isNegative ? "Expenses exceed cash in forecast" : "Cash stays above zero";
+  }
 
   renderBalanceChart(forecast);
   renderExpenseMix(entries);
@@ -639,23 +668,8 @@ function renderDashboard() {
   renderDeficits(deficitSummary);
 }
 
-function getForecastMovement(entry) {
-  // Use exactly what's in the entry's "amount" column — the same value
-  // shown in the Entries table (already resolved to the remaining unpaid
-  // balance for partially-actualized expenses, full amount otherwise).
-  // Never fall back to a separate "actual" lookup here.
-  const amount = Number(entry.amount || 0);
-  return entry.type === "income" ? amount : -amount;
-}
-
 function calculateForecast(entries) {
-  // Low point / warnings / status should be driven purely by the amount
-  // column of the forecast sheet (entries passed in), never by a separate
-  // "actual" figure. The baseline is the raw opening balance, which has no
-  // entries baked into it yet — so every entry still on the forecast sheet
-  // needs to be walked in, including ones dated today or already overdue
-  // (a pending bill doesn't stop being owed just because its date passed).
-  const months = groupByMonth(entries, getForecastMovement);
+  const months = groupByMonth(entries, (entry) => Number(entry.amount || 0) * (entry.type === "income" ? 1 : -1));
   const ordered = Object.keys(months).sort();
 
   const totalOpeningBalance = Object.values(accountBalances).reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
@@ -670,33 +684,40 @@ function calculateForecast(entries) {
   return balances;
 }
 
+function groupByMonth(source, amountFn) {
+  return source.reduce((groups, entry) => {
+    const month = DateUtils.getMonthKey(entry.date);
+    if (month) {
+      groups[month] = (groups[month] || 0) + amountFn(entry);
+    }
+    return groups;
+  }, {});
+}
+
 function renderBalanceChart(forecast) {
   const chart = document.getElementById("balanceChart");
+  if (!chart) return;
   const maxAbs = Math.max(...forecast.map((item) => Math.abs(item.balance)), 1);
   chart.innerHTML = forecast
     .map((item) => {
       const height = Math.max(6, Math.round((Math.abs(item.balance) / maxAbs) * 230));
       const label = DateUtils.getShortMonth(item.month);
       const tone = item.balance < 0 ? "negative" : "";
-      return `<div class="bar-wrap" title="${money(item.balance)}"><div class="bar ${tone}" style="height:${height}px"></div><span>${label}</span></div>`;
+      return `<div class="bar-wrap" title="${escapeHtml(item.month)}: ${escapeHtml(money(item.balance))}"><div class="bar ${tone}" style="height:${height}px"></div><span>${escapeHtml(label)}</span></div>`;
     })
     .join("");
 
-  const range = forecast.length ? `${forecast[0].month} to ${forecast[forecast.length - 1].month}` : "No entries";
-  document.getElementById("forecastRange").textContent = range;
-}
-
-function groupByMonth(source, amountFn = signedAmount) {
-  return source.reduce((groups, entry) => {
-    const month = DateUtils.getMonthKey(entry.date);
-    groups[month] = (groups[month] || 0) + amountFn(entry);
-    return groups;
-  }, {});
+  const rangeEl = document.getElementById("forecastRange");
+  if (rangeEl) {
+    const range = forecast.length ? `${forecast[0].month} to ${forecast[forecast.length - 1].month}` : "No entries";
+    rangeEl.textContent = range;
+  }
 }
 
 function renderWarnings(forecast) {
   const riskyMonths = forecast.filter((item) => item.balance < 0);
   const list = document.getElementById("forecastWarnings");
+  if (!list) return;
 
   if (!riskyMonths.length) {
     list.innerHTML = `<div class="list-row success-row"><span>Cashflow is covered</span><strong>No deficit</strong></div>`;
@@ -705,25 +726,33 @@ function renderWarnings(forecast) {
 
   list.innerHTML = riskyMonths
     .slice(0, 5)
-    .map((item) => `<div class="list-row danger-row"><span>${item.month}</span><strong>${money(item.balance)}</strong></div>`)
+    .map((item) => `<div class="list-row danger-row"><span>${escapeHtml(item.month)}</span><strong>${escapeHtml(money(item.balance))}</strong></div>`)
     .join("");
 }
 
-// --- Deficits ---
-// Three independent signals, unified into one place:
-//  1. Forecast risk: months where the *projected* running balance goes negative.
-//  2. Overdue & unpaid: individual entries past their due date with no (or
-//     partial) actual amount recorded against them.
-//  3. Actual shortfalls: months where the *realized* running balance (using
-//     only entries actually marked paid/received) already went negative.
+function renderExpenseMix(entries) {
+  const totals = entries
+    .filter((entry) => entry.type === "expense")
+    .reduce((groups, entry) => {
+      const cat = entry.category || "Uncategorized";
+      groups[cat] = (groups[cat] || 0) + entry.amount;
+      return groups;
+    }, {});
 
-function getForecastDeficitMonths() {
-  return calculateForecast(forecastEntries()).filter((item) => item.balance < 0);
+  const rows = Object.entries(totals)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([category, total]) => `<div class="list-row"><span>${escapeHtml(category)}</span><strong>${escapeHtml(money(total))}</strong></div>`)
+    .join("");
+
+  const el = document.getElementById("expenseList");
+  if (el) el.innerHTML = rows || `<div class="list-row"><span>No expenses yet</span><strong>0</strong></div>`;
 }
 
-function getOverdueItems() {
+function getDeficitSummary() {
+  const forecastMonths = calculateForecast(forecastEntries()).filter((item) => item.balance < 0);
   const today = DateUtils.todayString();
-  return getForecastCandidateEntries()
+  const overdueItems = getForecastCandidateEntries()
     .filter((entry) => entry.date && entry.date < today)
     .map((entry) => {
       const isExpense = entry.type === "expense";
@@ -733,29 +762,23 @@ function getOverdueItems() {
     })
     .filter((item) => !item.settled)
     .sort((a, b) => b.daysOverdue - a.daysOverdue);
-}
 
-function getActualDeficitMonths() {
-  const today = DateUtils.todayString();
   const realized = actualizedEntries().filter((entry) => entry.date && entry.date <= today);
-  const months = groupByMonth(realized, getActualMovement);
+  const months = groupByMonth(realized, (entry) => {
+    const actualAmount = getEntryActualAmount(entry);
+    if (!actualAmount) return 0;
+    return entry.type === "income" ? actualAmount : -actualAmount;
+  });
   const ordered = Object.keys(months).sort();
   const totalOpeningBalance = Object.values(accountBalances).reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
   let running = totalOpeningBalance;
-  const balances = [];
+  const actualMonths = [];
   ordered.forEach((month) => {
     running += months[month];
-    balances.push({ month, balance: running, net: months[month] });
+    if (running < 0) actualMonths.push({ month, balance: running, net: months[month] });
   });
-  return balances.filter((item) => item.balance < 0);
-}
 
-function getDeficitSummary() {
-  return {
-    forecastMonths: getForecastDeficitMonths(),
-    overdueItems: getOverdueItems(),
-    actualMonths: getActualDeficitMonths()
-  };
+  return { forecastMonths, overdueItems, actualMonths };
 }
 
 function renderDeficitBanner(summary) {
@@ -775,150 +798,74 @@ function renderDeficitBanner(summary) {
   if (actualMonths.length) parts.push(`${actualMonths.length} past month${actualMonths.length === 1 ? "" : "s"} with an actual shortfall`);
 
   banner.hidden = false;
-  document.getElementById("deficitBannerSummary").textContent = parts.join(" · ");
+  const summaryEl = document.getElementById("deficitBannerSummary");
+  if (summaryEl) summaryEl.textContent = parts.join(" · ");
 }
 
 function renderDeficits(summary) {
   const { forecastMonths, overdueItems, actualMonths } = summary;
 
-  document.getElementById("deficitForecastCount").textContent = String(forecastMonths.length);
-  document.getElementById("deficitOverdueCount").textContent = String(overdueItems.length);
-  document.getElementById("deficitActualCount").textContent = String(actualMonths.length);
+  const fcEl = document.getElementById("deficitForecastCount");
+  if (fcEl) fcEl.textContent = String(forecastMonths.length);
+
+  const odEl = document.getElementById("deficitOverdueCount");
+  if (odEl) odEl.textContent = String(overdueItems.length);
+
+  const acEl = document.getElementById("deficitActualCount");
+  if (acEl) acEl.textContent = String(actualMonths.length);
 
   const forecastList = document.getElementById("deficitForecastList");
-  forecastList.innerHTML = forecastMonths.length
-    ? forecastMonths
-        .map(
-          (item) => `
-            <div class="list-row danger-row">
-              <span>${item.month}</span>
-              <strong>${money(item.balance)}</strong>
-            </div>
-          `
-        )
-        .join("")
-    : `<div class="list-row success-row"><span>No forecasted deficit</span><strong>Balance stays positive</strong></div>`;
-
-  const overdueList = document.getElementById("deficitOverdueList");
-  overdueList.innerHTML = overdueItems.length
-    ? overdueItems
-        .map(
-          (item) => `
-            <div class="list-row danger-row deficit-row">
-              <span>
-                <strong>${item.entry.category}</strong><br>
-                <small>Due ${item.entry.date}</small>
-              </span>
-              <div class="deficit-meta">
-                <span class="overdue-pill">${item.daysOverdue}d overdue</span>
-                <strong>${money(item.remaining)}</strong>
+  if (forecastList) {
+    forecastList.innerHTML = forecastMonths.length
+      ? forecastMonths
+          .map(
+            (item) => `
+              <div class="list-row danger-row">
+                <span>${escapeHtml(item.month)}</span>
+                <strong>${escapeHtml(money(item.balance))}</strong>
               </div>
-            </div>
-          `
-        )
-        .join("")
-    : `<div class="list-row success-row"><span>Nothing overdue</span><strong>All settled</strong></div>`;
-
-  const actualList = document.getElementById("deficitActualList");
-  actualList.innerHTML = actualMonths.length
-    ? actualMonths
-        .map(
-          (item) => `
-            <div class="list-row danger-row">
-              <span>${item.month}</span>
-              <strong>${money(item.balance)}</strong>
-            </div>
-          `
-        )
-        .join("")
-    : `<div class="list-row success-row"><span>No actual shortfall on record</span><strong>Realized balance stayed positive</strong></div>`;
-}
-
-function renderExpenseMix(entries) {
-  const totals = entries
-    .filter((entry) => entry.type === "expense")
-    .reduce((groups, entry) => {
-      groups[entry.category] = (groups[entry.category] || 0) + entry.amount;
-      return groups;
-    }, {});
-
-  const rows = Object.entries(totals)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 6)
-    .map(([category, total]) => `<div class="list-row"><span>${category}</span><strong>${money(total)}</strong></div>`)
-    .join("");
-
-  document.getElementById("expenseList").innerHTML = rows || `<div class="list-row"><span>No expenses yet</span><strong>0</strong></div>`;
-}
-
-// Fully removes an entry so it can never reappear in Cash Flow: manual
-// entries are spliced out of cashEntries, template-generated ones
-// (salary/installments/credit dues) are added to deletedForecasts. Its
-// actual-amount record is cleared entirely — this is a permanent delete,
-// not an "un-actualize back to forecast".
-function permanentlyRemoveEntry(entry) {
-  const deleteKey = getEntryId(entry);
-
-  const index = cashEntries.findIndex((item) => getEntryId(item) === deleteKey);
-  if (index !== -1) {
-    cashEntries.splice(index, 1);
-    saveSetting(keys.entries, cashEntries);
-  } else if (!deletedForecasts.includes(deleteKey)) {
-    deletedForecasts.push(deleteKey);
-    saveSetting(keys.deletedForecasts, deletedForecasts);
+            `
+          )
+          .join("")
+      : `<div class="list-row success-row"><span>No forecasted deficit</span><strong>Balance stays positive</strong></div>`;
   }
 
-  delete entryActuals[deleteKey];
-  saveSetting(keys.entryActuals, entryActuals);
-}
+  const overdueList = document.getElementById("deficitOverdueList");
+  if (overdueList) {
+    overdueList.innerHTML = overdueItems.length
+      ? overdueItems
+          .map(
+            (item) => `
+              <div class="list-row danger-row deficit-row">
+                <span>
+                  <strong>${escapeHtml(item.entry.category)}</strong><br>
+                  <small>Due ${escapeHtml(item.entry.date)}</small>
+                </span>
+                <div class="deficit-meta">
+                  <span class="overdue-pill">${item.daysOverdue}d overdue</span>
+                  <strong>${escapeHtml(money(item.remaining))}</strong>
+                </div>
+              </div>
+            `
+          )
+          .join("")
+      : `<div class="list-row success-row"><span>Nothing overdue</span><strong>All settled</strong></div>`;
+  }
 
-function canDeleteEntry(entry) {
-  return !entry.locked && entry.source !== "starting balance";
-}
-
-function isEditableEntry(entry) {
-  return !entry.locked;
-}
-
-function activateView(viewId) {
-  document.querySelectorAll(".nav-item").forEach((item) => {
-    item.classList.toggle("active", item.dataset.view === viewId);
-  });
-  document.querySelectorAll(".view").forEach((view) => {
-    view.classList.toggle("active", view.id === viewId);
-  });
-  const targetButton = document.querySelector(`.nav-item[data-view="${viewId}"]`);
-  document.getElementById("viewTitle").textContent = targetButton ? targetButton.textContent : "Dashboard";
-}
-
-function findEntryById(entryId) {
-  const fromCash = cashEntries.find((entry) => getEntryId(entry) === entryId);
-  if (fromCash) return fromCash;
-  return [...openingBalanceEntries(), ...getForecastCandidateEntries()].find((entry) => getEntryId(entry) === entryId) || null;
-}
-
-// History's "Actualized entries" list can include archived (deleted) entries
-// that still have an actual amount recorded — findEntryById alone won't see
-// those since they're no longer in cashEntries or the live forecast. This
-// checks both, so editing and deleting from History behave consistently.
-function findHistoryEntry(entryId) {
-  const active = findEntryById(entryId);
-  if (active) return { entry: active, isArchived: false };
-  const archivedIndex = archivedEntries.findIndex((e) => getEntryId(e) === entryId);
-  if (archivedIndex !== -1) return { entry: archivedEntries[archivedIndex], isArchived: true, archivedIndex };
-  return { entry: null, isArchived: false, archivedIndex: -1 };
-}
-
-function getEntryLookupKey(entry) {
-  return entry && entry.id ? entry.id : getEntryId(entry);
-}
-
-function focusAccountBalance(accountId) {
-  activateView("accounts");
-  const input = document.querySelector(`[data-account-id="${accountId}"][data-account-field="balance"]`);
-  if (input) {
-    input.focus();
-    input.select();
+  const actualList = document.getElementById("deficitActualList");
+  if (actualList) {
+    actualList.innerHTML = actualMonths.length
+      ? actualMonths
+          .map(
+            (item) => `
+              <div class="list-row danger-row">
+                <span>${escapeHtml(item.month)}</span>
+                <strong>${escapeHtml(money(item.balance))}</strong>
+              </div>
+            `
+          )
+          .join("")
+      : `<div class="list-row success-row"><span>No actual shortfall on record</span><strong>Realized balance stayed positive</strong></div>`;
   }
 }
 
@@ -939,13 +886,23 @@ function renderCashflowSummary() {
   const expenses = entries.filter((entry) => entry.type === "expense").reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
   const dated = entries.filter((entry) => entry.date).map((entry) => entry.date).sort();
 
-  document.getElementById("cfSummaryIncome").textContent = money(income);
-  document.getElementById("cfSummaryExpenses").textContent = money(expenses);
+  const incEl = document.getElementById("cfSummaryIncome");
+  if (incEl) incEl.textContent = money(income);
+
+  const expEl = document.getElementById("cfSummaryExpenses");
+  if (expEl) expEl.textContent = money(expenses);
+
   const netEl = document.getElementById("cfSummaryNet");
-  netEl.textContent = money(income - expenses);
-  netEl.classList.toggle("danger-text", income - expenses < 0);
-  document.getElementById("cfSummaryCount").textContent = String(entries.length);
-  document.getElementById("cfSummaryRange").textContent = dated.length ? `${dated[0]} to ${dated[dated.length - 1]}` : "No entries";
+  if (netEl) {
+    netEl.textContent = money(income - expenses);
+    netEl.classList.toggle("danger-text", income - expenses < 0);
+  }
+
+  const cntEl = document.getElementById("cfSummaryCount");
+  if (cntEl) cntEl.textContent = String(entries.length);
+
+  const rngEl = document.getElementById("cfSummaryRange");
+  if (rngEl) rngEl.textContent = dated.length ? `${dated[0]} to ${dated[dated.length - 1]}` : "No entries";
 
   const periodNote = document.getElementById("cfPeriodNote");
   if (periodNote) {
@@ -953,29 +910,38 @@ function renderCashflowSummary() {
   }
 }
 
-on("cfSummaryFrom", "change", renderCashflowSummary);
-on("cfSummaryTo", "change", renderCashflowSummary);
-on("cfSummaryReset", "click", () => {
-  document.getElementById("cfSummaryFrom").value = "";
-  document.getElementById("cfSummaryTo").value = "";
-  renderCashflowSummary();
-});
+function canDeleteEntry(entry) {
+  return !entry.locked && entry.source !== "starting balance";
+}
+
+function isEditableEntry(entry) {
+  return !entry.locked;
+}
+
+function findEntryById(entryId) {
+  const fromCash = cashEntries.find((entry) => getEntryId(entry) === entryId);
+  if (fromCash) return fromCash;
+  return [...openingBalanceEntries(), ...getForecastCandidateEntries()].find((entry) => getEntryId(entry) === entryId) || null;
+}
 
 function renderEntries() {
   const table = document.getElementById("entriesTable");
-  const typeFilter = document.getElementById("typeFilter").value;
-  const categoryFilter = document.getElementById("categoryFilter").value;
-  const search = document.getElementById("searchEntries").value.trim().toLowerCase();
+  if (!table) return;
+
+  const typeFilterEl = document.getElementById("typeFilter");
+  const typeFilter = typeFilterEl ? typeFilterEl.value : "all";
+
+  const categoryFilterEl = document.getElementById("categoryFilter");
+  const categoryFilter = categoryFilterEl ? categoryFilterEl.value : "all";
+
+  const searchEl = document.getElementById("searchEntries");
+  const search = searchEl ? searchEl.value.trim().toLowerCase() : "";
+
   const matchesFilters = (entry) =>
     (typeFilter === "all" || entry.type === typeFilter) &&
     (categoryFilter === "all" || entry.category === categoryFilter) &&
-    (!search || entry.category.toLowerCase().includes(search));
+    (!search || (entry.category || "").toLowerCase().includes(search));
 
-  // Opening balance rows are pinned at the top, in account order, with no
-  // date sort applied. The rest is sorted by date below them. Past-dated
-  // expense entries stay visible (with their remaining unpaid amount) so
-  // they can still be deleted, but once an entry — income or expense — is
-  // fully actualized, it drops out of Cash Flow and lives only in History.
   const openingRows = openingBalanceEntries().filter(matchesFilters);
   const forecastRows = getForecastCandidateEntries()
     .filter((entry) => {
@@ -991,41 +957,42 @@ function renderEntries() {
       return entry;
     })
     .filter(matchesFilters)
-    .sort((a, b) => a.date.localeCompare(b.date));
+    .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
 
   const filtered = [...openingRows, ...forecastRows];
 
-  const categorySelect = document.getElementById("categoryFilter");
-  const allCategories = [...new Set([...openingBalanceEntries(), ...getForecastCandidateEntries()].map((entry) => entry.category))].sort();
-  const previousValue = categorySelect.value;
-  categorySelect.innerHTML = `<option value="all">All categories</option>${allCategories
-    .map((category) => `<option value="${category}"${category === previousValue ? " selected" : ""}>${category}</option>`)
-    .join("")}`;
+  if (categoryFilterEl) {
+    const allCategories = [...new Set([...openingBalanceEntries(), ...getForecastCandidateEntries()].map((entry) => entry.category))].sort();
+    const previousValue = categoryFilterEl.value;
+    categoryFilterEl.innerHTML = `<option value="all">All categories</option>${allCategories
+      .map((category) => `<option value="${escapeHtml(category)}"${category === previousValue ? " selected" : ""}>${escapeHtml(category)}</option>`)
+      .join("")}`;
+  }
 
   table.innerHTML = filtered
     .map((entry) => {
       const isOpeningBalance = entry.source === "starting balance";
       const deleteKey = getEntryId(entry);
       const canDelete = canDeleteEntry(entry);
-      const action = !deleteKey || !canDelete ? "" : `<button class="delete-button" data-delete-key="${deleteKey}" type="button">Delete</button>`;
+      const action = !deleteKey || !canDelete ? "" : `<button class="delete-button" data-delete-key="${escapeHtml(deleteKey)}" type="button">Delete</button>`;
       const actualValue = getEntryActualAmount(entry);
       const editable = isEditableEntry(entry);
       const clickable = editable || isOpeningBalance;
       const actualCell = editable
         ? `<div>
-            <input class="inline-actual-input" data-entry-actual-input="${deleteKey}" type="number" min="0" step="0.01" value="" placeholder="Add spend">
-            ${actualValue > 0 ? `<small style="display:block;color:var(--muted);margin-top:4px;white-space:nowrap;">Spent so far: ${money(actualValue)}</small>` : ""}
+            <input class="inline-actual-input" data-entry-actual-input="${escapeHtml(deleteKey)}" type="number" min="0" step="0.01" value="" placeholder="Add spend">
+            ${actualValue > 0 ? `<small style="display:block;color:var(--muted);margin-top:4px;white-space:nowrap;">Spent so far: ${escapeHtml(money(actualValue))}</small>` : ""}
           </div>`
-        : `<span>${actualValue > 0 ? money(actualValue) : "—"}</span>`;
-      const dateCell = entry.date;
+        : `<span>${actualValue > 0 ? escapeHtml(money(actualValue)) : "—"}</span>`;
+      const dateCell = escapeHtml(entry.date);
       return `
-        <tr data-entry-id="${deleteKey}" class="entry-row${isOpeningBalance ? " opening-balance-row" : ""}" style="cursor:${clickable ? "pointer" : "default"};" title="${isOpeningBalance ? "Edit on the Accounts page" : ""}">
+        <tr data-entry-id="${escapeHtml(deleteKey)}" class="entry-row${isOpeningBalance ? " opening-balance-row" : ""}" style="cursor:${clickable ? "pointer" : "default"};" title="${isOpeningBalance ? "Edit on the Accounts page" : ""}">
           <td>${dateCell}</td>
-          <td>${entry.category}</td>
-          <td>${entry.account || "cash"}</td>
-          <td><span class="pill ${entry.type}">${entry.type}</span></td>
-          <td><span class="source-pill">${entry.source || "manual"}</span></td>
-          <td class="number">${money(entry.amount)}</td>
+          <td>${escapeHtml(entry.category)}</td>
+          <td>${escapeHtml(entry.account || "cash")}</td>
+          <td><span class="pill ${escapeHtml(entry.type)}">${escapeHtml(entry.type)}</span></td>
+          <td><span class="source-pill">${escapeHtml(entry.source || "manual")}</span></td>
+          <td class="number">${escapeHtml(money(entry.amount))}</td>
           <td class="number">${actualCell}</td>
           <td class="number">${action}</td>
         </tr>
@@ -1036,12 +1003,139 @@ function renderEntries() {
   renderCashflowSummary();
 }
 
+function syncSalaryPeriodControls() {
+  syncForecastPeriodSettings();
+  const startInput = document.getElementById("salaryPeriodStart");
+  const quartersInput = document.getElementById("salaryPeriodQuarters");
+  if (startInput && !startInput.value) startInput.value = forecastStartMonth;
+  if (quartersInput && !quartersInput.value) quartersInput.value = String(forecastQuarters);
+}
+
+function renderSalarySchedule() {
+  syncSalaryPeriodControls();
+  const schedule = document.getElementById("salarySchedule");
+  if (!schedule) return;
+  const quarterTotal = salaryPattern.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+
+  if (!salaryPattern.length) {
+    schedule.innerHTML = `<div class="list-row"><span>No salary payments yet</span><strong>Click "Add payment"</strong></div>`;
+    const totEl = document.getElementById("salaryQuarterTotal");
+    if (totEl) totEl.textContent = money(0);
+    return;
+  }
+
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const anchorIndex = monthIndexFromYearMonth(salaryAnchorMonth || DateUtils.currentYearMonth());
+  const groupMonthsLabel = (offset) => {
+    let firstMatch = anchorIndex;
+    while (groupPhaseForMonthIndex(firstMatch) !== offset) firstMatch += 1;
+    const months = [0, 1, 2, 3].map((q) => monthNames[((firstMatch + q * 3) % 12 + 12) % 12]);
+    return months.join(", ");
+  };
+
+  schedule.innerHTML = salaryPattern
+    .map((payment, index) => `
+      <article class="salary-card">
+        <div class="asset-heading">
+          <small>Payment ${index + 1} — ${escapeHtml(groupMonthsLabel(Number(payment.monthOffset) || 0))}</small>
+          <button class="delete-button" data-salary-delete="${index}" type="button">Delete</button>
+        </div>
+        <div class="inline-fields" style="grid-template-columns: 60px 56px 1fr;">
+          <label>
+            Group
+            <select data-salary-index="${index}" data-salary-field="monthOffset">
+              <option value="0"${Number(payment.monthOffset) === 0 ? " selected" : ""}>G1</option>
+              <option value="1"${Number(payment.monthOffset) === 1 ? " selected" : ""}>G2</option>
+              <option value="2"${Number(payment.monthOffset) === 2 ? " selected" : ""}>G3</option>
+            </select>
+          </label>
+          <label>
+            Day
+            <input data-salary-index="${index}" data-salary-field="day" type="number" min="1" max="31" value="${payment.day}">
+          </label>
+          <label>
+            Amount
+            <input data-salary-index="${index}" data-salary-field="amount" type="number" min="0" step="100" value="${payment.amount}">
+          </label>
+        </div>
+      </article>
+    `)
+    .join("");
+
+  const totEl = document.getElementById("salaryQuarterTotal");
+  if (totEl) totEl.textContent = money(quarterTotal);
+}
+
+const frequencyLabels = {
+  1: "monthly",
+  2: "every 2 months",
+  3: "quarterly",
+  6: "semi-annually",
+  12: "annually"
+};
+
+function frequencyLabel(frequency) {
+  return frequencyLabels[Number(frequency) || 1] || `every ${Number(frequency) || 1} months`;
+}
+
+function renderInstallments() {
+  const list = document.getElementById("installmentList");
+  if (!list) return;
+  if (!installments.length) {
+    list.innerHTML = `<div class="list-row"><span>No installments planned</span><strong>0</strong></div>`;
+    return;
+  }
+
+  list.innerHTML = installments
+    .map((item, index) => `
+      <div class="list-row">
+        <span>${escapeHtml(item.name)}<br><small>${escapeHtml(money(item.amount))} ${escapeHtml(frequencyLabel(item.frequency))} from ${escapeHtml(item.startMonth)} for ${item.months} payments</small></span>
+        <div class="deficit-meta">
+          <button class="ghost-button" data-installment-edit="${index}" type="button">Edit</button>
+          <button class="delete-button" data-installment-delete="${index}" type="button">Delete</button>
+        </div>
+      </div>
+    `)
+    .join("");
+}
+
+function commitEntryActualInput(input) {
+  if (!input) return;
+  const entryId = input.dataset.entryActualInput;
+  const entry = findEntryById(entryId);
+  if (!entry || !isEditableEntry(entry)) return;
+
+  const typedAmount = input.value === "" ? 0 : Number(input.value);
+  if (typedAmount > 0) {
+    const previousActual = getEntryActualAmount(entry);
+    setEntryActualAmount(entry, previousActual + typedAmount);
+  }
+  input.value = "";
+
+  renderDashboard();
+  renderHistory();
+  renderEntries();
+}
+
+function findHistoryEntry(entryId) {
+  const active = findEntryById(entryId);
+  if (active) return { entry: active, isArchived: false };
+  const archivedIndex = archivedEntries.findIndex((e) => getEntryId(e) === entryId);
+  if (archivedIndex !== -1) return { entry: archivedEntries[archivedIndex], isArchived: true, archivedIndex };
+  return { entry: null, isArchived: false, archivedIndex: -1 };
+}
+
 function renderHistory() {
   const table = document.getElementById("historyTable");
   const detailsTable = document.getElementById("historyEntriesTable");
+  if (!table || !detailsTable) return;
+
   const actualEntries = actualizedEntries();
   const months = new Set();
-  actualEntries.forEach((entry) => months.add(DateUtils.getMonthKey(entry.date)));
+  actualEntries.forEach((entry) => {
+    const key = DateUtils.getMonthKey(entry.date);
+    if (key) months.add(key);
+  });
   const orderedMonths = [...months].sort();
 
   const rows = orderedMonths.map((month) => {
@@ -1054,7 +1148,7 @@ function renderHistory() {
       .reduce((sum, entry) => sum + getEntryActualAmount(entry), 0);
     const net = income - expenses;
 
-    return `<tr><td>${month}</td><td class="number">${money(income)}</td><td class="number">${money(expenses)}</td><td class="number">${money(net)}</td></tr>`;
+    return `<tr><td>${escapeHtml(month)}</td><td class="number">${escapeHtml(money(income))}</td><td class="number">${escapeHtml(money(expenses))}</td><td class="number">${escapeHtml(money(net))}</td></tr>`;
   });
 
   table.innerHTML = rows.join("") || `<tr><td colspan="4">No actual activity yet</td></tr>`;
@@ -1085,17 +1179,17 @@ function renderHistory() {
     .map((group) => {
       const groupKey = group.memberIds.join(",");
       const actualCell = group.editable
-        ? `<input class="inline-actual-input" data-history-actual-input="${groupKey}" type="number" min="0" step="0.01" value="${group.total || ""}" placeholder="0">`
-        : `<span>${group.total > 0 ? money(group.total) : "—"}</span>`;
+        ? `<input class="inline-actual-input" data-history-actual-input="${escapeHtml(groupKey)}" type="number" min="0" step="0.01" value="${group.total || ""}" placeholder="0">`
+        : `<span>${group.total > 0 ? escapeHtml(money(group.total)) : "—"}</span>`;
       const action = group.canRemove
-        ? `<button class="delete-button" data-history-delete-key="${groupKey}" type="button">Remove</button>`
+        ? `<button class="delete-button" data-history-delete-key="${escapeHtml(groupKey)}" type="button">Remove</button>`
         : "";
 
       return `
         <tr>
-          <td>${group.month}</td>
+          <td>${escapeHtml(group.month)}</td>
           <td>${group.type === "expense" ? "All expenses" : "All income"}</td>
-          <td><span class="pill ${group.type}">${group.type}</span></td>
+          <td><span class="pill ${escapeHtml(group.type)}">${escapeHtml(group.type)}</span></td>
           <td class="number">${actualCell}</td>
           <td class="number">${action}</td>
         </tr>
@@ -1105,661 +1199,6 @@ function renderHistory() {
 
   detailsTable.innerHTML = detailRows || `<tr><td colspan="5">No actualized entries yet</td></tr>`;
 }
-
-function syncSalaryPeriodControls() {
-  syncForecastPeriodSettings();
-  const startInput = document.getElementById("salaryPeriodStart");
-  const quartersInput = document.getElementById("salaryPeriodQuarters");
-  if (startInput && !startInput.value) startInput.value = forecastStartMonth;
-  if (quartersInput && !quartersInput.value) quartersInput.value = String(forecastQuarters);
-}
-
-// Adds or refreshes salary payments only within [startMonth, startMonth + quarters)
-// and never touches anything outside that range. A payment already in cashEntries
-// for a given date/account/type gets its amount refreshed (in case the pattern
-// changed); anything missing gets added. Nothing is ever deleted here — to remove
-// a salary payment, delete that row directly like any other entry.
-function upsertSalaryEntriesForPeriod(startMonth = forecastStartMonth, quarters = forecastQuarters) {
-  // Save any modified salary pattern values (day/amount) before generating
-  saveSetting(keys.salary, salaryPattern);
-
-  forecastStartMonth = startMonth || forecastStartMonth;
-  forecastQuarters = Math.max(1, Number(quarters || forecastQuarters));
-
-  const templates = buildSalaryEntries(forecastStartMonth, forecastQuarters);
-
-  templates.forEach((template) => {
-    const existing = cashEntries.find((entry) =>
-      entry.source === "salary" &&
-      entry.date === template.date &&
-      entry.account === template.account &&
-      entry.type === template.type
-    );
-    if (existing) {
-      existing.amount = template.amount;
-      existing.category = template.category;
-    } else {
-      cashEntries.push({ ...template, id: generateId() });
-    }
-  });
-
-  saveSetting(keys.entries, cashEntries);
-  renderAll();
-}
-
-function renderSalarySchedule() {
-  syncSalaryPeriodControls();
-  const schedule = document.getElementById("salarySchedule");
-  const quarterTotal = salaryPattern.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-
-  if (!salaryPattern.length) {
-    schedule.innerHTML = `<div class="list-row"><span>No salary payments yet</span><strong>Click "Add payment"</strong></div>`;
-    document.getElementById("salaryQuarterTotal").textContent = money(0);
-    return;
-  }
-
-  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const anchorIndex = monthIndexFromYearMonth(salaryAnchorMonth || DateUtils.currentYearMonth());
-  const groupMonthsLabel = (offset) => {
-    // Find the first absolute month (from the anchor) whose phase matches this
-    // group, then list every 3rd month from there — fixed regardless of
-    // whatever start month is currently selected in the salary controls.
-    let firstMatch = anchorIndex;
-    while (groupPhaseForMonthIndex(firstMatch) !== offset) firstMatch += 1;
-    const months = [0, 1, 2, 3].map((q) => monthNames[((firstMatch + q * 3) % 12 + 12) % 12]);
-    return months.join(", ");
-  };
-
-  schedule.innerHTML = salaryPattern
-    .map((payment, index) => `
-      <article class="salary-card">
-        <div class="asset-heading">
-          <small>Payment ${index + 1} — ${groupMonthsLabel(Number(payment.monthOffset) || 0)}</small>
-          <button class="delete-button" data-salary-delete="${index}" type="button">Delete</button>
-        </div>
-        <div class="inline-fields" style="grid-template-columns: 60px 56px 1fr;">
-          <label>
-            Group
-            <select data-salary-index="${index}" data-salary-field="monthOffset">
-              <option value="0"${Number(payment.monthOffset) === 0 ? " selected" : ""}>G1</option>
-              <option value="1"${Number(payment.monthOffset) === 1 ? " selected" : ""}>G2</option>
-              <option value="2"${Number(payment.monthOffset) === 2 ? " selected" : ""}>G3</option>
-            </select>
-          </label>
-          <label>
-            Day
-            <input data-salary-index="${index}" data-salary-field="day" type="number" min="1" max="31" value="${payment.day}">
-          </label>
-          <label>
-            Amount
-            <input data-salary-index="${index}" data-salary-field="amount" type="number" min="0" step="100" value="${payment.amount}">
-          </label>
-        </div>
-      </article>
-    `)
-    .join("");
-  document.getElementById("salaryQuarterTotal").textContent = money(quarterTotal);
-}
-
-const frequencyLabels = {
-  1: "monthly",
-  2: "every 2 months",
-  3: "quarterly",
-  6: "semi-annually",
-  12: "annually"
-};
-
-function frequencyLabel(frequency) {
-  return frequencyLabels[Number(frequency) || 1] || `every ${Number(frequency) || 1} months`;
-}
-
-function renderInstallments() {
-  const list = document.getElementById("installmentList");
-  if (!installments.length) {
-    list.innerHTML = `<div class="list-row"><span>No installments planned</span><strong>0</strong></div>`;
-    return;
-  }
-
-  list.innerHTML = installments
-    .map((item, index) => `
-      <div class="list-row">
-        <span>${item.name}<br><small>${money(item.amount)} ${frequencyLabel(item.frequency)} from ${item.startMonth} for ${item.months} payments</small></span>
-        <div class="deficit-meta">
-          <button class="ghost-button" data-installment-edit="${index}" type="button">Edit</button>
-          <button class="delete-button" data-installment-delete="${index}" type="button">Delete</button>
-        </div>
-      </div>
-    `)
-    .join("");
-}
-
-function renderStorage() {
-  renderStorageTotals();
-  document.getElementById("storageCards").innerHTML = storageAssets
-    .map((item, index) => `
-      <article class="asset-card">
-        <div class="asset-heading">
-          <strong>${item.name}</strong>
-          <button class="delete-button" data-storage-delete="${index}" type="button">Delete</button>
-        </div>
-        <div class="inline-fields storage-fields">
-          <label>
-            Quantity
-            <input data-storage-index="${index}" data-storage-field="quantity" type="number" min="0" step="0.01" value="${item.quantity}">
-          </label>
-          <label>
-            Rate
-            <input data-storage-index="${index}" data-storage-field="rate" type="number" min="0" step="0.01" value="${item.rate}">
-          </label>
-        </div>
-        <label>
-          Rate source
-          <select data-storage-rate-index="${index}" data-storage-rate-source>${rateSourceOptionsHtml(item.rateSource || "manual")}</select>
-        </label>
-        <small>${item.unit || "units"}</small>
-        <p data-storage-value>${money(storageValue(item))}</p>
-      </article>
-    `)
-    .join("");
-}
-
-function renderStorageTotals() {
-  const total = storageAssets.reduce((sum, item) => sum + storageValue(item), 0);
-  const summaryEl = document.getElementById("storageSummary");
-  if (summaryEl) summaryEl.textContent = money(total);
-  const totalEl = document.getElementById("storageTotal");
-  if (totalEl) totalEl.textContent = money(total);
-}
-
-function storageValue(item) {
-  return (Number(item.quantity) || 0) * (Number(item.rate) || 0);
-}
-
-// Builds the <option>/<optgroup> markup for a "rate source" dropdown,
-// letting a storage asset link to a live entry from the Rates tab
-// (currency or gold karat) instead of a hand-typed number. Selecting an
-// entry here only sets a *default* rate value — it's copied onto the
-// asset, not kept in permanent sync, so editing the Rate field directly
-// still works as plain manual entry.
-function rateSourceOptionsHtml(selected) {
-  const current = selected || "manual";
-  const currencyOptions = (ratesData.currencies || [])
-    .map((c) => {
-      const value = `currency:${c.name}`;
-      return `<option value="${value}"${value === current ? " selected" : ""}>${c.name} (${c.sell})</option>`;
-    })
-    .join("");
-  const goldOptions = (ratesData.gold || [])
-    .map((g) => {
-      const value = `gold:${g.name}`;
-      return `<option value="${value}"${value === current ? " selected" : ""}>${g.name} (${g.sell})</option>`;
-    })
-    .join("");
-  return `
-    <option value="manual"${current === "manual" ? " selected" : ""}>Manual entry</option>
-    <optgroup label="Currencies">${currencyOptions}</optgroup>
-    <optgroup label="Gold karats">${goldOptions}</optgroup>
-  `;
-}
-
-// Looks up the live sell rate for a "type:name" source value (e.g.
-// "gold:Gold 21"). Returns null for manual entries or a source that no
-// longer exists in the Rates tab.
-// Re-pulls the rate for every storage asset that's linked to a Rates-tab
-// entry (rather than manual), so updating a currency/gold rate there
-// carries through to storage automatically. Manual-entry assets are
-// untouched.
-function syncStorageRates() {
-  let changed = false;
-  storageAssets.forEach((item) => {
-    const resolved = resolveRateSourceValue(item.rateSource);
-    if (resolved !== null && resolved !== item.rate) {
-      item.rate = resolved;
-      changed = true;
-    }
-  });
-  if (changed) saveSetting(keys.storage, storageAssets);
-}
-
-function resolveRateSourceValue(sourceValue) {
-  if (!sourceValue || sourceValue === "manual") return null;
-  const sep = sourceValue.indexOf(":");
-  if (sep === -1) return null;
-  const type = sourceValue.slice(0, sep);
-  const name = sourceValue.slice(sep + 1);
-  const list = type === "gold" ? ratesData.gold : ratesData.currencies;
-  const match = (list || []).find((item) => item.name === name);
-  return match ? match.sell : null;
-}
-
-function renderJobs() {
-  document.getElementById("asfTable").innerHTML = asfJobs
-    .map((item, index) => `
-      <tr>
-        <td>${item.date}</td>
-        <td class="number">${usd(item.invoice)}</td>
-        <td class="number">${usd(item.actual)}</td>
-        <td class="number">${money(item.egp)}</td>
-        <td><button class="delete-button" data-asf-delete="${index}" type="button">Delete</button></td>
-      </tr>
-    `)
-    .join("");
-
-  document.getElementById("irqCards").innerHTML = irqJobs
-    .map((item, index) => `
-      <div class="list-row">
-        <span>${item.label}<br><small>${item.note}</small></span>
-        <div style="display:flex; align-items:center; gap:10px;">
-          <strong>${formatter.format(item.value)}</strong>
-          <button class="delete-button" data-irq-delete="${index}" type="button">Delete</button>
-        </div>
-      </div>
-    `)
-    .join("");
-}
-
-function renderRates() {
-  const currencyEl = document.getElementById('currencyRates');
-  if (currencyEl && ratesData && Array.isArray(ratesData.currencies)) {
-    currencyEl.innerHTML = ratesData.currencies.map(c => `
-      <div class="rate-card">
-        <strong>${c.name}</strong>
-        <small>Sell ${c.sell} / Buy ${c.buy}</small>
-      </div>
-    `).join('');
-  }
-
-  const goldEl = document.getElementById('goldRates');
-  if (goldEl && ratesData && Array.isArray(ratesData.gold)) {
-    goldEl.innerHTML = ratesData.gold.map(g => `
-      <div class="rate-card">
-        <strong>${g.name}</strong>
-        <small>Sell ${g.sell} / Buy ${g.buy}</small>
-      </div>
-    `).join('');
-  }
-}
-
-on("asfDialog", "close", () => {
-  const dialog = document.getElementById("asfDialog");
-  if (!dialog || dialog.returnValue !== "save") return;
-  const form = document.getElementById("asfForm");
-  asfJobs.push({
-    date: form.elements.date.value,
-    invoice: Number(form.elements.invoice.value),
-    actual: Number(form.elements.actual.value),
-    egp: Number(form.elements.egp.value)
-  });
-  saveSetting(keys.asf, asfJobs);
-  renderAll();
-});
-
-on("addIrq", "click", () => {
-  const form = document.getElementById("irqForm");
-  if (form) form.reset();
-  const dlg = document.getElementById("irqDialog");
-  if (dlg) dlg.showModal();
-});
-
-on("irqDialog", "close", () => {
-  const dialog = document.getElementById("irqDialog");
-  if (!dialog || dialog.returnValue !== "save") return;
-  const form = document.getElementById("irqForm");
-  irqJobs.push({
-    label: form.elements.label.value.trim(),
-    value: Number(form.elements.value.value),
-    note: form.elements.note.value.trim()
-  });
-  saveSetting(keys.irq, irqJobs);
-  renderAll();
-});
-
-// Free, keyless, CORS-friendly endpoints. These give a mid-market
-// reference rate — not any specific bank/dealer's posted sell/buy — so we
-// derive sell/buy by preserving whatever spread the existing entry already
-// had, and clearly flag them as reference values to double-check.
-const CURRENCY_RATES_ENDPOINT = "https://open.er-api.com/v6/latest/USD";
-const GOLD_PRICE_ENDPOINT = "https://api.gold-api.com/price/XAU";
-const TROY_OUNCE_GRAMS = 31.1035;
-
-function computeSpreadPct(sell, buy) {
-  const mid = (Number(sell) + Number(buy)) / 2;
-  if (!mid) return 0.006; // no existing spread to preserve — default to ~0.6%
-  return (Number(buy) - Number(sell)) / mid;
-}
-
-function applySpread(mid, spreadPct) {
-  return {
-    sell: Math.round(mid * (1 - spreadPct / 2) * 100) / 100,
-    buy: Math.round(mid * (1 + spreadPct / 2) * 100) / 100
-  };
-}
-
-async function fetchLiveCurrencyRates() {
-  const response = await fetch(CURRENCY_RATES_ENDPOINT);
-  if (!response.ok) throw new Error(`Currency rate request failed (${response.status})`);
-  const data = await response.json();
-  if (data.result !== "success" || !data.rates || typeof data.rates.EGP !== "number") {
-    throw new Error("Unexpected currency rate response");
-  }
-  return data.rates; // USD-based: 1 USD = rates[CODE] units of CODE
-}
-
-function egpPerUnit(liveRates, code) {
-  if (code === "USD") return liveRates.EGP;
-  const perUsd = liveRates[code];
-  if (!perUsd) return null;
-  return liveRates.EGP / perUsd;
-}
-
-async function fetchLiveGoldSpotUsd() {
-  const response = await fetch(GOLD_PRICE_ENDPOINT);
-  if (!response.ok) throw new Error(`Gold price request failed (${response.status})`);
-  const data = await response.json();
-  const price = Number(data.price ?? data.price_usd ?? data.rate ?? data.spotPrice);
-  if (!price || Number.isNaN(price)) throw new Error("Unexpected gold price response");
-  return price; // USD per troy ounce
-}
-
-function openManualCurrencyEdit() {
-  const rate = prompt("Which currency to update? (e.g. USD, EUR)");
-  if (!rate) return;
-  const currency = ratesData.currencies.find(c => c.name.toUpperCase() === rate.toUpperCase());
-  if (!currency) return alert("Currency not found");
-
-  const form = document.getElementById("rateForm");
-  if (!form) return;
-  form.elements.name.value = currency.name;
-  form.elements.sell.value = currency.sell;
-  form.elements.buy.value = currency.buy;
-  form.elements.rateId.value = ratesData.currencies.indexOf(currency);
-  const dlg = document.getElementById("rateDialog");
-  if (dlg) dlg.showModal();
-}
-
-function openManualGoldEdit() {
-  const rate = prompt("Which gold type to update? (e.g. Gold 24)");
-  if (!rate) return;
-  const gold = ratesData.gold.find(g => g.name.toLowerCase().includes(rate.toLowerCase()));
-  if (!gold) return alert("Gold type not found");
-
-  const form = document.getElementById("rateForm");
-  if (!form) return;
-  form.elements.name.value = gold.name;
-  form.elements.sell.value = gold.sell;
-  form.elements.buy.value = gold.buy;
-  form.elements.rateId.value = ratesData.gold.indexOf(gold);
-  const dlg = document.getElementById("rateDialog");
-  if (dlg) dlg.showModal();
-}
-
-on("editCurrencies", "click", async () => {
-  const button = document.getElementById("editCurrencies");
-  const originalLabel = button.textContent;
-  button.textContent = "Fetching…";
-  button.disabled = true;
-
-  try {
-    const liveRates = await fetchLiveCurrencyRates();
-    const changes = [];
-    const updated = ratesData.currencies.map((currency) => {
-      const mid = egpPerUnit(liveRates, currency.name.toUpperCase());
-      if (mid === null) return currency; // not in the live feed — leave untouched
-      const spreadPct = computeSpreadPct(currency.sell, currency.buy);
-      const next = applySpread(mid, spreadPct);
-      changes.push(`${currency.name}: ${currency.sell}/${currency.buy} \u2192 ${next.sell}/${next.buy}`);
-      return { ...currency, ...next };
-    });
-
-    if (!changes.length) {
-      alert("None of the saved currencies matched the live feed.");
-      return;
-    }
-
-    const confirmed = confirm(
-      `Update these currency rates from live market data? (sell/buy, EGP)\n\n${changes.join("\n")}\n\nThese are market-reference rates, not any specific bank's posted price — adjust afterward if needed.`
-    );
-    if (!confirmed) return;
-
-    ratesData.currencies = updated;
-    saveSetting(keys.rates, ratesData);
-    syncStorageRates();
-    renderAll();
-  } catch (err) {
-    console.error("Live currency rate fetch failed:", err);
-    const manual = confirm("Couldn't fetch live rates (no connection, or the rate service is unavailable). Enter a rate manually instead?");
-    if (manual) openManualCurrencyEdit();
-  } finally {
-    button.textContent = originalLabel;
-    button.disabled = false;
-  }
-});
-
-on("editGold", "click", async () => {
-  const button = document.getElementById("editGold");
-  const originalLabel = button.textContent;
-  button.textContent = "Fetching…";
-  button.disabled = true;
-
-  try {
-    const [liveRates, xauUsd] = await Promise.all([fetchLiveCurrencyRates(), fetchLiveGoldSpotUsd()]);
-    const egpPerOz = xauUsd * liveRates.EGP;
-    const egpPerGram24k = egpPerOz / TROY_OUNCE_GRAMS;
-
-    const changes = [];
-    const skipped = [];
-    const updated = ratesData.gold.map((item) => {
-      const match = item.name.match(/(\d+)/);
-      if (!match) {
-        skipped.push(item.name);
-        return item;
-      }
-      const karat = Number(match[1]);
-      const mid = egpPerGram24k * (karat / 24);
-      const spreadPct = computeSpreadPct(item.sell, item.buy);
-      const next = applySpread(mid, spreadPct);
-      changes.push(`${item.name}: ${item.sell}/${item.buy} \u2192 ${next.sell}/${next.buy}`);
-      return { ...item, ...next };
-    });
-
-    if (!changes.length) {
-      alert('None of the saved gold entries could be matched to a karat (e.g. "Gold 21").');
-      return;
-    }
-
-    let message = `Update these gold rates from the live spot price? (sell/buy, EGP per gram)\n\n${changes.join("\n")}`;
-    if (skipped.length) message += `\n\nNot updated (no karat detected in the name): ${skipped.join(", ")}`;
-    message += `\n\nThese are derived from the international spot price — adjust afterward for your local dealer's premium.`;
-
-    const confirmed = confirm(message);
-    if (!confirmed) return;
-
-    ratesData.gold = updated;
-    saveSetting(keys.rates, ratesData);
-    syncStorageRates();
-    renderAll();
-  } catch (err) {
-    console.error("Live gold rate fetch failed:", err);
-    const manual = confirm("Couldn't fetch the live gold price (no connection, or the rate service is unavailable). Enter a rate manually instead?");
-    if (manual) openManualGoldEdit();
-  } finally {
-    button.textContent = originalLabel;
-    button.disabled = false;
-  }
-});
-
-on("rateDialog", "close", () => {
-  const dialog = document.getElementById("rateDialog");
-  if (!dialog || dialog.returnValue !== "save") return;
-  const form = document.getElementById("rateForm");
-  if (!form) return;
-  const id = Number(form.elements.rateId.value);
-  const name = form.elements.name.value.trim();
-  const sell = Number(form.elements.sell.value);
-  const buy = Number(form.elements.buy.value);
-
-  const isCurrency = ratesData.currencies.some(c => c.name === name);
-  if (isCurrency) {
-    const idx = ratesData.currencies.findIndex(c => c.name === name);
-    ratesData.currencies[idx] = { name, sell, buy };
-  } else {
-    const idx = ratesData.gold.findIndex(g => g.name === name);
-    if (idx !== -1) ratesData.gold[idx] = { name, sell, buy };
-  }
-  
-  saveSetting(keys.rates, ratesData);
-  syncStorageRates();
-  renderAll();
-});
-
-on("asfTable", "click", (event) => {
-  const button = event.target.closest("[data-asf-delete]");
-  if (!button) return;
-  asfJobs.splice(Number(button.dataset.asfDelete), 1);
-  saveSetting(keys.asf, asfJobs);
-  renderAll();
-});
-
-on("irqCards", "click", (event) => {
-  const button = event.target.closest("[data-irq-delete]");
-  if (!button) return;
-  irqJobs.splice(Number(button.dataset.irqDelete), 1);
-  saveSetting(keys.irq, irqJobs);
-  renderAll();
-});
-
-
-document.querySelectorAll(".nav-item").forEach((button) => {
-  button.addEventListener("click", () => {
-    activateView(button.dataset.view);
-  });
-});
-
-on("deficitBannerAction", "click", () => {
-  activateView("deficits");
-});
-
-on("typeFilter", "change", renderEntries);
-on("categoryFilter", "change", renderEntries);
-on("searchEntries", "input", renderEntries);
-
-on("salarySchedule", "input", (event) => {
-  const input = event.target.closest("[data-salary-index]");
-  if (!input) return;
-  input.dataset.commitOnEnter = "true";
-  const index = Number(input.dataset.salaryIndex);
-  const field = input.dataset.salaryField;
-  salaryPattern[index][field] = Number(input.value);
-  saveSetting(keys.salary, salaryPattern);
-});
-
-on("salarySchedule", "change", (event) => {
-  const input = event.target.closest("[data-salary-index]");
-  if (!input) return;
-  const index = Number(input.dataset.salaryIndex);
-  const field = input.dataset.salaryField;
-  salaryPattern[index][field] = Number(input.value);
-  saveSetting(keys.salary, salaryPattern);
-  renderAll();
-});
-
-on("salarySchedule", "click", (event) => {
-  const button = event.target.closest("[data-salary-delete]");
-  if (!button) return;
-  salaryPattern.splice(Number(button.dataset.salaryDelete), 1);
-  saveSetting(keys.salary, salaryPattern);
-  renderAll();
-});
-
-on("addSalaryPayment", "click", () => {
-  salaryPattern.push({ monthOffset: 0, day: 30, amount: 0 });
-  saveSetting(keys.salary, salaryPattern);
-  renderAll();
-});
-
-on("salaryPeriodStart", "input", (event) => {
-  const input = event.target;
-  if (input) input.dataset.commitOnEnter = "true";
-  syncForecastPeriodSettings();
-});
-
-on("salaryPeriodStart", "keydown", (event) => {
-  if (event.key !== "Enter") return;
-  event.preventDefault();
-  syncForecastPeriodSettings();
-  upsertSalaryEntriesForPeriod(forecastStartMonth, forecastQuarters);
-});
-
-on("salaryPeriodStart", "change", () => {
-  syncForecastPeriodSettings();
-  upsertSalaryEntriesForPeriod(forecastStartMonth, forecastQuarters);
-});
-
-on("salaryPeriodQuarters", "input", (event) => {
-  const input = event.target;
-  if (input) input.dataset.commitOnEnter = "true";
-  syncForecastPeriodSettings();
-});
-
-on("salaryPeriodQuarters", "keydown", (event) => {
-  if (event.key !== "Enter") return;
-  event.preventDefault();
-  syncForecastPeriodSettings();
-  upsertSalaryEntriesForPeriod(forecastStartMonth, forecastQuarters);
-});
-
-on("salaryPeriodQuarters", "change", () => {
-  syncForecastPeriodSettings();
-  upsertSalaryEntriesForPeriod(forecastStartMonth, forecastQuarters);
-});
-
-on("refreshSalaryEntries", "click", () => {
-  const startInput = document.getElementById("salaryPeriodStart");
-  const quartersInput = document.getElementById("salaryPeriodQuarters");
-  upsertSalaryEntriesForPeriod(
-    startInput ? startInput.value : forecastStartMonth,
-    quartersInput ? Number(quartersInput.value) : forecastQuarters
-  );
-});
-
-function commitEntryActualInput(input) {
-  if (!input) return;
-  const entryId = input.dataset.entryActualInput;
-  const entry = findEntryById(entryId);
-  if (!entry || !isEditableEntry(entry)) return;
-
-  // Additive: what's typed here is a new spend to log now, added on top of
-  // whatever's already recorded for this entry — so you can enter partial
-  // spends one at a time as they happen instead of retyping a running
-  // total. Combines into the same History line rather than creating a
-  // separate one. The field always clears after committing so it's ready
-  // for the next entry.
-  const typedAmount = input.value === "" ? 0 : Number(input.value);
-  if (typedAmount > 0) {
-    const previousActual = getEntryActualAmount(entry);
-    setEntryActualAmount(entry, previousActual + typedAmount);
-  }
-  input.value = "";
-
-  renderDashboard();
-  renderHistory();
-  renderEntries();
-}
-
-on("entriesTable", "change", (event) => {
-  const input = event.target.closest("[data-entry-actual-input]");
-  if (!input) return;
-  event.stopPropagation();
-  commitEntryActualInput(input);
-});
-
-on("entriesTable", "keydown", (event) => {
-  const input = event.target.closest("[data-entry-actual-input]");
-  if (!input || event.key !== "Enter") return;
-  event.preventDefault();
-  event.stopPropagation();
-  commitEntryActualInput(input);
-});
 
 function commitHistoryActualInput(input) {
   if (!input) return;
@@ -1778,10 +1217,6 @@ function commitHistoryActualInput(input) {
       delete entryActuals[entryKey];
       return;
     }
-    // Single member (the common case): set directly. Multiple members
-    // sharing this month+category+type: scale each proportionally to its
-    // previous share so the edited total is preserved without losing the
-    // relative split between the underlying entries.
     if (members.length === 1) {
       entryActuals[entryKey] = newTotal;
     } else if (previousTotal > 0) {
@@ -1796,139 +1231,296 @@ function commitHistoryActualInput(input) {
   });
 
   saveSetting(keys.entryActuals, entryActuals);
+}
+
+function permanentlyRemoveEntry(entry) {
+  const deleteKey = getEntryId(entry);
+
+  const index = cashEntries.findIndex((item) => getEntryId(item) === deleteKey);
+  if (index !== -1) {
+    cashEntries.splice(index, 1);
+    saveSetting(keys.entries, cashEntries);
+  } else if (!deletedForecasts.includes(deleteKey)) {
+    deletedForecasts.push(deleteKey);
+    saveSetting(keys.deletedForecasts, deletedForecasts);
+  }
+
+  delete entryActuals[deleteKey];
+  saveSetting(keys.entryActuals, entryActuals);
+}
+
+function renderAccounts() {
+  const list = document.getElementById("accountsList");
+  if (!list) return;
+
+  const totalOpening = Object.values(accountBalances).reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
+  
+  list.innerHTML = Object.entries(accountBalances)
+    .map(([id, acc]) => `
+      <div class="list-row">
+        <span>
+          <strong>${escapeHtml(acc.name)}</strong><br>
+          <small>Maturity Day: ${acc.maturityDay}</small>
+        </span>
+        <div class="inline-fields" style="grid-template-columns: 120px 100px; gap: 10px; margin: 0;">
+          <label>
+            Balance
+            <input data-account-id="${escapeHtml(id)}" data-account-field="balance" type="number" value="${acc.balance}">
+          </label>
+          <label>
+            Day
+            <input data-account-id="${escapeHtml(id)}" data-account-field="maturityDay" type="number" min="1" max="31" value="${acc.maturityDay}">
+          </label>
+        </div>
+      </div>
+    `)
+    .join("");
+    
+  const totalEl = document.getElementById("totalOpeningBalance");
+  if (totalEl) totalEl.textContent = money(totalOpening);
+}
+
+function focusAccountBalance(accountId) {
+  activateView("accounts");
+  const input = document.querySelector(`[data-account-id="${accountId}"][data-account-field="balance"]`);
+  if (input) {
+    input.focus();
+    input.select();
+  }
+}
+
+function storageValue(item) {
+  return (Number(item.quantity) || 0) * (Number(item.rate) || 0);
+}
+
+function renderStorageTotals() {
+  const total = storageAssets.reduce((sum, item) => sum + storageValue(item), 0);
+  const summaryEl = document.getElementById("storageSummary");
+  if (summaryEl) summaryEl.textContent = money(total);
+  const totalEl = document.getElementById("storageTotal");
+  if (totalEl) totalEl.textContent = money(total);
+}
+
+function rateSourceOptionsHtml(selected) {
+  const current = selected || "manual";
+  const currencyOptions = (ratesData.currencies || [])
+    .map((c) => {
+      const value = `currency:${c.name}`;
+      return `<option value="${escapeHtml(value)}"${value === current ? " selected" : ""}>${escapeHtml(c.name)} (${c.sell})</option>`;
+    })
+    .join("");
+  const goldOptions = (ratesData.gold || [])
+    .map((g) => {
+      const value = `gold:${g.name}`;
+      return `<option value="${escapeHtml(value)}"${value === current ? " selected" : ""}>${escapeHtml(g.name)} (${g.sell})</option>`;
+    })
+    .join("");
+  return `
+    <option value="manual"${current === "manual" ? " selected" : ""}>Manual entry</option>
+    <optgroup label="Currencies">${currencyOptions}</optgroup>
+    <optgroup label="Gold karats">${goldOptions}</optgroup>
+  `;
+}
+
+function renderStorage() {
+  renderStorageTotals();
+  const cards = document.getElementById("storageCards");
+  if (!cards) return;
+
+  cards.innerHTML = storageAssets
+    .map((item, index) => `
+      <article class="asset-card">
+        <div class="asset-heading">
+          <strong>${escapeHtml(item.name)}</strong>
+          <button class="delete-button" data-storage-delete="${index}" type="button">Delete</button>
+        </div>
+        <div class="inline-fields storage-fields">
+          <label>
+            Quantity
+            <input data-storage-index="${index}" data-storage-field="quantity" type="number" min="0" step="0.01" value="${item.quantity}">
+          </label>
+          <label>
+            Rate
+            <input data-storage-index="${index}" data-storage-field="rate" type="number" min="0" step="0.01" value="${item.rate}">
+          </label>
+        </div>
+        <label>
+          Rate source
+          <select data-storage-rate-index="${index}" data-storage-rate-source>${rateSourceOptionsHtml(item.rateSource || "manual")}</select>
+        </label>
+        <small>${escapeHtml(item.unit || "units")}</small>
+        <p data-storage-value>${escapeHtml(money(storageValue(item)))}</p>
+      </article>
+    `)
+    .join("");
+}
+
+function renderJobs() {
+  const asfTable = document.getElementById("asfTable");
+  if (asfTable) {
+    asfTable.innerHTML = asfJobs
+      .map((item, index) => `
+        <tr>
+          <td>${escapeHtml(item.date)}</td>
+          <td class="number">${escapeHtml(usd(item.invoice))}</td>
+          <td class="number">${escapeHtml(usd(item.actual))}</td>
+          <td class="number">${escapeHtml(money(item.egp))}</td>
+          <td><button class="delete-button" data-asf-delete="${index}" type="button">Delete</button></td>
+        </tr>
+      `)
+      .join("");
+  }
+
+  const irqCards = document.getElementById("irqCards");
+  if (irqCards) {
+    irqCards.innerHTML = irqJobs
+      .map((item, index) => `
+        <div class="list-row">
+          <span>${escapeHtml(item.label)}<br><small>${escapeHtml(item.note || "")}</small></span>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <strong>${escapeHtml(numberFormatter.format(item.value))}</strong>
+            <button class="delete-button" data-irq-delete="${index}" type="button">Delete</button>
+          </div>
+        </div>
+      `)
+      .join("");
+  }
+}
+
+function renderRates() {
+  const currencyEl = document.getElementById("currencyRates");
+  if (currencyEl && ratesData && Array.isArray(ratesData.currencies)) {
+    currencyEl.innerHTML = ratesData.currencies
+      .map(
+        (c) => `
+        <div class="rate-card">
+          <strong>${escapeHtml(c.name)}</strong>
+          <small>Sell ${c.sell} / Buy ${c.buy}</small>
+        </div>
+      `
+      )
+      .join("");
+  }
+
+  const goldEl = document.getElementById("goldRates");
+  if (goldEl && ratesData && Array.isArray(ratesData.gold)) {
+    goldEl.innerHTML = ratesData.gold
+      .map(
+        (g) => `
+        <div class="rate-card">
+          <strong>${escapeHtml(g.name)}</strong>
+          <small>Sell ${g.sell} / Buy ${g.buy}</small>
+        </div>
+      `
+      )
+      .join("");
+  }
+}
+
+function openManualCurrencyEdit() {
+  const rate = prompt("Which currency to update? (e.g. USD, EUR)");
+  if (!rate) return;
+  const currency = ratesData.currencies.find((c) => c.name.toUpperCase() === rate.toUpperCase());
+  if (!currency) return alert("Currency not found");
+
+  const form = document.getElementById("rateForm");
+  if (!form) return;
+  form.elements.name.value = currency.name;
+  form.elements.sell.value = currency.sell;
+  form.elements.buy.value = currency.buy;
+  form.elements.rateId.value = ratesData.currencies.indexOf(currency);
+  const dlg = document.getElementById("rateDialog");
+  if (dlg) dlg.showModal();
+}
+
+function openManualGoldEdit() {
+  const rate = prompt("Which gold type to update? (e.g. Gold 24)");
+  if (!rate) return;
+  const gold = ratesData.gold.find((g) => g.name.toLowerCase().includes(rate.toLowerCase()));
+  if (!gold) return alert("Gold type not found");
+
+  const form = document.getElementById("rateForm");
+  if (!form) return;
+  form.elements.name.value = gold.name;
+  form.elements.sell.value = gold.sell;
+  form.elements.buy.value = gold.buy;
+  form.elements.rateId.value = ratesData.gold.indexOf(gold);
+  const dlg = document.getElementById("rateDialog");
+  if (dlg) dlg.showModal();
+}
+
+function renderAll() {
   renderDashboard();
+  renderSalarySchedule();
+  renderEntries();
+  renderInstallments();
+  renderAccounts();
+  renderStorage();
+  renderJobs();
+  renderRates();
   renderHistory();
 }
 
-document.addEventListener("keydown", (event) => {
-  const input = event.target.closest("[data-history-actual-input]");
-  if (!input || event.key !== "Enter") return;
-  event.preventDefault();
-  commitHistoryActualInput(input);
-});
+function activateView(viewId) {
+  document.querySelectorAll(".nav-item").forEach((item) => {
+    item.classList.toggle("active", item.dataset.view === viewId);
+  });
+  document.querySelectorAll(".view").forEach((view) => {
+    view.classList.toggle("active", view.id === viewId);
+  });
+  const targetButton = document.querySelector(`.nav-item[data-view="${viewId}"]`);
+  const titleEl = document.getElementById("viewTitle");
+  if (titleEl) titleEl.textContent = targetButton ? targetButton.textContent : "Dashboard";
+}
 
-document.addEventListener("change", (event) => {
-  const input = event.target.closest("[data-history-actual-input]");
-  if (!input) return;
-  commitHistoryActualInput(input);
-});
-
-document.addEventListener("blur", (event) => {
-  const input = event.target.closest("[data-history-actual-input]");
-  if (!input) return;
-  commitHistoryActualInput(input);
-}, true);
-
-document.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-history-delete-key]");
+function updateUndoResetVisibility() {
+  const button = document.getElementById("undoReset");
   if (!button) return;
-  event.stopPropagation();
-  const entryIds = button.dataset.historyDeleteKey.split(",").filter(Boolean);
+  button.hidden = !readResetBackup();
+}
 
-  entryIds.forEach((entryId) => {
-    const { entry, isArchived, archivedIndex } = findHistoryEntry(entryId);
-    if (!entry || !isEditableEntry(entry)) return;
+function upsertSalaryEntriesForPeriod(startMonth = forecastStartMonth, quarters = forecastQuarters) {
+  saveSetting(keys.salary, salaryPattern);
 
-    if (isArchived && archivedIndex !== -1) {
-      // Already out of Cash Flow entirely — just drop the History record.
-      archivedEntries.splice(archivedIndex, 1);
-      delete entryActuals[getEntryId(entry)];
+  forecastStartMonth = startMonth || forecastStartMonth;
+  forecastQuarters = Math.max(1, Number(quarters || forecastQuarters));
+
+  const templates = buildSalaryEntries(forecastStartMonth, forecastQuarters);
+
+  templates.forEach((template) => {
+    const existing = cashEntries.find(
+      (entry) =>
+        entry.source === "salary" &&
+        entry.date === template.date &&
+        entry.account === template.account &&
+        entry.type === template.type
+    );
+    if (existing) {
+      existing.amount = template.amount;
+      existing.category = template.category;
     } else {
-      // Still a live entry — remove it outright so it can't pop back into
-      // Cash Flow (as opposed to just clearing the actual amount, which
-      // would leave it sitting there as a pending forecast item again).
-      permanentlyRemoveEntry(entry);
+      cashEntries.push({ ...template, id: generateId() });
     }
   });
 
-  saveSetting(keys.archivedEntries, archivedEntries);
-  saveSetting(keys.entryActuals, entryActuals);
-  renderDashboard();
-  renderHistory();
-  renderEntries();
-});
-
-on("entriesTable", "click", (event) => {
-  const button = event.target.closest("[data-delete-key]");
-  if (button) {
-    event.stopPropagation();
-    const deleteKey = button.dataset.deleteKey;
-    const entry = findEntryById(deleteKey);
-    if (!entry || !canDeleteEntry(entry)) return;
-
-    if (entry.source === "starting balance") {
-      focusAccountBalance(entry.account);
-      return;
-    }
-
-    const index = cashEntries.findIndex((item) => getEntryId(item) === deleteKey);
-    if (index !== -1) {
-      // If entry has an actual amount, move it to archived so History can still show it
-      const actualAmount = getEntryActualAmount(entry);
-      cashEntries.splice(index, 1);
-      saveSetting(keys.entries, cashEntries);
-      
-      if (actualAmount > 0) {
-        // Move entry to archived entries with its actual amount preserved
-        archivedEntries.push(entry);
-        saveSetting(keys.archivedEntries, archivedEntries);
-      } else {
-        // No actual amount recorded, just delete the actuals record too
-        // Use getEntryId for consistency with how we read actual amounts
-        delete entryActuals[getEntryId(entry)];
-        saveSetting(keys.entryActuals, entryActuals);
-      }
-      renderAll();
-      return;
-    }
-
-    // For forecast entries (salary/installments), move to archived if they have actual amounts
-    const actualAmount = getEntryActualAmount(entry);
-    if (actualAmount > 0) {
-      // Move entry to archived entries with its actual amount preserved
-      archivedEntries.push(entry);
-      saveSetting(keys.archivedEntries, archivedEntries);
-    }
-    
-    // Add to deletedForecasts so it won't appear in Cash Flow anymore
-    if (!deletedForecasts.includes(deleteKey)) {
-      deletedForecasts.push(deleteKey);
-      saveSetting(keys.deletedForecasts, deletedForecasts);
-    }
-    renderAll();
-    return;
-  }
-
-  if (event.target.closest("[data-entry-actual-input]")) return;
-
-  const row = event.target.closest("tr[data-entry-id]");
-  if (!row) return;
-  const entry = findEntryById(row.dataset.entryId);
-  if (!entry) return;
-  if (entry.source === "starting balance") {
-    focusAccountBalance(entry.account);
-    return;
-  }
-  if (!isEditableEntry(entry)) return;
-  openEntryDialog(entry.type, entry);
-});
-
-on("installmentList", "click", (event) => {
-  const button = event.target.closest("[data-installment-delete]");
-  if (!button) return;
-  installments.splice(Number(button.dataset.installmentDelete), 1);
-  saveSetting(keys.installments, installments);
+  saveSetting(keys.entries, cashEntries);
   renderAll();
-});
+}
 
 function syncEntryFormMode() {
   const form = document.getElementById("entryForm");
+  if (!form) return;
   const creditType = (form.elements.creditType.value || "").trim().toLowerCase();
   const isCreditDue = creditType === "cib" || creditType === "hsbc";
 
-  document.getElementById("categoryField").classList.toggle("is-hidden", isCreditDue);
-  document.getElementById("typeField").classList.toggle("is-hidden", isCreditDue);
-  document.getElementById("recurringField").classList.toggle("is-hidden", isCreditDue);
+  const catField = document.getElementById("categoryField");
+  if (catField) catField.classList.toggle("is-hidden", isCreditDue);
+
+  const typeField = document.getElementById("typeField");
+  if (typeField) typeField.classList.toggle("is-hidden", isCreditDue);
+
+  const recField = document.getElementById("recurringField");
+  if (recField) recField.classList.toggle("is-hidden", isCreditDue);
 
   if (isCreditDue) {
     form.elements.type.value = "expense";
@@ -1939,6 +1531,7 @@ function syncEntryFormMode() {
 
 function openEntryDialog(type, entry = null) {
   const form = document.getElementById("entryForm");
+  if (!form) return;
   form.reset();
   editingEntry = entry;
   form.elements.date.value = new Date().toISOString().slice(0, 10);
@@ -1959,25 +1552,18 @@ function openEntryDialog(type, entry = null) {
   }
 
   syncEntryFormMode();
-  const title = entry ? "Edit entry" : (type === "income" ? "Add income" : "Add expense");
-  document.getElementById("entryDialogTitle").textContent = title;
-  document.getElementById("entrySubmitButton").textContent = entry ? "Update entry" : "Save entry";
-  document.getElementById("entrySubmitButton").value = entry ? "update" : "save";
-  document.getElementById("entryDialog").showModal();
-}
+  const title = entry ? "Edit entry" : type === "income" ? "Add income" : "Add expense";
+  const titleEl = document.getElementById("entryDialogTitle");
+  if (titleEl) titleEl.textContent = title;
 
-on("addIncome", "click", () => {
-  openEntryDialog("income");
-});
+  const btnEl = document.getElementById("entrySubmitButton");
+  if (btnEl) {
+    btnEl.textContent = entry ? "Update entry" : "Save entry";
+    btnEl.value = entry ? "update" : "save";
+  }
 
-on("addEntry", "click", () => {
-  openEntryDialog("expense");
-});
-
-// creditType select may not exist in non-interactive contexts
-const entryForm = document.getElementById("entryForm");
-if (entryForm && entryForm.elements && entryForm.elements.creditType) {
-  entryForm.elements.creditType.addEventListener("change", syncEntryFormMode);
+  const dlg = document.getElementById("entryDialog");
+  if (dlg) dlg.showModal();
 }
 
 function persistEntryForm(event) {
@@ -2001,7 +1587,7 @@ function persistEntryForm(event) {
   const submitter = event.submitter;
   if (submitter && submitter.value === "cancel") {
     editingEntry = null;
-    dialog.close("cancel");
+    if (dialog) dialog.close("cancel");
     return;
   }
 
@@ -2011,7 +1597,7 @@ function persistEntryForm(event) {
     const idx = cashEntries.findIndex((entry) => getEntryId(entry) === getEntryId(editingEntry));
     const updatedEntry = {
       ...(idx !== -1 ? cashEntries[idx] : editingEntry),
-      id: (idx !== -1 ? cashEntries[idx].id : (editingEntry.id || generateId())),
+      id: idx !== -1 ? cashEntries[idx].id : editingEntry.id || generateId(),
       date: form.elements.date.value,
       category: form.elements.category.value.trim(),
       account: form.elements.account.value.trim() || "cash",
@@ -2030,8 +1616,6 @@ function persistEntryForm(event) {
         delete entryActuals[getEntryId(editingEntry)];
       }
     } else {
-      // Editing a forecast entry: do not create a duplicate in cashEntries.
-      // Persist only the actual amount (if any) against the original forecast id.
       const actualAmount = Number(form.elements.actualAmount.value || 0);
       const originalId = getEntryId(editingEntry);
       if (actualAmount > 0) {
@@ -2054,8 +1638,7 @@ function persistEntryForm(event) {
     };
     const months = form.elements.recurring.checked ? Number(form.elements.months.value) || 1 : 1;
     cashEntries.push(...buildRecurringEntries(baseEntry, months));
-    
-    // Set actual amount for new entries
+
     const actualAmount = Number(form.elements.actualAmount.value || 0);
     if (actualAmount > 0) {
       setEntryActualAmount(cashEntries[cashEntries.length - months], actualAmount);
@@ -2066,401 +1649,799 @@ function persistEntryForm(event) {
   saveSetting(keys.entries, cashEntries);
   saveSetting(keys.entryActuals, entryActuals);
   editingEntry = null;
-  dialog.returnValue = action;
-  dialog.close(action);
+  if (dialog) {
+    dialog.returnValue = action;
+    dialog.close(action);
+  }
   renderAll();
 }
 
-document.getElementById("entryForm").addEventListener("submit", persistEntryForm);
-
-document.getElementById("storageCards").addEventListener("input", (event) => {
-  const input = event.target.closest("[data-storage-index]");
-  if (!input) return;
-  input.dataset.commitOnEnter = "true";
-  const index = Number(input.dataset.storageIndex);
-  const field = input.dataset.storageField;
-  storageAssets[index][field] = Number(input.value);
-  const card = input.closest(".asset-card");
-  if (field === "rate") {
-    // Typing a rate by hand overrides whatever rate source was linked.
-    storageAssets[index].rateSource = "manual";
-    const select = card?.querySelector("[data-storage-rate-index]");
-    if (select) select.value = "manual";
-  }
-  saveSetting(keys.storage, storageAssets);
-  renderStorageTotals();
-  const value = card?.querySelector("[data-storage-value]");
-  if (value) value.textContent = money(storageValue(storageAssets[index]));
-});
-
-document.getElementById("storageCards").addEventListener("change", (event) => {
-  const select = event.target.closest("[data-storage-rate-index]");
-  if (!select) return;
-  const index = Number(select.dataset.storageRateIndex);
-  const sourceValue = select.value;
-  storageAssets[index].rateSource = sourceValue;
-  const resolved = resolveRateSourceValue(sourceValue);
-  if (resolved !== null) {
-    storageAssets[index].rate = resolved;
-  }
-  saveSetting(keys.storage, storageAssets);
-  renderStorage();
-});
-
-document.getElementById("storageCards").addEventListener("keydown", (event) => {
-  const input = event.target.closest("[data-storage-index]");
-  if (!input || event.key !== "Enter") return;
-  event.preventDefault();
-  renderStorageTotals();
-});
-
-document.getElementById("storageCards").addEventListener("click", (event) => {
-  const button = event.target.closest("[data-storage-delete]");
-  if (!button) return;
-  storageAssets.splice(Number(button.dataset.storageDelete), 1);
-  saveSetting(keys.storage, storageAssets);
-  renderAll();
-});
-
-document.getElementById("addStorage").addEventListener("click", () => {
-  const form = document.getElementById("storageForm");
-  form.reset();
-  form.elements.rateSource.innerHTML = rateSourceOptionsHtml("manual");
-  document.getElementById("storageDialog").showModal();
-});
-
-// Picking a currency/gold karat from the dropdown fills in a default
-// rate (and, if left blank, a matching name/unit) pulled straight from
-// the Rates tab. Everything stays editable afterward — this is just a
-// convenient starting point, not a permanent link.
-document.getElementById("storageForm").elements.rateSource.addEventListener("change", (event) => {
-  const form = document.getElementById("storageForm");
-  const sourceValue = event.target.value;
-  const resolved = resolveRateSourceValue(sourceValue);
-  if (resolved === null) return;
-  form.elements.rate.value = resolved;
-  const sep = sourceValue.indexOf(":");
-  const type = sourceValue.slice(0, sep);
-  const name = sourceValue.slice(sep + 1);
-  if (!form.elements.name.value.trim()) form.elements.name.value = name;
-  if (!form.elements.unit.value.trim()) form.elements.unit.value = type === "gold" ? "grams" : "";
-});
-
-document.getElementById("storageDialog").addEventListener("close", () => {
-  const dialog = document.getElementById("storageDialog");
-  if (dialog.returnValue !== "save") return;
-  const form = document.getElementById("storageForm");
-  storageAssets.push({
-    name: form.elements.name.value.trim(),
-    quantity: Number(form.elements.quantity.value),
-    unit: form.elements.unit.value.trim() || "units",
-    rate: Number(form.elements.rate.value),
-    rateSource: form.elements.rateSource.value || "manual"
-  });
-  saveSetting(keys.storage, storageAssets);
-  renderAll();
-});
-
-let editingInstallmentIndex = null;
-
-document.getElementById("addInstallment").addEventListener("click", () => {
-  editingInstallmentIndex = null;
-  const form = document.getElementById("installmentForm");
-  form.reset();
-  form.elements.startMonth.value = new Date().toISOString().slice(0, 7);
-  form.elements.day.value = 30;
-  form.elements.months.value = 12;
-  form.elements.frequency.value = "1";
-  document.getElementById("installmentDialogTitle").textContent = "Add installment";
-  document.getElementById("installmentDialog").showModal();
-});
-
-on("installmentList", "click", (event) => {
-  const editButton = event.target.closest("[data-installment-edit]");
-  if (!editButton) return;
-  const index = Number(editButton.dataset.installmentEdit);
-  const item = installments[index];
-  if (!item) return;
-  editingInstallmentIndex = index;
-  const form = document.getElementById("installmentForm");
-  form.reset();
-  form.elements.name.value = item.name;
-  form.elements.amount.value = item.amount;
-  form.elements.frequency.value = String(item.frequency || 1);
-  form.elements.day.value = item.day;
-  form.elements.startMonth.value = item.startMonth;
-  form.elements.months.value = item.months;
-  document.getElementById("installmentDialogTitle").textContent = "Edit installment";
-  document.getElementById("installmentDialog").showModal();
-});
-
-document.getElementById("installmentDialog").addEventListener("close", () => {
-  const dialog = document.getElementById("installmentDialog");
-  if (dialog.returnValue !== "save") {
-    editingInstallmentIndex = null;
-    return;
-  }
-  const form = document.getElementById("installmentForm");
-  const values = {
-    name: form.elements.name.value.trim(),
-    amount: Number(form.elements.amount.value),
-    day: Number(form.elements.day.value),
-    startMonth: form.elements.startMonth.value,
-    months: Number(form.elements.months.value),
-    frequency: Number(form.elements.frequency.value) || 1
-  };
-
-  if (editingInstallmentIndex !== null && installments[editingInstallmentIndex]) {
-    // Keep the original id so any actuals already recorded against this
-    // installment's generated entries stay matched after the edit.
-    installments[editingInstallmentIndex] = {
-      ...installments[editingInstallmentIndex],
-      ...values
-    };
-  } else {
-    installments.push({
-      id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
-      ...values
+function setupEventListeners() {
+  document.querySelectorAll(".nav-item").forEach((button) => {
+    button.addEventListener("click", () => {
+      activateView(button.dataset.view);
     });
-  }
-  editingInstallmentIndex = null;
-  saveSetting(keys.installments, installments);
-  renderAll();
-});
-
-function readResetBackup() {
-  const raw = localStorage.getItem(keys.resetBackup);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch (e) {
-    return null;
-  }
-}
-
-function updateUndoResetVisibility() {
-  const button = document.getElementById("undoReset");
-  if (!button) return;
-  button.hidden = !readResetBackup();
-}
-
-document.getElementById("resetData").addEventListener("click", () => {
-  const confirmed = confirm(
-    "Reset all data (salary schedule, forecast entries, installments, storage assets, account balances, ASF invoices, IRQ jobs, and rates) to blank?\n\nYou'll be able to undo this right after, until you reset again."
-  );
-  if (!confirmed) return;
-
-  // Snapshot exactly what this reset touches, so Undo can restore it.
-  saveSetting(keys.resetBackup, {
-    salaryPattern: clone(salaryPattern),
-    salaryAnchorMonth,
-    cashEntries: clone(cashEntries),
-    installments: clone(installments),
-    storageAssets: clone(storageAssets),
-    accountBalances: clone(accountBalances),
-    asfJobs: clone(asfJobs),
-    irqJobs: clone(irqJobs),
-    ratesData: clone(ratesData),
-    creditDues: clone(creditDues),
-    creditDueMonths: clone(creditDueMonths),
-    entryActuals: clone(entryActuals),
-    deletedForecasts: clone(deletedForecasts),
-    archivedEntries: clone(archivedEntries)
   });
 
-  salaryPattern = clone(defaultSalaryPattern);
-  salaryAnchorMonth = DateUtils.currentYearMonth();
-  cashEntries = clone(defaultCashEntries);
-  installments = clone(defaultInstallments);
-  storageAssets = clone(defaultStorage);
-  accountBalances = clone(defaultAccountBalances);
-  asfJobs = clone(defaultAsf);
-  irqJobs = clone(defaultIrq);
-  ratesData = clone(defaultRates);
-  creditDues = {};
-  creditDueMonths = {};
-  entryActuals = {};
-  deletedForecasts = [];
-  archivedEntries = clone(defaultArchivedEntries);
-  localStorage.setItem(keys.seedVersion, seedVersion);
-  saveSetting(keys.salary, salaryPattern);
-  saveSetting(keys.salaryAnchor, salaryAnchorMonth);
-  saveSetting(keys.entries, cashEntries);
-  saveSetting(keys.installments, installments);
-  saveSetting(keys.storage, storageAssets);
-  saveSetting(keys.accounts, accountBalances);
-  saveSetting(keys.asf, asfJobs);
-  saveSetting(keys.irq, irqJobs);
-  saveSetting(keys.rates, ratesData);
-  saveSetting(keys.creditDues, creditDues);
-  saveSetting(keys.creditDueMonths, creditDueMonths);
-  saveSetting(keys.entryActuals, entryActuals);
-  saveSetting(keys.deletedForecasts, deletedForecasts);
-  saveSetting(keys.archivedEntries, archivedEntries);
-  updateUndoResetVisibility();
-  renderAll();
-});
+  on("themeToggle", "click", toggleTheme);
 
-document.getElementById("undoReset").addEventListener("click", () => {
-  const backup = readResetBackup();
-  if (!backup) return;
+  on("deficitBannerAction", "click", () => {
+    activateView("deficits");
+  });
 
-  salaryPattern = backup.salaryPattern;
-  salaryAnchorMonth = backup.salaryAnchorMonth || salaryAnchorMonth;
-  cashEntries = normalizeCashEntries(backup.cashEntries);
-  installments = backup.installments;
-  storageAssets = backup.storageAssets;
-  accountBalances = backup.accountBalances || accountBalances;
-  asfJobs = backup.asfJobs || asfJobs;
-  irqJobs = backup.irqJobs || irqJobs;
-  ratesData = backup.ratesData || ratesData;
-  creditDues = backup.creditDues || {};
-  creditDueMonths = backup.creditDueMonths || {};
-  entryActuals = backup.entryActuals || {};
-  deletedForecasts = backup.deletedForecasts || [];
-  archivedEntries = backup.archivedEntries || clone(defaultArchivedEntries);
+  on("exportData", "click", () => {
+    const payload = {
+      app: "budget-control",
+      exportedAt: new Date().toISOString(),
+      seedVersion,
+      data: {
+        salaryPattern,
+        salaryAnchorMonth,
+        cashEntries,
+        installments,
+        storageAssets,
+        accountBalances,
+        asfJobs,
+        ratesData,
+        irqJobs,
+        creditDues,
+        creditDueMonths,
+        entryActuals,
+        deletedForecasts,
+        archivedEntries
+      }
+    };
 
-  saveSetting(keys.salary, salaryPattern);
-  saveSetting(keys.salaryAnchor, salaryAnchorMonth);
-  saveSetting(keys.entries, cashEntries);
-  saveSetting(keys.installments, installments);
-  saveSetting(keys.storage, storageAssets);
-  saveSetting(keys.accounts, accountBalances);
-  saveSetting(keys.asf, asfJobs);
-  saveSetting(keys.irq, irqJobs);
-  saveSetting(keys.rates, ratesData);
-  saveSetting(keys.creditDues, creditDues);
-  saveSetting(keys.creditDueMonths, creditDueMonths);
-  saveSetting(keys.entryActuals, entryActuals);
-  saveSetting(keys.deletedForecasts, deletedForecasts);
-  saveSetting(keys.archivedEntries, archivedEntries);
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const stamp = new Date().toISOString().slice(0, 10);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `budget-data-${stamp}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  });
 
-  // Single-level undo: once used, the backup is gone.
-  localStorage.removeItem(keys.resetBackup);
-  updateUndoResetVisibility();
-  renderAll();
-});
+  on("importData", "click", () => {
+    const fileInput = document.getElementById("importDataFile");
+    if (fileInput) fileInput.click();
+  });
 
-// All the app's data lives in localStorage, which never travels with the
-// files themselves (it's scoped to whichever browser/machine/file path you
-// opened the app from). Export/Import moves it as a plain JSON file instead,
-// so it can be carried between machines or browsers by hand.
-const exportableDataKeys = {
-  salaryPattern: keys.salary,
-  salaryAnchorMonth: keys.salaryAnchor,
-  cashEntries: keys.entries,
-  installments: keys.installments,
-  storageAssets: keys.storage,
-  accountBalances: keys.accounts,
-  asfJobs: keys.asf,
-  ratesData: keys.rates,
-  irqJobs: keys.irq,
-  creditDues: keys.creditDues,
-  creditDueMonths: keys.creditDueMonths,
-  entryActuals: keys.entryActuals,
-  deletedForecasts: keys.deletedForecasts,
-  archivedEntries: keys.archivedEntries
-};
+  on("importDataFile", "change", (event) => {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
 
-document.getElementById("exportData").addEventListener("click", () => {
-  const payload = {
-    app: "budget-control",
-    exportedAt: new Date().toISOString(),
-    seedVersion,
-    data: {
-      salaryPattern,
-      salaryAnchorMonth,
-      cashEntries,
-      installments,
-      storageAssets,
-      accountBalances,
-      asfJobs,
-      ratesData,
-      irqJobs,
-      creditDues,
-      creditDueMonths,
-      entryActuals,
-      deletedForecasts,
-      archivedEntries
-    }
-  };
+    const reader = new FileReader();
 
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const stamp = new Date().toISOString().slice(0, 10);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `budget-data-${stamp}.json`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-});
+    reader.onload = async () => {
+      let payload;
+      try {
+        payload = JSON.parse(reader.result);
+      } catch (e) {
+        alert("That file isn't valid JSON.");
+        event.target.value = "";
+        return;
+      }
 
-document.getElementById("importData").addEventListener("click", () => {
-  document.getElementById("importDataFile").click();
-});
+      const incoming = payload && typeof payload === "object" ? payload.data : null;
+      if (!incoming || typeof incoming !== "object") {
+        alert("That file doesn't look like a budget data export.");
+        event.target.value = "";
+        return;
+      }
 
-document.getElementById("importDataFile").addEventListener("change", (event) => {
-  const file = event.target.files && event.target.files[0];
-  if (!file) return;
+      const confirmed = await confirmAction("Import Budget Data", "Import this data? It will replace everything currently in the app on this device.", "Import");
+      if (!confirmed) {
+        event.target.value = "";
+        return;
+      }
 
-  const reader = new FileReader();
+      Object.entries(exportableDataKeys).forEach(([dataKey, storageKey]) => {
+        if (incoming[dataKey] !== undefined) {
+          localStorage.setItem(storageKey, JSON.stringify(incoming[dataKey]));
+        }
+      });
 
-  reader.onload = () => {
-    let payload;
-    try {
-      payload = JSON.parse(reader.result);
-    } catch (e) {
-      alert("That file isn't valid JSON.");
+      localStorage.setItem(keys.salaryMaterialized, "true");
+      localStorage.setItem(keys.seedVersion, seedVersion);
+
       event.target.value = "";
-      return;
-    }
+      location.reload();
+    };
 
-    const incoming = payload && typeof payload === "object" ? payload.data : null;
-    if (!incoming || typeof incoming !== "object") {
-      alert("That file doesn't look like a budget data export.");
+    reader.onerror = () => {
+      alert("Couldn't read that file.");
       event.target.value = "";
-      return;
-    }
+    };
 
-    const confirmed = confirm(
-      "Import this data? It will replace everything currently in the app on this device."
+    reader.readAsText(file);
+  });
+
+  on("resetData", "click", async () => {
+    const confirmed = await confirmAction(
+      "Reset All Data",
+      "Reset all data (salary schedule, forecast entries, installments, storage assets, account balances, ASF invoices, IRQ jobs, and rates) to blank?\n\nYou'll be able to undo this right after.",
+      "Reset"
     );
-    if (!confirmed) {
-      event.target.value = "";
+    if (!confirmed) return;
+
+    saveSetting(keys.resetBackup, {
+      salaryPattern: clone(salaryPattern),
+      salaryAnchorMonth,
+      cashEntries: clone(cashEntries),
+      installments: clone(installments),
+      storageAssets: clone(storageAssets),
+      accountBalances: clone(accountBalances),
+      asfJobs: clone(asfJobs),
+      irqJobs: clone(irqJobs),
+      ratesData: clone(ratesData),
+      creditDues: clone(creditDues),
+      creditDueMonths: clone(creditDueMonths),
+      entryActuals: clone(entryActuals),
+      deletedForecasts: clone(deletedForecasts),
+      archivedEntries: clone(archivedEntries)
+    });
+
+    salaryPattern = clone(defaultSalaryPattern);
+    salaryAnchorMonth = DateUtils.currentYearMonth();
+    cashEntries = [];
+    installments = [];
+    storageAssets = [];
+    accountBalances = clone(defaultAccountBalances);
+    asfJobs = [];
+    irqJobs = [];
+    ratesData = clone(defaultRates);
+    creditDues = {};
+    creditDueMonths = {};
+    entryActuals = {};
+    deletedForecasts = [];
+    archivedEntries = [];
+
+    localStorage.setItem(keys.seedVersion, seedVersion);
+    saveSetting(keys.salary, salaryPattern);
+    saveSetting(keys.salaryAnchor, salaryAnchorMonth);
+    saveSetting(keys.entries, cashEntries);
+    saveSetting(keys.installments, installments);
+    saveSetting(keys.storage, storageAssets);
+    saveSetting(keys.accounts, accountBalances);
+    saveSetting(keys.asf, asfJobs);
+    saveSetting(keys.irq, irqJobs);
+    saveSetting(keys.rates, ratesData);
+    saveSetting(keys.creditDues, creditDues);
+    saveSetting(keys.creditDueMonths, creditDueMonths);
+    saveSetting(keys.entryActuals, entryActuals);
+    saveSetting(keys.deletedForecasts, deletedForecasts);
+    saveSetting(keys.archivedEntries, archivedEntries);
+
+    updateUndoResetVisibility();
+    renderAll();
+  });
+
+  on("undoReset", "click", () => {
+    const backup = readResetBackup();
+    if (!backup) return;
+
+    salaryPattern = backup.salaryPattern || clone(defaultSalaryPattern);
+    salaryAnchorMonth = backup.salaryAnchorMonth || salaryAnchorMonth;
+    cashEntries = normalizeCashEntries(backup.cashEntries || []);
+    installments = backup.installments || [];
+    storageAssets = backup.storageAssets || [];
+    accountBalances = backup.accountBalances || defaultAccountBalances;
+    asfJobs = backup.asfJobs || [];
+    irqJobs = backup.irqJobs || [];
+    ratesData = backup.ratesData || defaultRates;
+    creditDues = backup.creditDues || {};
+    creditDueMonths = backup.creditDueMonths || {};
+    entryActuals = backup.entryActuals || {};
+    deletedForecasts = backup.deletedForecasts || [];
+    archivedEntries = backup.archivedEntries || [];
+
+    saveSetting(keys.salary, salaryPattern);
+    saveSetting(keys.salaryAnchor, salaryAnchorMonth);
+    saveSetting(keys.entries, cashEntries);
+    saveSetting(keys.installments, installments);
+    saveSetting(keys.storage, storageAssets);
+    saveSetting(keys.accounts, accountBalances);
+    saveSetting(keys.asf, asfJobs);
+    saveSetting(keys.irq, irqJobs);
+    saveSetting(keys.rates, ratesData);
+    saveSetting(keys.creditDues, creditDues);
+    saveSetting(keys.creditDueMonths, creditDueMonths);
+    saveSetting(keys.entryActuals, entryActuals);
+    saveSetting(keys.deletedForecasts, deletedForecasts);
+    saveSetting(keys.archivedEntries, archivedEntries);
+
+    localStorage.removeItem(keys.resetBackup);
+    updateUndoResetVisibility();
+    renderAll();
+  });
+
+  on("addIncome", "click", () => openEntryDialog("income"));
+  on("addEntry", "click", () => openEntryDialog("expense"));
+
+  const entryForm = document.getElementById("entryForm");
+  if (entryForm) {
+    if (entryForm.elements && entryForm.elements.creditType) {
+      entryForm.elements.creditType.addEventListener("change", syncEntryFormMode);
+    }
+    entryForm.addEventListener("submit", persistEntryForm);
+  }
+
+  on("typeFilter", "change", renderEntries);
+  on("categoryFilter", "change", renderEntries);
+  on("searchEntries", "input", renderEntries);
+
+  on("entriesTable", "change", (event) => {
+    const input = event.target.closest("[data-entry-actual-input]");
+    if (!input) return;
+    event.stopPropagation();
+    commitEntryActualInput(input);
+  });
+
+  on("entriesTable", "keydown", (event) => {
+    const input = event.target.closest("[data-entry-actual-input]");
+    if (!input || event.key !== "Enter") return;
+    event.preventDefault();
+    event.stopPropagation();
+    commitEntryActualInput(input);
+  });
+
+  on("entriesTable", "click", async (event) => {
+    const button = event.target.closest("[data-delete-key]");
+    if (button) {
+      event.stopPropagation();
+      const deleteKey = button.dataset.deleteKey;
+      const entry = findEntryById(deleteKey);
+      if (!entry || !canDeleteEntry(entry)) return;
+
+      if (entry.source === "starting balance") {
+        focusAccountBalance(entry.account);
+        return;
+      }
+
+      const confirmed = await confirmAction("Delete Budget Entry", `Are you sure you want to delete "${entry.category}" (${entry.amount} EGP)?`);
+      if (!confirmed) return;
+
+      const index = cashEntries.findIndex((item) => getEntryId(item) === deleteKey);
+      if (index !== -1) {
+        const actualAmount = getEntryActualAmount(entry);
+        cashEntries.splice(index, 1);
+        saveSetting(keys.entries, cashEntries);
+
+        if (actualAmount > 0) {
+          archivedEntries.push(entry);
+          saveSetting(keys.archivedEntries, archivedEntries);
+        } else {
+          delete entryActuals[getEntryId(entry)];
+          saveSetting(keys.entryActuals, entryActuals);
+        }
+        renderAll();
+        return;
+      }
+
+      const actualAmount = getEntryActualAmount(entry);
+      if (actualAmount > 0) {
+        archivedEntries.push(entry);
+        saveSetting(keys.archivedEntries, archivedEntries);
+      }
+
+      if (!deletedForecasts.includes(deleteKey)) {
+        deletedForecasts.push(deleteKey);
+        saveSetting(keys.deletedForecasts, deletedForecasts);
+      }
+      renderAll();
       return;
     }
 
-    Object.entries(exportableDataKeys).forEach(([dataKey, storageKey]) => {
-      if (incoming[dataKey] !== undefined) {
-        localStorage.setItem(storageKey, JSON.stringify(incoming[dataKey]));
+    if (event.target.closest("[data-entry-actual-input]")) return;
+
+    const row = event.target.closest("tr[data-entry-id]");
+    if (!row) return;
+    const entry = findEntryById(row.dataset.entryId);
+    if (!entry) return;
+    if (entry.source === "starting balance") {
+      focusAccountBalance(entry.account);
+      return;
+    }
+    if (!isEditableEntry(entry)) return;
+    openEntryDialog(entry.type, entry);
+  });
+
+  on("salarySchedule", "input", (event) => {
+    const input = event.target.closest("[data-salary-index]");
+    if (!input) return;
+    const index = Number(input.dataset.salaryIndex);
+    const field = input.dataset.salaryField;
+    salaryPattern[index][field] = Number(input.value);
+    saveSetting(keys.salary, salaryPattern);
+  });
+
+  on("salarySchedule", "change", (event) => {
+    const input = event.target.closest("[data-salary-index]");
+    if (!input) return;
+    const index = Number(input.dataset.salaryIndex);
+    const field = input.dataset.salaryField;
+    salaryPattern[index][field] = Number(input.value);
+    saveSetting(keys.salary, salaryPattern);
+    renderAll();
+  });
+
+  on("salarySchedule", "click", async (event) => {
+    const button = event.target.closest("[data-salary-delete]");
+    if (!button) return;
+    const confirmed = await confirmAction("Delete Salary Payment", "Are you sure you want to remove this salary payment slot?");
+    if (!confirmed) return;
+    salaryPattern.splice(Number(button.dataset.salaryDelete), 1);
+    saveSetting(keys.salary, salaryPattern);
+    renderAll();
+  });
+
+  on("addSalaryPayment", "click", () => {
+    salaryPattern.push({ monthOffset: 0, day: 30, amount: 0 });
+    saveSetting(keys.salary, salaryPattern);
+    renderAll();
+  });
+
+  on("salaryPeriodStart", "change", () => {
+    syncForecastPeriodSettings();
+    upsertSalaryEntriesForPeriod(forecastStartMonth, forecastQuarters);
+  });
+
+  on("salaryPeriodQuarters", "change", () => {
+    syncForecastPeriodSettings();
+    upsertSalaryEntriesForPeriod(forecastStartMonth, forecastQuarters);
+  });
+
+  on("refreshSalaryEntries", "click", () => {
+    const startInput = document.getElementById("salaryPeriodStart");
+    const quartersInput = document.getElementById("salaryPeriodQuarters");
+    upsertSalaryEntriesForPeriod(
+      startInput ? startInput.value : forecastStartMonth,
+      quartersInput ? Number(quartersInput.value) : forecastQuarters
+    );
+  });
+
+  on("addInstallment", "click", () => {
+    editingInstallmentIndex = null;
+    const form = document.getElementById("installmentForm");
+    if (!form) return;
+    form.reset();
+    form.elements.startMonth.value = new Date().toISOString().slice(0, 7);
+    form.elements.day.value = 30;
+    form.elements.months.value = 12;
+    form.elements.frequency.value = "1";
+    const titleEl = document.getElementById("installmentDialogTitle");
+    if (titleEl) titleEl.textContent = "Add installment";
+    const dlg = document.getElementById("installmentDialog");
+    if (dlg) dlg.showModal();
+  });
+
+  on("installmentList", "click", async (event) => {
+    const editButton = event.target.closest("[data-installment-edit]");
+    if (editButton) {
+      const index = Number(editButton.dataset.installmentEdit);
+      const item = installments[index];
+      if (!item) return;
+      editingInstallmentIndex = index;
+      const form = document.getElementById("installmentForm");
+      if (!form) return;
+      form.reset();
+      form.elements.name.value = item.name;
+      form.elements.amount.value = item.amount;
+      form.elements.frequency.value = String(item.frequency || 1);
+      form.elements.day.value = item.day;
+      form.elements.startMonth.value = item.startMonth;
+      form.elements.months.value = item.months;
+      const titleEl = document.getElementById("installmentDialogTitle");
+      if (titleEl) titleEl.textContent = "Edit installment";
+      const dlg = document.getElementById("installmentDialog");
+      if (dlg) dlg.showModal();
+      return;
+    }
+
+    const deleteButton = event.target.closest("[data-installment-delete]");
+    if (deleteButton) {
+      const index = Number(deleteButton.dataset.installmentDelete);
+      const item = installments[index];
+      const confirmed = await confirmAction("Delete Installment", `Delete recurring installment "${item ? item.name : ""}"?`);
+      if (!confirmed) return;
+      installments.splice(index, 1);
+      saveSetting(keys.installments, installments);
+      renderAll();
+    }
+  });
+
+  on("installmentDialog", "close", () => {
+    const dialog = document.getElementById("installmentDialog");
+    if (!dialog || dialog.returnValue !== "save") {
+      editingInstallmentIndex = null;
+      return;
+    }
+    const form = document.getElementById("installmentForm");
+    if (!form) return;
+    const values = {
+      name: form.elements.name.value.trim(),
+      amount: Number(form.elements.amount.value),
+      day: Number(form.elements.day.value),
+      startMonth: form.elements.startMonth.value,
+      months: Number(form.elements.months.value),
+      frequency: Number(form.elements.frequency.value) || 1
+    };
+
+    if (editingInstallmentIndex !== null && installments[editingInstallmentIndex]) {
+      installments[editingInstallmentIndex] = {
+        ...installments[editingInstallmentIndex],
+        ...values
+      };
+    } else {
+      installments.push({
+        id: generateId(),
+        ...values
+      });
+    }
+    editingInstallmentIndex = null;
+    saveSetting(keys.installments, installments);
+    renderAll();
+  });
+
+  // Accounts List (Single registration - no duplicate!)
+  on("accountsList", "input", (event) => {
+    const input = event.target.closest("[data-account-id]");
+    if (!input) return;
+    const id = input.dataset.accountId;
+    const field = input.dataset.accountField;
+    if (accountBalances[id]) {
+      accountBalances[id][field] = Number(input.value);
+      saveSetting(keys.accounts, accountBalances);
+      const totalOpening = Object.values(accountBalances).reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
+      const totalEl = document.getElementById("totalOpeningBalance");
+      if (totalEl) totalEl.textContent = money(totalOpening);
+    }
+  });
+
+  on("accountsList", "change", (event) => {
+    const input = event.target.closest("[data-account-id]");
+    if (!input) return;
+    const id = input.dataset.accountId;
+    const field = input.dataset.accountField;
+    if (accountBalances[id]) {
+      accountBalances[id][field] = Number(input.value);
+      saveSetting(keys.accounts, accountBalances);
+      renderDashboard();
+    }
+  });
+
+  on("addStorage", "click", () => {
+    const form = document.getElementById("storageForm");
+    if (!form) return;
+    form.reset();
+    form.elements.rateSource.innerHTML = rateSourceOptionsHtml("manual");
+    const dlg = document.getElementById("storageDialog");
+    if (dlg) dlg.showModal();
+  });
+
+  on("storageForm", "change", (event) => {
+    if (event.target.name !== "rateSource") return;
+    const form = document.getElementById("storageForm");
+    const sourceValue = event.target.value;
+    const resolved = resolveRateSourceValue(sourceValue);
+    if (resolved === null) return;
+    form.elements.rate.value = resolved;
+    const sep = sourceValue.indexOf(":");
+    const type = sourceValue.slice(0, sep);
+    const name = sourceValue.slice(sep + 1);
+    if (!form.elements.name.value.trim()) form.elements.name.value = name;
+    if (!form.elements.unit.value.trim()) form.elements.unit.value = type === "gold" ? "grams" : "";
+  });
+
+  on("storageDialog", "close", () => {
+    const dialog = document.getElementById("storageDialog");
+    if (!dialog || dialog.returnValue !== "save") return;
+    const form = document.getElementById("storageForm");
+    if (!form) return;
+    storageAssets.push({
+      name: form.elements.name.value.trim(),
+      quantity: Number(form.elements.quantity.value),
+      unit: form.elements.unit.value.trim() || "units",
+      rate: Number(form.elements.rate.value),
+      rateSource: form.elements.rateSource.value || "manual"
+    });
+    saveSetting(keys.storage, storageAssets);
+    renderAll();
+  });
+
+  on("storageCards", "input", (event) => {
+    const input = event.target.closest("[data-storage-index]");
+    if (!input) return;
+    const index = Number(input.dataset.storageIndex);
+    const field = input.dataset.storageField;
+    if (storageAssets[index]) {
+      storageAssets[index][field] = Number(input.value);
+      const card = input.closest(".asset-card");
+      if (field === "rate") {
+        storageAssets[index].rateSource = "manual";
+        const select = card?.querySelector("[data-storage-rate-index]");
+        if (select) select.value = "manual";
+      }
+      saveSetting(keys.storage, storageAssets);
+      renderStorageTotals();
+      const valueEl = card?.querySelector("[data-storage-value]");
+      if (valueEl) valueEl.textContent = money(storageValue(storageAssets[index]));
+    }
+  });
+
+  on("storageCards", "change", (event) => {
+    const select = event.target.closest("[data-storage-rate-index]");
+    if (!select) return;
+    const index = Number(select.dataset.storageRateIndex);
+    const sourceValue = select.value;
+    if (storageAssets[index]) {
+      storageAssets[index].rateSource = sourceValue;
+      const resolved = resolveRateSourceValue(sourceValue);
+      if (resolved !== null) {
+        storageAssets[index].rate = resolved;
+      }
+      saveSetting(keys.storage, storageAssets);
+      renderStorage();
+    }
+  });
+
+  on("storageCards", "click", async (event) => {
+    const button = event.target.closest("[data-storage-delete]");
+    if (!button) return;
+    const index = Number(button.dataset.storageDelete);
+    const asset = storageAssets[index];
+    const confirmed = await confirmAction("Delete Asset", `Delete storage asset "${asset ? asset.name : ""}"?`);
+    if (!confirmed) return;
+    storageAssets.splice(index, 1);
+    saveSetting(keys.storage, storageAssets);
+    renderAll();
+  });
+
+  on("addAsf", "click", () => {
+    const form = document.getElementById("asfForm");
+    if (form) form.reset();
+    const dlg = document.getElementById("asfDialog");
+    if (dlg) dlg.showModal();
+  });
+
+  on("asfDialog", "close", () => {
+    const dialog = document.getElementById("asfDialog");
+    if (!dialog || dialog.returnValue !== "save") return;
+    const form = document.getElementById("asfForm");
+    if (!form) return;
+    asfJobs.push({
+      date: form.elements.date.value,
+      invoice: Number(form.elements.invoice.value),
+      actual: Number(form.elements.actual.value),
+      egp: Number(form.elements.egp.value)
+    });
+    saveSetting(keys.asf, asfJobs);
+    renderAll();
+  });
+
+  on("asfTable", "click", async (event) => {
+    const button = event.target.closest("[data-asf-delete]");
+    if (!button) return;
+    const index = Number(button.dataset.asfDelete);
+    const confirmed = await confirmAction("Delete Invoice", "Delete this ASF invoice entry?");
+    if (!confirmed) return;
+    asfJobs.splice(index, 1);
+    saveSetting(keys.asf, asfJobs);
+    renderAll();
+  });
+
+  on("addIrq", "click", () => {
+    const form = document.getElementById("irqForm");
+    if (form) form.reset();
+    const dlg = document.getElementById("irqDialog");
+    if (dlg) dlg.showModal();
+  });
+
+  on("irqDialog", "close", () => {
+    const dialog = document.getElementById("irqDialog");
+    if (!dialog || dialog.returnValue !== "save") return;
+    const form = document.getElementById("irqForm");
+    if (!form) return;
+    irqJobs.push({
+      label: form.elements.label.value.trim(),
+      value: Number(form.elements.value.value),
+      note: form.elements.note.value.trim()
+    });
+    saveSetting(keys.irq, irqJobs);
+    renderAll();
+  });
+
+  on("irqCards", "click", async (event) => {
+    const button = event.target.closest("[data-irq-delete]");
+    if (!button) return;
+    const index = Number(button.dataset.irqDelete);
+    const confirmed = await confirmAction("Delete IRQ Work", "Delete this IRQ work item?");
+    if (!confirmed) return;
+    irqJobs.splice(index, 1);
+    saveSetting(keys.irq, irqJobs);
+    renderAll();
+  });
+
+  on("editCurrencies", "click", async () => {
+    const button = document.getElementById("editCurrencies");
+    if (!button) return;
+    const originalLabel = button.textContent;
+    button.textContent = "Fetching…";
+    button.disabled = true;
+
+    try {
+      const liveRates = await fetchLiveCurrencyRates();
+      const changes = [];
+      const updated = ratesData.currencies.map((currency) => {
+        const mid = egpPerUnit(liveRates, currency.name.toUpperCase());
+        if (mid === null) return currency;
+        const spreadPct = computeSpreadPct(currency.sell, currency.buy);
+        const next = applySpread(mid, spreadPct);
+        changes.push(`${currency.name}: ${currency.sell}/${currency.buy} \u2192 ${next.sell}/${next.buy}`);
+        return { ...currency, ...next };
+      });
+
+      if (!changes.length) {
+        alert("None of the saved currencies matched the live feed.");
+        return;
+      }
+
+      const confirmed = await confirmAction(
+        "Update Live Currency Rates",
+        `Update currency rates from market data?\n\n${changes.join("\n")}`,
+        "Update"
+      );
+      if (!confirmed) return;
+
+      ratesData.currencies = updated;
+      saveSetting(keys.rates, ratesData);
+      syncStorageRates();
+      renderAll();
+    } catch (err) {
+      console.error("Live currency rate fetch failed:", err);
+      const manual = confirm("Couldn't fetch live rates (offline or rate service unavailable). Enter rate manually?");
+      if (manual) openManualCurrencyEdit();
+    } finally {
+      button.textContent = originalLabel;
+      button.disabled = false;
+    }
+  });
+
+  on("editGold", "click", async () => {
+    const button = document.getElementById("editGold");
+    if (!button) return;
+    const originalLabel = button.textContent;
+    button.textContent = "Fetching…";
+    button.disabled = true;
+
+    try {
+      const [liveRates, xauUsd] = await Promise.all([fetchLiveCurrencyRates(), fetchLiveGoldSpotUsd()]);
+      const egpPerOz = xauUsd * liveRates.EGP;
+      const egpPerGram24k = egpPerOz / TROY_OUNCE_GRAMS;
+
+      const changes = [];
+      const skipped = [];
+      const updated = ratesData.gold.map((item) => {
+        const match = item.name.match(/(\d+)/);
+        if (!match) {
+          skipped.push(item.name);
+          return item;
+        }
+        const karat = Number(match[1]);
+        const mid = egpPerGram24k * (karat / 24);
+        const spreadPct = computeSpreadPct(item.sell, item.buy);
+        const next = applySpread(mid, spreadPct);
+        changes.push(`${item.name}: ${item.sell}/${item.buy} \u2192 ${next.sell}/${next.buy}`);
+        return { ...item, ...next };
+      });
+
+      if (!changes.length) {
+        alert('None of the saved gold entries could be matched to a karat (e.g. "Gold 21").');
+        return;
+      }
+
+      let message = `Update gold rates from spot price?\n\n${changes.join("\n")}`;
+      if (skipped.length) message += `\n\nSkipped (no karat in name): ${skipped.join(", ")}`;
+
+      const confirmed = await confirmAction("Update Live Gold Rates", message, "Update");
+      if (!confirmed) return;
+
+      ratesData.gold = updated;
+      saveSetting(keys.rates, ratesData);
+      syncStorageRates();
+      renderAll();
+    } catch (err) {
+      console.error("Live gold rate fetch failed:", err);
+      const manual = confirm("Couldn't fetch live gold price. Enter rate manually?");
+      if (manual) openManualGoldEdit();
+    } finally {
+      button.textContent = originalLabel;
+      button.disabled = false;
+    }
+  });
+
+  on("rateDialog", "close", () => {
+    const dialog = document.getElementById("rateDialog");
+    if (!dialog || dialog.returnValue !== "save") return;
+    const form = document.getElementById("rateForm");
+    if (!form) return;
+    const name = form.elements.name.value.trim();
+    const sell = Number(form.elements.sell.value);
+    const buy = Number(form.elements.buy.value);
+
+    const isCurrency = ratesData.currencies.some((c) => c.name === name);
+    if (isCurrency) {
+      const idx = ratesData.currencies.findIndex((c) => c.name === name);
+      ratesData.currencies[idx] = { name, sell, buy };
+    } else {
+      const idx = ratesData.gold.findIndex((g) => g.name === name);
+      if (idx !== -1) ratesData.gold[idx] = { name, sell, buy };
+    }
+
+    saveSetting(keys.rates, ratesData);
+    syncStorageRates();
+    renderAll();
+  });
+
+  document.addEventListener("keydown", (event) => {
+    const input = event.target.closest("[data-history-actual-input]");
+    if (!input || event.key !== "Enter") return;
+    event.preventDefault();
+    commitHistoryActualInput(input);
+    renderDashboard();
+    renderHistory();
+  });
+
+  document.addEventListener("change", (event) => {
+    const input = event.target.closest("[data-history-actual-input]");
+    if (!input) return;
+    commitHistoryActualInput(input);
+    renderDashboard();
+    renderHistory();
+  });
+
+  document.addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-history-delete-key]");
+    if (!button) return;
+    event.stopPropagation();
+
+    const confirmed = await confirmAction("Remove Actualized History", "Remove this actualized entry record?");
+    if (!confirmed) return;
+
+    const entryIds = button.dataset.historyDeleteKey.split(",").filter(Boolean);
+
+    entryIds.forEach((entryId) => {
+      const { entry, isArchived, archivedIndex } = findHistoryEntry(entryId);
+      if (!entry || !isEditableEntry(entry)) return;
+
+      if (isArchived && archivedIndex !== -1) {
+        archivedEntries.splice(archivedIndex, 1);
+        delete entryActuals[getEntryId(entry)];
+      } else {
+        permanentlyRemoveEntry(entry);
       }
     });
 
-    // Mark as fully migrated/seeded so the normal load path doesn't try to
-    // re-run one-time migrations or reseed anything on top of the import.
-    localStorage.setItem(keys.salaryMaterialized, "true");
-    localStorage.setItem(keys.seedVersion, seedVersion);
-
-    event.target.value = "";
-    location.reload();
-  };
-
-  reader.onerror = () => {
-    alert("Couldn't read that file.");
-    event.target.value = "";
-  };
-
-  reader.readAsText(file);
-});
+    saveSetting(keys.archivedEntries, archivedEntries);
+    saveSetting(keys.entryActuals, entryActuals);
+    renderDashboard();
+    renderHistory();
+    renderEntries();
+  });
+}
 
 function initApp() {
   try {
+    initTheme();
+    materializeLegacySalaryEntries();
     updateUndoResetVisibility();
+    setupEventListeners();
     renderAll();
   } catch (e) {
-    console.error("Error during initialization:", e);
+    console.error("Error during app initialization:", e);
   }
 }
 

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -34,6 +34,7 @@
           <h2 id="viewTitle">Dashboard</h2>
         </div>
         <div class="top-actions">
+          <button class="ghost-button" id="themeToggle" type="button" aria-label="Toggle theme">🌙 Dark mode</button>
           <button class="ghost-button" id="exportData" type="button">Export data</button>
           <button class="ghost-button" id="importData" type="button">Import data</button>
           <input type="file" id="importDataFile" accept="application/json" hidden>
@@ -628,6 +629,18 @@
           <button class="primary-button" value="save" type="submit">Save rate</button>
         </div>
       </form>
+    </dialog>
+
+    <dialog id="confirmDialog">
+      <div class="dialog-heading">
+        <h3 id="confirmTitle">Confirm Action</h3>
+        <button class="icon-button" value="cancel" aria-label="Close" formnovalidate type="button" onclick="document.getElementById('confirmDialog').close('cancel')">x</button>
+      </div>
+      <p id="confirmMessage" style="margin: 16px 0; color: var(--muted); font-size: 14px; line-height: 1.5;"></p>
+      <div class="dialog-actions">
+        <button class="ghost-button" id="confirmCancelButton" value="cancel" type="button" onclick="document.getElementById('confirmDialog').close('cancel')">Cancel</button>
+        <button class="primary-button danger-button" id="confirmOkButton" value="confirm" type="button" onclick="document.getElementById('confirmDialog').close('confirm')">Confirm</button>
+      </div>
     </dialog>
 
     <script src="app.js"></script>
