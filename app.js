@@ -3022,7 +3022,8 @@ function setupGistSyncEventListeners() {
     }
   });
 
-  on("gistShareBtn", "click", () => {
+  on("gistShareBtn", "click", (e) => {
+    e.preventDefault();
     const gistIdInput = document.getElementById("gistIdInput");
     const gistId = (gistIdInput ? gistIdInput.value.trim() : "") || getGistConfig().gistId;
 
@@ -3032,21 +3033,48 @@ function setupGistSyncEventListeners() {
     }
 
     const shareUrl = `${window.location.origin}${window.location.pathname}#gist=${encodeURIComponent(gistId)}`;
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(shareUrl).then(() => {
+    const shareBtn = document.getElementById("gistShareBtn");
+    const originalText = shareBtn ? shareBtn.textContent : "🔗 Copy Sync Link";
+
+    const copyToClipboard = (text) => {
+      if (navigator.clipboard && window.isSecureContext) {
+        return navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        try {
+          const successful = document.execCommand("copy");
+          document.body.removeChild(textarea);
+          return successful ? Promise.resolve() : Promise.reject(new Error("execCommand failed"));
+        } catch (err) {
+          document.body.removeChild(textarea);
+          return Promise.reject(err);
+        }
+      }
+    };
+
+    copyToClipboard(shareUrl)
+      .then(() => {
+        if (shareBtn) shareBtn.textContent = "Copied! ✓";
         const msgEl = document.getElementById("gistSyncMessage");
         if (msgEl) {
           msgEl.style.display = "block";
           msgEl.style.background = "rgba(31,122,77,0.1)";
           msgEl.style.color = "var(--green)";
-          msgEl.textContent = "🔗 Sync Link copied! Open this link on your other device to connect easily.";
+          msgEl.textContent = "🔗 Sync Link copied to clipboard! Open this link on your other device to connect.";
         }
-      }).catch(() => {
+        setTimeout(() => {
+          if (shareBtn) shareBtn.textContent = originalText;
+        }, 3000);
+      })
+      .catch(() => {
         prompt("Copy this Sync Link for your other devices:", shareUrl);
       });
-    } else {
-      prompt("Copy this Sync Link for your other devices:", shareUrl);
-    }
   });
 
   on("gistPullBtn", "click", async () => {
