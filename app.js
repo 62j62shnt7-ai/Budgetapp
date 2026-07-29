@@ -24,7 +24,10 @@ const keys = {
   salaryMaterialized: "budget-control-salary-materialized",
   salaryAnchor: "budget-control-salary-anchor",
   resetBackup: "budget-control-reset-backup",
-  theme: "budget-control-theme"
+  theme: "budget-control-theme",
+  gistToken: "budget-control-gist-token",
+  gistId: "budget-control-gist-id",
+  gistAutoSync: "budget-control-gist-autosync"
 };
 
 const seedVersion = "blank-template-v2";
@@ -209,6 +212,14 @@ function loadSetting(key, fallback) {
 function saveSetting(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
+    if (
+      key !== keys.theme &&
+      key !== keys.gistToken &&
+      key !== keys.gistId &&
+      key !== keys.gistAutoSync
+    ) {
+      triggerAutoGistSync();
+    }
   } catch (e) {
     console.error(`Error saving to localStorage key "${key}":`, e);
   }
@@ -1962,6 +1973,8 @@ function setupEventListeners() {
     reader.readAsText(file);
   });
 
+  setupGistSyncEventListeners();
+
   on("resetData", "click", async () => {
     const confirmed = await confirmAction(
       "Reset All Data",
@@ -2736,6 +2749,346 @@ function setupEventListeners() {
   });
 }
 
+// --- GitHub Gist Cloud Sync Engine ---
+let gistSyncDebounceTimer = null;
+
+function getGistConfig() {
+  const token = localStorage.getItem(keys.gistToken) || "";
+  const gistId = localStorage.getItem(keys.gistId) || "";
+  const autoSyncRaw = localStorage.getItem(keys.gistAutoSync);
+  const autoSync = autoSyncRaw === null ? true : autoSyncRaw === "true";
+  return { token: token.trim(), gistId: gistId.trim(), autoSync };
+}
+
+function updateGistSyncStatus(statusText, className) {
+  const pill = document.getElementById("gistSyncStatus");
+  if (!pill) return;
+  pill.textContent = statusText;
+  pill.className = `sync-pill ${className || ""}`;
+}
+
+function getFullBudgetPayload() {
+  return {
+    app: "budget-control",
+    exportedAt: new Date().toISOString(),
+    seedVersion,
+    data: {
+      salaryPattern,
+      salaryAnchorMonth,
+      cashEntries,
+      installments,
+      storageAssets,
+      accountBalances,
+      asfJobs,
+      ratesData,
+      irqJobs,
+      creditDues,
+      creditDueMonths,
+      entryActuals,
+      deletedForecasts,
+      archivedEntries,
+      categoryCaps,
+      savingsGoals
+    }
+  };
+}
+
+function applyIncomingDataPayload(incoming) {
+  Object.entries(exportableDataKeys).forEach(([dataKey, storageKey]) => {
+    if (incoming[dataKey] !== undefined) {
+      localStorage.setItem(storageKey, JSON.stringify(incoming[dataKey]));
+    }
+  });
+  localStorage.setItem(keys.salaryMaterialized, "true");
+  localStorage.setItem(keys.seedVersion, seedVersion);
+  location.reload();
+}
+
+async function pushToGist(token, gistId, silent = false) {
+  if (!token || !gistId) {
+    if (!silent) alert("Please enter both a GitHub PAT token and a Gist ID.");
+    return false;
+  }
+
+  updateGistSyncStatus("Syncing...", "syncing");
+
+  try {
+    const payload = getFullBudgetPayload();
+    const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+      method: "PATCH",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Accept": "application/vnd.github+json",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        description: "Budget Control App Backup Data",
+        files: {
+          "budget-data.json": {
+            content: JSON.stringify(payload, null, 2)
+          }
+        }
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || `HTTP ${res.status}`);
+    }
+
+    updateGistSyncStatus("Synced", "synced");
+    const msgEl = document.getElementById("gistSyncMessage");
+    if (msgEl && !silent) {
+      msgEl.style.display = "block";
+      msgEl.style.background = "rgba(31,122,77,0.1)";
+      msgEl.style.color = "var(--green)";
+      msgEl.textContent = "Successfully saved and pushed to GitHub Gist!";
+    }
+    return true;
+  } catch (err) {
+    console.error("Gist push failed:", err);
+    updateGistSyncStatus("Error", "error");
+    if (!silent) {
+      const msgEl = document.getElementById("gistSyncMessage");
+      if (msgEl) {
+        msgEl.style.display = "block";
+        msgEl.style.background = "rgba(184,70,63,0.1)";
+        msgEl.style.color = "var(--red)";
+        msgEl.textContent = `Sync Error: ${err.message}`;
+      }
+    }
+    return false;
+  }
+}
+
+async function pullFromGist(token, gistId, silent = false) {
+  if (!token || !gistId) {
+    if (!silent) alert("Please enter both a GitHub PAT token and a Gist ID.");
+    return false;
+  }
+
+  updateGistSyncStatus("Pulling...", "syncing");
+
+  try {
+    const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Accept": "application/vnd.github+json"
+      }
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || `HTTP ${res.status}`);
+    }
+
+    const gistData = await res.json();
+    const budgetFile = gistData.files && gistData.files["budget-data.json"];
+    if (!budgetFile || !budgetFile.content) {
+      throw new Error("No 'budget-data.json' file found in this Gist.");
+    }
+
+    const payload = JSON.parse(budgetFile.content);
+    const incoming = payload && typeof payload === "object" ? payload.data : null;
+    if (!incoming || typeof incoming !== "object") {
+      throw new Error("Invalid budget data format inside Gist.");
+    }
+
+    applyIncomingDataPayload(incoming);
+    return true;
+  } catch (err) {
+    console.error("Gist pull failed:", err);
+    updateGistSyncStatus("Error", "error");
+    if (!silent) {
+      const msgEl = document.getElementById("gistSyncMessage");
+      if (msgEl) {
+        msgEl.style.display = "block";
+        msgEl.style.background = "rgba(184,70,63,0.1)";
+        msgEl.style.color = "var(--red)";
+        msgEl.textContent = `Pull Error: ${err.message}`;
+      }
+    }
+    return false;
+  }
+}
+
+async function createPrivateGist(token) {
+  if (!token) {
+    alert("Please enter a GitHub Personal Access Token first.");
+    return null;
+  }
+
+  updateGistSyncStatus("Creating...", "syncing");
+
+  try {
+    const payload = getFullBudgetPayload();
+    const res = await fetch("https://api.github.com/gists", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Accept": "application/vnd.github+json",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        description: "Budget Control App Backup Data (Private)",
+        public: false,
+        files: {
+          "budget-data.json": {
+            content: JSON.stringify(payload, null, 2)
+          }
+        }
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || `HTTP ${res.status}`);
+    }
+
+    const created = await res.json();
+    updateGistSyncStatus("Synced", "synced");
+    return created.id;
+  } catch (err) {
+    console.error("Failed to create Gist:", err);
+    updateGistSyncStatus("Error", "error");
+    alert(`Failed to create Gist: ${err.message}`);
+    return null;
+  }
+}
+
+function triggerAutoGistSync() {
+  const { token, gistId, autoSync } = getGistConfig();
+  if (!token || !gistId || !autoSync) {
+    if (token && gistId) {
+      updateGistSyncStatus("Ready", "");
+    } else {
+      updateGistSyncStatus("Setup", "");
+    }
+    return;
+  }
+
+  updateGistSyncStatus("Unsaved", "unsaved");
+  if (gistSyncDebounceTimer) clearTimeout(gistSyncDebounceTimer);
+  gistSyncDebounceTimer = setTimeout(() => {
+    pushToGist(token, gistId, true);
+  }, 2500);
+}
+
+function setupGistSyncEventListeners() {
+  on("gistSyncBtn", "click", () => {
+    const dialog = document.getElementById("gistSyncDialog");
+    if (!dialog) return;
+
+    const { token, gistId, autoSync } = getGistConfig();
+    const tokenInput = document.getElementById("gistTokenInput");
+    const gistIdInput = document.getElementById("gistIdInput");
+    const autoSyncCheckbox = document.getElementById("gistAutoSyncCheckbox");
+    const msgEl = document.getElementById("gistSyncMessage");
+
+    if (tokenInput) tokenInput.value = token;
+    if (gistIdInput) gistIdInput.value = gistId;
+    if (autoSyncCheckbox) autoSyncCheckbox.checked = autoSync;
+    if (msgEl) msgEl.style.display = "none";
+
+    dialog.showModal();
+  });
+
+  on("gistSaveBtn", "click", async () => {
+    const tokenInput = document.getElementById("gistTokenInput");
+    const gistIdInput = document.getElementById("gistIdInput");
+    const autoSyncCheckbox = document.getElementById("gistAutoSyncCheckbox");
+
+    const token = tokenInput ? tokenInput.value.trim() : "";
+    const gistId = gistIdInput ? gistIdInput.value.trim() : "";
+    const autoSync = autoSyncCheckbox ? autoSyncCheckbox.checked : true;
+
+    localStorage.setItem(keys.gistToken, token);
+    localStorage.setItem(keys.gistId, gistId);
+    localStorage.setItem(keys.gistAutoSync, String(autoSync));
+
+    if (!token || !gistId) {
+      alert("Please provide both Personal Access Token and Gist ID, or click 'Auto-Create Gist'.");
+      return;
+    }
+
+    await pushToGist(token, gistId, false);
+  });
+
+  on("gistPullBtn", "click", async () => {
+    const { token, gistId } = getGistConfig();
+    if (!token || !gistId) {
+      alert("Please enter and save your PAT token and Gist ID first.");
+      return;
+    }
+
+    const confirmed = await confirmAction(
+      "Pull Data from GitHub Gist",
+      "This will overwrite all local budget data on this browser with the data stored in your Gist. Continue?",
+      "Pull Data"
+    );
+    if (!confirmed) return;
+
+    await pullFromGist(token, gistId, false);
+  });
+
+  on("gistCreateBtn", "click", async () => {
+    const tokenInput = document.getElementById("gistTokenInput");
+    const token = tokenInput ? tokenInput.value.trim() : "";
+    if (!token) {
+      alert("Please enter your GitHub Personal Access Token first.");
+      return;
+    }
+
+    const createdId = await createPrivateGist(token);
+    if (createdId) {
+      const gistIdInput = document.getElementById("gistIdInput");
+      if (gistIdInput) gistIdInput.value = createdId;
+
+      localStorage.setItem(keys.gistToken, token);
+      localStorage.setItem(keys.gistId, createdId);
+      localStorage.setItem(keys.gistAutoSync, "true");
+
+      const msgEl = document.getElementById("gistSyncMessage");
+      if (msgEl) {
+        msgEl.style.display = "block";
+        msgEl.style.background = "rgba(31,122,77,0.1)";
+        msgEl.style.color = "var(--green)";
+        msgEl.textContent = `Private Gist created successfully! (ID: ${createdId})`;
+      }
+    }
+  });
+
+  on("gistDisconnectBtn", "click", () => {
+    localStorage.removeItem(keys.gistToken);
+    localStorage.removeItem(keys.gistId);
+    localStorage.removeItem(keys.gistAutoSync);
+
+    const tokenInput = document.getElementById("gistTokenInput");
+    const gistIdInput = document.getElementById("gistIdInput");
+    if (tokenInput) tokenInput.value = "";
+    if (gistIdInput) gistIdInput.value = "";
+
+    updateGistSyncStatus("Setup", "");
+
+    const msgEl = document.getElementById("gistSyncMessage");
+    if (msgEl) {
+      msgEl.style.display = "block";
+      msgEl.style.background = "rgba(164,106,24,0.1)";
+      msgEl.style.color = "var(--amber)";
+      msgEl.textContent = "Disconnected from GitHub Gist.";
+    }
+  });
+}
+
+function initGistSync() {
+  const { token, gistId } = getGistConfig();
+  if (token && gistId) {
+    updateGistSyncStatus("Synced", "synced");
+  } else {
+    updateGistSyncStatus("Setup", "");
+  }
+}
+
 function initApp() {
   try {
     initTheme();
@@ -2743,6 +3096,7 @@ function initApp() {
     updateUndoResetVisibility();
     setupEventListeners();
     renderAll();
+    initGistSync();
   } catch (e) {
     console.error("Error during app initialization:", e);
   }

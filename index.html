@@ -35,6 +35,7 @@
         </div>
         <div class="top-actions">
           <button class="ghost-button" id="themeToggle" type="button" aria-label="Toggle theme">🌙 Dark mode</button>
+          <button class="ghost-button" id="gistSyncBtn" type="button" title="Configure Cloud Sync">☁️ Sync <span class="sync-pill" id="gistSyncStatus">Setup</span></button>
           <button class="ghost-button" id="exportCSV" type="button">Export CSV</button>
           <button class="ghost-button" id="exportData" type="button">Export JSON</button>
           <button class="ghost-button" id="importData" type="button">Import JSON</button>
@@ -720,6 +721,47 @@
         <div class="dialog-actions">
           <button class="ghost-button" value="cancel" formnovalidate type="submit">Cancel</button>
           <button class="primary-button" value="save" type="submit">Save rate</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="gistSyncDialog">
+      <div class="dialog-heading">
+        <h3>☁️ GitHub Gist Cloud Sync</h3>
+        <button class="icon-button" type="button" onclick="document.getElementById('gistSyncDialog').close()">x</button>
+      </div>
+      <p style="margin: 8px 0 16px; color: var(--muted); font-size: 13px; line-height: 1.5;">
+        Sync your budget data across all your devices using a private GitHub Gist.
+      </p>
+      <form id="gistSyncForm" style="display: flex; flex-direction: column; gap: 14px;">
+        <label>
+          GitHub Personal Access Token (PAT)
+          <input type="password" id="gistTokenInput" placeholder="ghp_xxxxxxxxxxxx or github_pat_xxxx" autocomplete="off">
+          <small style="color: var(--muted); display: block; margin-top: 4px;">
+            Need a token? Go to GitHub Settings &rarr; Developer Settings &rarr; Personal access tokens &rarr; Generate new token (check 'gist' scope).
+          </small>
+        </label>
+        <label>
+          Gist ID
+          <input type="text" id="gistIdInput" placeholder="e.g. 8a3f90b1c2d3e4f5..." autocomplete="off">
+          <small style="color: var(--muted); display: block; margin-top: 4px;">
+            Leave blank and click "Auto-Create Gist" below if you don't have one yet.
+          </small>
+        </label>
+        <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; cursor: pointer;">
+          <input type="checkbox" id="gistAutoSyncCheckbox" checked>
+          <span>Auto-sync changes to cloud in background</span>
+        </label>
+        <div id="gistSyncMessage" style="font-size: 13px; display: none; padding: 10px; border-radius: 6px;"></div>
+        <div class="dialog-actions" style="flex-wrap: wrap; gap: 8px; justify-content: space-between; margin-top: 8px;">
+          <div style="display: flex; gap: 8px;">
+            <button class="ghost-button" id="gistCreateBtn" type="button">Auto-Create Gist</button>
+            <button class="ghost-button" id="gistDisconnectBtn" type="button" style="color: var(--red);">Disconnect</button>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button class="ghost-button" id="gistPullBtn" type="button">Pull from Cloud</button>
+            <button class="primary-button" id="gistSaveBtn" type="button">Save & Push</button>
+          </div>
         </div>
       </form>
     </dialog>
