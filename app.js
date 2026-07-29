@@ -2794,20 +2794,63 @@ function getFullBudgetPayload() {
 }
 
 function applyIncomingDataPayload(incoming) {
+  if (!incoming || typeof incoming !== "object") return;
+  let updatedAny = false;
+
   Object.entries(exportableDataKeys).forEach(([dataKey, storageKey]) => {
     if (incoming[dataKey] !== undefined) {
-      localStorage.setItem(storageKey, JSON.stringify(incoming[dataKey]));
+      const currentVal = localStorage.getItem(storageKey);
+      const incomingVal = JSON.stringify(incoming[dataKey]);
+      if (currentVal !== incomingVal) {
+        localStorage.setItem(storageKey, incomingVal);
+        updatedAny = true;
+      }
     }
   });
-  localStorage.setItem(keys.salaryMaterialized, "true");
-  localStorage.setItem(keys.seedVersion, seedVersion);
-  location.reload();
+
+  if (updatedAny) {
+    localStorage.setItem(keys.salaryMaterialized, "true");
+    localStorage.setItem(keys.seedVersion, seedVersion);
+    location.reload();
+  }
 }
 
-async function pushToGist(token, gistId, silent = false) {
+async function pushToGist(token, gistId, silent = false, force = false) {
   if (!token || !gistId) {
     if (!silent) alert("Please enter both a GitHub PAT token and a Gist ID.");
     return false;
+  }
+
+  // Safety check: Avoid overwriting cloud data with empty local state unless explicitly forced
+  const localHasData = cashEntries.length > 0 || installments.length > 0 || storageAssets.length > 0;
+  if (!localHasData && !force) {
+    try {
+      const checkRes = await fetch(`https://api.github.com/gists/${gistId}`, {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Accept": "application/vnd.github+json"
+        }
+      });
+      if (checkRes.ok) {
+        const gistData = await checkRes.json();
+        const budgetFile = gistData.files && gistData.files["budget-data.json"];
+        if (budgetFile && budgetFile.content) {
+          const payload = JSON.parse(budgetFile.content);
+          const incoming = payload && typeof payload === "object" ? (payload.data || payload) : null;
+          const cloudHasData = incoming && (
+            (incoming.cashEntries && incoming.cashEntries.length > 0) ||
+            (incoming.installments && incoming.installments.length > 0) ||
+            (incoming.storageAssets && incoming.storageAssets.length > 0)
+          );
+          if (cloudHasData) {
+            console.log("Cloud Gist contains data while local browser is empty. Pulling cloud data.");
+            return await pullFromGist(token, gistId, silent);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Safety check failed, proceeding:", e);
+    }
   }
 
   updateGistSyncStatus("Syncing...", "syncing");
@@ -2889,12 +2932,13 @@ async function pullFromGist(token, gistId, silent = false) {
     }
 
     const payload = JSON.parse(budgetFile.content);
-    const incoming = payload && typeof payload === "object" ? payload.data : null;
+    const incoming = payload && typeof payload === "object" ? (payload.data || payload) : null;
     if (!incoming || typeof incoming !== "object") {
       throw new Error("Invalid budget data format inside Gist.");
     }
 
     applyIncomingDataPayload(incoming);
+    updateGistSyncStatus("Synced", "synced");
     return true;
   } catch (err) {
     console.error("Gist pull failed:", err);
@@ -3011,15 +3055,8 @@ function setupGistSyncEventListeners() {
     localStorage.setItem(keys.gistId, gistId);
     localStorage.setItem(keys.gistAutoSync, String(autoSync));
 
-    // If local state is empty (e.g. initial setup on new device/browser), pull from Gist first!
-    if (!cashEntries.length && !installments.length && !storageAssets.length) {
-      const pulled = await pullFromGist(token, gistId, false);
-      if (!pulled) {
-        await pushToGist(token, gistId, false);
-      }
-    } else {
-      await pushToGist(token, gistId, false);
-    }
+    // Pull cloud data immediately when connecting
+    await pullFromGist(token, gistId, false);
   });
 
   on("gistShareBtn", "click", (e) => {
@@ -3084,13 +3121,6 @@ function setupGistSyncEventListeners() {
       return;
     }
 
-    const confirmed = await confirmAction(
-      "Pull Data from GitHub Gist",
-      "This will overwrite all local budget data on this browser with the data stored in your Gist. Continue?",
-      "Pull Data"
-    );
-    if (!confirmed) return;
-
     await pullFromGist(token, gistId, false);
   });
 
@@ -3125,6 +3155,7 @@ function setupGistSyncEventListeners() {
     localStorage.removeItem(keys.gistToken);
     localStorage.removeItem(keys.gistId);
     localStorage.removeItem(keys.gistAutoSync);
+    sessionStorage.removeItem("gist_auto_pulled");
 
     const tokenInput = document.getElementById("gistTokenInput");
     const gistIdInput = document.getElementById("gistIdInput");
@@ -3178,6 +3209,11 @@ function initGistSync() {
   const { token, gistId } = getGistConfig();
   if (token && gistId) {
     updateGistSyncStatus("Synced", "synced");
+    // Automatically pull latest data from Gist on startup (once per session tab)
+    if (!sessionStorage.getItem("gist_auto_pulled")) {
+      sessionStorage.setItem("gist_auto_pulled", "true");
+      pullFromGist(token, gistId, true);
+    }
   } else {
     updateGistSyncStatus("Setup", "");
   }
