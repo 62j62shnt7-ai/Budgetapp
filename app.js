@@ -3002,16 +3002,51 @@ function setupGistSyncEventListeners() {
     const gistId = gistIdInput ? gistIdInput.value.trim() : "";
     const autoSync = autoSyncCheckbox ? autoSyncCheckbox.checked : true;
 
-    localStorage.setItem(keys.gistToken, token);
-    localStorage.setItem(keys.gistId, gistId);
-    localStorage.setItem(keys.gistAutoSync, String(autoSync));
-
     if (!token || !gistId) {
       alert("Please provide both Personal Access Token and Gist ID, or click 'Auto-Create Gist'.");
       return;
     }
 
-    await pushToGist(token, gistId, false);
+    localStorage.setItem(keys.gistToken, token);
+    localStorage.setItem(keys.gistId, gistId);
+    localStorage.setItem(keys.gistAutoSync, String(autoSync));
+
+    // If local state is empty (e.g. initial setup on new device/browser), pull from Gist first!
+    if (!cashEntries.length && !installments.length && !storageAssets.length) {
+      const pulled = await pullFromGist(token, gistId, false);
+      if (!pulled) {
+        await pushToGist(token, gistId, false);
+      }
+    } else {
+      await pushToGist(token, gistId, false);
+    }
+  });
+
+  on("gistShareBtn", "click", () => {
+    const gistIdInput = document.getElementById("gistIdInput");
+    const gistId = (gistIdInput ? gistIdInput.value.trim() : "") || getGistConfig().gistId;
+
+    if (!gistId) {
+      alert("No Gist ID found. Please create or enter a Gist ID first.");
+      return;
+    }
+
+    const shareUrl = `${window.location.origin}${window.location.pathname}#gist=${encodeURIComponent(gistId)}`;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(shareUrl).then(() => {
+        const msgEl = document.getElementById("gistSyncMessage");
+        if (msgEl) {
+          msgEl.style.display = "block";
+          msgEl.style.background = "rgba(31,122,77,0.1)";
+          msgEl.style.color = "var(--green)";
+          msgEl.textContent = "🔗 Sync Link copied! Open this link on your other device to connect easily.";
+        }
+      }).catch(() => {
+        prompt("Copy this Sync Link for your other devices:", shareUrl);
+      });
+    } else {
+      prompt("Copy this Sync Link for your other devices:", shareUrl);
+    }
   });
 
   on("gistPullBtn", "click", async () => {
@@ -3081,6 +3116,37 @@ function setupGistSyncEventListeners() {
 }
 
 function initGistSync() {
+  // Auto-detect Gist ID from URL hash (e.g. #gist=xxxx)
+  if (window.location.hash) {
+    const hashParams = new URLSearchParams(window.location.hash.slice(1));
+    const urlGistId = hashParams.get("gist");
+    if (urlGistId) {
+      localStorage.setItem(keys.gistId, urlGistId.trim());
+      history.replaceState(null, "", window.location.pathname + window.location.search);
+
+      setTimeout(() => {
+        const dialog = document.getElementById("gistSyncDialog");
+        if (dialog) {
+          const tokenInput = document.getElementById("gistTokenInput");
+          const gistIdInput = document.getElementById("gistIdInput");
+          const msgEl = document.getElementById("gistSyncMessage");
+
+          if (gistIdInput) gistIdInput.value = urlGistId.trim();
+          const { token } = getGistConfig();
+          if (tokenInput) tokenInput.value = token;
+
+          if (msgEl) {
+            msgEl.style.display = "block";
+            msgEl.style.background = "rgba(47,95,159,0.1)";
+            msgEl.style.color = "var(--blue)";
+            msgEl.textContent = "Gist ID detected from Sync Link! Enter your GitHub PAT token to connect.";
+          }
+          dialog.showModal();
+        }
+      }, 300);
+    }
+  }
+
   const { token, gistId } = getGistConfig();
   if (token && gistId) {
     updateGistSyncStatus("Synced", "synced");
