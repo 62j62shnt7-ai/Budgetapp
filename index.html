@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title>Budget Control</title>
-    <link rel="stylesheet" href="styles.css?v=5">
+    <link rel="stylesheet" href="styles.css?v=6">
   </head>
   <body>
     <aside class="sidebar">
@@ -737,16 +737,19 @@
       <form id="gistSyncForm" style="display: flex; flex-direction: column; gap: 14px;">
         <label>
           GitHub Personal Access Token (PAT)
-          <input type="password" id="gistTokenInput" placeholder="ghp_xxxxxxxxxxxx or github_pat_xxxx" autocomplete="off">
+          <div style="display: flex; gap: 8px; margin-top: 4px;">
+            <input type="password" id="gistTokenInput" placeholder="ghp_xxxxxxxxxxxx or github_pat_xxxx" autocomplete="off" style="flex: 1;">
+            <button class="ghost-button" id="gistFindBtn" type="button" style="white-space: nowrap;">🔍 Find My Gist</button>
+          </div>
           <small style="color: var(--muted); display: block; margin-top: 4px;">
-            Need a token? Go to GitHub Settings &rarr; Developer Settings &rarr; Personal access tokens &rarr; Generate new token (check 'gist' scope).
+            Need a token? Go to GitHub Settings &rarr; Developer Settings &rarr; Personal access tokens (check 'gist' scope).
           </small>
         </label>
         <label>
           Gist ID
-          <input type="text" id="gistIdInput" placeholder="e.g. 8a3f90b1c2d3e4f5..." autocomplete="off">
+          <input type="text" id="gistIdInput" placeholder="Auto-filled when clicking 'Find My Gist'..." autocomplete="off">
           <small style="color: var(--muted); display: block; margin-top: 4px;">
-            Already have a Gist? Paste your Gist ID here. If new, click "Auto-Create Gist".
+            Already have a Gist ID? Paste it here or click "Find My Gist" above.
           </small>
         </label>
         <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; cursor: pointer;">
@@ -787,6 +790,6 @@
       </div>
     </dialog>
 
-    <script src="app.js?v=5"></script>
+    <script src="app.js?v=6"></script>
   </body>
 </html>

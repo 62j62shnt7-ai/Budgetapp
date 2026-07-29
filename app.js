@@ -3046,6 +3046,31 @@ async function pullFromGist(token, gistId, silent = false) {
   }
 }
 
+async function findUserGists(token) {
+  if (!token) return [];
+  try {
+    const res = await fetch("https://api.github.com/gists?per_page=100", {
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Accept": "application/vnd.github+json"
+      }
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || `HTTP ${res.status}`);
+    }
+    const gists = await res.json();
+    return gists.filter((g) => {
+      if (!g.files) return false;
+      const fileNames = Object.keys(g.files);
+      return fileNames.some((name) => name === "budget-data.json" || name.includes("budget"));
+    });
+  } catch (e) {
+    console.error("Failed to fetch user Gists:", e);
+    throw e;
+  }
+}
+
 async function createPrivateGist(token) {
   if (!token) {
     alert("Please enter a GitHub Personal Access Token first.");
@@ -3127,6 +3152,62 @@ function setupGistSyncEventListeners() {
     dialog.showModal();
     if (token && gistId) {
       inspectGistData();
+    }
+  });
+
+  on("gistFindBtn", "click", async () => {
+    const tokenInput = document.getElementById("gistTokenInput");
+    const token = tokenInput ? tokenInput.value.trim() : "";
+    const msgEl = document.getElementById("gistSyncMessage");
+
+    if (!token) {
+      alert("Please paste your GitHub Personal Access Token (PAT) first.");
+      return;
+    }
+
+    if (msgEl) {
+      msgEl.style.display = "block";
+      msgEl.style.background = "rgba(47,95,159,0.1)";
+      msgEl.style.color = "var(--blue)";
+      msgEl.textContent = "🔍 Searching your GitHub account for your existing budget Gists...";
+    }
+
+    try {
+      const foundGists = await findUserGists(token);
+      if (foundGists.length === 0) {
+        if (msgEl) {
+          msgEl.style.display = "block";
+          msgEl.style.background = "rgba(164,106,24,0.1)";
+          msgEl.style.color = "var(--amber)";
+          msgEl.textContent = "No existing budget Gist found under this token. Click 'Auto-Create Gist' below to create one!";
+        }
+        return;
+      }
+
+      const bestGist = foundGists[0];
+      const gistIdInput = document.getElementById("gistIdInput");
+      if (gistIdInput) gistIdInput.value = bestGist.id;
+
+      localStorage.setItem(keys.gistToken, token);
+      localStorage.setItem(keys.gistId, bestGist.id);
+      localStorage.setItem(keys.gistAutoSync, "true");
+
+      if (msgEl) {
+        msgEl.style.display = "block";
+        msgEl.style.background = "rgba(31,122,77,0.1)";
+        msgEl.style.color = "var(--green)";
+        msgEl.textContent = `Found your Cloud Gist (ID: ${bestGist.id})! Downloading your data now...`;
+      }
+
+      await inspectGistData();
+      await pullFromGist(token, bestGist.id, false);
+    } catch (err) {
+      if (msgEl) {
+        msgEl.style.display = "block";
+        msgEl.style.background = "rgba(184,70,63,0.1)";
+        msgEl.style.color = "var(--red)";
+        msgEl.textContent = `Error searching Gists: ${err.message}. Make sure your token has 'gist' permission.`;
+      }
     }
   });
 
