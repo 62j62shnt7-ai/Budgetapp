@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title>Budget Control</title>
-    <link rel="stylesheet" href="styles.css?v=4">
+    <link rel="stylesheet" href="styles.css?v=5">
   </head>
   <body>
     <aside class="sidebar">
@@ -753,6 +753,13 @@
           <input type="checkbox" id="gistAutoSyncCheckbox" checked>
           <span>Auto-sync changes to cloud in background</span>
         </label>
+        <div id="gistInspectorBox" style="display: none; background: var(--surface-soft); padding: 12px; border-radius: 8px; border: 1px solid var(--line); font-size: 12px; line-height: 1.6;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <strong style="color: var(--ink);">☁️ Cloud Gist Status</strong>
+            <button class="ghost-button" id="gistInspectBtn" type="button" style="padding: 2px 8px; font-size: 11px;">🔍 Check Cloud Data</button>
+          </div>
+          <div id="gistInspectorDetails" style="color: var(--muted);">Click "Check Cloud Data" to inspect what's currently saved in your Gist.</div>
+        </div>
         <div id="gistSyncMessage" style="font-size: 13px; display: none; padding: 10px; border-radius: 6px;"></div>
         <div class="dialog-actions" style="flex-wrap: wrap; gap: 8px; justify-content: space-between; margin-top: 8px;">
           <div style="display: flex; gap: 8px; flex-wrap: wrap;">
@@ -760,9 +767,9 @@
             <button class="ghost-button" id="gistShareBtn" type="button" title="Copy URL link with Gist ID for easy setup on other devices">🔗 Copy Sync Link</button>
             <button class="ghost-button" id="gistDisconnectBtn" type="button" style="color: var(--red);">Disconnect</button>
           </div>
-          <div style="display: flex; gap: 8px;">
-            <button class="ghost-button" id="gistPullBtn" type="button">Pull from Cloud</button>
-            <button class="primary-button" id="gistSaveBtn" type="button">Save & Connect</button>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button class="ghost-button" id="gistPullBtn" type="button" title="Download Cloud data to this browser">⬇️ Download Cloud Data</button>
+            <button class="primary-button" id="gistPushBtn" type="button" title="Upload this browser's data to Cloud">⬆️ Upload Local Data</button>
           </div>
         </div>
       </form>
@@ -780,6 +787,6 @@
       </div>
     </dialog>
 
-    <script src="app.js?v=4"></script>
+    <script src="app.js?v=5"></script>
   </body>
 </html>

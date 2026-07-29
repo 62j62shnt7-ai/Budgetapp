@@ -2904,6 +2904,96 @@ async function pushToGist(token, gistId, silent = false, force = false) {
   }
 }
 
+function findBudgetFileInGist(gistFiles) {
+  if (!gistFiles) return null;
+  if (gistFiles["budget-data.json"]) return gistFiles["budget-data.json"];
+  const fileKeys = Object.keys(gistFiles);
+  const jsonKey = fileKeys.find((k) => k.endsWith(".json"));
+  if (jsonKey) return gistFiles[jsonKey];
+  if (fileKeys.length > 0) return gistFiles[fileKeys[0]];
+  return null;
+}
+
+async function inspectGistData() {
+  const tokenInput = document.getElementById("gistTokenInput");
+  const gistIdInput = document.getElementById("gistIdInput");
+  const token = (tokenInput ? tokenInput.value.trim() : "") || getGistConfig().token;
+  const gistId = (gistIdInput ? gistIdInput.value.trim() : "") || getGistConfig().gistId;
+  const inspectorBox = document.getElementById("gistInspectorBox");
+  const detailsEl = document.getElementById("gistInspectorDetails");
+
+  if (!inspectorBox || !detailsEl) return;
+  inspectorBox.style.display = "block";
+
+  if (!token || !gistId) {
+    detailsEl.style.color = "var(--amber)";
+    detailsEl.textContent = "Please enter both Personal Access Token and Gist ID above first.";
+    return;
+  }
+
+  detailsEl.style.color = "var(--muted)";
+  detailsEl.textContent = "Fetching Gist status from GitHub API...";
+
+  try {
+    const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Accept": "application/vnd.github+json"
+      }
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || `HTTP ${res.status}`);
+    }
+
+    const gistData = await res.json();
+    const budgetFile = findBudgetFileInGist(gistData.files);
+
+    if (!budgetFile || !budgetFile.content) {
+      detailsEl.style.color = "var(--red)";
+      detailsEl.textContent = "⚠️ Gist found, but contains no valid budget JSON file.";
+      return;
+    }
+
+    let payload;
+    try {
+      payload = JSON.parse(budgetFile.content);
+    } catch (e) {
+      detailsEl.style.color = "var(--red)";
+      detailsEl.textContent = "⚠️ Gist file found, but JSON parsing failed.";
+      return;
+    }
+
+    const incoming = payload && typeof payload === "object" ? (payload.data || payload) : null;
+    if (!incoming || typeof incoming !== "object") {
+      detailsEl.style.color = "var(--red)";
+      detailsEl.textContent = "⚠️ Gist JSON structure does not match Budget Control format.";
+      return;
+    }
+
+    const cashCount = Array.isArray(incoming.cashEntries) ? incoming.cashEntries.length : 0;
+    const installmentsCount = Array.isArray(incoming.installments) ? incoming.installments.length : 0;
+    const storageCount = Array.isArray(incoming.storageAssets) ? incoming.storageAssets.length : 0;
+    const exportTime = payload.exportedAt ? new Date(payload.exportedAt).toLocaleString() : "Unknown date";
+
+    detailsEl.style.color = "var(--ink)";
+    detailsEl.innerHTML = `
+      <ul style="margin: 4px 0 0; padding-left: 18px;">
+        <li><strong>File Name:</strong> ${escapeHtml(budgetFile.filename || "budget-data.json")} (${(budgetFile.size / 1024).toFixed(1)} KB)</li>
+        <li><strong>Export Date:</strong> ${escapeHtml(exportTime)}</li>
+        <li><strong>Cashflow Entries:</strong> ${cashCount} entries</li>
+        <li><strong>Installments:</strong> ${installmentsCount} items</li>
+        <li><strong>Storage Assets:</strong> ${storageCount} items</li>
+      </ul>
+    `;
+  } catch (err) {
+    console.error("Gist inspection failed:", err);
+    detailsEl.style.color = "var(--red)";
+    detailsEl.textContent = `Error connecting to Gist: ${err.message}`;
+  }
+}
+
 async function pullFromGist(token, gistId, silent = false) {
   if (!token || !gistId) {
     if (!silent) alert("Please enter both a GitHub PAT token and a Gist ID.");
@@ -2926,9 +3016,9 @@ async function pullFromGist(token, gistId, silent = false) {
     }
 
     const gistData = await res.json();
-    const budgetFile = gistData.files && gistData.files["budget-data.json"];
+    const budgetFile = findBudgetFileInGist(gistData.files);
     if (!budgetFile || !budgetFile.content) {
-      throw new Error("No 'budget-data.json' file found in this Gist.");
+      throw new Error("No valid JSON file found in this Gist.");
     }
 
     const payload = JSON.parse(budgetFile.content);
@@ -3035,9 +3125,16 @@ function setupGistSyncEventListeners() {
     if (msgEl) msgEl.style.display = "none";
 
     dialog.showModal();
+    if (token && gistId) {
+      inspectGistData();
+    }
   });
 
-  on("gistSaveBtn", "click", async () => {
+  on("gistInspectBtn", "click", () => {
+    inspectGistData();
+  });
+
+  on("gistPushBtn", "click", async () => {
     const tokenInput = document.getElementById("gistTokenInput");
     const gistIdInput = document.getElementById("gistIdInput");
     const autoSyncCheckbox = document.getElementById("gistAutoSyncCheckbox");
@@ -3055,8 +3152,14 @@ function setupGistSyncEventListeners() {
     localStorage.setItem(keys.gistId, gistId);
     localStorage.setItem(keys.gistAutoSync, String(autoSync));
 
-    // Pull cloud data immediately when connecting
-    await pullFromGist(token, gistId, false);
+    const confirmed = await confirmAction(
+      "Upload Local Data to GitHub Gist",
+      "This will replace the budget data stored in your GitHub Gist with the current data in this browser. Continue?",
+      "Upload Data"
+    );
+    if (!confirmed) return;
+
+    await pushToGist(token, gistId, false, true);
   });
 
   on("gistShareBtn", "click", (e) => {
