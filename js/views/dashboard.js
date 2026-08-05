@@ -30,25 +30,33 @@ export function renderDashboard() {
   const storageTotal = storageAssets.reduce((sum, item) => sum + storageValue(item), 0);
   const creditEntries = creditDueEntries();
   const getRemainingCredit = (id) => {
-    const baseDue = getCreditDueAmount(id);
+    const accountKey = (id || "").toLowerCase();
     const selectedMonth = getCreditDueMonthForAccount(id);
-    const monthEntry = creditEntries.find(
-      (e) => (e.account || "").toLowerCase() === id.toLowerCase() && DateUtils.getMonthKey(e.date) === selectedMonth
-    );
-    const actualPaid = monthEntry ? getEntryActualAmount(monthEntry) : 0;
-    const manualPaid = cashEntries
-      .filter((entry) => {
-        if (entry.type !== "expense") return false;
-        const cType = (entry.creditType || "").toLowerCase();
-        if (cType !== id.toLowerCase()) return false;
-        if (entry.date && selectedMonth) {
-          return DateUtils.getMonthKey(entry.date) === selectedMonth;
-        }
-        return true;
-      })
-      .reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
 
-    return Math.max(0, baseDue - actualPaid - manualPaid);
+    const baseDue = getCreditDueAmount(id);
+
+    const manualCreditEntries = cashEntries.filter(
+      (entry) => entry.type === "expense" && (entry.creditType || "").toLowerCase() === accountKey
+    );
+
+    const activeManualEntries = manualCreditEntries.filter((entry) => {
+      if (entry.date && selectedMonth) {
+        return DateUtils.getMonthKey(entry.date) === selectedMonth;
+      }
+      return true;
+    });
+
+    const totalPlannedDue = baseDue + activeManualEntries.reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+
+    const monthRecurringEntry = creditEntries.find(
+      (e) => (e.account || "").toLowerCase() === accountKey && DateUtils.getMonthKey(e.date) === selectedMonth
+    );
+    const recurringActualPaid = monthRecurringEntry ? getEntryActualAmount(monthRecurringEntry) : 0;
+    const manualActualPaid = activeManualEntries.reduce((sum, entry) => sum + getEntryActualAmount(entry), 0);
+
+    const totalPaid = recurringActualPaid + manualActualPaid;
+
+    return Math.max(0, totalPlannedDue - totalPaid);
   };
 
   const cibCredit = getRemainingCredit("cib");
