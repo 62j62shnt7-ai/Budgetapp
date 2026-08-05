@@ -540,6 +540,31 @@ function getCreditDueAmount(id) {
   return (creditDues[id] && creditDues[id][monthKey]) || 0;
 }
 
+function getRemainingCreditDueAmount(id) {
+  const baseDue = getCreditDueAmount(id);
+  const selectedMonth = getCreditDueMonthForAccount(id);
+
+  const creditEntries = creditDueEntries();
+  const monthEntry = creditEntries.find(
+    (e) => (e.account || "").toLowerCase() === id.toLowerCase() && DateUtils.getMonthKey(e.date) === selectedMonth
+  );
+  const actualPaid = monthEntry ? getEntryActualAmount(monthEntry) : 0;
+
+  const manualPaid = cashEntries
+    .filter((entry) => {
+      if (entry.type !== "expense") return false;
+      const cType = (entry.creditType || "").toLowerCase();
+      if (cType !== id.toLowerCase()) return false;
+      if (entry.date && selectedMonth) {
+        return DateUtils.getMonthKey(entry.date) === selectedMonth;
+      }
+      return true;
+    })
+    .reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+
+  return Math.max(0, baseDue - actualPaid - manualPaid);
+}
+
 // --- Foreign Exchange Conversion Helper ---
 function getCurrencyRate(code) {
   if (!code || code.toUpperCase() === "EGP") return 1;
@@ -645,18 +670,9 @@ function renderDashboard() {
   const storageTotal = storageAssets.reduce((sum, item) => sum + storageValue(item), 0);
   const totalNetWorth = actualCashNow + storageTotal;
 
-  const cibCredit = getCreditDueAmount("cib");
-  const hsbcCredit = getCreditDueAmount("hsbc");
+  const cibCredit = getRemainingCreditDueAmount("cib");
+  const hsbcCredit = getRemainingCreditDueAmount("hsbc");
   const totalCreditDue = cibCredit + hsbcCredit;
-  const manualCreditExpenses = cashEntries.filter(
-    (entry) => entry.type === "expense" && ["cib", "hsbc"].includes((entry.creditType || "").toLowerCase())
-  );
-  const manualCibCredit = manualCreditExpenses
-    .filter((entry) => (entry.creditType || "").toLowerCase() === "cib")
-    .reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
-  const manualHsbcCredit = manualCreditExpenses
-    .filter((entry) => (entry.creditType || "").toLowerCase() === "hsbc")
-    .reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
 
   // Financial Analytics metrics
   const netWorthEl = document.getElementById("totalNetWorth");
@@ -676,10 +692,10 @@ function renderDashboard() {
   if (actualCashEl) actualCashEl.textContent = money(actualCashNow);
 
   const cibCreditEl = document.getElementById("cibCreditDue");
-  if (cibCreditEl) cibCreditEl.textContent = money(cibCredit + manualCibCredit);
+  if (cibCreditEl) cibCreditEl.textContent = money(cibCredit);
 
   const hsbcCreditEl = document.getElementById("hsbcCreditDue");
-  if (hsbcCreditEl) hsbcCreditEl.textContent = money(hsbcCredit + manualHsbcCredit);
+  if (hsbcCreditEl) hsbcCreditEl.textContent = money(hsbcCredit);
 
   const storageTotalEl = document.getElementById("storageTotal");
   if (storageTotalEl) storageTotalEl.textContent = money(storageTotal);

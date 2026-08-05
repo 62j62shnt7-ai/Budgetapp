@@ -7,6 +7,9 @@ import {
   storageAssets,
   cashEntries,
   getCreditDueAmount,
+  getCreditDueMonthForAccount,
+  creditDueEntries,
+  getEntryActualAmount,
   renderDeficitBanner,
   renderDeficits,
   getDeficitSummary
@@ -25,18 +28,32 @@ export function renderDashboard() {
     { month: forecastStartMonth, balance: totalOpeningBalance }
   );
   const storageTotal = storageAssets.reduce((sum, item) => sum + storageValue(item), 0);
-  const cibCredit = getCreditDueAmount("cib");
-  const hsbcCredit = getCreditDueAmount("hsbc");
+  const creditEntries = creditDueEntries();
+  const getRemainingCredit = (id) => {
+    const baseDue = getCreditDueAmount(id);
+    const selectedMonth = getCreditDueMonthForAccount(id);
+    const monthEntry = creditEntries.find(
+      (e) => (e.account || "").toLowerCase() === id.toLowerCase() && DateUtils.getMonthKey(e.date) === selectedMonth
+    );
+    const actualPaid = monthEntry ? getEntryActualAmount(monthEntry) : 0;
+    const manualPaid = cashEntries
+      .filter((entry) => {
+        if (entry.type !== "expense") return false;
+        const cType = (entry.creditType || "").toLowerCase();
+        if (cType !== id.toLowerCase()) return false;
+        if (entry.date && selectedMonth) {
+          return DateUtils.getMonthKey(entry.date) === selectedMonth;
+        }
+        return true;
+      })
+      .reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+
+    return Math.max(0, baseDue - actualPaid - manualPaid);
+  };
+
+  const cibCredit = getRemainingCredit("cib");
+  const hsbcCredit = getRemainingCredit("hsbc");
   const totalCreditDue = cibCredit + hsbcCredit;
-  const manualCreditExpenses = cashEntries.filter(
-    (entry) => entry.type === "expense" && ["cib", "hsbc"].includes((entry.creditType || "").toLowerCase())
-  );
-  const manualCibCredit = manualCreditExpenses
-    .filter((entry) => (entry.creditType || "").toLowerCase() === "cib")
-    .reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
-  const manualHsbcCredit = manualCreditExpenses
-    .filter((entry) => (entry.creditType || "").toLowerCase() === "hsbc")
-    .reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
 
   const cashBalanceEl = document.getElementById("cashBalance");
   if (cashBalanceEl) cashBalanceEl.textContent = money(currentCash);
@@ -45,13 +62,13 @@ export function renderDashboard() {
   if (actualCashEl) actualCashEl.textContent = money(actualCashNow);
 
   const cibCreditEl = document.getElementById("cibCreditDue");
-  if (cibCreditEl) cibCreditEl.textContent = money(cibCredit + manualCibCredit);
+  if (cibCreditEl) cibCreditEl.textContent = money(cibCredit);
 
   const hsbcCreditEl = document.getElementById("hsbcCreditDue");
-  if (hsbcCreditEl) hsbcCreditEl.textContent = money(hsbcCredit + manualHsbcCredit);
+  if (hsbcCreditEl) hsbcCreditEl.textContent = money(hsbcCredit);
 
   const creditDueTotalEl = document.getElementById("creditDueTotal");
-  if (creditDueTotalEl) creditDueTotalEl.textContent = money(totalCreditDue + manualCibCredit + manualHsbcCredit);
+  if (creditDueTotalEl) creditDueTotalEl.textContent = money(totalCreditDue);
 
   const storageTotalEl = document.getElementById("storageTotal");
   if (storageTotalEl) storageTotalEl.textContent = money(storageTotal);

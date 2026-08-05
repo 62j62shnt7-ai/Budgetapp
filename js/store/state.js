@@ -236,10 +236,37 @@ export function creditDueEntries() {
         type: "expense",
         amount: Number(amount),
         source: "recurring credit"
-      });
     });
   });
   return entries;
+}
+
+export function getSavedCreditDueMonths(id) {
+  return Object.keys(creditDues[id] || {}).sort();
+}
+
+export function getDefaultCreditDueMonth() {
+  const today = new Date();
+  const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+  return DateUtils.getMonthKey(DateUtils.formatDate(nextMonth.getFullYear(), nextMonth.getMonth() + 1, nextMonth.getDate()));
+}
+
+export function getCreditDueMonthForAccount(id) {
+  const savedMonths = getSavedCreditDueMonths(id);
+  if (creditDueMonths[id] && savedMonths.includes(creditDueMonths[id])) {
+    return creditDueMonths[id];
+  }
+  if (savedMonths.length) {
+    creditDueMonths[id] = savedMonths[0];
+    saveSetting(keys.creditDueMonths, creditDueMonths);
+    return savedMonths[0];
+  }
+  return getDefaultCreditDueMonth();
+}
+
+export function getCreditDueAmount(id) {
+  const monthKey = getCreditDueMonthForAccount(id);
+  return (creditDues[id] && creditDues[id][monthKey]) || 0;
 }
 
 export function getEntryId(entry) {
