@@ -246,9 +246,7 @@ export function getSavedCreditDueMonths(id) {
 }
 
 export function getDefaultCreditDueMonth() {
-  const today = new Date();
-  const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-  return DateUtils.getMonthKey(DateUtils.formatDate(nextMonth.getFullYear(), nextMonth.getMonth() + 1, nextMonth.getDate()));
+  return DateUtils.currentYearMonth();
 }
 
 export function getCreditDueMonthForAccount(id) {
