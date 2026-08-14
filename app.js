@@ -675,12 +675,12 @@ function syncStorageRates() {
 // --- View Renderers ---
 function renderDashboard() {
   const entries = forecastEntries();
-  const { forecast, lowestPoint } = getDetailedForecastTimeline(entries);
+  const forecast = calculateForecast(entries);
 
   const actualCashNow = Object.values(accountBalances).reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
   const totalOpeningBalance = Object.values(accountBalances).reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
   const currentCash = forecast.length ? forecast[forecast.length - 1].balance : totalOpeningBalance;
-  const lowPoint = lowestPoint || forecast.reduce(
+  const lowPoint = forecast.reduce(
     (lowest, item) => (item.balance < lowest.balance ? item : lowest),
     { month: forecastStartMonth, balance: totalOpeningBalance }
   );
@@ -722,12 +722,10 @@ function renderDashboard() {
 
   const forecastLowDateEl = document.getElementById("forecastLowDate");
   if (forecastLowDateEl) {
-    forecastLowDateEl.textContent = lowPoint && lowPoint.date
-      ? `Lowest on ${DateUtils.formatDisplayDate(lowPoint.date)}`
-      : `Lowest in ${escapeHtml(lowPoint.month)}`;
+    forecastLowDateEl.textContent = `Lowest in ${escapeHtml(lowPoint.month)}`;
   }
 
-  const isNegative = forecast.some((item) => item.balance < 0 || item.exactDeficitDate);
+  const isNegative = forecast.some((item) => item.balance < 0);
   const cashflowStatusEl = document.getElementById("cashflowStatus");
   if (cashflowStatusEl) {
     cashflowStatusEl.textContent = isNegative ? "Risk" : "OK";
@@ -855,92 +853,20 @@ function renderCategoryBreakdown(entries) {
   container.innerHTML = rows;
 }
 
-function getDetailedForecastTimeline(entries) {
-  const totalOpeningBalance = Object.values(accountBalances).reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
-
-  // Chronologically sorted entries
-  const sorted = [...entries]
-    .filter((e) => e.date)
-    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-
-  let running = totalOpeningBalance;
-  let lowestPoint = {
-    date: sorted.length ? sorted[0].date : (forecastStartMonth ? `${forecastStartMonth}-01` : DateUtils.todayString()),
-    month: forecastStartMonth || DateUtils.currentYearMonth(),
-    balance: totalOpeningBalance
-  };
-
-  const monthDetails = {};
-
-  // Monthly aggregates for regular forecast structure
-  const monthlySums = groupByMonth(entries, (entry) => Number(entry.amount || 0) * (entry.type === "income" ? 1 : -1));
-  const orderedMonths = Object.keys(monthlySums).sort();
-
-  let monthlyRunning = totalOpeningBalance;
-  const monthlyBalances = [];
-  orderedMonths.forEach((m) => {
-    monthlyRunning += monthlySums[m];
-    monthlyBalances.push({ month: m, balance: monthlyRunning, net: monthlySums[m] });
-  });
-
-  // Trace daily transactions to pinpoint exact deficit dates and lowest balances
-  sorted.forEach((entry) => {
-    const delta = Number(entry.amount || 0) * (entry.type === "income" ? 1 : -1);
-    running += delta;
-    const m = DateUtils.getMonthKey(entry.date);
-
-    if (running < lowestPoint.balance) {
-      lowestPoint = {
-        date: entry.date,
-        month: m,
-        balance: running,
-        entry
-      };
-    }
-
-    if (m) {
-      if (!monthDetails[m]) {
-        monthDetails[m] = {
-          firstDeficitDate: null,
-          firstDeficitAmount: null,
-          lowestDate: entry.date,
-          lowestBalance: running,
-          triggerCategory: null
-        };
-      }
-      if (running < monthDetails[m].lowestBalance) {
-        monthDetails[m].lowestBalance = running;
-        monthDetails[m].lowestDate = entry.date;
-      }
-      if (running < 0 && !monthDetails[m].firstDeficitDate) {
-        monthDetails[m].firstDeficitDate = entry.date;
-        monthDetails[m].firstDeficitAmount = running;
-        monthDetails[m].triggerCategory = entry.category || (entry.type === "income" ? "Income" : "Expense");
-      }
-    }
-  });
-
-  // Merge exact dates into monthly forecast objects
-  const forecast = monthlyBalances.map((item) => {
-    const details = monthDetails[item.month];
-    const exactDate = details && details.firstDeficitDate
-      ? details.firstDeficitDate
-      : (item.balance < 0 ? (details && details.lowestDate ? details.lowestDate : `${item.month}-01`) : null);
-    return {
-      ...item,
-      exactDeficitDate: exactDate,
-      firstDeficitAmount: details ? details.firstDeficitAmount : null,
-      lowestDate: details ? details.lowestDate : null,
-      lowestDateBalance: details ? details.lowestBalance : item.balance,
-      triggerCategory: details ? details.triggerCategory : null
-    };
-  });
-
-  return { forecast, lowestPoint };
-}
-
 function calculateForecast(entries) {
-  return getDetailedForecastTimeline(entries).forecast;
+  const months = groupByMonth(entries, (entry) => Number(entry.amount || 0) * (entry.type === "income" ? 1 : -1));
+  const ordered = Object.keys(months).sort();
+
+  const totalOpeningBalance = Object.values(accountBalances).reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
+  let running = totalOpeningBalance;
+  const balances = [];
+
+  ordered.forEach((month) => {
+    running += months[month];
+    balances.push({ month, balance: running, net: months[month] });
+  });
+
+  return balances;
 }
 
 function groupByMonth(source, amountFn) {
@@ -979,8 +905,7 @@ function renderBalanceChart(forecast) {
       const expense = monthlyExpenses[item.month] || 0;
       const net = item.net || (income - expense);
 
-      const deficitNote = item.exactDeficitDate ? `\n• Deficit Date: ${DateUtils.formatDisplayDate(item.exactDeficitDate)}` : "";
-      const tooltipText = `${item.month}${deficitNote}\n• Projected Balance: ${money(item.balance)}\n• Net Month Change: ${net >= 0 ? "+" : ""}${money(net)}\n• Income: +${money(income)}\n• Expenses: -${money(expense)}`;
+      const tooltipText = `${item.month}\n• Projected Balance: ${money(item.balance)}\n• Net Month Change: ${net >= 0 ? "+" : ""}${money(net)}\n• Income: +${money(income)}\n• Expenses: -${money(expense)}`;
 
       return `
         <div class="bar-wrap" data-month="${escapeHtml(item.month)}" title="${escapeHtml(tooltipText)}">
@@ -1000,7 +925,7 @@ function renderBalanceChart(forecast) {
 }
 
 function renderWarnings(forecast) {
-  const riskyMonths = forecast.filter((item) => item.balance < 0 || item.exactDeficitDate);
+  const riskyMonths = forecast.filter((item) => item.balance < 0);
   const list = document.getElementById("forecastWarnings");
   if (!list) return;
 
@@ -1011,22 +936,12 @@ function renderWarnings(forecast) {
 
   list.innerHTML = riskyMonths
     .slice(0, 5)
-    .map((item) => {
-      const rawDate = item.exactDeficitDate || item.lowestDate || item.month;
-      const displayDate = DateUtils.formatDisplayDate(rawDate);
-      const subtitle = item.exactDeficitDate
-        ? `Deficit starts on ${DateUtils.formatDisplayDate(item.exactDeficitDate)}${item.triggerCategory ? ` · ${escapeHtml(item.triggerCategory)}` : ""}`
-        : `Month of ${escapeHtml(item.month)}`;
-      return `
-        <div class="list-row danger-row">
-          <span>
-            <strong style="font-size:14px;">${escapeHtml(displayDate)}</strong><br>
-            <small style="color:var(--muted)">${subtitle}</small>
-          </span>
-          <strong style="color:var(--red);">${escapeHtml(money(item.firstDeficitAmount !== null && item.firstDeficitAmount !== undefined ? item.firstDeficitAmount : item.balance))}</strong>
-        </div>
-      `;
-    })
+    .map((item) => `
+      <div class="list-row danger-row">
+        <span><strong>${escapeHtml(item.month)}</strong></span>
+        <strong>${escapeHtml(money(item.balance))}</strong>
+      </div>
+    `)
     .join("");
 }
 
@@ -1050,8 +965,7 @@ function renderExpenseMix(entries) {
 }
 
 function getDeficitSummary() {
-  const { forecast, lowestPoint } = getDetailedForecastTimeline(forecastEntries());
-  const forecastMonths = forecast.filter((item) => item.balance < 0 || item.exactDeficitDate !== null);
+  const forecastMonths = calculateForecast(forecastEntries()).filter((item) => item.balance < 0);
   const today = DateUtils.todayString();
   const overdueItems = getForecastCandidateEntries()
     .filter((entry) => entry.date && entry.date < today)
@@ -1065,32 +979,21 @@ function getDeficitSummary() {
     .sort((a, b) => b.daysOverdue - a.daysOverdue);
 
   const realized = actualizedEntries().filter((entry) => entry.date && entry.date <= today);
-  const realizedSorted = [...realized].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-  
-  let actualRunning = Object.values(accountBalances).reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
+  const months = groupByMonth(realized, (entry) => {
+    const actualAmount = getEntryActualAmount(entry);
+    if (!actualAmount) return 0;
+    return entry.type === "income" ? actualAmount : -actualAmount;
+  });
+  const ordered = Object.keys(months).sort();
+  const totalOpeningBalance = Object.values(accountBalances).reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
+  let running = totalOpeningBalance;
   const actualMonths = [];
-  const actualMonthMap = {};
-
-  realizedSorted.forEach((entry) => {
-    const amt = getEntryActualAmount(entry);
-    if (!amt) return;
-    const delta = entry.type === "income" ? amt : -amt;
-    actualRunning += delta;
-    const m = DateUtils.getMonthKey(entry.date);
-    if (actualRunning < 0 && m) {
-      if (!actualMonthMap[m]) {
-        actualMonthMap[m] = {
-          month: m,
-          exactDate: entry.date,
-          balance: actualRunning,
-          triggerCategory: entry.category
-        };
-        actualMonths.push(actualMonthMap[m]);
-      }
-    }
+  ordered.forEach((month) => {
+    running += months[month];
+    if (running < 0) actualMonths.push({ month, balance: running, net: months[month] });
   });
 
-  return { forecastMonths, overdueItems, actualMonths, lowestPoint };
+  return { forecastMonths, overdueItems, actualMonths };
 }
 
 function renderDeficitBanner(summary) {
@@ -1105,23 +1008,9 @@ function renderDeficitBanner(summary) {
   }
 
   const parts = [];
-  if (forecastMonths.length) {
-    const firstDeficit = forecastMonths.find((m) => m.exactDeficitDate);
-    if (firstDeficit && firstDeficit.exactDeficitDate) {
-      parts.push(`Projected deficit on ${DateUtils.formatDisplayDate(firstDeficit.exactDeficitDate)} (${forecastMonths.length} month${forecastMonths.length === 1 ? "" : "s"} negative)`);
-    } else {
-      parts.push(`${forecastMonths.length} month${forecastMonths.length === 1 ? "" : "s"} projected to go negative`);
-    }
-  }
+  if (forecastMonths.length) parts.push(`${forecastMonths.length} month${forecastMonths.length === 1 ? "" : "s"} projected to go negative`);
   if (overdueItems.length) parts.push(`${overdueItems.length} item${overdueItems.length === 1 ? "" : "s"} overdue`);
-  if (actualMonths.length) {
-    const firstActual = actualMonths[0];
-    if (firstActual && firstActual.exactDate) {
-      parts.push(`Shortfall recorded on ${DateUtils.formatDisplayDate(firstActual.exactDate)}`);
-    } else {
-      parts.push(`${actualMonths.length} past month${actualMonths.length === 1 ? "" : "s"} with an actual shortfall`);
-    }
-  }
+  if (actualMonths.length) parts.push(`${actualMonths.length} past month${actualMonths.length === 1 ? "" : "s"} with an actual shortfall`);
 
   banner.hidden = false;
   const summaryEl = document.getElementById("deficitBannerSummary");
@@ -1145,22 +1034,12 @@ function renderDeficits(summary) {
     forecastList.innerHTML = forecastMonths.length
       ? forecastMonths
           .map(
-            (item) => {
-              const rawDate = item.exactDeficitDate || item.lowestDate || item.month;
-              const formattedDate = DateUtils.formatDisplayDate(rawDate);
-              const subText = item.exactDeficitDate
-                ? `Deficit starts on ${DateUtils.formatDisplayDate(item.exactDeficitDate)}${item.triggerCategory ? ` (${escapeHtml(item.triggerCategory)})` : ""}`
-                : `Projected negative in ${escapeHtml(item.month)}`;
-              return `
-                <div class="list-row danger-row">
-                  <span>
-                    <strong style="font-size:14.5px; color:var(--ink);">${escapeHtml(formattedDate)}</strong><br>
-                    <small style="color:var(--muted);">${subText}</small>
-                  </span>
-                  <strong style="color:var(--red); font-size:15px;">${escapeHtml(money(item.balance))}</strong>
-                </div>
-              `;
-            }
+            (item) => `
+              <div class="list-row danger-row">
+                <span><strong>${escapeHtml(item.month)}</strong></span>
+                <strong style="color:var(--red); font-size:14px;">${escapeHtml(money(item.balance))}</strong>
+              </div>
+            `
           )
           .join("")
       : `<div class="list-row success-row"><span>No forecasted deficit</span><strong>Balance stays positive</strong></div>`;
@@ -1175,7 +1054,7 @@ function renderDeficits(summary) {
               <div class="list-row danger-row deficit-row">
                 <span>
                   <strong>${escapeHtml(item.entry.category)}</strong><br>
-                  <small>Due ${escapeHtml(DateUtils.formatDisplayDate(item.entry.date))}</small>
+                  <small>Due ${escapeHtml(item.entry.date)}</small>
                 </span>
                 <div class="deficit-meta">
                   <span class="overdue-pill">${item.daysOverdue}d overdue</span>
@@ -1194,19 +1073,12 @@ function renderDeficits(summary) {
     actualList.innerHTML = actualMonths.length
       ? actualMonths
           .map(
-            (item) => {
-              const rawDate = item.exactDate || item.month;
-              const formattedDate = DateUtils.formatDisplayDate(rawDate);
-              return `
-                <div class="list-row danger-row">
-                  <span>
-                    <strong style="font-size:14.5px; color:var(--ink);">${escapeHtml(formattedDate)}</strong><br>
-                    <small style="color:var(--muted);">${item.exactDate ? `Occurred on ${escapeHtml(DateUtils.formatDisplayDate(item.exactDate))}${item.triggerCategory ? ` · ${escapeHtml(item.triggerCategory)}` : ""}` : `Shortfall in ${escapeHtml(item.month)}`}</small>
-                  </span>
-                  <strong style="color:var(--red); font-size:15px;">${escapeHtml(money(item.balance))}</strong>
-                </div>
-              `;
-            }
+            (item) => `
+              <div class="list-row danger-row">
+                <span><strong>${escapeHtml(item.month)}</strong></span>
+                <strong style="color:var(--red); font-size:14px;">${escapeHtml(money(item.balance))}</strong>
+              </div>
+            `
           )
           .join("")
       : `<div class="list-row success-row"><span>No actual shortfall on record</span><strong>Realized balance stayed positive</strong></div>`;
