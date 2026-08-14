@@ -924,24 +924,126 @@ function renderBalanceChart(forecast) {
   }
 }
 
+function getDeficitPeriods(entries = forecastEntries()) {
+  const totalOpeningBalance = Object.values(accountBalances).reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
+  const sorted = [...entries]
+    .filter((e) => e.date)
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
+  let running = totalOpeningBalance;
+  const periods = [];
+  let currentPeriod = null;
+
+  sorted.forEach((entry) => {
+    const delta = Number(entry.amount || 0) * (entry.type === "income" ? 1 : -1);
+    running += delta;
+
+    if (running < 0) {
+      if (!currentPeriod) {
+        // Exact day balance turns negative
+        currentPeriod = {
+          startDate: entry.date,
+          startAmount: running,
+          initialTrigger: entry.category || (entry.type === "income" ? "Income adjustment" : "Expense"),
+          initialEntry: entry,
+          lowestBalance: running,
+          lowestDate: entry.date,
+          lowestEntry: entry,
+          resolvedDate: null,
+          resolvedBy: null,
+          isResolved: false,
+          daysInDeficit: 0,
+          steps: [
+            {
+              date: entry.date,
+              type: entry.type,
+              category: entry.category || "Expense",
+              amount: Number(entry.amount || 0),
+              balance: running,
+              delta
+            }
+          ]
+        };
+        periods.push(currentPeriod);
+      } else {
+        // Consequent day still negative
+        if (running < currentPeriod.lowestBalance) {
+          currentPeriod.lowestBalance = running;
+          currentPeriod.lowestDate = entry.date;
+          currentPeriod.lowestEntry = entry;
+        }
+        currentPeriod.steps.push({
+          date: entry.date,
+          type: entry.type,
+          category: entry.category || "Expense",
+          amount: Number(entry.amount || 0),
+          balance: running,
+          delta
+        });
+      }
+    } else {
+      // Balance is non-negative (>= 0)
+      if (currentPeriod) {
+        // Income fixed the negative balance
+        currentPeriod.isResolved = true;
+        currentPeriod.resolvedDate = entry.date;
+        currentPeriod.resolvedBy = entry.category || (entry.type === "income" ? "Income" : "Adjustment");
+        currentPeriod.resolvedEntry = entry;
+        currentPeriod.daysInDeficit = DateUtils.daysBetween(currentPeriod.startDate, currentPeriod.resolvedDate);
+        currentPeriod.steps.push({
+          date: entry.date,
+          type: entry.type,
+          category: entry.category || "Income",
+          amount: Number(entry.amount || 0),
+          balance: running,
+          delta,
+          isRecoveryStep: true
+        });
+        currentPeriod = null;
+      }
+    }
+  });
+
+  // For any unresolved periods, calculate days up to the last recorded date
+  periods.forEach((p) => {
+    if (!p.isResolved) {
+      const lastStepDate = p.steps.length ? p.steps[p.steps.length - 1].date : p.startDate;
+      p.daysInDeficit = DateUtils.daysBetween(p.startDate, lastStepDate);
+    }
+  });
+
+  return periods;
+}
+
 function renderWarnings(forecast) {
-  const riskyMonths = forecast.filter((item) => item.balance < 0);
+  const periods = getDeficitPeriods(forecastEntries());
   const list = document.getElementById("forecastWarnings");
   if (!list) return;
 
-  if (!riskyMonths.length) {
+  if (!periods.length) {
     list.innerHTML = `<div class="list-row success-row"><span>Cashflow is covered</span><strong>No deficit</strong></div>`;
     return;
   }
 
-  list.innerHTML = riskyMonths
+  list.innerHTML = periods
     .slice(0, 5)
-    .map((item) => `
-      <div class="list-row danger-row">
-        <span><strong>${escapeHtml(item.month)}</strong></span>
-        <strong>${escapeHtml(money(item.balance))}</strong>
-      </div>
-    `)
+    .map((p) => {
+      const startFmt = DateUtils.formatDisplayDate(p.startDate);
+      const endFmt = p.resolvedDate ? DateUtils.formatDisplayDate(p.resolvedDate) : "Ongoing";
+      const subtitle = p.isResolved
+        ? `Deficit on ${startFmt} (${escapeHtml(p.initialTrigger)}) · Fixed on ${endFmt} by ${escapeHtml(p.resolvedBy)}`
+        : `Deficit on ${startFmt} (${escapeHtml(p.initialTrigger)}) · Stays negative`;
+      return `
+        <div class="list-row danger-row">
+          <span>
+            <strong style="font-size:13.5px;">${escapeHtml(startFmt)} → ${escapeHtml(endFmt)}</strong>
+            <span style="font-size:11px; margin-left:6px; color:var(--muted)">(${p.daysInDeficit}d)</span><br>
+            <small style="color:var(--muted)">${subtitle}</small>
+          </span>
+          <strong style="color:var(--red); font-size:14px;">${escapeHtml(money(p.lowestBalance))}</strong>
+        </div>
+      `;
+    })
     .join("");
 }
 
@@ -966,6 +1068,7 @@ function renderExpenseMix(entries) {
 
 function getDeficitSummary() {
   const forecastMonths = calculateForecast(forecastEntries()).filter((item) => item.balance < 0);
+  const deficitPeriods = getDeficitPeriods(forecastEntries());
   const today = DateUtils.todayString();
   const overdueItems = getForecastCandidateEntries()
     .filter((entry) => entry.date && entry.date < today)
@@ -993,14 +1096,14 @@ function getDeficitSummary() {
     if (running < 0) actualMonths.push({ month, balance: running, net: months[month] });
   });
 
-  return { forecastMonths, overdueItems, actualMonths };
+  return { forecastMonths, deficitPeriods, overdueItems, actualMonths };
 }
 
 function renderDeficitBanner(summary) {
   const banner = document.getElementById("deficitBanner");
   if (!banner) return;
-  const { forecastMonths, overdueItems, actualMonths } = summary;
-  const hasAny = forecastMonths.length || overdueItems.length || actualMonths.length;
+  const { forecastMonths, deficitPeriods, overdueItems, actualMonths } = summary;
+  const hasAny = (deficitPeriods && deficitPeriods.length) || forecastMonths.length || overdueItems.length || actualMonths.length;
 
   if (!hasAny) {
     banner.hidden = true;
@@ -1008,7 +1111,14 @@ function renderDeficitBanner(summary) {
   }
 
   const parts = [];
-  if (forecastMonths.length) parts.push(`${forecastMonths.length} month${forecastMonths.length === 1 ? "" : "s"} projected to go negative`);
+  if (deficitPeriods && deficitPeriods.length) {
+    const firstPeriod = deficitPeriods[0];
+    const durStr = firstPeriod.daysInDeficit > 0 ? ` (${firstPeriod.daysInDeficit} days negative)` : "";
+    parts.push(`Balance turns negative on ${DateUtils.formatDisplayDate(firstPeriod.startDate)}${durStr}`);
+  } else if (forecastMonths.length) {
+    parts.push(`${forecastMonths.length} month${forecastMonths.length === 1 ? "" : "s"} projected negative`);
+  }
+
   if (overdueItems.length) parts.push(`${overdueItems.length} item${overdueItems.length === 1 ? "" : "s"} overdue`);
   if (actualMonths.length) parts.push(`${actualMonths.length} past month${actualMonths.length === 1 ? "" : "s"} with an actual shortfall`);
 
@@ -1018,10 +1128,23 @@ function renderDeficitBanner(summary) {
 }
 
 function renderDeficits(summary) {
-  const { forecastMonths, overdueItems, actualMonths } = summary;
+  const { forecastMonths, deficitPeriods, overdueItems, actualMonths } = summary;
 
   const fcEl = document.getElementById("deficitForecastCount");
-  if (fcEl) fcEl.textContent = String(forecastMonths.length);
+  if (fcEl) {
+    const totalPeriods = deficitPeriods ? deficitPeriods.length : forecastMonths.length;
+    fcEl.textContent = String(totalPeriods);
+  }
+
+  const fcNoteEl = document.getElementById("deficitForecastNote");
+  if (fcNoteEl) {
+    if (deficitPeriods && deficitPeriods.length) {
+      const totalDays = deficitPeriods.reduce((s, p) => s + (p.daysInDeficit || 0), 0);
+      fcNoteEl.textContent = `${deficitPeriods.length} spell${deficitPeriods.length === 1 ? "" : "s"} (${totalDays} days in deficit)`;
+    } else {
+      fcNoteEl.textContent = "Balance stays positive";
+    }
+  }
 
   const odEl = document.getElementById("deficitOverdueCount");
   if (odEl) odEl.textContent = String(overdueItems.length);
@@ -1031,18 +1154,69 @@ function renderDeficits(summary) {
 
   const forecastList = document.getElementById("deficitForecastList");
   if (forecastList) {
-    forecastList.innerHTML = forecastMonths.length
-      ? forecastMonths
-          .map(
-            (item) => `
-              <div class="list-row danger-row">
-                <span><strong>${escapeHtml(item.month)}</strong></span>
-                <strong style="color:var(--red); font-size:14px;">${escapeHtml(money(item.balance))}</strong>
+    if (!deficitPeriods || !deficitPeriods.length) {
+      forecastList.innerHTML = `<div class="list-row success-row"><span>No forecasted deficit</span><strong>Balance stays positive</strong></div>`;
+    } else {
+      forecastList.innerHTML = deficitPeriods
+        .map((p) => {
+          const startFmt = DateUtils.formatDisplayDate(p.startDate);
+          const endFmt = p.resolvedDate ? DateUtils.formatDisplayDate(p.resolvedDate) : "Ongoing (Unresolved)";
+          const badgeClass = p.isResolved ? "resolved" : "active";
+          const badgeLabel = p.isResolved ? `Fixed in ${p.daysInDeficit}d` : `Active Deficit`;
+
+          const stepsHtml = p.steps
+            .map((s) => {
+              const isRecovery = s.isRecoveryStep;
+              const isLowest = s.date === p.lowestDate && !isRecovery;
+              const rowClass = isRecovery ? "recovery" : (isLowest ? "worst" : "");
+              const sign = s.delta >= 0 ? "+" : "-";
+              const note = isRecovery
+                ? `Fixed by ${escapeHtml(s.category)}`
+                : (isLowest ? `Lowest point reached (${escapeHtml(s.category)})` : escapeHtml(s.category));
+
+              return `
+                <div class="deficit-step-item ${rowClass}">
+                  <span>
+                    <strong>${escapeHtml(DateUtils.formatDisplayDate(s.date))}</strong>: 
+                    ${escapeHtml(note)} (${sign}${money(s.amount)})
+                  </span>
+                  <strong style="color:${s.balance < 0 ? "var(--red)" : "var(--green)"}">${escapeHtml(money(s.balance))}</strong>
+                </div>
+              `;
+            })
+            .join("");
+
+          const resolutionSummary = p.isResolved
+            ? `Turns negative on <strong>${escapeHtml(startFmt)}</strong> (${escapeHtml(p.initialTrigger)}) → Fixed on <strong>${escapeHtml(endFmt)}</strong> by <strong>${escapeHtml(p.resolvedBy)}</strong>`
+            : `Turns negative on <strong>${escapeHtml(startFmt)}</strong> (${escapeHtml(p.initialTrigger)}) and remains negative`;
+
+          return `
+            <div class="deficit-period-card">
+              <div class="deficit-period-header">
+                <div>
+                  <div class="deficit-dates-title">
+                    <span>${escapeHtml(startFmt)} → ${escapeHtml(endFmt)}</span>
+                    <span class="deficit-badge ${badgeClass}">${escapeHtml(badgeLabel)}</span>
+                  </div>
+                  <small style="color:var(--muted); margin-top: 5px; display: block; line-height: 1.4;">${resolutionSummary}</small>
+                </div>
+                <div style="text-align: right; min-width: 110px;">
+                  <strong style="color:var(--red); font-size:16px;">${escapeHtml(money(p.lowestBalance))}</strong>
+                  <small style="display:block; color:var(--muted); font-size:11px;">Peak deficit</small>
+                </div>
               </div>
-            `
-          )
-          .join("")
-      : `<div class="list-row success-row"><span>No forecasted deficit</span><strong>Balance stays positive</strong></div>`;
+
+              <div class="deficit-steps-timeline">
+                <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted); letter-spacing: 0.5px; margin-bottom: 2px;">
+                  Daily Deficit Progression:
+                </div>
+                ${stepsHtml}
+              </div>
+            </div>
+          `;
+        })
+        .join("");
+    }
   }
 
   const overdueList = document.getElementById("deficitOverdueList");

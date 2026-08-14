@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title>Budget Control</title>
-    <link rel="stylesheet" href="styles.css?v=20">
+    <link rel="stylesheet" href="styles.css?v=25">
   </head>
   <body>
     <aside class="sidebar">
@@ -140,9 +140,9 @@
       <section class="view" id="deficits">
         <div class="metrics-grid">
           <article class="metric">
-            <span>Forecast risk months</span>
+            <span>Forecast deficit spells</span>
             <strong id="deficitForecastCount">0</strong>
-            <small id="deficitForecastNote">Projected months balance goes negative</small>
+            <small id="deficitForecastNote">Days projected balance stays negative</small>
           </article>
           <article class="metric">
             <span>Overdue & unpaid</span>
@@ -150,7 +150,7 @@
             <small id="deficitOverdueNote">Past due, not yet settled</small>
           </article>
           <article class="metric">
-            <span>Actual deficit months</span>
+            <span>Actual shortfalls</span>
             <strong id="deficitActualCount">0</strong>
             <small id="deficitActualNote">Already happened, based on recorded actuals</small>
           </article>
@@ -159,8 +159,8 @@
         <div class="content-grid">
           <section class="panel">
             <div class="panel-heading">
-              <h3>Forecast risk</h3>
-              <span>Months where projected balance goes negative</span>
+              <h3>Forecast deficit timeline</h3>
+              <span>Exact days balance turns negative until income recovers it</span>
             </div>
             <div id="deficitForecastList" class="stack-list"></div>
           </section>
@@ -797,6 +797,6 @@
       </div>
     </dialog>
 
-    <script src="app.js?v=20"></script>
+    <script src="app.js?v=25"></script>
   </body>
 </html>
