@@ -373,21 +373,43 @@ select {
 }
 
 .bar-wrap {
-  min-width: 30px;
+  min-width: 32px;
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: end;
-  gap: 8px;
+  gap: 6px;
   color: var(--muted);
   font-size: 11px;
   cursor: pointer;
+  position: relative;
   transition: transform 0.2s ease;
 }
 
 .bar-wrap:hover {
   transform: translateY(-2px);
+  color: var(--ink);
+}
+
+.bar-value-preview {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--teal);
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  pointer-events: none;
+}
+
+.bar-wrap:hover .bar-value-preview {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.bar-value-preview.negative {
+  color: var(--red);
 }
 
 .bar {
@@ -395,11 +417,19 @@ select {
   min-height: 4px;
   border-radius: 6px 6px 0 0;
   background: var(--teal);
-  transition: height 0.3s ease, background-color 0.2s ease;
+  transition: height 0.3s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.bar-wrap:hover .bar {
+  box-shadow: 0 0 10px rgba(15, 118, 110, 0.35);
 }
 
 .bar.negative {
   background: var(--red);
+}
+
+.bar-wrap:hover .bar.negative {
+  box-shadow: 0 0 10px rgba(184, 70, 63, 0.35);
 }
 
 .stack-list {

@@ -729,12 +729,74 @@ function renderDashboard() {
 
   renderBalanceChart(forecast);
   renderCategoryBreakdown(entries);
+  renderAssetDistribution(actualCashNow, storageTotal);
   renderExpenseMix(entries);
   renderWarnings(forecast);
 
   const deficitSummary = getDeficitSummary();
   renderDeficitBanner(deficitSummary);
   renderDeficits(deficitSummary);
+}
+
+function renderAssetDistribution(actualCashNow, storageTotal) {
+  const container = document.getElementById("assetAllocationList");
+  const summaryEl = document.getElementById("assetAllocationSummary");
+  if (!container) return;
+
+  let goldTotal = 0;
+  let fxTotal = 0;
+  let otherStorageTotal = 0;
+
+  storageAssets.forEach((item) => {
+    const val = storageValue(item);
+    const src = (item.rateSource || "").toLowerCase();
+    const name = (item.name || "").toLowerCase();
+    if (src.startsWith("gold:") || name.includes("gold") || name.includes("karat") || name.includes("ounce") || name.includes("gram")) {
+      goldTotal += val;
+    } else if (src.startsWith("currency:") || name.includes("usd") || name.includes("eur") || name.includes("gbp") || name.includes("aed") || name.includes("sar")) {
+      fxTotal += val;
+    } else {
+      otherStorageTotal += val;
+    }
+  });
+
+  const totalNetWorth = actualCashNow + storageTotal;
+  if (summaryEl) {
+    summaryEl.textContent = money(totalNetWorth);
+  }
+
+  if (totalNetWorth <= 0) {
+    container.innerHTML = `<div class="list-row"><span>No assets recorded</span><strong>0</strong></div>`;
+    return;
+  }
+
+  const assets = [
+    { label: "Liquid Cash / Bank", icon: "💵", amount: actualCashNow, color: "var(--teal)" },
+    { label: "Gold Assets", icon: "🪙", amount: goldTotal, color: "var(--amber)" },
+    { label: "Foreign Currency", icon: "💱", amount: fxTotal, color: "var(--blue)" },
+  ];
+  if (otherStorageTotal > 0) {
+    assets.push({ label: "Other Stored Assets", icon: "📦", amount: otherStorageTotal, color: "var(--green)" });
+  }
+
+  const filtered = assets.filter((a) => a.amount > 0).sort((a, b) => b.amount - a.amount);
+
+  container.innerHTML = filtered
+    .map((item) => {
+      const pct = Math.round((item.amount / totalNetWorth) * 100);
+      return `
+        <div class="list-row" style="flex-direction:column; align-items:stretch; gap:6px;">
+          <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:700;">
+            <span>${item.icon} ${escapeHtml(item.label)}</span>
+            <span>${escapeHtml(money(item.amount))} <small style="font-weight:normal; color:var(--muted)">(${pct}%)</small></span>
+          </div>
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" style="width:${pct}%; background-color:${item.color};"></div>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
 }
 
 function renderCategoryBreakdown(entries) {
@@ -755,18 +817,23 @@ function renderCategoryBreakdown(entries) {
     return;
   }
 
+  const palette = [
+    "var(--teal)", "var(--blue)", "var(--amber)", "var(--red)", "var(--green)", "#8b5cf6", "#ec4899", "#f97316"
+  ];
+
   const rows = Object.entries(totals)
     .sort((a, b) => b[1] - a[1])
-    .map(([cat, amount]) => {
+    .map(([cat, amount], idx) => {
       const pct = Math.round((amount / totalExpense) * 100);
+      const color = palette[idx % palette.length];
       return `
         <div class="list-row" style="flex-direction:column; align-items:stretch; gap:6px;">
           <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:700;">
-            <span>${escapeHtml(cat)}</span>
-            <span>${escapeHtml(money(amount))} (${pct}%)</span>
+            <span style="display:flex; align-items:center; gap:6px;"><span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${color}"></span>${escapeHtml(cat)}</span>
+            <span>${escapeHtml(money(amount))} <small style="font-weight:normal; color:var(--muted)">(${pct}%)</small></span>
           </div>
           <div class="progress-bar-bg">
-            <div class="progress-bar-fill" style="width:${pct}%;"></div>
+            <div class="progress-bar-fill" style="width:${pct}%; background-color:${color};"></div>
           </div>
         </div>
       `;
@@ -805,13 +872,38 @@ function groupByMonth(source, amountFn) {
 function renderBalanceChart(forecast) {
   const chart = document.getElementById("balanceChart");
   if (!chart) return;
+  
+  if (!forecast.length) {
+    chart.innerHTML = `<div style="padding: 24px; color: var(--muted); text-align: center; width: 100%;">No forecast data available</div>`;
+    return;
+  }
+
   const maxAbs = Math.max(...forecast.map((item) => Math.abs(item.balance)), 1);
+
+  const allEntries = forecastEntries();
+  const monthlyIncomes = groupByMonth(allEntries, (e) => (e.type === "income" ? Number(e.amount || 0) : 0));
+  const monthlyExpenses = groupByMonth(allEntries, (e) => (e.type === "expense" ? Number(e.amount || 0) : 0));
+
   chart.innerHTML = forecast
     .map((item) => {
-      const height = Math.max(6, Math.round((Math.abs(item.balance) / maxAbs) * 230));
+      const height = Math.max(8, Math.round((Math.abs(item.balance) / maxAbs) * 210));
       const label = DateUtils.getShortMonth(item.month);
-      const tone = item.balance < 0 ? "negative" : "";
-      return `<div class="bar-wrap" title="${escapeHtml(item.month)}: ${escapeHtml(money(item.balance))}"><div class="bar ${tone}" style="height:${height}px"></div><span>${escapeHtml(label)}</span></div>`;
+      const isNegative = item.balance < 0;
+      const tone = isNegative ? "negative" : "";
+      
+      const income = monthlyIncomes[item.month] || 0;
+      const expense = monthlyExpenses[item.month] || 0;
+      const net = item.net || (income - expense);
+
+      const tooltipText = `${item.month}\nProjected Balance: ${money(item.balance)}\nNet Month Change: ${net >= 0 ? "+" : ""}${money(net)}\nIncome: +${money(income)}\nExpenses: -${money(expense)}`;
+
+      return `
+        <div class="bar-wrap" data-month="${escapeHtml(item.month)}" title="${escapeHtml(tooltipText)}">
+          <div class="bar-value-preview ${tone}">${money(item.balance)}</div>
+          <div class="bar ${tone}" style="height:${height}px"></div>
+          <span>${escapeHtml(label)}</span>
+        </div>
+      `;
     })
     .join("");
 
