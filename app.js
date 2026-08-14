@@ -107,6 +107,14 @@ const DateUtils = {
     const now = new Date();
     return DateUtils.formatDate(now.getFullYear(), now.getMonth() + 1, now.getDate());
   },
+  formatDisplayDate: (dateString) => {
+    if (!dateString) return "";
+    if (dateString.length === 7) return dateString; // YYYY-MM
+    const [y, m, d] = dateString.split("-").map(Number);
+    if (!y || !m || !d) return dateString;
+    const date = new Date(Date.UTC(y, m - 1, d));
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+  },
   daysBetween: (earlierDateString, laterDateString) => {
     if (!earlierDateString || !laterDateString) return 0;
     const [y1, m1, d1] = earlierDateString.split("-").map(Number);
@@ -714,8 +722,8 @@ function renderDashboard() {
 
   const forecastLowDateEl = document.getElementById("forecastLowDate");
   if (forecastLowDateEl) {
-    forecastLowDateEl.textContent = lowPoint.date
-      ? `Lowest on ${escapeHtml(lowPoint.date)}`
+    forecastLowDateEl.textContent = lowPoint && lowPoint.date
+      ? `Lowest on ${DateUtils.formatDisplayDate(lowPoint.date)}`
       : `Lowest in ${escapeHtml(lowPoint.month)}`;
   }
 
@@ -875,7 +883,7 @@ function getDetailedForecastTimeline(entries) {
     monthlyBalances.push({ month: m, balance: monthlyRunning, net: monthlySums[m] });
   });
 
-  // Now trace daily transactions to pinpoint exact deficit dates and lowest balances
+  // Trace daily transactions to pinpoint exact deficit dates and lowest balances
   sorted.forEach((entry) => {
     const delta = Number(entry.amount || 0) * (entry.type === "income" ? 1 : -1);
     running += delta;
@@ -915,9 +923,12 @@ function getDetailedForecastTimeline(entries) {
   // Merge exact dates into monthly forecast objects
   const forecast = monthlyBalances.map((item) => {
     const details = monthDetails[item.month];
+    const exactDate = details && details.firstDeficitDate
+      ? details.firstDeficitDate
+      : (item.balance < 0 ? (details && details.lowestDate ? details.lowestDate : `${item.month}-01`) : null);
     return {
       ...item,
-      exactDeficitDate: details ? details.firstDeficitDate : null,
+      exactDeficitDate: exactDate,
       firstDeficitAmount: details ? details.firstDeficitAmount : null,
       lowestDate: details ? details.lowestDate : null,
       lowestDateBalance: details ? details.lowestBalance : item.balance,
@@ -968,7 +979,7 @@ function renderBalanceChart(forecast) {
       const expense = monthlyExpenses[item.month] || 0;
       const net = item.net || (income - expense);
 
-      const deficitNote = item.exactDeficitDate ? `\n• Deficit Date: ${item.exactDeficitDate}` : "";
+      const deficitNote = item.exactDeficitDate ? `\n• Deficit Date: ${DateUtils.formatDisplayDate(item.exactDeficitDate)}` : "";
       const tooltipText = `${item.month}${deficitNote}\n• Projected Balance: ${money(item.balance)}\n• Net Month Change: ${net >= 0 ? "+" : ""}${money(net)}\n• Income: +${money(income)}\n• Expenses: -${money(expense)}`;
 
       return `
@@ -1001,17 +1012,18 @@ function renderWarnings(forecast) {
   list.innerHTML = riskyMonths
     .slice(0, 5)
     .map((item) => {
-      const displayDate = item.exactDeficitDate || item.lowestDate || item.month;
+      const rawDate = item.exactDeficitDate || item.lowestDate || item.month;
+      const displayDate = DateUtils.formatDisplayDate(rawDate);
       const subtitle = item.exactDeficitDate
-        ? `Deficit starts on ${escapeHtml(item.exactDeficitDate)}${item.triggerCategory ? ` · ${escapeHtml(item.triggerCategory)}` : ""}`
+        ? `Deficit starts on ${DateUtils.formatDisplayDate(item.exactDeficitDate)}${item.triggerCategory ? ` · ${escapeHtml(item.triggerCategory)}` : ""}`
         : `Month of ${escapeHtml(item.month)}`;
       return `
         <div class="list-row danger-row">
           <span>
-            <strong>${escapeHtml(displayDate)}</strong><br>
+            <strong style="font-size:14px;">${escapeHtml(displayDate)}</strong><br>
             <small style="color:var(--muted)">${subtitle}</small>
           </span>
-          <strong>${escapeHtml(money(item.firstDeficitAmount !== null && item.firstDeficitAmount !== undefined ? item.firstDeficitAmount : item.balance))}</strong>
+          <strong style="color:var(--red);">${escapeHtml(money(item.firstDeficitAmount !== null && item.firstDeficitAmount !== undefined ? item.firstDeficitAmount : item.balance))}</strong>
         </div>
       `;
     })
@@ -1096,7 +1108,7 @@ function renderDeficitBanner(summary) {
   if (forecastMonths.length) {
     const firstDeficit = forecastMonths.find((m) => m.exactDeficitDate);
     if (firstDeficit && firstDeficit.exactDeficitDate) {
-      parts.push(`Projected deficit on ${firstDeficit.exactDeficitDate} (${forecastMonths.length} month${forecastMonths.length === 1 ? "" : "s"} negative)`);
+      parts.push(`Projected deficit on ${DateUtils.formatDisplayDate(firstDeficit.exactDeficitDate)} (${forecastMonths.length} month${forecastMonths.length === 1 ? "" : "s"} negative)`);
     } else {
       parts.push(`${forecastMonths.length} month${forecastMonths.length === 1 ? "" : "s"} projected to go negative`);
     }
@@ -1105,7 +1117,7 @@ function renderDeficitBanner(summary) {
   if (actualMonths.length) {
     const firstActual = actualMonths[0];
     if (firstActual && firstActual.exactDate) {
-      parts.push(`Shortfall recorded on ${firstActual.exactDate}`);
+      parts.push(`Shortfall recorded on ${DateUtils.formatDisplayDate(firstActual.exactDate)}`);
     } else {
       parts.push(`${actualMonths.length} past month${actualMonths.length === 1 ? "" : "s"} with an actual shortfall`);
     }
@@ -1134,17 +1146,18 @@ function renderDeficits(summary) {
       ? forecastMonths
           .map(
             (item) => {
-              const displayDate = item.exactDeficitDate || item.lowestDate || item.month;
+              const rawDate = item.exactDeficitDate || item.lowestDate || item.month;
+              const formattedDate = DateUtils.formatDisplayDate(rawDate);
               const subText = item.exactDeficitDate
-                ? `Deficit starts on ${escapeHtml(item.exactDeficitDate)}${item.triggerCategory ? ` (${escapeHtml(item.triggerCategory)})` : ""}`
+                ? `Deficit starts on ${DateUtils.formatDisplayDate(item.exactDeficitDate)}${item.triggerCategory ? ` (${escapeHtml(item.triggerCategory)})` : ""}`
                 : `Projected negative in ${escapeHtml(item.month)}`;
               return `
                 <div class="list-row danger-row">
                   <span>
-                    <strong style="font-size:14px;">${escapeHtml(displayDate)}</strong><br>
+                    <strong style="font-size:14.5px; color:var(--ink);">${escapeHtml(formattedDate)}</strong><br>
                     <small style="color:var(--muted);">${subText}</small>
                   </span>
-                  <strong style="color:var(--red); font-size:14px;">${escapeHtml(money(item.balance))}</strong>
+                  <strong style="color:var(--red); font-size:15px;">${escapeHtml(money(item.balance))}</strong>
                 </div>
               `;
             }
@@ -1162,7 +1175,7 @@ function renderDeficits(summary) {
               <div class="list-row danger-row deficit-row">
                 <span>
                   <strong>${escapeHtml(item.entry.category)}</strong><br>
-                  <small>Due ${escapeHtml(item.entry.date)}</small>
+                  <small>Due ${escapeHtml(DateUtils.formatDisplayDate(item.entry.date))}</small>
                 </span>
                 <div class="deficit-meta">
                   <span class="overdue-pill">${item.daysOverdue}d overdue</span>
@@ -1181,15 +1194,19 @@ function renderDeficits(summary) {
     actualList.innerHTML = actualMonths.length
       ? actualMonths
           .map(
-            (item) => `
-              <div class="list-row danger-row">
-                <span>
-                  <strong style="font-size:14px;">${escapeHtml(item.exactDate || item.month)}</strong><br>
-                  <small style="color:var(--muted);">${item.exactDate ? `Occurred on ${escapeHtml(item.exactDate)}${item.triggerCategory ? ` · ${escapeHtml(item.triggerCategory)}` : ""}` : `Shortfall in ${escapeHtml(item.month)}`}</small>
-                </span>
-                <strong style="color:var(--red); font-size:14px;">${escapeHtml(money(item.balance))}</strong>
-              </div>
-            `
+            (item) => {
+              const rawDate = item.exactDate || item.month;
+              const formattedDate = DateUtils.formatDisplayDate(rawDate);
+              return `
+                <div class="list-row danger-row">
+                  <span>
+                    <strong style="font-size:14.5px; color:var(--ink);">${escapeHtml(formattedDate)}</strong><br>
+                    <small style="color:var(--muted);">${item.exactDate ? `Occurred on ${escapeHtml(DateUtils.formatDisplayDate(item.exactDate))}${item.triggerCategory ? ` · ${escapeHtml(item.triggerCategory)}` : ""}` : `Shortfall in ${escapeHtml(item.month)}`}</small>
+                  </span>
+                  <strong style="color:var(--red); font-size:15px;">${escapeHtml(money(item.balance))}</strong>
+                </div>
+              `;
+            }
           )
           .join("")
       : `<div class="list-row success-row"><span>No actual shortfall on record</span><strong>Realized balance stayed positive</strong></div>`;
