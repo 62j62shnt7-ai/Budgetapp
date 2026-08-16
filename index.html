@@ -48,34 +48,21 @@
       </header>
 
       <section class="view active" id="dashboard">
-        <div class="alert-banner" id="deficitBanner" hidden>
-          <div class="alert-banner-icon">!</div>
-          <div class="alert-banner-body">
-            <strong>Deficiencies detected</strong>
-            <p id="deficitBannerSummary"></p>
-          </div>
-          <button class="ghost-button" id="deficitBannerAction" type="button">View Deficits</button>
-        </div>
         <div class="metrics-grid">
           <article class="metric highlight-metric">
             <span>Total Net Worth</span>
             <strong id="totalNetWorth">0</strong>
-            <small>Cash + Stored assets</small>
-          </article>
-          <article class="metric">
-            <span>Cash balance</span>
-            <strong id="cashBalance">0</strong>
-            <small>Cashflow only, storage excluded</small>
+            <small>Actual cash + Stored assets</small>
           </article>
           <article class="metric">
             <span>Actual cash today</span>
             <strong id="actualCashToday">0</strong>
-            <small>Sum of account balances only</small>
+            <small>Sum of account balances</small>
           </article>
           <article class="metric">
-            <span>Monthly Savings Rate</span>
-            <strong id="savingsRate">0%</strong>
-            <small id="savingsRateNote">Of forecast income</small>
+            <span>Stored assets</span>
+            <strong id="storageTotal">0</strong>
+            <small>Gold, USD, EUR</small>
           </article>
           <article class="metric">
             <span>CIB credit due</span>
@@ -88,39 +75,30 @@
             <small>Selected credit month</small>
           </article>
           <article class="metric">
-            <span>Stored assets</span>
-            <strong id="storageTotal">0</strong>
-            <small>Gold, USD, EUR</small>
+            <span>Actual income (month)</span>
+            <strong id="actualMonthIncome">0</strong>
+            <small>Realized this month</small>
           </article>
           <article class="metric">
-            <span>Forecast low point</span>
-            <strong id="forecastLow">0</strong>
-            <small id="forecastLowDate">Lowest projected cash</small>
+            <span>Actual expenses (month)</span>
+            <strong id="actualMonthExpenses">0</strong>
+            <small>Realized this month</small>
           </article>
           <article class="metric">
-            <span>Cashflow status</span>
-            <strong id="cashflowStatus">OK</strong>
-            <small id="cashflowStatusNote">Projected after expenses</small>
+            <span>Monthly Savings Rate</span>
+            <strong id="savingsRate">0%</strong>
+            <small id="savingsRateNote">Of actual income this month</small>
           </article>
         </div>
 
         <div class="content-grid">
           <section class="panel wide">
             <div class="panel-heading">
-              <h3>Balance forecast</h3>
-              <span id="forecastRange"></span>
+              <h3>Liquid accounts</h3>
+              <span id="accountsTotalHeader"></span>
             </div>
-            <div class="chart" id="balanceChart"></div>
+            <div id="dashboardAccountsList" class="stack-list"></div>
           </section>
-          <section class="panel">
-            <div class="panel-heading">
-              <h3>Category expense breakdown</h3>
-            </div>
-            <div id="categoryBreakdownList" class="stack-list"></div>
-          </section>
-        </div>
-        
-        <div class="content-grid" style="margin-top: 18px;">
           <section class="panel">
             <div class="panel-heading">
               <h3>Asset allocation</h3>
@@ -128,16 +106,33 @@
             </div>
             <div id="assetAllocationList" class="stack-list"></div>
           </section>
+        </div>
+        
+        <div class="content-grid" style="margin-top: 18px;">
           <section class="panel">
             <div class="panel-heading">
-              <h3>Forecast warning</h3>
+              <h3>Actual category spending</h3>
             </div>
-            <div id="forecastWarnings" class="stack-list"></div>
+            <div id="categoryBreakdownList" class="stack-list"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-heading">
+              <h3>Recent actual activity</h3>
+            </div>
+            <div id="dashboardRecentActuals" class="stack-list"></div>
           </section>
         </div>
       </section>
 
       <section class="view" id="deficits">
+        <div class="alert-banner" id="deficitBanner" hidden>
+          <div class="alert-banner-icon">!</div>
+          <div class="alert-banner-body">
+            <strong>Deficiencies detected</strong>
+            <p id="deficitBannerSummary"></p>
+          </div>
+          <button class="ghost-button" id="deficitBannerAction" type="button">View Deficits</button>
+        </div>
         <div class="metrics-grid">
           <article class="metric">
             <span>Forecast deficit spells</span>
@@ -184,6 +179,14 @@
       </section>
 
       <section class="view" id="cashflow">
+        <div class="panel wide" style="margin-bottom: 18px;">
+          <div class="panel-heading">
+            <h3>Balance forecast</h3>
+            <span id="forecastRange"></span>
+          </div>
+          <div class="chart" id="balanceChart"></div>
+        </div>
+
         <div class="panel" style="margin-bottom: 18px;">
           <div class="panel-heading">
             <h3>Summary period</h3>
@@ -216,6 +219,16 @@
             <span>Net</span>
             <strong id="cfSummaryNet">0</strong>
             <small>Income minus expenses</small>
+          </article>
+          <article class="metric">
+            <span>Forecast low point</span>
+            <strong id="forecastLow">0</strong>
+            <small id="forecastLowDate">Lowest projected cash</small>
+          </article>
+          <article class="metric">
+            <span>Cashflow status</span>
+            <strong id="cashflowStatus">OK</strong>
+            <small id="cashflowStatusNote">Projected after expenses</small>
           </article>
           <article class="metric">
             <span>Entries</span>
