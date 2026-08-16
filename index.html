@@ -786,17 +786,17 @@
     <dialog id="deductAccountDialog">
       <form method="dialog" class="entry-form" id="deductAccountForm">
         <div class="dialog-heading">
-          <h3 id="deductAccountTitle">Deduct from Account?</h3>
+          <h3 id="deductAccountTitle">Adjust Account Balance?</h3>
           <button class="icon-button" value="skip" aria-label="Close" formnovalidate type="submit">x</button>
         </div>
         <p id="deductAccountMessage" style="margin: 12px 0; color: var(--text); font-size: 14px; line-height: 1.5;"></p>
         <label>
-          Select account to deduct from
+          <span id="deductAccountSelectLabel">Select account</span>
           <select id="deductAccountSelect" name="accountId"></select>
         </label>
         <div class="dialog-actions" style="margin-top: 18px;">
           <button class="ghost-button" id="deductAccountSkipBtn" value="skip" formnovalidate type="submit">Don't deduct</button>
-          <button class="primary-button" id="deductAccountSubmitBtn" value="deduct" type="submit">Deduct & Save</button>
+          <button class="primary-button" id="deductAccountSubmitBtn" value="confirm" type="submit">Deduct & Save</button>
         </div>
       </form>
     </dialog>

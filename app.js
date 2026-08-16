@@ -200,7 +200,7 @@ function confirmAction(title, message, confirmButtonText = "Delete") {
   });
 }
 
-function promptAccountDeduction(amount, defaultAccountKey = "cash", description = "") {
+function promptAccountAdjustment(type, amount, defaultAccountKey = "cash", description = "") {
   return new Promise((resolve) => {
     const dialog = document.getElementById("deductAccountDialog");
     if (!dialog) {
@@ -208,13 +208,30 @@ function promptAccountDeduction(amount, defaultAccountKey = "cash", description 
       return;
     }
 
+    const isIncome = (type || "").toLowerCase() === "income";
     const titleEl = document.getElementById("deductAccountTitle");
     const msgEl = document.getElementById("deductAccountMessage");
     const selectEl = document.getElementById("deductAccountSelect");
+    const selectLabelEl = document.getElementById("deductAccountSelectLabel");
+    const skipBtn = document.getElementById("deductAccountSkipBtn");
+    const submitBtn = document.getElementById("deductAccountSubmitBtn");
 
-    if (titleEl) titleEl.textContent = "Deduct Spend from Account?";
+    if (titleEl) {
+      titleEl.textContent = isIncome ? "Deposit Income to Account?" : "Deduct Spend from Account?";
+    }
     if (msgEl) {
-      msgEl.textContent = `You recorded an actual payment of ${money(amount)}${description ? ` for "${description}"` : ""}. Would you like to deduct this amount from an account balance?`;
+      const verb = isIncome ? "received an actual income" : "recorded an actual payment";
+      const actionVerb = isIncome ? "deposit this amount into" : "deduct this amount from";
+      msgEl.textContent = `You ${verb} of ${money(amount)}${description ? ` for "${description}"` : ""}. Would you like to ${actionVerb} an account balance?`;
+    }
+    if (selectLabelEl) {
+      selectLabelEl.textContent = isIncome ? "Select account to deposit into" : "Select account to deduct from";
+    }
+    if (skipBtn) {
+      skipBtn.textContent = isIncome ? "Don't deposit" : "Don't deduct";
+    }
+    if (submitBtn) {
+      submitBtn.textContent = isIncome ? "Deposit & Save" : "Deduct & Save";
     }
 
     if (selectEl) {
@@ -241,11 +258,11 @@ function promptAccountDeduction(amount, defaultAccountKey = "cash", description 
       if (settled) return;
       settled = true;
       const submitter = event.submitter;
-      const val = submitter ? submitter.value : "deduct";
+      const val = submitter ? submitter.value : "confirm";
       const selectedAccId = selectEl ? selectEl.value : null;
       cleanup();
       dialog.close(val);
-      if (val === "deduct" && selectedAccId) {
+      if (val === "confirm" && selectedAccId) {
         resolve(selectedAccId);
       } else {
         resolve(null);
@@ -273,11 +290,21 @@ function promptAccountDeduction(amount, defaultAccountKey = "cash", description 
   });
 }
 
-function deductFromAccount(accountId, amount) {
+function adjustAccountBalance(accountId, amount, type = "expense") {
   if (!accountId || !accountBalances[accountId] || !amount || amount <= 0) return;
-  accountBalances[accountId].balance = Number(accountBalances[accountId].balance || 0) - Number(amount);
+  const current = Number(accountBalances[accountId].balance || 0);
+  const roundedAmount = Math.round(Number(amount) || 0);
+  if ((type || "").toLowerCase() === "income") {
+    accountBalances[accountId].balance = Math.round(current + roundedAmount);
+  } else {
+    accountBalances[accountId].balance = Math.round(current - roundedAmount);
+  }
   saveSetting(keys.accounts, accountBalances);
 }
+
+// Backwards compatibility aliases
+const promptAccountDeduction = (amount, defaultAccountKey, description) => promptAccountAdjustment("expense", amount, defaultAccountKey, description);
+const deductFromAccount = (accountId, amount) => adjustAccountBalance(accountId, amount, "expense");
 
 // --- Storage Helpers ---
 function loadSetting(key, fallback) {
@@ -1741,7 +1768,7 @@ async function commitEntryActualInput(input) {
   const entry = findEntryById(entryId);
   if (!entry || !isEditableEntry(entry)) return;
 
-  const typedAmount = input.value === "" ? 0 : Number(input.value);
+  const typedAmount = input.value === "" ? 0 : Math.round(Number(input.value) || 0);
   input.value = "";
 
   if (typedAmount > 0) {
@@ -1750,12 +1777,10 @@ async function commitEntryActualInput(input) {
 
     renderAll();
 
-    if (entry.type === "expense") {
-      const selectedAcc = await promptAccountDeduction(typedAmount, entry.account || "cash", entry.category || "");
-      if (selectedAcc) {
-        deductFromAccount(selectedAcc, typedAmount);
-        renderAll();
-      }
+    const selectedAcc = await promptAccountAdjustment(entry.type || "expense", typedAmount, entry.account || "cash", entry.category || "");
+    if (selectedAcc) {
+      adjustAccountBalance(selectedAcc, typedAmount, entry.type || "expense");
+      renderAll();
     }
   } else {
     renderAll();
@@ -2272,13 +2297,14 @@ async function persistEntryForm(event) {
   const rawAmount = Number(form.elements.amount.value);
   const selectedCurrency = form.elements.currency.value;
   const rate = getCurrencyRate(selectedCurrency);
-  const plannedAmountInEgp = rawAmount * rate;
+  const plannedAmountInEgp = Math.round(rawAmount * rate);
   const rawActual = Number(form.elements.actualAmount.value || 0);
-  const actualAmountInEgp = rawActual > 0 ? rawActual * rate : 0;
+  const actualAmountInEgp = rawActual > 0 ? Math.round(rawActual * rate) : 0;
   const prevActualInEgp = editingEntry ? getEntryActualAmount(editingEntry) : 0;
-  const deltaActualSpend = actualAmountInEgp - prevActualInEgp;
+  const deltaActualAmount = actualAmountInEgp - prevActualInEgp;
   const chosenAccount = form.elements.account.value.trim() || "cash";
   const entryCat = form.elements.category.value.trim();
+  const entryType = form.elements.type.value || "expense";
 
   if (editingEntry) {
     const idx = cashEntries.findIndex((entry) => getEntryId(entry) === getEntryId(editingEntry));
@@ -2304,7 +2330,7 @@ async function persistEntryForm(event) {
     } else {
       const originalId = getEntryId(editingEntry);
       if (actualAmountInEgp > 0) {
-        entryActuals[originalId] = Number(actualAmountInEgp);
+        entryActuals[originalId] = Math.round(Number(actualAmountInEgp));
       } else {
         delete entryActuals[originalId];
       }
@@ -2339,10 +2365,10 @@ async function persistEntryForm(event) {
   }
   renderAll();
 
-  if (isExpense && deltaActualSpend > 0) {
-    const selectedAcc = await promptAccountDeduction(deltaActualSpend, chosenAccount, entryCat);
+  if (deltaActualAmount > 0) {
+    const selectedAcc = await promptAccountAdjustment(entryType, deltaActualAmount, chosenAccount, entryCat);
     if (selectedAcc) {
-      deductFromAccount(selectedAcc, deltaActualSpend);
+      adjustAccountBalance(selectedAcc, deltaActualAmount, entryType);
       renderAll();
     }
   }
