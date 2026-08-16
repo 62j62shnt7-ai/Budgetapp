@@ -753,24 +753,39 @@ function syncStorageRates() {
 
 // --- View Renderers ---
 function renderDashboard() {
-  const actualEntries = actualizedEntries();
+  const entries = forecastEntries();
+  const forecast = calculateForecast(entries);
 
   const actualCashNow = Object.values(accountBalances).reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
+  const totalOpeningBalance = Object.values(accountBalances).reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
+  const currentCash = forecast.length ? forecast[forecast.length - 1].balance : totalOpeningBalance;
+  const lowPoint = forecast.reduce(
+    (lowest, item) => (item.balance < lowest.balance ? item : lowest),
+    { month: forecastStartMonth, balance: totalOpeningBalance }
+  );
   const storageTotal = storageAssets.reduce((sum, item) => sum + storageValue(item), 0);
   const totalNetWorth = actualCashNow + storageTotal;
 
   const cibCredit = getRemainingCreditDueAmount("cib");
   const hsbcCredit = getRemainingCreditDueAmount("hsbc");
+  const totalCreditDue = cibCredit + hsbcCredit;
 
-  // Financial Actual metrics
+  // Financial Analytics metrics
   const netWorthEl = document.getElementById("totalNetWorth");
   if (netWorthEl) netWorthEl.textContent = money(totalNetWorth);
 
+  const totalIncome = entries.filter((e) => e.type === "income").reduce((s, e) => s + Number(e.amount || 0), 0);
+  const totalExpense = entries.filter((e) => e.type === "expense").reduce((s, e) => s + Number(e.amount || 0), 0);
+  const savingsRatePct = totalIncome > 0 ? Math.max(0, Math.round(((totalIncome - totalExpense) / totalIncome) * 100)) : 0;
+
+  const savingsRateEl = document.getElementById("savingsRate");
+  if (savingsRateEl) savingsRateEl.textContent = `${savingsRatePct}%`;
+
+  const cashBalanceEl = document.getElementById("cashBalance");
+  if (cashBalanceEl) cashBalanceEl.textContent = money(currentCash);
+
   const actualCashEl = document.getElementById("actualCashToday");
   if (actualCashEl) actualCashEl.textContent = money(actualCashNow);
-
-  const storageTotalEl = document.getElementById("storageTotal");
-  if (storageTotalEl) storageTotalEl.textContent = money(storageTotal);
 
   const cibCreditEl = document.getElementById("cibCreditDue");
   if (cibCreditEl) cibCreditEl.textContent = money(cibCredit);
@@ -778,16 +793,29 @@ function renderDashboard() {
   const hsbcCreditEl = document.getElementById("hsbcCreditDue");
   if (hsbcCreditEl) hsbcCreditEl.textContent = money(hsbcCredit);
 
-  const forecast = calculateForecast(forecastEntries());
+  const storageTotalEl = document.getElementById("storageTotal");
+  if (storageTotalEl) storageTotalEl.textContent = money(storageTotal);
+
+  const forecastLowEl = document.getElementById("forecastLow");
+  if (forecastLowEl) forecastLowEl.textContent = money(lowPoint.balance);
+
+  const forecastLowDateEl = document.getElementById("forecastLowDate");
+  if (forecastLowDateEl) {
+    forecastLowDateEl.textContent = `Lowest in ${escapeHtml(lowPoint.month)}`;
+  }
+
   const isNegative = forecast.some((item) => item.balance < 0);
   updateCashflowStatus(isNegative);
 
+  renderBalanceChart(forecast);
+  renderCategoryBreakdown(entries);
   renderAssetDistribution(actualCashNow, storageTotal);
-  renderCategoryBreakdown(actualEntries);
+  renderExpenseMix(entries);
+  renderWarnings(forecast);
 
   const deficitSummary = getDeficitSummary();
   renderDeficitBanner(deficitSummary);
-  renderWarnings();
+  renderDeficits(deficitSummary);
 }
 
 function updateCashflowStatus(isNegative) {
@@ -867,24 +895,21 @@ function renderAssetDistribution(actualCashNow, storageTotal) {
     .join("");
 }
 
-function renderCategoryBreakdown(actualEntries) {
+function renderCategoryBreakdown(entries) {
   const container = document.getElementById("categoryBreakdownList");
   if (!container) return;
 
-  const totals = (actualEntries || [])
+  const totals = (entries || [])
     .filter((entry) => entry.type === "expense")
     .reduce((groups, entry) => {
       const cat = entry.category || "Other";
-      const amt = getEntryActualAmount(entry);
-      if (amt > 0) {
-        groups[cat] = (groups[cat] || 0) + amt;
-      }
+      groups[cat] = (groups[cat] || 0) + Number(entry.amount || 0);
       return groups;
     }, {});
 
   const totalExpense = Object.values(totals).reduce((a, b) => a + b, 0);
   if (totalExpense <= 0) {
-    container.innerHTML = `<div class="list-row"><span>No actual expenses recorded yet</span><strong>0</strong></div>`;
+    container.innerHTML = `<div class="list-row"><span>No expense categories yet</span><strong>0</strong></div>`;
     return;
   }
 
@@ -1430,24 +1455,6 @@ function renderCashflowSummary() {
   const to = toInput && toInput.value ? toInput.value : null;
 
   const allForecastEntries = forecastEntries();
-  const forecast = calculateForecast(allForecastEntries);
-  const totalOpeningBalance = Object.values(accountBalances).reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
-
-  const lowPoint = forecast.reduce(
-    (lowest, item) => (item.balance < lowest.balance ? item : lowest),
-    { month: forecastStartMonth, balance: totalOpeningBalance }
-  );
-
-  const isNegative = forecast.some((item) => item.balance < 0);
-  updateCashflowStatus(isNegative);
-
-  const forecastLowEl = document.getElementById("forecastLow");
-  if (forecastLowEl) forecastLowEl.textContent = money(lowPoint.balance);
-
-  const forecastLowDateEl = document.getElementById("forecastLowDate");
-  if (forecastLowDateEl) {
-    forecastLowDateEl.textContent = `Lowest in ${escapeHtml(lowPoint.month)}`;
-  }
 
   const entries = allForecastEntries.filter((entry) => {
     if (!entry.date) return true;
@@ -1483,12 +1490,7 @@ function renderCashflowSummary() {
     periodNote.textContent = from || to ? `${from || "start"} to ${to || "end"}` : "Full forecast list";
   }
 
-  renderBalanceChart(forecast);
   renderExpenseMix(allForecastEntries);
-
-  const deficitSummary = getDeficitSummary();
-  renderDeficitBanner(deficitSummary);
-  renderDeficits(deficitSummary);
 }
 
 function canDeleteEntry(entry) {
