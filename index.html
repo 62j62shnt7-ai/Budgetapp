@@ -472,7 +472,7 @@
       <form method="dialog" class="entry-form" id="entryForm">
         <div class="dialog-heading">
           <h3 id="entryDialogTitle">Add budget entry</h3>
-          <button class="icon-button" value="cancel" aria-label="Close" formnovalidate type="submit">x</button>
+          <button class="icon-button" type="button" aria-label="Close" onclick="document.getElementById('entryDialog').close('cancel')">x</button>
         </div>
         <label>
           Credit type
@@ -528,7 +528,7 @@
         <small id="currencyConversionNote" style="color: var(--muted); font-size: 12px; margin: -4px 0 0;" hidden></small>
         <label>
           Actual amount
-          <input name="actualAmount" type="number" step="0.01" min="0" placeholder="0">
+          <input name="actualAmount" type="number" step="1" min="0" placeholder="0">
         </label>
         <div id="recurringField" class="entry-field">
           <label class="check-row">
@@ -541,7 +541,7 @@
           </label>
         </div>
         <div class="dialog-actions">
-          <button class="ghost-button" value="cancel" formnovalidate type="submit">Cancel</button>
+          <button class="ghost-button" value="cancel" formnovalidate type="button" onclick="document.getElementById('entryDialog').close('cancel')">Cancel</button>
           <button class="primary-button" id="entrySubmitButton" value="save" type="submit">Save entry</button>
         </div>
       </form>
@@ -551,7 +551,7 @@
       <form method="dialog" class="entry-form" id="capForm">
         <div class="dialog-heading">
           <h3>Set Category Budget Cap</h3>
-          <button class="icon-button" value="cancel" aria-label="Close" formnovalidate type="submit">x</button>
+          <button class="icon-button" type="button" aria-label="Close" onclick="document.getElementById('capDialog').close('cancel')">x</button>
         </div>
         <label>
           Category
@@ -562,7 +562,7 @@
           <input name="cap" type="number" step="100" min="0" required placeholder="e.g. 10000">
         </label>
         <div class="dialog-actions">
-          <button class="ghost-button" value="cancel" formnovalidate type="submit">Cancel</button>
+          <button class="ghost-button" value="cancel" formnovalidate type="button" onclick="document.getElementById('capDialog').close('cancel')">Cancel</button>
           <button class="primary-button" value="save" type="submit">Save cap</button>
         </div>
       </form>
@@ -572,7 +572,7 @@
       <form method="dialog" class="entry-form" id="goalForm">
         <div class="dialog-heading">
           <h3>Add Savings Goal</h3>
-          <button class="icon-button" value="cancel" aria-label="Close" formnovalidate type="submit">x</button>
+          <button class="icon-button" type="button" aria-label="Close" onclick="document.getElementById('goalDialog').close('cancel')">x</button>
         </div>
         <label>
           Goal Name
@@ -587,7 +587,7 @@
           <input name="current" type="number" step="100" min="0" value="0" placeholder="0">
         </label>
         <div class="dialog-actions">
-          <button class="ghost-button" value="cancel" formnovalidate type="submit">Cancel</button>
+          <button class="ghost-button" value="cancel" formnovalidate type="button" onclick="document.getElementById('goalDialog').close('cancel')">Cancel</button>
           <button class="primary-button" value="save" type="submit">Save goal</button>
         </div>
       </form>
@@ -597,7 +597,7 @@
       <form method="dialog" class="entry-form" id="storageForm">
         <div class="dialog-heading">
           <h3>Add storage asset</h3>
-          <button class="icon-button" value="cancel" aria-label="Close" formnovalidate type="submit">x</button>
+          <button class="icon-button" type="button" aria-label="Close" onclick="document.getElementById('storageDialog').close('cancel')">x</button>
         </div>
         <label>
           Asset name
@@ -622,7 +622,7 @@
           <input name="rate" type="number" step="0.01" min="0" required>
         </label>
         <div class="dialog-actions">
-          <button class="ghost-button" value="cancel" formnovalidate type="submit">Cancel</button>
+          <button class="ghost-button" value="cancel" formnovalidate type="button" onclick="document.getElementById('storageDialog').close('cancel')">Cancel</button>
           <button class="primary-button" value="save" type="submit">Save asset</button>
         </div>
       </form>
@@ -632,7 +632,7 @@
       <form method="dialog" class="entry-form" id="installmentForm">
         <div class="dialog-heading">
           <h3 id="installmentDialogTitle">Add installment</h3>
-          <button class="icon-button" value="cancel" aria-label="Close" formnovalidate type="submit">x</button>
+          <button class="icon-button" type="button" aria-label="Close" onclick="document.getElementById('installmentDialog').close('cancel')">x</button>
         </div>
         <label>
           Name
@@ -665,7 +665,7 @@
           <input name="months" type="number" min="1" max="120" value="12" required>
         </label>
         <div class="dialog-actions">
-          <button class="ghost-button" value="cancel" formnovalidate type="submit">Cancel</button>
+          <button class="ghost-button" value="cancel" formnovalidate type="button" onclick="document.getElementById('installmentDialog').close('cancel')">Cancel</button>
           <button class="primary-button" value="save" type="submit">Save installment</button>
         </div>
       </form>
@@ -675,14 +675,14 @@
       <form method="dialog" class="entry-form" id="asfForm">
         <div class="dialog-heading">
           <h3>ASF Invoice</h3>
-          <button class="icon-button" value="cancel" aria-label="Close" formnovalidate type="submit">x</button>
+          <button class="icon-button" type="button" aria-label="Close" onclick="document.getElementById('asfDialog').close('cancel')">x</button>
         </div>
         <label>Date <input name="date" type="date" required></label>
         <label>Invoice (USD) <input name="invoice" type="number" step="0.01" required></label>
         <label>Actual (USD) <input name="actual" type="number" step="0.01" required></label>
         <label>EGP Value <input name="egp" type="number" step="0.01" required></label>
         <div class="dialog-actions">
-          <button class="ghost-button" value="cancel" formnovalidate type="submit">Cancel</button>
+          <button class="ghost-button" value="cancel" formnovalidate type="button" onclick="document.getElementById('asfDialog').close('cancel')">Cancel</button>
           <button class="primary-button" value="save" type="submit">Save invoice</button>
         </div>
       </form>
@@ -692,13 +692,13 @@
       <form method="dialog" class="entry-form" id="irqForm">
         <div class="dialog-heading">
           <h3>IRQ Work</h3>
-          <button class="icon-button" value="cancel" aria-label="Close" formnovalidate type="submit">x</button>
+          <button class="icon-button" type="button" aria-label="Close" onclick="document.getElementById('irqDialog').close('cancel')">x</button>
         </div>
         <label>Label <input name="label" type="text" required placeholder="e.g. Received"></label>
         <label>Value <input name="value" type="number" step="0.01" required></label>
         <label>Note <input name="note" type="text" placeholder="Details..."></label>
         <div class="dialog-actions">
-          <button class="ghost-button" value="cancel" formnovalidate type="submit">Cancel</button>
+          <button class="ghost-button" value="cancel" formnovalidate type="button" onclick="document.getElementById('irqDialog').close('cancel')">Cancel</button>
           <button class="primary-button" value="save" type="submit">Save entry</button>
         </div>
       </form>
@@ -708,7 +708,7 @@
       <form method="dialog" class="entry-form" id="rateForm">
         <div class="dialog-heading">
           <h3>Update Rate</h3>
-          <button class="icon-button" value="cancel" aria-label="Close" formnovalidate type="submit">x</button>
+          <button class="icon-button" type="button" aria-label="Close" onclick="document.getElementById('rateDialog').close('cancel')">x</button>
         </div>
         <input type="hidden" name="rateId" value="-1">
         <label>
@@ -724,7 +724,7 @@
           <input name="buy" type="number" step="0.01" required>
         </label>
         <div class="dialog-actions">
-          <button class="ghost-button" value="cancel" formnovalidate type="submit">Cancel</button>
+          <button class="ghost-button" value="cancel" formnovalidate type="button" onclick="document.getElementById('rateDialog').close('cancel')">Cancel</button>
           <button class="primary-button" value="save" type="submit">Save rate</button>
         </div>
       </form>
@@ -787,7 +787,7 @@
       <form method="dialog" class="entry-form" id="deductAccountForm">
         <div class="dialog-heading">
           <h3 id="deductAccountTitle">Adjust Account Balance?</h3>
-          <button class="icon-button" value="skip" aria-label="Close" formnovalidate type="submit">x</button>
+          <button class="icon-button" type="button" aria-label="Close" onclick="document.getElementById('deductAccountDialog').close('skip')">x</button>
         </div>
         <p id="deductAccountMessage" style="margin: 12px 0; color: var(--text); font-size: 14px; line-height: 1.5;"></p>
         <label>
@@ -795,7 +795,7 @@
           <select id="deductAccountSelect" name="accountId"></select>
         </label>
         <div class="dialog-actions" style="margin-top: 18px;">
-          <button class="ghost-button" id="deductAccountSkipBtn" value="skip" formnovalidate type="submit">Don't deduct</button>
+          <button class="ghost-button" id="deductAccountSkipBtn" value="skip" formnovalidate type="button" onclick="document.getElementById('deductAccountDialog').close('skip')">Don't deduct</button>
           <button class="primary-button" id="deductAccountSubmitBtn" value="confirm" type="submit">Deduct & Save</button>
         </div>
       </form>
@@ -804,7 +804,7 @@
     <dialog id="confirmDialog">
       <div class="dialog-heading">
         <h3 id="confirmTitle">Confirm Action</h3>
-        <button class="icon-button" value="cancel" aria-label="Close" formnovalidate type="button" onclick="document.getElementById('confirmDialog').close('cancel')">x</button>
+        <button class="icon-button" type="button" aria-label="Close" onclick="document.getElementById('confirmDialog').close('cancel')">x</button>
       </div>
       <p id="confirmMessage" style="margin: 16px 0; color: var(--muted); font-size: 14px; line-height: 1.5;"></p>
       <div class="dialog-actions">

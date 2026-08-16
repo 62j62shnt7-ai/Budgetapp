@@ -2608,6 +2608,21 @@ function setupEventListeners() {
   on("addIncome", "click", () => openEntryDialog("income"));
   on("addEntry", "click", () => openEntryDialog("expense"));
 
+  document.querySelectorAll("dialog").forEach((dlg) => {
+    dlg.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        const target = event.target;
+        if (target && (target.tagName === "TEXTAREA" || target.tagName === "BUTTON")) return;
+        const form = dlg.querySelector("form");
+        const submitBtn = dlg.querySelector('button[type="submit"]:not(.icon-button)');
+        if (form && submitBtn) {
+          event.preventDefault();
+          submitBtn.click();
+        }
+      }
+    });
+  });
+
   const entryForm = document.getElementById("entryForm");
   if (entryForm) {
     if (entryForm.elements && entryForm.elements.creditType) {
