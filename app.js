@@ -675,7 +675,6 @@ function syncStorageRates() {
 // --- View Renderers ---
 function renderDashboard() {
   const actualEntries = actualizedEntries();
-  const currentMonth = DateUtils.currentYearMonth();
 
   const actualCashNow = Object.values(accountBalances).reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
   const storageTotal = storageAssets.reduce((sum, item) => sum + storageValue(item), 0);
@@ -683,19 +682,6 @@ function renderDashboard() {
 
   const cibCredit = getRemainingCreditDueAmount("cib");
   const hsbcCredit = getRemainingCreditDueAmount("hsbc");
-
-  // Current month actuals
-  const currentMonthActuals = actualEntries.filter((e) => DateUtils.getMonthKey(e.date) === currentMonth);
-  const monthActualIncome = currentMonthActuals
-    .filter((e) => e.type === "income")
-    .reduce((s, e) => s + getEntryActualAmount(e), 0);
-  const monthActualExpense = currentMonthActuals
-    .filter((e) => e.type === "expense")
-    .reduce((s, e) => s + getEntryActualAmount(e), 0);
-
-  const savingsRatePct = monthActualIncome > 0
-    ? Math.max(0, Math.round(((monthActualIncome - monthActualExpense) / monthActualIncome) * 100))
-    : 0;
 
   // Financial Actual metrics
   const netWorthEl = document.getElementById("totalNetWorth");
@@ -713,94 +699,8 @@ function renderDashboard() {
   const hsbcCreditEl = document.getElementById("hsbcCreditDue");
   if (hsbcCreditEl) hsbcCreditEl.textContent = money(hsbcCredit);
 
-  const incEl = document.getElementById("actualMonthIncome");
-  if (incEl) incEl.textContent = money(monthActualIncome);
-
-  const expEl = document.getElementById("actualMonthExpenses");
-  if (expEl) expEl.textContent = money(monthActualExpense);
-
-  const savingsRateEl = document.getElementById("savingsRate");
-  if (savingsRateEl) savingsRateEl.textContent = `${savingsRatePct}%`;
-
-  const savingsRateNoteEl = document.getElementById("savingsRateNote");
-  if (savingsRateNoteEl) savingsRateNoteEl.textContent = "Of actual income this month";
-
-  renderDashboardAccounts(actualCashNow);
   renderAssetDistribution(actualCashNow, storageTotal);
   renderCategoryBreakdown(actualEntries);
-  renderDashboardRecentActuals(actualEntries);
-}
-
-function renderDashboardAccounts(actualCashNow) {
-  const container = document.getElementById("dashboardAccountsList");
-  const headerTotal = document.getElementById("accountsTotalHeader");
-  if (!container) return;
-
-  if (headerTotal) {
-    headerTotal.textContent = money(actualCashNow);
-  }
-
-  const entries = Object.entries(accountBalances);
-  if (!entries.length) {
-    container.innerHTML = `<div class="list-row"><span>No accounts configured</span><strong>0</strong></div>`;
-    return;
-  }
-
-  const palette = ["var(--teal)", "var(--blue)", "var(--amber)", "var(--green)", "#8b5cf6"];
-
-  container.innerHTML = entries
-    .map(([id, acc], idx) => {
-      const balance = Number(acc.balance || 0);
-      const pct = actualCashNow > 0 ? Math.max(0, Math.round((balance / actualCashNow) * 100)) : 0;
-      const color = palette[idx % palette.length];
-      const icon = (acc.name || "").toLowerCase().includes("cash") ? "💵" : "🏦";
-      return `
-        <div class="list-row" style="flex-direction:column; align-items:stretch; gap:6px;">
-          <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:700;">
-            <span>${icon} ${escapeHtml(acc.name)}</span>
-            <span>${escapeHtml(money(balance))} <small style="font-weight:normal; color:var(--muted)">(${pct}%)</small></span>
-          </div>
-          <div class="progress-bar-bg">
-            <div class="progress-bar-fill" style="width:${Math.min(100, Math.max(0, pct))}%; background-color:${color};"></div>
-          </div>
-        </div>
-      `;
-    })
-    .join("");
-}
-
-function renderDashboardRecentActuals(actualEntries) {
-  const container = document.getElementById("dashboardRecentActuals");
-  if (!container) return;
-
-  const sorted = [...actualEntries]
-    .filter((e) => getEntryActualAmount(e) > 0)
-    .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
-
-  if (!sorted.length) {
-    container.innerHTML = `<div class="list-row"><span>No actual activity recorded yet</span><strong>0</strong></div>`;
-    return;
-  }
-
-  container.innerHTML = sorted
-    .slice(0, 5)
-    .map((entry) => {
-      const amt = getEntryActualAmount(entry);
-      const isIncome = entry.type === "income";
-      const sign = isIncome ? "+" : "-";
-      const color = isIncome ? "var(--green)" : "inherit";
-      const dateStr = entry.date ? DateUtils.formatDisplayDate(entry.date) : "—";
-      return `
-        <div class="list-row">
-          <div>
-            <strong>${escapeHtml(entry.category || "General")}</strong>
-            <small style="display:block; color:var(--muted)">${escapeHtml(dateStr)} · ${escapeHtml(entry.account || "cash")}</small>
-          </div>
-          <strong style="color:${color}">${sign}${escapeHtml(money(amt))}</strong>
-        </div>
-      `;
-    })
-    .join("");
 }
 
 function renderAssetDistribution(actualCashNow, storageTotal) {
