@@ -1823,19 +1823,12 @@ function commitHistoryActualInput(input) {
   saveSetting(keys.entryActuals, entryActuals);
 }
 
-function permanentlyRemoveEntry(entry) {
+function clearHistoryActualEntry(entry) {
   const deleteKey = getEntryId(entry);
-
-  const index = cashEntries.findIndex((item) => getEntryId(item) === deleteKey);
-  if (index !== -1) {
-    cashEntries.splice(index, 1);
-    saveSetting(keys.entries, cashEntries);
-  } else if (!deletedForecasts.includes(deleteKey)) {
-    deletedForecasts.push(deleteKey);
-    saveSetting(keys.deletedForecasts, deletedForecasts);
-  }
-
   delete entryActuals[deleteKey];
+  if (entry && entry.actualAmount !== undefined) {
+    entry.actualAmount = 0;
+  }
   saveSetting(keys.entryActuals, entryActuals);
 }
 
@@ -3139,7 +3132,7 @@ function setupEventListeners() {
     if (!button) return;
     event.stopPropagation();
 
-    const confirmed = await confirmAction("Remove Actualized History", "Remove this actualized entry record?");
+    const confirmed = await confirmAction("Remove Actualized Spend", "Remove this recorded actual spend from History? The planned forecast entry will remain intact in Cash Flow.");
     if (!confirmed) return;
 
     const entryIds = button.dataset.historyDeleteKey.split(",").filter(Boolean);
@@ -3150,17 +3143,13 @@ function setupEventListeners() {
 
       if (isArchived && archivedIndex !== -1) {
         archivedEntries.splice(archivedIndex, 1);
-        delete entryActuals[getEntryId(entry)];
-      } else {
-        permanentlyRemoveEntry(entry);
       }
+      clearHistoryActualEntry(entry);
     });
 
     saveSetting(keys.archivedEntries, archivedEntries);
     saveSetting(keys.entryActuals, entryActuals);
-    renderDashboard();
-    renderHistory();
-    renderEntries();
+    renderAll();
   });
 }
 
