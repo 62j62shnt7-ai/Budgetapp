@@ -1871,7 +1871,7 @@ function renderHistory() {
   detailsTable.innerHTML = detailRows || `<tr><td colspan="5">No actualized entries yet</td></tr>`;
 }
 
-function commitHistoryActualInput(input) {
+async function commitHistoryActualInput(input) {
   if (!input) return;
   const entryIds = input.dataset.historyActualInput.split(",").filter(Boolean);
   const members = entryIds
@@ -1882,6 +1882,10 @@ function commitHistoryActualInput(input) {
   const rawTyped = input.value === "" ? 0 : Number(input.value);
   const newTotal = Math.round(rawTyped || 0);
   const previousTotal = Math.round(members.reduce((sum, m) => sum + getEntryActualAmount(m.entry), 0));
+  const delta = newTotal - previousTotal;
+  const groupType = members[0].entry.type || "expense";
+  const defaultAcc = members[0].entry.account || "cash";
+  const monthName = members[0].entry.date ? DateUtils.getMonthKey(members[0].entry.date) : "";
 
   let remaining = newTotal;
   members.forEach((member, index) => {
@@ -1919,6 +1923,16 @@ function commitHistoryActualInput(input) {
   });
 
   saveSetting(keys.entryActuals, entryActuals);
+
+  if (delta > 0) {
+    const desc = `${monthName} ${groupType === "income" ? "Income" : "Expenses"}`;
+    const selectedAcc = await promptAccountAdjustment(groupType, delta, defaultAcc, desc);
+    if (selectedAcc) {
+      adjustAccountBalance(selectedAcc, delta, groupType);
+    }
+  }
+
+  renderAll();
 }
 
 function clearHistoryActualEntry(entry) {
@@ -3209,21 +3223,17 @@ function setupEventListeners() {
     renderAll();
   });
 
-  document.addEventListener("keydown", (event) => {
+  document.addEventListener("keydown", async (event) => {
     const input = event.target.closest("[data-history-actual-input]");
     if (!input || event.key !== "Enter") return;
     event.preventDefault();
-    commitHistoryActualInput(input);
-    renderDashboard();
-    renderHistory();
+    await commitHistoryActualInput(input);
   });
 
-  document.addEventListener("change", (event) => {
+  document.addEventListener("change", async (event) => {
     const input = event.target.closest("[data-history-actual-input]");
     if (!input) return;
-    commitHistoryActualInput(input);
-    renderDashboard();
-    renderHistory();
+    await commitHistoryActualInput(input);
   });
 
   document.addEventListener("click", async (event) => {
