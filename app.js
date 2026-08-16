@@ -200,6 +200,85 @@ function confirmAction(title, message, confirmButtonText = "Delete") {
   });
 }
 
+function promptAccountDeduction(amount, defaultAccountKey = "cash", description = "") {
+  return new Promise((resolve) => {
+    const dialog = document.getElementById("deductAccountDialog");
+    if (!dialog) {
+      resolve(null);
+      return;
+    }
+
+    const titleEl = document.getElementById("deductAccountTitle");
+    const msgEl = document.getElementById("deductAccountMessage");
+    const selectEl = document.getElementById("deductAccountSelect");
+
+    if (titleEl) titleEl.textContent = "Deduct Spend from Account?";
+    if (msgEl) {
+      msgEl.textContent = `You recorded an actual payment of ${money(amount)}${description ? ` for "${description}"` : ""}. Would you like to deduct this amount from an account balance?`;
+    }
+
+    if (selectEl) {
+      const options = Object.entries(accountBalances).map(([id, acc]) => {
+        const isSelected =
+          (id || "").toLowerCase() === (defaultAccountKey || "").toLowerCase() ||
+          (acc.name || "").toLowerCase() === (defaultAccountKey || "").toLowerCase();
+        return `<option value="${escapeHtml(id)}"${isSelected ? " selected" : ""}>${escapeHtml(acc.name)} (Current: ${money(acc.balance)})</option>`;
+      });
+      selectEl.innerHTML = options.join("") || `<option value="cash">Cash (0)</option>`;
+    }
+
+    const form = document.getElementById("deductAccountForm");
+    let settled = false;
+
+    const cleanup = () => {
+      if (form) form.removeEventListener("submit", handleSubmit);
+      dialog.removeEventListener("cancel", handleCancel);
+      dialog.removeEventListener("close", handleClose);
+    };
+
+    const handleSubmit = (event) => {
+      event.preventDefault();
+      if (settled) return;
+      settled = true;
+      const submitter = event.submitter;
+      const val = submitter ? submitter.value : "deduct";
+      const selectedAccId = selectEl ? selectEl.value : null;
+      cleanup();
+      dialog.close(val);
+      if (val === "deduct" && selectedAccId) {
+        resolve(selectedAccId);
+      } else {
+        resolve(null);
+      }
+    };
+
+    const handleCancel = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(null);
+    };
+
+    const handleClose = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(null);
+    };
+
+    if (form) form.addEventListener("submit", handleSubmit);
+    dialog.addEventListener("cancel", handleCancel);
+    dialog.addEventListener("close", handleClose);
+    dialog.showModal();
+  });
+}
+
+function deductFromAccount(accountId, amount) {
+  if (!accountId || !accountBalances[accountId] || !amount || amount <= 0) return;
+  accountBalances[accountId].balance = Number(accountBalances[accountId].balance || 0) - Number(amount);
+  saveSetting(keys.accounts, accountBalances);
+}
+
 // --- Storage Helpers ---
 function loadSetting(key, fallback) {
   const saved = localStorage.getItem(key);
@@ -1096,9 +1175,10 @@ function renderDeficitBanner(summary) {
   if (deficitPeriods && deficitPeriods.length) {
     const firstPeriod = deficitPeriods[0];
     const durStr = firstPeriod.daysInDeficit > 0 ? ` (${firstPeriod.daysInDeficit} days negative)` : "";
-    parts.push(`Balance turns negative on ${DateUtils.formatDisplayDate(firstPeriod.startDate)}${durStr}`);
+    const deficitAmt = money(firstPeriod.startAmount || firstPeriod.lowestBalance);
+    parts.push(`Balance turns negative on ${DateUtils.formatDisplayDate(firstPeriod.startDate)}${durStr} · First deficit: ${deficitAmt}`);
   } else if (forecastMonths.length) {
-    parts.push(`${forecastMonths.length} month${forecastMonths.length === 1 ? "" : "s"} projected negative`);
+    parts.push(`${forecastMonths.length} month${forecastMonths.length === 1 ? "" : "s"} projected negative (First deficit: ${money(forecastMonths[0].balance)})`);
   }
 
   if (overdueItems.length) parts.push(`${overdueItems.length} item${overdueItems.length === 1 ? "" : "s"} overdue`);
@@ -1600,22 +1680,31 @@ function renderInstallments() {
     .join("");
 }
 
-function commitEntryActualInput(input) {
+async function commitEntryActualInput(input) {
   if (!input) return;
   const entryId = input.dataset.entryActualInput;
   const entry = findEntryById(entryId);
   if (!entry || !isEditableEntry(entry)) return;
 
   const typedAmount = input.value === "" ? 0 : Number(input.value);
+  input.value = "";
+
   if (typedAmount > 0) {
     const previousActual = getEntryActualAmount(entry);
     setEntryActualAmount(entry, previousActual + typedAmount);
-  }
-  input.value = "";
 
-  renderDashboard();
-  renderHistory();
-  renderEntries();
+    renderAll();
+
+    if (entry.type === "expense") {
+      const selectedAcc = await promptAccountDeduction(typedAmount, entry.account || "cash", entry.category || "");
+      if (selectedAcc) {
+        deductFromAccount(selectedAcc, typedAmount);
+        renderAll();
+      }
+    }
+  } else {
+    renderAll();
+  }
 }
 
 function findHistoryEntry(entryId) {
@@ -2089,7 +2178,7 @@ function openEntryDialog(type, entry = null) {
   if (dlg) dlg.showModal();
 }
 
-function persistEntryForm(event) {
+async function persistEntryForm(event) {
   const form = event.currentTarget;
   const dialog = document.getElementById("entryDialog");
   const creditType = (form.elements.creditType.value || "").trim().toLowerCase();
@@ -2118,6 +2207,12 @@ function persistEntryForm(event) {
   const selectedCurrency = form.elements.currency.value;
   const rate = getCurrencyRate(selectedCurrency);
   const plannedAmountInEgp = rawAmount * rate;
+  const rawActual = Number(form.elements.actualAmount.value || 0);
+  const actualAmountInEgp = rawActual > 0 ? rawActual * rate : 0;
+  const prevActualInEgp = editingEntry ? getEntryActualAmount(editingEntry) : 0;
+  const deltaActualSpend = actualAmountInEgp - prevActualInEgp;
+  const chosenAccount = form.elements.account.value.trim() || "cash";
+  const entryCat = form.elements.category.value.trim();
 
   if (editingEntry) {
     const idx = cashEntries.findIndex((entry) => getEntryId(entry) === getEntryId(editingEntry));
@@ -2135,17 +2230,15 @@ function persistEntryForm(event) {
 
     if (idx !== -1) {
       cashEntries[idx] = updatedEntry;
-      const actualAmount = Number(form.elements.actualAmount.value || 0);
-      if (actualAmount > 0) {
-        setEntryActualAmount(updatedEntry, actualAmount * rate);
+      if (actualAmountInEgp > 0) {
+        setEntryActualAmount(updatedEntry, actualAmountInEgp);
       } else {
         delete entryActuals[getEntryId(editingEntry)];
       }
     } else {
-      const actualAmount = Number(form.elements.actualAmount.value || 0);
       const originalId = getEntryId(editingEntry);
-      if (actualAmount > 0) {
-        entryActuals[originalId] = Number(actualAmount * rate);
+      if (actualAmountInEgp > 0) {
+        entryActuals[originalId] = Number(actualAmountInEgp);
       } else {
         delete entryActuals[originalId];
       }
@@ -2165,9 +2258,8 @@ function persistEntryForm(event) {
     const months = form.elements.recurring.checked ? Number(form.elements.months.value) || 1 : 1;
     cashEntries.push(...buildRecurringEntries(baseEntry, months));
 
-    const actualAmount = Number(form.elements.actualAmount.value || 0);
-    if (actualAmount > 0) {
-      setEntryActualAmount(cashEntries[cashEntries.length - months], actualAmount * rate);
+    if (actualAmountInEgp > 0) {
+      setEntryActualAmount(cashEntries[cashEntries.length - months], actualAmountInEgp);
     }
   }
 
@@ -2180,6 +2272,14 @@ function persistEntryForm(event) {
     dialog.close(action);
   }
   renderAll();
+
+  if (isExpense && deltaActualSpend > 0) {
+    const selectedAcc = await promptAccountDeduction(deltaActualSpend, chosenAccount, entryCat);
+    if (selectedAcc) {
+      deductFromAccount(selectedAcc, deltaActualSpend);
+      renderAll();
+    }
+  }
 }
 
 function setupEventListeners() {
