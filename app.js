@@ -373,7 +373,7 @@ function sanitizeStoredActuals() {
         delete entryActuals[key];
         changed = true;
       } else {
-        const rounded = Math.round(val * 100) / 100;
+        const rounded = Math.round(val);
         if (rounded !== entryActuals[key]) {
           entryActuals[key] = rounded;
           changed = true;
@@ -381,8 +381,34 @@ function sanitizeStoredActuals() {
       }
     });
   }
+  if (Array.isArray(cashEntries)) {
+    cashEntries.forEach((e) => {
+      if (e && e.actualAmount !== undefined && e.actualAmount !== null) {
+        const val = Number(e.actualAmount);
+        const rounded = Number.isNaN(val) || val <= 0 ? 0 : Math.round(val);
+        if (rounded !== e.actualAmount) {
+          e.actualAmount = rounded;
+          changed = true;
+        }
+      }
+    });
+  }
+  if (Array.isArray(archivedEntries)) {
+    archivedEntries.forEach((e) => {
+      if (e && e.actualAmount !== undefined && e.actualAmount !== null) {
+        const val = Number(e.actualAmount);
+        const rounded = Number.isNaN(val) || val <= 0 ? 0 : Math.round(val);
+        if (rounded !== e.actualAmount) {
+          e.actualAmount = rounded;
+          changed = true;
+        }
+      }
+    });
+  }
   if (changed) {
     saveSetting(keys.entryActuals, entryActuals);
+    saveSetting(keys.entries, cashEntries);
+    saveSetting(keys.archivedEntries, archivedEntries);
   }
 }
 sanitizeStoredActuals();
@@ -451,20 +477,20 @@ function buildInstallmentEntries() {
 }
 
 function buildRecurringEntries(baseEntry, months) {
-  const [startYear, startMonth, startDay] = DateUtils.parseDate(baseEntry.date);
-  return Array.from({ length: months }, (_, index) => {
-    const zeroBasedMonth = startMonth - 1 + index;
-    const year = startYear + Math.floor(zeroBasedMonth / 12);
-    const month = ((zeroBasedMonth % 12) + 12) % 12;
-    const lastDay = DateUtils.getLastDayOfMonth(year, month + 1);
-    const day = Math.min(startDay, lastDay);
-    return {
+  const [startYear, startMonth, day] = baseEntry.date.split("-").map(Number);
+  const result = [];
+  for (let index = 0; index < months; index += 1) {
+    const targetMonthIndex = startMonth - 1 + index;
+    const year = startYear + Math.floor(targetMonthIndex / 12);
+    const month = (targetMonthIndex % 12) + 1;
+    const lastDay = DateUtils.getLastDayOfMonth(year, month);
+    result.push({
       ...baseEntry,
       id: generateId(),
-      date: DateUtils.formatDate(year, month + 1, day),
-      source: `${baseEntry.source} monthly`
-    };
-  });
+      date: DateUtils.formatDate(year, month, Math.min(day, lastDay))
+    });
+  }
+  return result;
 }
 
 function creditDueEntries() {
@@ -499,17 +525,17 @@ function getEntryActualAmount(entry) {
   const id = getEntryId(entry);
   const rawValue = entryActuals[id];
   if (rawValue !== undefined && rawValue !== null && rawValue !== "") {
-    return Math.round(Number(rawValue) * 100) / 100;
+    return Math.round(Number(rawValue) || 0);
   }
   if (entry && entry.actualAmount !== undefined && entry.actualAmount !== null && entry.actualAmount !== "") {
-    return Math.round(Number(entry.actualAmount) * 100) / 100;
+    return Math.round(Number(entry.actualAmount) || 0);
   }
   return 0;
 }
 
 function setEntryActualAmount(entry, value) {
   const id = getEntryId(entry);
-  const rounded = value === "" || value === null || value === undefined ? 0 : Math.round(Number(value) * 100) / 100;
+  const rounded = value === "" || value === null || value === undefined ? 0 : Math.round(Number(value) || 0);
   entryActuals[id] = rounded;
   if (entry && entry.actualAmount !== undefined) {
     entry.actualAmount = rounded;
@@ -1797,12 +1823,9 @@ function renderHistory() {
     .sort((a, b) => `${a.month}-${a.type}`.localeCompare(`${b.month}-${b.type}`))
     .map((group) => {
       const groupKey = group.memberIds.join(",");
-      const roundedTotal = Math.round(group.total * 100) / 100;
-      const displayVal = roundedTotal > 0
-        ? (Number.isInteger(roundedTotal) ? String(roundedTotal) : String(Number(roundedTotal.toFixed(2))))
-        : "";
+      const roundedTotal = Math.round(group.total || 0);
       const actualCell = group.editable
-        ? `<input class="inline-actual-input" data-history-actual-input="${escapeHtml(groupKey)}" type="number" min="0" step="any" value="${displayVal}" placeholder="0">`
+        ? `<input class="inline-actual-input" data-history-actual-input="${escapeHtml(groupKey)}" type="number" min="0" step="1" value="${roundedTotal > 0 ? roundedTotal : ""}" placeholder="0">`
         : `<span>${roundedTotal > 0 ? escapeHtml(money(roundedTotal)) : "—"}</span>`;
       const action = group.canRemove
         ? `<button class="delete-button" data-history-delete-key="${escapeHtml(groupKey)}" type="button">Remove</button>`
@@ -1832,9 +1855,8 @@ function commitHistoryActualInput(input) {
   if (!members.length) return;
 
   const rawTyped = input.value === "" ? 0 : Number(input.value);
-  const isIntegerInput = Number.isInteger(rawTyped);
-  const newTotal = isIntegerInput ? Math.round(rawTyped) : Math.round(rawTyped * 100) / 100;
-  const previousTotal = Math.round(members.reduce((sum, m) => sum + getEntryActualAmount(m.entry), 0) * 100) / 100;
+  const newTotal = Math.round(rawTyped || 0);
+  const previousTotal = Math.round(members.reduce((sum, m) => sum + getEntryActualAmount(m.entry), 0));
 
   let remaining = newTotal;
   members.forEach((member, index) => {
@@ -1847,33 +1869,27 @@ function commitHistoryActualInput(input) {
       return;
     }
     if (members.length === 1 || index === members.length - 1) {
-      const allocated = isIntegerInput ? Math.round(remaining) : Math.max(0, Math.round(remaining * 100) / 100);
+      const allocated = Math.max(0, Math.round(remaining));
       entryActuals[entryKey] = allocated;
       if (member.entry.actualAmount !== undefined) {
         member.entry.actualAmount = allocated;
       }
     } else if (previousTotal > 0) {
       const share = getEntryActualAmount(member.entry) / previousTotal;
-      const allocated = isIntegerInput
-        ? Math.round(share * newTotal)
-        : Math.round(share * newTotal * 100) / 100;
+      const allocated = Math.round(share * newTotal);
       const safeAllocated = Math.min(remaining, allocated);
       entryActuals[entryKey] = Math.max(0, safeAllocated);
       if (member.entry.actualAmount !== undefined) {
         member.entry.actualAmount = safeAllocated;
       }
-      remaining = isIntegerInput
-        ? remaining - safeAllocated
-        : Math.round((remaining - safeAllocated) * 100) / 100;
+      remaining -= safeAllocated;
     } else {
       const allocated = index === 0 ? newTotal : 0;
       entryActuals[entryKey] = allocated;
       if (member.entry.actualAmount !== undefined) {
         member.entry.actualAmount = allocated;
       }
-      remaining = isIntegerInput
-        ? remaining - allocated
-        : Math.round((remaining - allocated) * 100) / 100;
+      remaining -= allocated;
     }
   });
 
