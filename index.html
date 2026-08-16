@@ -48,6 +48,14 @@
       </header>
 
       <section class="view active" id="dashboard">
+        <div class="alert-banner" id="deficitBanner" hidden>
+          <div class="alert-banner-icon">!</div>
+          <div class="alert-banner-body">
+            <strong>Deficiencies detected</strong>
+            <p id="deficitBannerSummary"></p>
+          </div>
+          <button class="ghost-button" id="deficitBannerAction" type="button">View Deficits</button>
+        </div>
         <div class="metrics-grid">
           <article class="metric highlight-metric">
             <span>Total Net Worth</span>
@@ -89,6 +97,12 @@
               <h3>Actual category spending</h3>
             </div>
             <div id="categoryBreakdownList" class="stack-list"></div>
+          </section>
+          <section class="panel wide">
+            <div class="panel-heading">
+              <h3>Deficits &amp; Warnings</h3>
+            </div>
+            <div id="forecastWarnings" class="stack-list"></div>
           </section>
         </div>
       </section>

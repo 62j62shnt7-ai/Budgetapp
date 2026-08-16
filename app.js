@@ -701,6 +701,10 @@ function renderDashboard() {
 
   renderAssetDistribution(actualCashNow, storageTotal);
   renderCategoryBreakdown(actualEntries);
+
+  const deficitSummary = getDeficitSummary();
+  renderDeficitBanner(deficitSummary);
+  renderWarnings();
 }
 
 function renderAssetDistribution(actualCashNow, storageTotal) {
