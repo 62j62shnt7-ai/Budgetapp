@@ -1,0 +1,105 @@
+# Budget Control (Budgetapp)
+
+A lightweight, local-first personal financial planning and cashflow forecasting web application built with vanilla web technologies.
+
+---
+
+## 🌟 Key Features
+
+### 1. Dashboard & Net Worth Overview
+- **Total Net Worth Tracking**: Aggregates liquid cash across bank accounts with stored assets (Gold, USD, EUR, etc.).
+- **Cash Flow Projections**: Real-time balance forecasting curve showing projected low points and cash flow status.
+- **Visual Analytics**: Interactive balance forecast chart, category expense breakdowns, and asset allocation summaries.
+- **Deficit Alerts**: Instant banner notifications when projected shortfalls or negative cash balance days are detected.
+
+### 2. Deficit & Shortfall Detection
+- **Forecast Deficit Spells**: Identifies exact time windows where projected cash drops below zero before incoming revenue arrives.
+- **Overdue & Unpaid Tracker**: Flags past-due expenses that lack recorded actual amounts.
+- **Actual Shortfalls**: Calculates actual historical balance health based on confirmed payments.
+
+### 3. Cashflow & Planning
+- **Customizable Summary Range**: Filter forecast metrics across custom date ranges or view full lifetime projections.
+- **Category Budget Caps**: Monthly spending thresholds per category with real-time visual progress bars.
+- **Savings Goals**: Track target funding amounts and progress toward emergency reserves and long-term milestones.
+- **Salary & Income Scheduling**: Multi-quarter salary generator (supports split payments like 15th / 30th) and income streams.
+- **Recurring Installments**: Configure fixed monthly payment installments with custom start dates and duration.
+- **Forecast Ledger**: Searchable, filterable entries table supporting forecast amounts vs. actual amounts.
+
+### 4. Multi-Account Management
+- Configure opening balances across multiple institutions (e.g., CIB, HSBC, Cash).
+- Track credit card due dates and automated settlement projections.
+
+### 5. Stored Assets & Valuation Rates
+- **Asset Vault**: Track physical and foreign reserves (Gold bars/coins in 24k/21k/18k, USD, EUR, etc.).
+- **Real-Time Valuation**: Live currency conversion rates and karat-specific gold valuation against local base currency (EGP).
+
+### 6. Jobs & External Invoicing
+- **ASF Invoices**: Track foreign invoice milestones with actual realization dates and currency conversion.
+- **IRQ / Freelance Work**: Manage project-based income cards with due dates and delivery tracking.
+
+### 7. Cloud Sync & Data Portability
+- **GitHub Gist Sync**: Secure, private cloud synchronization using GitHub Personal Access Tokens (PAT).
+- **JSON Import / Export**: Complete backup and restore of all local settings, transactions, and assets.
+- **CSV Export**: Export all forecast and actual transaction logs for spreadsheet analysis.
+- **Local-First Privacy**: All data lives locally in the browser (`localStorage`) by default; no third-party backend servers.
+- **Dark Mode**: Sleek modern UI with dynamic dark/light theme toggle.
+
+---
+
+## 🛠️ Tech Stack
+
+- **Frontend**: HTML5, Vanilla JavaScript (ES6+), CSS3 (Custom properties & CSS Grid/Flexbox)
+- **Storage**: Browser `localStorage` + GitHub Gist REST API for cloud backup
+- **Dependencies**: Zero external build dependencies or node packages required.
+
+---
+
+## 🚀 Getting Started
+
+### Run Locally
+
+Because the application is built with standard vanilla web technologies, no build step or package installation is needed:
+
+1. **Directly in Browser**:
+   - Double-click or open `index.html` in any modern web browser.
+
+2. **Using a Local Static Server (Recommended)**:
+   - Using Python:
+     ```bash
+     python3 -m http.server 8000
+     ```
+     Then open `http://localhost:8000` in your browser.
+   - Using Node.js:
+     ```bash
+     npx serve .
+     ```
+
+---
+
+## ☁️ GitHub Gist Cloud Sync Setup
+
+To sync your financial data seamlessly across devices:
+
+1. Generate a GitHub Personal Access Token (classic or fine-grained) with `gist` permissions.
+2. Click **☁️ Sync** in the top action bar of the app.
+3. Paste your GitHub Token and specify an optional Gist ID (or let the app auto-create a private Gist for you).
+4. Save to enable one-click cloud upload and download.
+
+---
+
+## 📁 Project Structure
+
+```text
+Budgetapp/
+├── index.html        # Main application markup & UI dialogs
+├── styles.css        # Responsive styling, design tokens, light/dark themes
+├── app.js            # Core business logic, calculations, state, and UI handlers
+├── .gitignore        # Git ignore file
+└── README.md         # Documentation
+```
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License.
