@@ -364,6 +364,29 @@ let savingsGoals = loadSetting(keys.savingsGoals, defaultSavingsGoals);
 let editingEntry = null;
 let editingInstallmentIndex = null;
 
+function sanitizeStoredActuals() {
+  let changed = false;
+  if (entryActuals && typeof entryActuals === "object") {
+    Object.keys(entryActuals).forEach((key) => {
+      const val = Number(entryActuals[key]);
+      if (Number.isNaN(val) || val <= 0) {
+        delete entryActuals[key];
+        changed = true;
+      } else {
+        const rounded = Math.round(val * 100) / 100;
+        if (rounded !== entryActuals[key]) {
+          entryActuals[key] = rounded;
+          changed = true;
+        }
+      }
+    });
+  }
+  if (changed) {
+    saveSetting(keys.entryActuals, entryActuals);
+  }
+}
+sanitizeStoredActuals();
+
 // --- Calculation Logic ---
 function monthIndexFromYearMonth(ymString) {
   const [year, month] = DateUtils.parseYearMonth(ymString);
@@ -1775,8 +1798,11 @@ function renderHistory() {
     .map((group) => {
       const groupKey = group.memberIds.join(",");
       const roundedTotal = Math.round(group.total * 100) / 100;
+      const displayVal = roundedTotal > 0
+        ? (Number.isInteger(roundedTotal) ? String(roundedTotal) : String(Number(roundedTotal.toFixed(2))))
+        : "";
       const actualCell = group.editable
-        ? `<input class="inline-actual-input" data-history-actual-input="${escapeHtml(groupKey)}" type="number" min="0" step="0.01" value="${roundedTotal > 0 ? roundedTotal : ""}" placeholder="0">`
+        ? `<input class="inline-actual-input" data-history-actual-input="${escapeHtml(groupKey)}" type="number" min="0" step="any" value="${displayVal}" placeholder="0">`
         : `<span>${roundedTotal > 0 ? escapeHtml(money(roundedTotal)) : "—"}</span>`;
       const action = group.canRemove
         ? `<button class="delete-button" data-history-delete-key="${escapeHtml(groupKey)}" type="button">Remove</button>`
@@ -1805,7 +1831,9 @@ function commitHistoryActualInput(input) {
     .filter((m) => m.entry && isEditableEntry(m.entry));
   if (!members.length) return;
 
-  const newTotal = input.value === "" ? 0 : Math.round(Number(input.value) * 100) / 100;
+  const rawTyped = input.value === "" ? 0 : Number(input.value);
+  const isIntegerInput = Number.isInteger(rawTyped);
+  const newTotal = isIntegerInput ? Math.round(rawTyped) : Math.round(rawTyped * 100) / 100;
   const previousTotal = Math.round(members.reduce((sum, m) => sum + getEntryActualAmount(m.entry), 0) * 100) / 100;
 
   let remaining = newTotal;
@@ -1819,26 +1847,33 @@ function commitHistoryActualInput(input) {
       return;
     }
     if (members.length === 1 || index === members.length - 1) {
-      const allocated = Math.max(0, Math.round(remaining * 100) / 100);
+      const allocated = isIntegerInput ? Math.round(remaining) : Math.max(0, Math.round(remaining * 100) / 100);
       entryActuals[entryKey] = allocated;
       if (member.entry.actualAmount !== undefined) {
         member.entry.actualAmount = allocated;
       }
     } else if (previousTotal > 0) {
       const share = getEntryActualAmount(member.entry) / previousTotal;
-      const allocated = Math.min(remaining, Math.round(share * newTotal * 100) / 100);
-      entryActuals[entryKey] = Math.max(0, allocated);
+      const allocated = isIntegerInput
+        ? Math.round(share * newTotal)
+        : Math.round(share * newTotal * 100) / 100;
+      const safeAllocated = Math.min(remaining, allocated);
+      entryActuals[entryKey] = Math.max(0, safeAllocated);
       if (member.entry.actualAmount !== undefined) {
-        member.entry.actualAmount = allocated;
+        member.entry.actualAmount = safeAllocated;
       }
-      remaining = Math.round((remaining - allocated) * 100) / 100;
+      remaining = isIntegerInput
+        ? remaining - safeAllocated
+        : Math.round((remaining - safeAllocated) * 100) / 100;
     } else {
       const allocated = index === 0 ? newTotal : 0;
       entryActuals[entryKey] = allocated;
       if (member.entry.actualAmount !== undefined) {
         member.entry.actualAmount = allocated;
       }
-      remaining = Math.round((remaining - allocated) * 100) / 100;
+      remaining = isIntegerInput
+        ? remaining - allocated
+        : Math.round((remaining - allocated) * 100) / 100;
     }
   });
 
