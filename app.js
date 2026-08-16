@@ -699,12 +699,32 @@ function renderDashboard() {
   const hsbcCreditEl = document.getElementById("hsbcCreditDue");
   if (hsbcCreditEl) hsbcCreditEl.textContent = money(hsbcCredit);
 
+  const forecast = calculateForecast(forecastEntries());
+  const isNegative = forecast.some((item) => item.balance < 0);
+  updateCashflowStatus(isNegative);
+
   renderAssetDistribution(actualCashNow, storageTotal);
   renderCategoryBreakdown(actualEntries);
 
   const deficitSummary = getDeficitSummary();
   renderDeficitBanner(deficitSummary);
   renderWarnings();
+}
+
+function updateCashflowStatus(isNegative) {
+  ["cashflowStatus", "cfCashflowStatus"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.textContent = isNegative ? "Risk" : "OK";
+      el.classList.toggle("danger-text", isNegative);
+    }
+  });
+  ["cashflowStatusNote", "cfCashflowStatusNote"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.textContent = isNegative ? "Expenses exceed cash in forecast" : "Cash stays above zero";
+    }
+  });
 }
 
 function renderAssetDistribution(actualCashNow, storageTotal) {
@@ -1339,16 +1359,7 @@ function renderCashflowSummary() {
   );
 
   const isNegative = forecast.some((item) => item.balance < 0);
-  const cashflowStatusEl = document.getElementById("cashflowStatus");
-  if (cashflowStatusEl) {
-    cashflowStatusEl.textContent = isNegative ? "Risk" : "OK";
-    cashflowStatusEl.classList.toggle("danger-text", isNegative);
-  }
-
-  const cashflowNoteEl = document.getElementById("cashflowStatusNote");
-  if (cashflowNoteEl) {
-    cashflowNoteEl.textContent = isNegative ? "Expenses exceed cash in forecast" : "Cash stays above zero";
-  }
+  updateCashflowStatus(isNegative);
 
   const forecastLowEl = document.getElementById("forecastLow");
   if (forecastLowEl) forecastLowEl.textContent = money(lowPoint.balance);
