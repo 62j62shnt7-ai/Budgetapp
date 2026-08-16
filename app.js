@@ -476,17 +476,21 @@ function getEntryActualAmount(entry) {
   const id = getEntryId(entry);
   const rawValue = entryActuals[id];
   if (rawValue !== undefined && rawValue !== null && rawValue !== "") {
-    return Number(rawValue);
+    return Math.round(Number(rawValue) * 100) / 100;
   }
   if (entry && entry.actualAmount !== undefined && entry.actualAmount !== null && entry.actualAmount !== "") {
-    return Number(entry.actualAmount);
+    return Math.round(Number(entry.actualAmount) * 100) / 100;
   }
   return 0;
 }
 
 function setEntryActualAmount(entry, value) {
   const id = getEntryId(entry);
-  entryActuals[id] = value === "" || value === null || value === undefined ? 0 : Number(value);
+  const rounded = value === "" || value === null || value === undefined ? 0 : Math.round(Number(value) * 100) / 100;
+  entryActuals[id] = rounded;
+  if (entry && entry.actualAmount !== undefined) {
+    entry.actualAmount = rounded;
+  }
   saveSetting(keys.entryActuals, entryActuals);
 }
 
@@ -1770,9 +1774,10 @@ function renderHistory() {
     .sort((a, b) => `${a.month}-${a.type}`.localeCompare(`${b.month}-${b.type}`))
     .map((group) => {
       const groupKey = group.memberIds.join(",");
+      const roundedTotal = Math.round(group.total * 100) / 100;
       const actualCell = group.editable
-        ? `<input class="inline-actual-input" data-history-actual-input="${escapeHtml(groupKey)}" type="number" min="0" step="0.01" value="${group.total || ""}" placeholder="0">`
-        : `<span>${group.total > 0 ? escapeHtml(money(group.total)) : "—"}</span>`;
+        ? `<input class="inline-actual-input" data-history-actual-input="${escapeHtml(groupKey)}" type="number" min="0" step="0.01" value="${roundedTotal > 0 ? roundedTotal : ""}" placeholder="0">`
+        : `<span>${roundedTotal > 0 ? escapeHtml(money(roundedTotal)) : "—"}</span>`;
       const action = group.canRemove
         ? `<button class="delete-button" data-history-delete-key="${escapeHtml(groupKey)}" type="button">Remove</button>`
         : "";
@@ -1800,25 +1805,40 @@ function commitHistoryActualInput(input) {
     .filter((m) => m.entry && isEditableEntry(m.entry));
   if (!members.length) return;
 
-  const newTotal = input.value === "" ? 0 : Number(input.value);
-  const previousTotal = members.reduce((sum, m) => sum + getEntryActualAmount(m.entry), 0);
+  const newTotal = input.value === "" ? 0 : Math.round(Number(input.value) * 100) / 100;
+  const previousTotal = Math.round(members.reduce((sum, m) => sum + getEntryActualAmount(m.entry), 0) * 100) / 100;
 
+  let remaining = newTotal;
   members.forEach((member, index) => {
     const entryKey = getEntryId(member.entry);
     if (newTotal <= 0) {
       delete entryActuals[entryKey];
+      if (member.entry.actualAmount !== undefined) {
+        member.entry.actualAmount = 0;
+      }
       return;
     }
-    if (members.length === 1) {
-      entryActuals[entryKey] = newTotal;
+    if (members.length === 1 || index === members.length - 1) {
+      const allocated = Math.max(0, Math.round(remaining * 100) / 100);
+      entryActuals[entryKey] = allocated;
+      if (member.entry.actualAmount !== undefined) {
+        member.entry.actualAmount = allocated;
+      }
     } else if (previousTotal > 0) {
       const share = getEntryActualAmount(member.entry) / previousTotal;
-      const amount = index === members.length - 1
-        ? newTotal - members.slice(0, -1).reduce((sum, m) => sum + Math.round((getEntryActualAmount(m.entry) / previousTotal) * newTotal * 100) / 100, 0)
-        : Math.round(share * newTotal * 100) / 100;
-      entryActuals[entryKey] = Math.max(0, amount);
+      const allocated = Math.min(remaining, Math.round(share * newTotal * 100) / 100);
+      entryActuals[entryKey] = Math.max(0, allocated);
+      if (member.entry.actualAmount !== undefined) {
+        member.entry.actualAmount = allocated;
+      }
+      remaining = Math.round((remaining - allocated) * 100) / 100;
     } else {
-      entryActuals[entryKey] = index === 0 ? newTotal : 0;
+      const allocated = index === 0 ? newTotal : 0;
+      entryActuals[entryKey] = allocated;
+      if (member.entry.actualAmount !== undefined) {
+        member.entry.actualAmount = allocated;
+      }
+      remaining = Math.round((remaining - allocated) * 100) / 100;
     }
   });
 
