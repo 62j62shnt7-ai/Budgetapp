@@ -7,10 +7,13 @@ A lightweight, local-first personal financial planning and cashflow forecasting 
 ## 🌟 Key Features
 
 ### 1. Dashboard & Net Worth Overview
+- **Financial Health Stability Index (0–100)**: Real-time composite health rating with dynamic grade pills (`Strong` / `Moderate` / `Needs Focus`) evaluating deficit safety, liquid runway, budget adherence, and reserve funding.
+- **Deficit Priority & Proximity Gatekeeper**: Imminent liquid cash deficits (< 30 days) automatically override asset valuations to enforce critical advisory alerts and score caps.
+- **Automated Smart Financial Insights**: Real-time contextual advisory strip flagging credit maturity count downs, top monthly spending drivers, deficit horizons, and asset reserve backing.
 - **Total Net Worth Tracking**: Aggregates liquid cash across bank accounts with stored assets (Gold, USD, EUR, etc.).
 - **Cash Flow Projections**: Real-time balance forecasting curve showing projected low points and cash flow status.
 - **Visual Analytics**: Interactive balance forecast chart, category expense breakdowns, and asset allocation summaries.
-- **Deficit Alerts**: Instant banner notifications when projected shortfalls or negative cash balance days are detected.
+- **Dynamic Color Interpolation**: Continuous RGB color transitions (Green → Amber → Red) on category budget progress bars and financial health tracks.
 
 ### 2. Deficit & Shortfall Detection
 - **Forecast Deficit Spells**: Identifies exact time windows where projected cash drops below zero before incoming revenue arrives.

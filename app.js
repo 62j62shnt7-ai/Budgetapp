@@ -183,23 +183,41 @@ function debounce(fn, delay = 200) {
 /* ---- Financial Health & Smart Insights Engine ---- */
 function computeFinancialHealthScore({ entries, forecast, deficitSummary, actualCashNow, storageTotal }) {
   const { deficitPeriods, forecastMonths } = deficitSummary;
+  const today = DateUtils.todayString();
 
-  // 1. Deficit Safety (0 - 25 pts)
+  // 1. Deficit Safety & Proximity Gatekeeper (0 - 25 pts + hard score cap)
   let deficitScore = 25;
+  let hardScoreCap = 100;
+  let deficitSummaryNote = "";
+
   if (deficitPeriods && deficitPeriods.length > 0) {
-    const hasUnresolved = deficitPeriods.some((p) => !p.isResolved);
-    if (hasUnresolved) {
-      deficitScore = 5;
+    const firstDeficit = deficitPeriods[0];
+    const daysUntilDeficit = firstDeficit.startDate ? DateUtils.daysBetween(today, firstDeficit.startDate) : 0;
+    const isUnresolved = !firstDeficit.isResolved;
+
+    if (daysUntilDeficit <= 30) {
+      // Imminent deficit within 30 days
+      deficitScore = 0;
+      hardScoreCap = isUnresolved ? 35 : 45; // Hard cap into Red ("Needs Focus")
+      deficitSummaryNote = `Imminent deficit projected starting ${DateUtils.formatDisplayDate(firstDeficit.startDate)}.`;
+    } else if (daysUntilDeficit <= 60) {
+      // Near-term deficit within 31-60 days
+      deficitScore = isUnresolved ? 4 : 8;
+      hardScoreCap = 60; // Hard cap into Amber ("Moderate")
+      deficitSummaryNote = `Near-term deficit projected in ${daysUntilDeficit} days (${DateUtils.formatDisplayDate(firstDeficit.startDate)}).`;
     } else {
-      const maxDays = Math.max(...deficitPeriods.map((p) => p.daysInDeficit || 0));
-      deficitScore = maxDays <= 15 ? 18 : 12;
+      // Mid/long-range deficit > 60 days
+      deficitScore = isUnresolved ? 8 : 14;
+      hardScoreCap = 74; // Cannot be higher than Moderate
+      deficitSummaryNote = `Deficit projected in ${daysUntilDeficit} days (${DateUtils.formatDisplayDate(firstDeficit.startDate)}).`;
     }
   } else if (forecastMonths && forecastMonths.length > 0) {
-    deficitScore = 8;
+    deficitScore = 6;
+    hardScoreCap = 52;
+    deficitSummaryNote = `${forecastMonths.length} month(s) projected negative in forecast.`;
   }
 
-  // 2. Liquidity & Runway (0 - 25 pts)
-  const totalNetWorth = actualCashNow + storageTotal;
+  // 2. Liquid Cash & Overall Runway (0 - 25 pts)
   const currentMonth = DateUtils.currentYearMonth();
   const currentMonthExpenses = entries
     .filter((e) => e.type === "expense" && DateUtils.getMonthKey(e.date) === currentMonth)
@@ -211,12 +229,23 @@ function computeFinancialHealthScore({ entries, forecast, deficitSummary, actual
 
   let runwayScore = 25;
   if (avgMonthlyExpense > 0) {
-    const runwayMonths = totalNetWorth / avgMonthlyExpense;
-    if (runwayMonths >= 6) runwayScore = 25;
-    else if (runwayMonths >= 3) runwayScore = 20;
-    else if (runwayMonths >= 1.5) runwayScore = 14;
-    else if (runwayMonths >= 0.5) runwayScore = 8;
-    else runwayScore = 4;
+    const liquidRunway = actualCashNow / avgMonthlyExpense;
+    const totalNetWorth = actualCashNow + storageTotal;
+    const totalRunway = totalNetWorth / avgMonthlyExpense;
+
+    if (liquidRunway < 0.5 && storageTotal <= 0) {
+      runwayScore = 4;
+    } else if (totalRunway >= 6 && liquidRunway >= 1.5) {
+      runwayScore = 25;
+    } else if (totalRunway >= 3 && liquidRunway >= 1.0) {
+      runwayScore = 20;
+    } else if (totalRunway >= 1.5) {
+      runwayScore = 14;
+    } else if (totalRunway >= 0.5) {
+      runwayScore = 8;
+    } else {
+      runwayScore = 4;
+    }
   }
 
   // 3. Budget Adherence (0 - 25 pts)
@@ -231,7 +260,7 @@ function computeFinancialHealthScore({ entries, forecast, deficitSummary, actual
       if (cap > 0 && spent > cap) exceededCount++;
     });
     if (exceededCount === 0) budgetScore = 25;
-    else if (exceededCount === 1) budgetScore = 15;
+    else if (exceededCount === 1) budgetScore = 14;
     else budgetScore = 6;
   }
 
@@ -249,16 +278,27 @@ function computeFinancialHealthScore({ entries, forecast, deficitSummary, actual
     }
   }
 
-  const totalScore = Math.min(100, Math.max(0, Math.round(deficitScore + runwayScore + budgetScore + savingsScore)));
+  const rawScore = Math.round(deficitScore + runwayScore + budgetScore + savingsScore);
+  const totalScore = Math.min(hardScoreCap, Math.max(0, rawScore));
 
-  let band = { label: "Strong", grade: "A", tone: "strong", summary: "Strong liquidity runway and no active deficit risk." };
+  let band = { label: "Strong", grade: "A", tone: "strong", summary: "Strong liquidity runway and positive cashflow horizon." };
   if (totalScore < 55) {
-    band = { label: "Needs Focus", grade: "C", tone: "attention", summary: "Deficit pressure or tight runway detected. Review upcoming expenses." };
+    band = {
+      label: "Needs Focus",
+      grade: "C",
+      tone: "attention",
+      summary: deficitSummaryNote || "Deficit pressure or tight runway detected. Review upcoming expenses."
+    };
   } else if (totalScore < 78) {
-    band = { label: "Moderate", grade: "B", tone: "moderate", summary: "Stable cashflow with opportunities to build larger reserve buffers." };
+    band = {
+      label: "Moderate",
+      grade: "B",
+      tone: "moderate",
+      summary: deficitSummaryNote || "Stable cashflow with opportunities to build larger reserve buffers."
+    };
   }
 
-  return { totalScore, band, deficitScore, runwayScore, budgetScore, savingsScore };
+  return { totalScore, band, deficitScore, runwayScore, budgetScore, savingsScore, hardScoreCap };
 }
 
 function renderFinancialHealth(health) {
