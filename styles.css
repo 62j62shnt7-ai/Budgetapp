@@ -1152,3 +1152,137 @@ label {
   width: 92%;
 }
 
+/* --- Financial Health & Smart Insights --- */
+.dashboard-advisory-grid {
+  grid-template-columns: 1fr 1.6fr;
+}
+
+@media (max-width: 1024px) {
+  .dashboard-advisory-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.health-score-panel {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.health-score-main {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.health-score-number {
+  font-size: 42px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--ink);
+  min-width: 68px;
+}
+
+.health-score-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.health-score-track {
+  height: 12px;
+  background: var(--surface-soft);
+  border-radius: 20px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+
+.health-score-fill {
+  height: 100%;
+  border-radius: 20px;
+  background: var(--green);
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.4s ease;
+}
+
+.health-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 12px;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  background: var(--surface-soft);
+  color: var(--muted);
+  transition: all 0.3s ease;
+}
+
+.health-badge.strong {
+  background: rgba(31, 122, 77, 0.15);
+  color: var(--green);
+}
+
+.health-badge.moderate {
+  background: rgba(164, 106, 24, 0.15);
+  color: var(--amber);
+}
+
+.health-badge.attention {
+  background: rgba(184, 70, 63, 0.15);
+  color: var(--red);
+}
+
+.smart-insights-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.insight-pill-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink);
+  transition: transform 0.15s ease;
+}
+
+.insight-pill-item:hover {
+  transform: translateX(3px);
+}
+
+.insight-pill-item.info {
+  border-left: 3px solid var(--blue);
+}
+
+.insight-pill-item.success {
+  border-left: 3px solid var(--green);
+}
+
+.insight-pill-item.warning {
+  border-left: 3px solid var(--amber);
+}
+
+.insight-pill-item.danger {
+  border-left: 3px solid var(--red);
+}
+
+.insight-pill-icon {
+  font-size: 15px;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.insight-pill-content {
+  flex: 1;
+}
+
+.progress-bar-fill {
+  transition: width 0.4s ease, background-color 0.4s ease;
+}
+
+

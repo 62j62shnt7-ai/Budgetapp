@@ -94,7 +94,35 @@
           </article>
         </div>
 
-        <div class="content-grid">
+        <div class="content-grid dashboard-advisory-grid" style="margin-top: 18px;">
+          <section class="panel health-score-panel">
+            <div class="panel-heading" style="margin-bottom: 10px;">
+              <h3>Financial Health Score</h3>
+              <span id="healthScoreBadge" class="health-badge">Calculating...</span>
+            </div>
+            <div class="health-score-body">
+              <div class="health-score-main">
+                <div class="health-score-number" id="healthScoreValue">--</div>
+                <div class="health-score-meta">
+                  <div class="health-score-track">
+                    <div class="health-score-fill" id="healthScoreFill" style="width: 0%;"></div>
+                  </div>
+                  <small id="healthScoreSummary" style="color: var(--muted); display: block; margin-top: 8px; line-height: 1.4;">Evaluating deficit risk, liquidity runway, and budget adherence...</small>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel insights-panel">
+            <div class="panel-heading" style="margin-bottom: 10px;">
+              <h3>Smart Financial Insights</h3>
+              <span style="font-size: 11px; color: var(--muted);">Real-time Advisory</span>
+            </div>
+            <div id="smartInsightsList" class="smart-insights-list"></div>
+          </section>
+        </div>
+
+        <div class="content-grid" style="margin-top: 18px;">
           <section class="panel wide">
             <div class="panel-heading">
               <h3>Balance forecast</h3>

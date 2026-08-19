@@ -140,6 +140,254 @@ function escapeHtml(str) {
     .replace(/'/g, "&#039;");
 }
 
+/* ---- Color Interpolation & Debounce Helpers ---- */
+function hex2rgb(h) {
+  h = (h || "").replace("#", "");
+  if (h.length === 3) h = h.split("").map((c) => c + c).join("");
+  return [parseInt(h.slice(0, 2), 16) || 0, parseInt(h.slice(2, 4), 16) || 0, parseInt(h.slice(4, 6), 16) || 0];
+}
+
+function rgb2hex(r, g, b) {
+  return "#" + [r, g, b].map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("");
+}
+
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function smartColor(t) {
+  // t in [0, 1]: 0 = green (#1f7a4d), 0.5 = amber (#d98e2b), 1 = red (#e5534b)
+  t = Math.max(0, Math.min(1, Number(t) || 0));
+  const green = hex2rgb("#1f7a4d");
+  const amber = hex2rgb("#d98e2b");
+  const red = hex2rgb("#e5534b");
+  if (t <= 0.5) {
+    const k = t * 2;
+    return rgb2hex(lerp(green[0], amber[0], k), lerp(green[1], amber[1], k), lerp(green[2], amber[2], k));
+  } else {
+    const k = (t - 0.5) * 2;
+    return rgb2hex(lerp(amber[0], red[0], k), lerp(amber[1], red[1], k), lerp(amber[2], red[2], k));
+  }
+}
+
+function debounce(fn, delay = 200) {
+  let timeoutId = null;
+  return function (...args) {
+    if (timeoutId) clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => {
+      fn.apply(this, args);
+    }, delay);
+  };
+}
+
+/* ---- Financial Health & Smart Insights Engine ---- */
+function computeFinancialHealthScore({ entries, forecast, deficitSummary, actualCashNow, storageTotal }) {
+  const { deficitPeriods, forecastMonths } = deficitSummary;
+
+  // 1. Deficit Safety (0 - 25 pts)
+  let deficitScore = 25;
+  if (deficitPeriods && deficitPeriods.length > 0) {
+    const hasUnresolved = deficitPeriods.some((p) => !p.isResolved);
+    if (hasUnresolved) {
+      deficitScore = 5;
+    } else {
+      const maxDays = Math.max(...deficitPeriods.map((p) => p.daysInDeficit || 0));
+      deficitScore = maxDays <= 15 ? 18 : 12;
+    }
+  } else if (forecastMonths && forecastMonths.length > 0) {
+    deficitScore = 8;
+  }
+
+  // 2. Liquidity & Runway (0 - 25 pts)
+  const totalNetWorth = actualCashNow + storageTotal;
+  const currentMonth = DateUtils.currentYearMonth();
+  const currentMonthExpenses = entries
+    .filter((e) => e.type === "expense" && DateUtils.getMonthKey(e.date) === currentMonth)
+    .reduce((sum, e) => sum + Number(e.amount || 0), 0);
+
+  const allMonthlyExpenses = groupByMonth(entries.filter((e) => e.type === "expense"), (e) => Number(e.amount || 0));
+  const expVals = Object.values(allMonthlyExpenses);
+  const avgMonthlyExpense = expVals.length ? expVals.reduce((a, b) => a + b, 0) / expVals.length : (currentMonthExpenses || 1);
+
+  let runwayScore = 25;
+  if (avgMonthlyExpense > 0) {
+    const runwayMonths = totalNetWorth / avgMonthlyExpense;
+    if (runwayMonths >= 6) runwayScore = 25;
+    else if (runwayMonths >= 3) runwayScore = 20;
+    else if (runwayMonths >= 1.5) runwayScore = 14;
+    else if (runwayMonths >= 0.5) runwayScore = 8;
+    else runwayScore = 4;
+  }
+
+  // 3. Budget Adherence (0 - 25 pts)
+  let budgetScore = 20; // Default neutral if no caps
+  if (categoryCaps && categoryCaps.length > 0) {
+    let exceededCount = 0;
+    categoryCaps.forEach((item) => {
+      const spent = entries
+        .filter((e) => e.type === "expense" && DateUtils.getMonthKey(e.date) === currentMonth && (e.category || "").toLowerCase() === (item.category || "").toLowerCase())
+        .reduce((sum, e) => sum + Number(e.amount || 0), 0);
+      const cap = Number(item.cap || 0);
+      if (cap > 0 && spent > cap) exceededCount++;
+    });
+    if (exceededCount === 0) budgetScore = 25;
+    else if (exceededCount === 1) budgetScore = 15;
+    else budgetScore = 6;
+  }
+
+  // 4. Savings & Reserve Target (0 - 25 pts)
+  let savingsScore = 15;
+  if (savingsGoals && savingsGoals.length > 0) {
+    const totalTarget = savingsGoals.reduce((s, g) => s + Number(g.target || 0), 0);
+    const totalCurrent = savingsGoals.reduce((s, g) => s + Number(g.current || 0), 0);
+    if (totalTarget > 0) {
+      const pct = totalCurrent / totalTarget;
+      if (pct >= 0.8) savingsScore = 25;
+      else if (pct >= 0.5) savingsScore = 20;
+      else if (pct >= 0.25) savingsScore = 15;
+      else savingsScore = 10;
+    }
+  }
+
+  const totalScore = Math.min(100, Math.max(0, Math.round(deficitScore + runwayScore + budgetScore + savingsScore)));
+
+  let band = { label: "Strong", grade: "A", tone: "strong", summary: "Strong liquidity runway and no active deficit risk." };
+  if (totalScore < 55) {
+    band = { label: "Needs Focus", grade: "C", tone: "attention", summary: "Deficit pressure or tight runway detected. Review upcoming expenses." };
+  } else if (totalScore < 78) {
+    band = { label: "Moderate", grade: "B", tone: "moderate", summary: "Stable cashflow with opportunities to build larger reserve buffers." };
+  }
+
+  return { totalScore, band, deficitScore, runwayScore, budgetScore, savingsScore };
+}
+
+function renderFinancialHealth(health) {
+  const valEl = document.getElementById("healthScoreValue");
+  const fillEl = document.getElementById("healthScoreFill");
+  const badgeEl = document.getElementById("healthScoreBadge");
+  const sumEl = document.getElementById("healthScoreSummary");
+
+  if (valEl) valEl.textContent = String(health.totalScore);
+  if (badgeEl) {
+    badgeEl.textContent = health.band.label;
+    badgeEl.className = `health-badge ${health.band.tone}`;
+  }
+  if (fillEl) {
+    fillEl.style.width = `${health.totalScore}%`;
+    fillEl.style.backgroundColor = smartColor(1 - (health.totalScore / 100));
+  }
+  if (sumEl) sumEl.textContent = health.band.summary;
+}
+
+function generateSmartInsights({ entries, forecast, deficitSummary, actualCashNow, storageTotal }) {
+  const insights = [];
+  const currentMonth = DateUtils.currentYearMonth();
+
+  // 1. Credit Settlement Horizon
+  const cibDue = getRemainingCreditDueAmount("cib");
+  const hsbcDue = getRemainingCreditDueAmount("hsbc");
+  if (cibDue > 0 || hsbcDue > 0) {
+    const dues = [];
+    if (cibDue > 0) dues.push(`CIB (${money(cibDue)})`);
+    if (hsbcDue > 0) dues.push(`HSBC (${money(hsbcDue)})`);
+    insights.push({
+      icon: "💳",
+      type: "warning",
+      text: `<strong>Credit Settlement Due:</strong> ${dues.join(" & ")} scheduled for this billing cycle.`
+    });
+  }
+
+  // 2. Deficit Horizon or Clean Projection
+  const { deficitPeriods } = deficitSummary;
+  if (deficitPeriods && deficitPeriods.length > 0) {
+    const nextDeficit = deficitPeriods[0];
+    const startFmt = DateUtils.formatDisplayDate(nextDeficit.startDate);
+    const durStr = nextDeficit.daysInDeficit > 0 ? ` for ~${nextDeficit.daysInDeficit} days` : "";
+    const fixStr = nextDeficit.resolvedBy ? ` until recovered by ${nextDeficit.resolvedBy}` : "";
+    insights.push({
+      icon: "⚠️",
+      type: "danger",
+      text: `<strong>Deficit Horizon:</strong> Projected balance turns negative on <strong>${startFmt}</strong>${durStr}${fixStr} (Peak deficit: ${money(nextDeficit.lowestBalance)}).`
+    });
+  } else {
+    insights.push({
+      icon: "✅",
+      type: "success",
+      text: `<strong>Clean Runway:</strong> Projected cash balance remains positive across all ${forecast.length} forecasted months.`
+    });
+  }
+
+  // 3. Top Expense Driver
+  const currentExpenses = entries.filter((e) => e.type === "expense" && DateUtils.getMonthKey(e.date) === currentMonth);
+  const totalExp = currentExpenses.reduce((s, e) => s + Number(e.amount || 0), 0);
+  if (totalExp > 0) {
+    const catMap = {};
+    currentExpenses.forEach((e) => {
+      const c = e.category || "General";
+      catMap[c] = (catMap[c] || 0) + Number(e.amount || 0);
+    });
+    const sortedCats = Object.entries(catMap).sort((a, b) => b[1] - a[1]);
+    if (sortedCats.length > 0) {
+      const [topCat, topAmt] = sortedCats[0];
+      const topPct = Math.round((topAmt / totalExp) * 100);
+      if (topPct >= 35) {
+        insights.push({
+          icon: "📊",
+          type: "info",
+          text: `<strong>Top Expense Driver:</strong> <strong>${escapeHtml(topCat)}</strong> represents ${topPct}% (${money(topAmt)}) of current month expenses.`
+        });
+      }
+    }
+  }
+
+  // 4. Stored Assets Vault
+  if (storageTotal > 0) {
+    const totalNetWorth = actualCashNow + storageTotal;
+    const ratio = totalNetWorth > 0 ? Math.round((storageTotal / totalNetWorth) * 100) : 100;
+    insights.push({
+      icon: "🪙",
+      type: "info",
+      text: `<strong>Asset Vault:</strong> ${money(storageTotal)} held in gold/foreign reserves (${ratio}% of total net worth).`
+    });
+  }
+
+  // 5. Savings Goal Progress
+  if (savingsGoals && savingsGoals.length > 0) {
+    const topGoal = savingsGoals[0];
+    const pct = topGoal.target > 0 ? Math.round((topGoal.current / topGoal.target) * 100) : 0;
+    if (pct >= 70 && pct < 100) {
+      insights.push({
+        icon: "🎯",
+        type: "success",
+        text: `<strong>Savings Milestone:</strong> <strong>${escapeHtml(topGoal.name)}</strong> is ${pct}% funded (${money(topGoal.current)} / ${money(topGoal.target)}).`
+      });
+    }
+  }
+
+  return insights.slice(0, 4);
+}
+
+function renderSmartInsights(insights) {
+  const container = document.getElementById("smartInsightsList");
+  if (!container) return;
+
+  if (!insights || !insights.length) {
+    container.innerHTML = `<div class="insight-pill-item success"><span class="insight-pill-icon">✨</span><span class="insight-pill-content">All financial metrics within healthy operational limits.</span></div>`;
+    return;
+  }
+
+  container.innerHTML = insights
+    .map(
+      (i) => `
+      <div class="insight-pill-item ${i.type}">
+        <span class="insight-pill-icon">${i.icon}</span>
+        <span class="insight-pill-content">${i.text}</span>
+      </div>
+    `
+    )
+    .join("");
+}
+
 function clone(value) {
   if (typeof structuredClone === "function") return structuredClone(value);
   return JSON.parse(JSON.stringify(value));
@@ -896,6 +1144,12 @@ function renderDashboard() {
   const deficitSummary = getDeficitSummary();
   renderDeficitBanner(deficitSummary);
   renderDeficits(deficitSummary);
+
+  const healthScore = computeFinancialHealthScore({ entries, forecast, deficitSummary, actualCashNow, storageTotal });
+  renderFinancialHealth(healthScore);
+
+  const smartInsights = generateSmartInsights({ entries, forecast, deficitSummary, actualCashNow, storageTotal });
+  renderSmartInsights(smartInsights);
 }
 
 function updateCashflowStatus(isNegative) {
@@ -1448,7 +1702,8 @@ function renderCategoryCaps() {
         .reduce((sum, e) => sum + Number(e.amount || 0), 0);
       const cap = Number(item.cap || 0);
       const pct = cap > 0 ? Math.min(100, Math.round((spent / cap) * 100)) : 0;
-      const colorClass = pct >= 100 ? "red" : pct >= 75 ? "amber" : "";
+      const spentRatio = cap > 0 ? spent / cap : 0;
+      const barColor = smartColor(spentRatio);
 
       return `
         <div class="list-row" style="flex-direction:column; align-items:stretch; gap:6px;">
@@ -1457,7 +1712,7 @@ function renderCategoryCaps() {
             <button class="delete-button" data-cap-delete="${index}" type="button">Delete</button>
           </div>
           <div class="progress-bar-bg">
-            <div class="progress-bar-fill ${colorClass}" style="width:${pct}%;"></div>
+            <div class="progress-bar-fill" style="width:${pct}%; background-color:${barColor};"></div>
           </div>
         </div>
       `;
@@ -2724,7 +2979,7 @@ function setupEventListeners() {
 
   on("typeFilter", "change", renderEntries);
   on("categoryFilter", "change", renderEntries);
-  on("searchEntries", "input", renderEntries);
+  on("searchEntries", "input", debounce(renderEntries, 180));
 
   on("entriesTable", "change", (event) => {
     const input = event.target.closest("[data-entry-actual-input]");
