@@ -1654,6 +1654,7 @@ function renderDeficits(summary) {
             ? `Turns negative on <strong>${escapeHtml(startFmt)}</strong> (${escapeHtml(p.initialTrigger)}) → Fixed on <strong>${escapeHtml(endFmt)}</strong> by <strong>${escapeHtml(p.resolvedBy)}</strong>`
             : `Turns negative on <strong>${escapeHtml(startFmt)}</strong> (${escapeHtml(p.initialTrigger)}) and remains negative`;
 
+          const bridgeAmount = Math.ceil(Math.abs(p.lowestBalance));
           return `
             <div class="deficit-period-card">
               <div class="deficit-period-header">
@@ -1664,9 +1665,12 @@ function renderDeficits(summary) {
                   </div>
                   <small style="color:var(--muted); margin-top: 5px; display: block; line-height: 1.4;">${resolutionSummary}</small>
                 </div>
-                <div style="text-align: right; min-width: 110px;">
+                <div style="text-align: right; min-width: 130px;">
                   <strong style="color:var(--red); font-size:16px;">${escapeHtml(money(p.lowestBalance))}</strong>
-                  <small style="display:block; color:var(--muted); font-size:11px;">Peak deficit</small>
+                  <small style="display:block; color:var(--muted); font-size:11px; margin-bottom: 4px;">Peak deficit</small>
+                  <button class="ghost-button bridge-loan-btn" data-bridge-amount="${bridgeAmount}" data-bridge-date="${escapeHtml(p.startDate)}" type="button" style="font-size:11.5px; padding: 4px 9px;">
+                    💳 Bridge with Loan
+                  </button>
                 </div>
               </div>
 
@@ -1987,7 +1991,7 @@ function renderEntries() {
           <td>${escapeHtml(entry.category)}${statusBadge}</td>
           <td>${escapeHtml(entry.account || "cash")}</td>
           <td><span class="pill ${escapeHtml(entry.type)}">${escapeHtml(entry.type)}</span></td>
-          <td><span class="source-pill">${escapeHtml(entry.source || "manual")}</span></td>
+          <td><span class="source-pill ${entry.source === "loan" ? "loan" : ""}">${escapeHtml(entry.source || "manual")}</span></td>
           <td class="number">${escapeHtml(money(entry.amount))}</td>
           <td class="number">${actualCell}</td>
           <td class="number">${action}</td>
@@ -2721,6 +2725,137 @@ async function persistEntryForm(event) {
   }
 }
 
+// --- Loan Bridge Helpers ---
+function syncLoanBridgeRepaymentFields() {
+  const form = document.getElementById("loanBridgeForm");
+  if (!form) return;
+  const isInstallments = form.elements.repaymentType.value === "installments";
+  const singleBox = document.getElementById("loanSingleRepaymentFields");
+  const instBox = document.getElementById("loanInstallmentRepaymentFields");
+  if (singleBox) singleBox.hidden = isInstallments;
+  if (instBox) instBox.hidden = !isInstallments;
+}
+
+function updateLoanBridgeAmounts() {
+  const form = document.getElementById("loanBridgeForm");
+  if (!form) return;
+  const amt = Number(form.elements.amount.value) || 0;
+  const months = Number(form.elements.installmentMonths.value) || 6;
+  const instAmtInput = form.elements.installmentAmount;
+  if (instAmtInput && (!instAmtInput.value || instAmtInput.dataset.autoCalc !== "false")) {
+    instAmtInput.value = months > 0 ? Math.round(amt / months) : amt;
+  }
+}
+
+function openLoanBridgeDialog(amount = null, date = null) {
+  const dialog = document.getElementById("loanBridgeDialog");
+  const form = document.getElementById("loanBridgeForm");
+  if (!dialog || !form) return;
+
+  form.reset();
+
+  const accountSelect = document.getElementById("loanBridgeAccount");
+  if (accountSelect) {
+    const options = Object.entries(accountBalances)
+      .map(([id, acc]) => `<option value="${escapeHtml(id)}">${escapeHtml(acc.name)}</option>`)
+      .join("");
+    accountSelect.innerHTML = options || `<option value="cash">Cash</option>`;
+  }
+
+  const defDate = date || DateUtils.todayString();
+  const amtVal = amount ? Math.round(Math.abs(Number(amount))) : 10000;
+
+  form.elements.disbursementDate.value = defDate;
+  form.elements.amount.value = amtVal;
+  form.elements.repaymentAmount.value = amtVal;
+
+  // Single due date default: 3 months later
+  const [y, m, d] = defDate.split("-").map(Number);
+  const dueTargetMonthIndex = (m - 1) + 3;
+  const dueYear = y + Math.floor(dueTargetMonthIndex / 12);
+  const dueMonth = (dueTargetMonthIndex % 12) + 1;
+  const dueLastDay = DateUtils.getLastDayOfMonth(dueYear, dueMonth);
+  form.elements.dueDate.value = DateUtils.formatDate(dueYear, dueMonth, Math.min(d, dueLastDay));
+
+  // Installment default: start next month
+  const instTargetMonthIndex = m;
+  const instYear = y + Math.floor(instTargetMonthIndex / 12);
+  const instMonth = (instTargetMonthIndex % 12) + 1;
+  form.elements.installmentStartMonth.value = `${instYear}-${String(instMonth).padStart(2, "0")}`;
+  form.elements.installmentMonths.value = 6;
+  form.elements.installmentAmount.value = Math.round(amtVal / 6);
+  form.elements.installmentDay.value = Math.min(d, 28);
+
+  form.elements.repaymentType.value = "single";
+  syncLoanBridgeRepaymentFields();
+
+  dialog.showModal();
+}
+
+function handleLoanBridgeSubmit(event) {
+  event.preventDefault();
+  const form = document.getElementById("loanBridgeForm");
+  const dialog = document.getElementById("loanBridgeDialog");
+  if (!form) return;
+
+  const name = (form.elements.name.value || "Bridge Loan").trim();
+  const amount = Number(form.elements.amount.value) || 0;
+  const disbursementDate = form.elements.disbursementDate.value;
+  const account = form.elements.account.value || "cash";
+  const repaymentType = form.elements.repaymentType.value;
+
+  if (amount <= 0 || !disbursementDate) {
+    return;
+  }
+
+  // 1. Inflow Entry (Income)
+  const inflowEntry = {
+    id: generateId(),
+    date: disbursementDate,
+    category: `Loan Inflow: ${name}`,
+    account: account,
+    type: "income",
+    amount: amount,
+    source: "loan"
+  };
+  cashEntries.push(inflowEntry);
+
+  // 2. Repayment Entry / Installments
+  if (repaymentType === "single") {
+    const dueDate = form.elements.dueDate.value || disbursementDate;
+    const repaymentAmount = Number(form.elements.repaymentAmount.value) || amount;
+    const repaymentEntry = {
+      id: generateId(),
+      date: dueDate,
+      category: `Loan Repayment: ${name}`,
+      account: account,
+      type: "expense",
+      amount: repaymentAmount,
+      source: "loan"
+    };
+    cashEntries.push(repaymentEntry);
+  } else {
+    const months = Number(form.elements.installmentMonths.value) || 6;
+    const startMonth = form.elements.installmentStartMonth.value || DateUtils.currentYearMonth();
+    const instAmount = Number(form.elements.installmentAmount.value) || Math.round(amount / months);
+    const day = Number(form.elements.installmentDay.value) || 15;
+
+    installments.push({
+      name: `Loan Repayment: ${name}`,
+      amount: instAmount,
+      day: day,
+      startMonth: startMonth,
+      months: months,
+      frequency: 1
+    });
+    saveSetting(keys.installments, installments);
+  }
+
+  saveSetting(keys.entries, cashEntries);
+  if (dialog) dialog.close("saved");
+  renderAll();
+}
+
 function setupEventListeners() {
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.addEventListener("click", () => {
@@ -2940,6 +3075,31 @@ function setupEventListeners() {
 
   on("addIncome", "click", () => openEntryDialog("income"));
   on("addEntry", "click", () => openEntryDialog("expense"));
+  on("addLoanBtn", "click", () => openLoanBridgeDialog());
+
+  const loanForm = document.getElementById("loanBridgeForm");
+  if (loanForm) {
+    loanForm.addEventListener("submit", handleLoanBridgeSubmit);
+    loanForm.querySelectorAll('input[name="repaymentType"]').forEach((radio) => {
+      radio.addEventListener("change", syncLoanBridgeRepaymentFields);
+    });
+    on("loanBridgeAmount", "input", () => {
+      const amt = Number(document.getElementById("loanBridgeAmount").value) || 0;
+      const repAmt = document.getElementById("loanRepaymentAmount");
+      if (repAmt) repAmt.value = amt;
+      updateLoanBridgeAmounts();
+    });
+    on("loanInstallmentMonths", "input", updateLoanBridgeAmounts);
+  }
+
+  // Deficits 1-click Bridge with Loan listener
+  on("deficitForecastList", "click", (event) => {
+    const button = event.target.closest("[data-bridge-amount]");
+    if (!button) return;
+    const amount = Number(button.dataset.bridgeAmount || 0);
+    const date = button.dataset.bridgeDate;
+    openLoanBridgeDialog(amount, date);
+  });
 
   document.querySelectorAll("dialog").forEach((dlg) => {
     dlg.addEventListener("keydown", (event) => {

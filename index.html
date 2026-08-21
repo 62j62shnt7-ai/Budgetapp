@@ -42,6 +42,7 @@
           <input type="file" id="importDataFile" accept="application/json" hidden>
           <button class="ghost-button" id="resetData" type="button">Reset sample data</button>
           <button class="ghost-button" id="undoReset" type="button" hidden>Undo reset</button>
+          <button class="ghost-button" id="addLoanBtn" type="button" title="Bridge deficit or take loan">💳 Take loan</button>
           <button class="ghost-button" id="addIncome" type="button">Add income</button>
           <button class="primary-button" id="addEntry" type="button">Add expense</button>
         </div>
@@ -699,6 +700,95 @@
       </form>
     </dialog>
 
+    <dialog id="loanBridgeDialog">
+      <form method="dialog" class="entry-form" id="loanBridgeForm">
+        <div class="dialog-heading">
+          <h3>💳 Bridge Deficit with Loan</h3>
+          <button class="icon-button" type="button" aria-label="Close" onclick="document.getElementById('loanBridgeDialog').close('cancel')">x</button>
+        </div>
+        <p style="margin: -4px 0 14px; font-size: 13px; color: var(--muted); line-height: 1.4;">
+          Receive cash on the deficit start date to cover the shortfall, and schedule the repayment due date.
+        </p>
+        <label>
+          Loan name / label
+          <input name="name" type="text" value="Bridge Loan" required placeholder="e.g. Personal Bridge Loan">
+        </label>
+        <div class="inline-fields" style="grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 0;">
+          <label>
+            Loan amount (EGP)
+            <input name="amount" id="loanBridgeAmount" type="number" min="1" step="1" required>
+          </label>
+          <label>
+            Disbursement date
+            <input name="disbursementDate" id="loanBridgeDate" type="date" required>
+          </label>
+        </div>
+        <label>
+          Deposit into account
+          <select name="account" id="loanBridgeAccount" required>
+            <option value="cib">CIB</option>
+            <option value="hsbc">HSBC</option>
+            <option value="cash">Cash</option>
+          </select>
+        </label>
+
+        <div style="margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line);">
+          <span style="display: block; font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 8px;">Repayment Structure</span>
+          <div class="repayment-type-selector" style="display: flex; gap: 10px; margin-bottom: 12px;">
+            <label class="radio-pill-label" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
+              <input type="radio" name="repaymentType" value="single" checked style="min-height: auto; width: auto; margin: 0;">
+              Single Due Date
+            </label>
+            <label class="radio-pill-label" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
+              <input type="radio" name="repaymentType" value="installments" style="min-height: auto; width: auto; margin: 0;">
+              Monthly Installments
+            </label>
+          </div>
+
+          <div id="loanSingleRepaymentFields">
+            <div class="inline-fields" style="grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 0;">
+              <label>
+                Repayment due date
+                <input name="dueDate" id="loanDueDate" type="date">
+              </label>
+              <label>
+                Repayment amount (EGP)
+                <input name="repaymentAmount" id="loanRepaymentAmount" type="number" min="1" step="1" placeholder="Principal + interest if any">
+              </label>
+            </div>
+          </div>
+
+          <div id="loanInstallmentRepaymentFields" hidden>
+            <div class="inline-fields" style="grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 0;">
+              <label>
+                Number of months
+                <input name="installmentMonths" id="loanInstallmentMonths" type="number" min="1" max="120" value="6">
+              </label>
+              <label>
+                Start month
+                <input name="installmentStartMonth" id="loanInstallmentStartMonth" type="month">
+              </label>
+            </div>
+            <div class="inline-fields" style="grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
+              <label>
+                Monthly payment (EGP)
+                <input name="installmentAmount" id="loanInstallmentAmount" type="number" min="1" step="1">
+              </label>
+              <label>
+                Payment day of month
+                <input name="installmentDay" id="loanInstallmentDay" type="number" min="1" max="31" value="15">
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="dialog-actions" style="margin-top: 18px;">
+          <button class="ghost-button" value="cancel" formnovalidate type="button" onclick="document.getElementById('loanBridgeDialog').close('cancel')">Cancel</button>
+          <button class="primary-button" value="save" type="submit">Bridge Deficit</button>
+        </div>
+      </form>
+    </dialog>
+
     <dialog id="asfDialog">
       <form method="dialog" class="entry-form" id="asfForm">
         <div class="dialog-heading">
@@ -841,6 +931,6 @@
       </div>
     </dialog>
 
-    <script src="app.js?v=25"></script>
+    <script src="app.js?v=26"></script>
   </body>
 </html>

@@ -826,6 +826,66 @@ input:focus {
   background: #19334d;
 }
 
+.source-pill.loan {
+  color: #0369a1;
+  background: #e0f2fe;
+}
+
+[data-theme="dark"] .source-pill.loan {
+  color: #7dd3fc;
+  background: #082f49;
+}
+
+.radio-pill-label {
+  transition: all 0.2s ease;
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.radio-pill-label:hover {
+  border-color: var(--green);
+  color: var(--ink);
+}
+
+.radio-pill-label:has(input:checked) {
+  background: var(--summary-bg);
+  border-color: var(--green);
+  color: var(--green-dark);
+}
+
+[data-theme="dark"] .radio-pill-label:has(input:checked) {
+  background: var(--summary-bg);
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.bridge-loan-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--summary-bg);
+  border: 1px solid var(--green);
+  color: var(--green-dark);
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.bridge-loan-btn:hover {
+  background: var(--green);
+  color: #ffffff;
+}
+
+[data-theme="dark"] .bridge-loan-btn {
+  color: var(--green);
+}
+
+[data-theme="dark"] .bridge-loan-btn:hover {
+  background: var(--green);
+  color: #ffffff;
+}
+
 .delete-button {
   border: 0;
   color: var(--red);
