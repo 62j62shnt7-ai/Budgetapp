@@ -1420,7 +1420,8 @@ function getDeficitPeriods(entries = forecastEntries()) {
               category: entry.category || "Expense",
               amount: Number(entry.amount || 0),
               balance: running,
-              delta
+              delta,
+              entryId: getEntryId(entry)
             }
           ]
         };
@@ -1438,7 +1439,8 @@ function getDeficitPeriods(entries = forecastEntries()) {
           category: entry.category || "Expense",
           amount: Number(entry.amount || 0),
           balance: running,
-          delta
+          delta,
+          entryId: getEntryId(entry)
         });
       }
     } else {
@@ -1457,7 +1459,8 @@ function getDeficitPeriods(entries = forecastEntries()) {
           amount: Number(entry.amount || 0),
           balance: running,
           delta,
-          isRecoveryStep: true
+          isRecoveryStep: true,
+          entryId: getEntryId(entry)
         });
         currentPeriod = null;
       }
@@ -1919,6 +1922,20 @@ function renderEntries() {
 
   const filtered = [...openingRows, ...forecastRows];
 
+  const deficitPeriods = getDeficitPeriods(forecastEntries());
+  const entryStatusMap = new Map();
+  deficitPeriods.forEach((period) => {
+    (period.steps || []).forEach((step) => {
+      if (step.entryId) {
+        if (step.isRecoveryStep) {
+          entryStatusMap.set(step.entryId, { type: "recovery", balance: step.balance });
+        } else {
+          entryStatusMap.set(step.entryId, { type: "deficit", balance: step.balance });
+        }
+      }
+    });
+  });
+
   if (categoryFilterEl) {
     const allCategories = [...new Set([...openingBalanceEntries(), ...getForecastCandidateEntries()].map((entry) => entry.category))].sort();
     const previousValue = categoryFilterEl.value;
@@ -1943,10 +1960,31 @@ function renderEntries() {
           </div>`
         : `<span>${actualValue > 0 ? escapeHtml(money(actualValue)) : "—"}</span>`;
       const dateCell = escapeHtml(entry.date);
+
+      const statusInfo = !isOpeningBalance ? entryStatusMap.get(deleteKey) : null;
+      const isDeficit = statusInfo && statusInfo.type === "deficit";
+      const isRecovery = statusInfo && statusInfo.type === "recovery";
+
+      let rowClass = "entry-row";
+      let rowTitle = isOpeningBalance ? "Edit on the Accounts page" : "";
+      let statusBadge = "";
+
+      if (isOpeningBalance) {
+        rowClass += " opening-balance-row";
+      } else if (isDeficit) {
+        rowClass += " deficit-entry-row danger-row";
+        rowTitle = `Deficit spell: Projected cash balance ${money(statusInfo.balance)}`;
+        statusBadge = `<span class="deficit-badge active" style="margin-left: 6px; font-size: 10px; vertical-align: middle;">Deficit</span>`;
+      } else if (isRecovery) {
+        rowClass += " recovery-entry-row success-row";
+        rowTitle = `Recovery: Projected cash balance recovered to ${money(statusInfo.balance)}`;
+        statusBadge = `<span class="deficit-badge resolved" style="margin-left: 6px; font-size: 10px; vertical-align: middle;">Recovery</span>`;
+      }
+
       return `
-        <tr data-entry-id="${escapeHtml(deleteKey)}" class="entry-row${isOpeningBalance ? " opening-balance-row" : ""}" style="cursor:${clickable ? "pointer" : "default"};" title="${isOpeningBalance ? "Edit on the Accounts page" : ""}">
+        <tr data-entry-id="${escapeHtml(deleteKey)}" class="${rowClass}" style="cursor:${clickable ? "pointer" : "default"};" title="${escapeHtml(rowTitle)}">
           <td>${dateCell}</td>
-          <td>${escapeHtml(entry.category)}</td>
+          <td>${escapeHtml(entry.category)}${statusBadge}</td>
           <td>${escapeHtml(entry.account || "cash")}</td>
           <td><span class="pill ${escapeHtml(entry.type)}">${escapeHtml(entry.type)}</span></td>
           <td><span class="source-pill">${escapeHtml(entry.source || "manual")}</span></td>

@@ -590,6 +590,60 @@ select {
   color: var(--ink);
 }
 
+.entry-row {
+  transition: background-color 0.15s ease;
+}
+
+.entry-row:hover {
+  background-color: rgba(0, 0, 0, 0.02);
+}
+
+[data-theme="dark"] .entry-row:hover {
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+tr.deficit-entry-row {
+  background-color: rgba(184, 70, 63, 0.08) !important;
+}
+
+tr.deficit-entry-row:hover {
+  background-color: rgba(184, 70, 63, 0.14) !important;
+}
+
+tr.deficit-entry-row td:first-child {
+  box-shadow: inset 4px 0 0 var(--red);
+  font-weight: 600;
+}
+
+[data-theme="dark"] tr.deficit-entry-row {
+  background-color: rgba(229, 83, 75, 0.12) !important;
+}
+
+[data-theme="dark"] tr.deficit-entry-row:hover {
+  background-color: rgba(229, 83, 75, 0.18) !important;
+}
+
+tr.recovery-entry-row {
+  background-color: rgba(31, 122, 77, 0.08) !important;
+}
+
+tr.recovery-entry-row:hover {
+  background-color: rgba(31, 122, 77, 0.14) !important;
+}
+
+tr.recovery-entry-row td:first-child {
+  box-shadow: inset 4px 0 0 var(--green);
+  font-weight: 600;
+}
+
+[data-theme="dark"] tr.recovery-entry-row {
+  background-color: rgba(47, 163, 105, 0.12) !important;
+}
+
+[data-theme="dark"] tr.recovery-entry-row:hover {
+  background-color: rgba(47, 163, 105, 0.18) !important;
+}
+
 .asset-grid,
 .rate-grid,
 .salary-grid {
