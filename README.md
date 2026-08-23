@@ -28,7 +28,14 @@ A lightweight, local-first personal financial planning and cashflow forecasting 
 - **Recurring Installments**: Configure fixed monthly payment installments with custom start dates and duration.
 - **Forecast Ledger**: Searchable, filterable entries table supporting forecast amounts vs. actual amounts.
 
-### 4. Multi-Account Management
+### 4. Historical Actuals & Validations Ledger
+- **Monthly Financial Summary**: Track monthly realized income, actual expenditures, net cash surpluses, and savings rate percentages.
+- **Individual Validations Ledger**: Itemized ledger of every validated spend or income with date, category, account, type, source, forecast, actual amount, and budget variance.
+- **Granular Filter Toolbar**: Instant filtering by Month, Type (Income/Expense), Account, and live text search.
+- **Dynamic KPI Header**: Real-time totals (Income, Expenses, Net) calculated dynamically based on active filter selections.
+- **Direct Entry Editing**: Adjust or clear validated amounts directly from the history ledger.
+
+### 5. Multi-Account Management
 - Configure opening balances across multiple institutions (e.g., CIB, HSBC, Cash).
 - Track credit card due dates and automated settlement projections.
 

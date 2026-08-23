@@ -2138,12 +2138,17 @@ function renderHistory() {
   if (!table || !detailsTable) return;
 
   const actualEntries = actualizedEntries();
+
+  // 1. Monthly Summary Calculation
   const months = new Set();
   actualEntries.forEach((entry) => {
     const key = DateUtils.getMonthKey(entry.date);
     if (key) months.add(key);
   });
   const orderedMonths = [...months].sort();
+
+  let totalLifetimeIncome = 0;
+  let totalLifetimeExpenses = 0;
 
   const rows = orderedMonths.map((month) => {
     const monthlyEntries = actualEntries.filter((entry) => DateUtils.getMonthKey(entry.date) === month);
@@ -2154,119 +2159,212 @@ function renderHistory() {
       .filter((entry) => entry.type === "expense")
       .reduce((sum, entry) => sum + getEntryActualAmount(entry), 0);
     const net = income - expenses;
+    const savingsRate = income > 0 ? Math.round((net / income) * 100) : 0;
 
-    return `<tr><td>${escapeHtml(month)}</td><td class="number">${escapeHtml(money(income))}</td><td class="number">${escapeHtml(money(expenses))}</td><td class="number">${escapeHtml(money(net))}</td></tr>`;
+    totalLifetimeIncome += income;
+    totalLifetimeExpenses += expenses;
+
+    const rateBadgeClass = savingsRate >= 20 ? "favorable" : savingsRate >= 0 ? "neutral" : "unfavorable";
+
+    return `
+      <tr>
+        <td><strong>${escapeHtml(month)}</strong></td>
+        <td class="number" style="color: var(--green); font-weight: 600;">+${escapeHtml(money(income))}</td>
+        <td class="number" style="color: var(--red); font-weight: 600;">-${escapeHtml(money(expenses))}</td>
+        <td class="number" style="font-weight: 700; color: ${net >= 0 ? "var(--green)" : "var(--red)"};">${net >= 0 ? "+" : ""}${escapeHtml(money(net))}</td>
+        <td class="number"><span class="variance-pill ${rateBadgeClass}">${savingsRate}%</span></td>
+      </tr>
+    `;
   });
 
-  table.innerHTML = rows.join("") || `<tr><td colspan="4">No actual activity yet</td></tr>`;
+  table.innerHTML = rows.join("") || `<tr><td colspan="5">No actual activity yet</td></tr>`;
 
-  const groups = new Map();
-  actualEntries.forEach((entry) => {
-    const month = DateUtils.getMonthKey(entry.date);
-    const groupKey = `${month}|${entry.type}`;
-    if (!groups.has(groupKey)) {
-      groups.set(groupKey, {
-        month,
-        type: entry.type,
-        total: 0,
-        editable: true,
-        canRemove: false,
-        memberIds: []
-      });
+  // Lifetime metrics
+  const totalLifetimeNet = totalLifetimeIncome - totalLifetimeExpenses;
+  const lifetimeSavingsRate = totalLifetimeIncome > 0 ? Math.round((totalLifetimeNet / totalLifetimeIncome) * 100) : 0;
+
+  const lifetimeIncomeEl = document.getElementById("historyLifetimeIncome");
+  if (lifetimeIncomeEl) lifetimeIncomeEl.textContent = money(totalLifetimeIncome);
+
+  const lifetimeExpensesEl = document.getElementById("historyLifetimeExpenses");
+  if (lifetimeExpensesEl) lifetimeExpensesEl.textContent = money(totalLifetimeExpenses);
+
+  const lifetimeNetEl = document.getElementById("historyLifetimeNet");
+  if (lifetimeNetEl) lifetimeNetEl.textContent = money(totalLifetimeNet);
+
+  const lifetimeRateEl = document.getElementById("historySavingsRate");
+  if (lifetimeRateEl) lifetimeRateEl.textContent = `${lifetimeSavingsRate}%`;
+
+  // 2. Individual Validations Tab: Populate filter dropdowns
+  const monthFilterEl = document.getElementById("historyMonthFilter");
+  if (monthFilterEl) {
+    const prevMonthVal = monthFilterEl.value || "all";
+    const allMonths = [...months].sort().reverse();
+    monthFilterEl.innerHTML = `<option value="all">All months</option>${allMonths
+      .map((m) => `<option value="${escapeHtml(m)}"${m === prevMonthVal ? " selected" : ""}>${escapeHtml(m)}</option>`)
+      .join("")}`;
+  }
+
+  const accountFilterEl = document.getElementById("historyAccountFilter");
+  if (accountFilterEl) {
+    const prevAccVal = accountFilterEl.value || "all";
+    const allAccounts = [...new Set(actualEntries.map((e) => e.account || "cash"))].sort();
+    accountFilterEl.innerHTML = `<option value="all">All accounts</option>${allAccounts
+      .map((acc) => `<option value="${escapeHtml(acc)}"${acc === prevAccVal ? " selected" : ""}>${escapeHtml(acc.toUpperCase())}</option>`)
+      .join("")}`;
+  }
+
+  // Filter criteria
+  const selectedMonth = monthFilterEl ? monthFilterEl.value : "all";
+  const typeFilterEl = document.getElementById("historyTypeFilter");
+  const selectedType = typeFilterEl ? typeFilterEl.value : "all";
+  const selectedAccount = accountFilterEl ? accountFilterEl.value : "all";
+  const searchEl = document.getElementById("historySearch");
+  const searchTerm = searchEl ? searchEl.value.trim().toLowerCase() : "";
+
+  const filteredEntries = actualEntries.filter((entry) => {
+    const entryMonth = DateUtils.getMonthKey(entry.date);
+    if (selectedMonth !== "all" && entryMonth !== selectedMonth) return false;
+    if (selectedType !== "all" && entry.type !== selectedType) return false;
+    if (selectedAccount !== "all" && (entry.account || "cash").toLowerCase() !== selectedAccount.toLowerCase()) return false;
+    if (searchTerm) {
+      const cat = (entry.category || "").toLowerCase();
+      const acc = (entry.account || "").toLowerCase();
+      const src = (entry.source || "").toLowerCase();
+      if (!cat.includes(searchTerm) && !acc.includes(searchTerm) && !src.includes(searchTerm)) return false;
     }
-    const group = groups.get(groupKey);
-    group.total += getEntryActualAmount(entry);
-    group.editable = group.editable && isEditableEntry(entry);
-    group.canRemove = group.canRemove || (isEditableEntry(entry) && entry.source !== "starting balance");
-    group.memberIds.push(getEntryId(entry));
+    return true;
   });
 
-  const detailRows = [...groups.values()]
-    .sort((a, b) => `${a.month}-${a.type}`.localeCompare(`${b.month}-${b.type}`))
-    .map((group) => {
-      const groupKey = group.memberIds.join(",");
-      const roundedTotal = Math.round(group.total || 0);
-      const actualCell = group.editable
-        ? `<input class="inline-actual-input" data-history-actual-input="${escapeHtml(groupKey)}" type="number" min="0" step="1" value="${roundedTotal > 0 ? roundedTotal : ""}" placeholder="0">`
-        : `<span>${roundedTotal > 0 ? escapeHtml(money(roundedTotal)) : "—"}</span>`;
-      const action = group.canRemove
-        ? `<button class="delete-button" data-history-delete-key="${escapeHtml(groupKey)}" type="button">Remove</button>`
+  // Sort newest first
+  filteredEntries.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+
+  // Calculate filtered summary
+  const filteredIncome = filteredEntries
+    .filter((e) => e.type === "income")
+    .reduce((sum, e) => sum + getEntryActualAmount(e), 0);
+  const filteredExpenses = filteredEntries
+    .filter((e) => e.type === "expense")
+    .reduce((sum, e) => sum + getEntryActualAmount(e), 0);
+  const filteredNet = filteredIncome - filteredExpenses;
+
+  const fIncomeEl = document.getElementById("historyFilteredIncome");
+  if (fIncomeEl) fIncomeEl.textContent = money(filteredIncome);
+
+  const fExpensesEl = document.getElementById("historyFilteredExpenses");
+  if (fExpensesEl) fExpensesEl.textContent = money(filteredExpenses);
+
+  const fNetEl = document.getElementById("historyFilteredNet");
+  if (fNetEl) fNetEl.textContent = money(filteredNet);
+
+  const fCountEl = document.getElementById("historyFilteredCount");
+  if (fCountEl) fCountEl.textContent = `${filteredEntries.length} ${filteredEntries.length === 1 ? "entry" : "entries"}`;
+
+  // Render individual rows
+  const detailRows = filteredEntries
+    .map((entry) => {
+      const entryId = getEntryId(entry);
+      const actualVal = getEntryActualAmount(entry);
+      const plannedVal = Number(entry.amount) || 0;
+      const isEditable = isEditableEntry(entry);
+
+      let varianceHtml = `<span class="variance-pill neutral">—</span>`;
+      if (plannedVal > 0) {
+        if (entry.type === "expense") {
+          const diff = plannedVal - actualVal;
+          if (diff > 0) {
+            varianceHtml = `<span class="variance-pill favorable">+${escapeHtml(money(diff))} under</span>`;
+          } else if (diff < 0) {
+            varianceHtml = `<span class="variance-pill unfavorable">-${escapeHtml(money(Math.abs(diff)))} over</span>`;
+          } else {
+            varianceHtml = `<span class="variance-pill neutral">On budget</span>`;
+          }
+        } else {
+          const diff = actualVal - plannedVal;
+          if (diff > 0) {
+            varianceHtml = `<span class="variance-pill favorable">+${escapeHtml(money(diff))} extra</span>`;
+          } else if (diff < 0) {
+            varianceHtml = `<span class="variance-pill unfavorable">-${escapeHtml(money(Math.abs(diff)))} short</span>`;
+          } else {
+            varianceHtml = `<span class="variance-pill neutral">Exact</span>`;
+          }
+        }
+      }
+
+      const actualCell = isEditable
+        ? `<input class="inline-actual-input" data-history-entry-input="${escapeHtml(entryId)}" type="number" min="0" step="1" value="${actualVal > 0 ? actualVal : ""}" placeholder="0" style="width: 100px; text-align: right;">`
+        : `<span>${actualVal > 0 ? escapeHtml(money(actualVal)) : "—"}</span>`;
+
+      const action = isEditable && entry.source !== "starting balance"
+        ? `<button class="delete-button" data-history-entry-clear="${escapeHtml(entryId)}" type="button">Clear</button>`
         : "";
 
       return `
         <tr>
-          <td>${escapeHtml(group.month)}</td>
-          <td>${group.type === "expense" ? "All expenses" : "All income"}</td>
-          <td><span class="pill ${escapeHtml(group.type)}">${escapeHtml(group.type)}</span></td>
+          <td><strong>${escapeHtml(entry.date || "—")}</strong></td>
+          <td>${escapeHtml(entry.category || "—")}</td>
+          <td>${escapeHtml((entry.account || "cash").toUpperCase())}</td>
+          <td><span class="pill ${escapeHtml(entry.type)}">${escapeHtml(entry.type)}</span></td>
+          <td><span class="source-pill ${entry.source === "loan" ? "loan" : ""}">${escapeHtml(entry.source || "manual")}</span></td>
+          <td class="number">${plannedVal > 0 ? escapeHtml(money(plannedVal)) : "—"}</td>
           <td class="number">${actualCell}</td>
+          <td class="number">${varianceHtml}</td>
           <td class="number">${action}</td>
         </tr>
       `;
     })
     .join("");
 
-  detailsTable.innerHTML = detailRows || `<tr><td colspan="5">No actualized entries yet</td></tr>`;
+  detailsTable.innerHTML = detailRows || `<tr><td colspan="9">No validated entries match the selected filters</td></tr>`;
 }
 
-async function commitHistoryActualInput(input) {
+async function commitHistoryEntryActual(input) {
   if (!input) return;
-  const entryIds = input.dataset.historyActualInput.split(",").filter(Boolean);
-  const members = entryIds
-    .map((id) => findHistoryEntry(id))
-    .filter((m) => m.entry && isEditableEntry(m.entry));
-  if (!members.length) return;
+  const entryId = input.dataset.historyEntryInput;
+  const { entry, isArchived, archivedIndex } = findHistoryEntry(entryId);
+  if (!entry || !isEditableEntry(entry)) return;
 
-  const rawTyped = input.value === "" ? 0 : Number(input.value);
-  const newTotal = Math.round(rawTyped || 0);
-  const previousTotal = Math.round(members.reduce((sum, m) => sum + getEntryActualAmount(m.entry), 0));
-  const delta = newTotal - previousTotal;
-  const groupType = members[0].entry.type || "expense";
-  const defaultAcc = members[0].entry.account || "cash";
-  const monthName = members[0].entry.date ? DateUtils.getMonthKey(members[0].entry.date) : "";
+  const newActual = input.value === "" ? 0 : Math.round(Number(input.value) || 0);
+  const previousActual = getEntryActualAmount(entry);
+  const delta = newActual - previousActual;
 
-  let remaining = newTotal;
-  members.forEach((member, index) => {
-    const entryKey = getEntryId(member.entry);
-    if (newTotal <= 0) {
-      delete entryActuals[entryKey];
-      if (member.entry.actualAmount !== undefined) {
-        member.entry.actualAmount = 0;
-      }
-      return;
+  if (newActual <= 0) {
+    clearHistoryActualEntry(entry);
+    if (isArchived && archivedIndex !== -1) {
+      archivedEntries.splice(archivedIndex, 1);
+      saveSetting(keys.archivedEntries, archivedEntries);
     }
-    if (members.length === 1 || index === members.length - 1) {
-      const allocated = Math.max(0, Math.round(remaining));
-      entryActuals[entryKey] = allocated;
-      if (member.entry.actualAmount !== undefined) {
-        member.entry.actualAmount = allocated;
-      }
-    } else if (previousTotal > 0) {
-      const share = getEntryActualAmount(member.entry) / previousTotal;
-      const allocated = Math.round(share * newTotal);
-      const safeAllocated = Math.min(remaining, allocated);
-      entryActuals[entryKey] = Math.max(0, safeAllocated);
-      if (member.entry.actualAmount !== undefined) {
-        member.entry.actualAmount = safeAllocated;
-      }
-      remaining -= safeAllocated;
-    } else {
-      const allocated = index === 0 ? newTotal : 0;
-      entryActuals[entryKey] = allocated;
-      if (member.entry.actualAmount !== undefined) {
-        member.entry.actualAmount = allocated;
-      }
-      remaining -= allocated;
-    }
-  });
-
-  saveSetting(keys.entryActuals, entryActuals);
+  } else {
+    setEntryActualAmount(entry, newActual);
+  }
 
   if (delta > 0) {
-    const desc = `${monthName} ${groupType === "income" ? "Income" : "Expenses"}`;
-    const selectedAcc = await promptAccountAdjustment(groupType, delta, defaultAcc, desc);
+    const desc = `${entry.category || "Entry"} (${entry.date || ""})`;
+    const selectedAcc = await promptAccountAdjustment(entry.type || "expense", delta, entry.account || "cash", desc);
     if (selectedAcc) {
-      adjustAccountBalance(selectedAcc, delta, groupType);
+      adjustAccountBalance(selectedAcc, delta, entry.type || "expense");
     }
+  }
+
+  renderAll();
+}
+
+async function clearHistoryEntryActual(entryId) {
+  const { entry, isArchived, archivedIndex } = findHistoryEntry(entryId);
+  if (!entry || !isEditableEntry(entry)) return;
+
+  const actualAmount = getEntryActualAmount(entry);
+  const confirmed = await confirmAction(
+    "Clear Actual Amount",
+    `Clear recorded actual for "${entry.category}" (${money(actualAmount)})? The forecast entry will remain intact in Cash Flow.`
+  );
+  if (!confirmed) return;
+
+  clearHistoryActualEntry(entry);
+
+  if (isArchived && archivedIndex !== -1) {
+    archivedEntries.splice(archivedIndex, 1);
+    saveSetting(keys.archivedEntries, archivedEntries);
   }
 
   renderAll();
@@ -3731,42 +3829,66 @@ function setupEventListeners() {
     renderAll();
   });
 
+  // History sub-tab switcher
+  document.addEventListener("click", (event) => {
+    const tabBtn = event.target.closest(".subnav-tab[data-history-tab]");
+    if (!tabBtn) return;
+    const tabKey = tabBtn.dataset.historyTab;
+    document.querySelectorAll(".subnav-tab[data-history-tab]").forEach((btn) => {
+      const isActive = btn.dataset.historyTab === tabKey;
+      btn.classList.toggle("active", isActive);
+      btn.setAttribute("aria-selected", isActive ? "true" : "false");
+    });
+    const summaryPane = document.getElementById("historySummaryPane");
+    const transPane = document.getElementById("historyTransactionsPane");
+    if (summaryPane && transPane) {
+      summaryPane.hidden = tabKey !== "summary";
+      summaryPane.classList.toggle("active", tabKey === "summary");
+      transPane.hidden = tabKey !== "transactions";
+      transPane.classList.toggle("active", tabKey === "transactions");
+    }
+  });
+
+  // History filters
+  on("historyMonthFilter", "change", () => renderHistory());
+  on("historyTypeFilter", "change", () => renderHistory());
+  on("historyAccountFilter", "change", () => renderHistory());
+  on("historySearch", "input", debounce(renderHistory, 180));
+  on("historyFiltersReset", "click", () => {
+    const monthEl = document.getElementById("historyMonthFilter");
+    if (monthEl) monthEl.value = "all";
+    const typeEl = document.getElementById("historyTypeFilter");
+    if (typeEl) typeEl.value = "all";
+    const accEl = document.getElementById("historyAccountFilter");
+    if (accEl) accEl.value = "all";
+    const searchEl = document.getElementById("historySearch");
+    if (searchEl) searchEl.value = "";
+    renderHistory();
+  });
+
+  // History inline actual input
   document.addEventListener("keydown", async (event) => {
-    const input = event.target.closest("[data-history-actual-input]");
+    const input = event.target.closest("[data-history-entry-input]");
     if (!input || event.key !== "Enter") return;
     event.preventDefault();
-    await commitHistoryActualInput(input);
+    await commitHistoryEntryActual(input);
   });
 
   document.addEventListener("change", async (event) => {
-    const input = event.target.closest("[data-history-actual-input]");
+    const input = event.target.closest("[data-history-entry-input]");
     if (!input) return;
-    await commitHistoryActualInput(input);
+    await commitHistoryEntryActual(input);
   });
 
+  // History clear entry actual
   document.addEventListener("click", async (event) => {
-    const button = event.target.closest("[data-history-delete-key]");
+    const button = event.target.closest("[data-history-entry-clear]");
     if (!button) return;
     event.stopPropagation();
-
-    const confirmed = await confirmAction("Remove Actualized Spend", "Remove this recorded actual spend from History? The planned forecast entry will remain intact in Cash Flow.");
-    if (!confirmed) return;
-
-    const entryIds = button.dataset.historyDeleteKey.split(",").filter(Boolean);
-
-    entryIds.forEach((entryId) => {
-      const { entry, isArchived, archivedIndex } = findHistoryEntry(entryId);
-      if (!entry || !isEditableEntry(entry)) return;
-
-      if (isArchived && archivedIndex !== -1) {
-        archivedEntries.splice(archivedIndex, 1);
-      }
-      clearHistoryActualEntry(entry);
-    });
-
-    saveSetting(keys.archivedEntries, archivedEntries);
-    saveSetting(keys.entryActuals, entryActuals);
-    renderAll();
+    const entryId = button.dataset.historyEntryClear;
+    if (entryId) {
+      await clearHistoryEntryActual(entryId);
+    }
   });
 }
 

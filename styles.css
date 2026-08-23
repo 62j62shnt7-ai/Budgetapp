@@ -1399,4 +1399,70 @@ label {
   transition: width 0.4s ease, background-color 0.4s ease;
 }
 
+/* Sub-navigation Tabs */
+.subnav-tabs {
+  display: inline-flex;
+  background: var(--surface-soft);
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  gap: 4px;
+}
 
+.subnav-tab {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13.5px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.subnav-tab:hover {
+  color: var(--ink);
+}
+
+.subnav-tab.active {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="dark"] .subnav-tab.active {
+  background: var(--surface);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.history-filters-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.variance-pill {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.variance-pill.favorable {
+  background: rgba(31, 122, 77, 0.12);
+  color: var(--green);
+}
+
+.variance-pill.unfavorable {
+  background: rgba(184, 70, 63, 0.12);
+  color: var(--red);
+}
+
+.variance-pill.neutral {
+  background: rgba(104, 115, 110, 0.12);
+  color: var(--muted);
+}
