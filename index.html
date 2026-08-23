@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title>Budget Control</title>
-    <link rel="stylesheet" href="styles.css?v=27">
+    <link rel="stylesheet" href="styles.css?v=28">
   </head>
   <body>
     <aside class="sidebar">
@@ -458,6 +458,47 @@
               <strong id="historyFilteredNet">0</strong>
               <small>Income minus expenses</small>
             </article>
+          </div>
+
+          <div class="content-grid history-analytics-grid" style="margin-bottom: 18px;">
+            <section class="panel">
+              <div class="panel-heading">
+                <h3>Category &amp; Source Distribution</h3>
+                <span id="historyGroupedSummaryNote">Filtered actuals</span>
+              </div>
+              <div class="history-chart-layout">
+                <div class="donut-chart-container" id="historyPieChartContainer">
+                  <div class="donut-chart" id="historyPieChart"></div>
+                  <div class="donut-center-label" id="historyPieCenter">
+                    <span id="historyPieCenterTitle">Total</span>
+                    <strong id="historyPieCenterValue">0</strong>
+                  </div>
+                </div>
+                <div id="historyCategoryGroupList" class="stack-list" style="flex: 1; min-width: 220px;"></div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <h3>Grouped Sources Summary</h3>
+                <span id="historyGroupedCount">0 groups</span>
+              </div>
+              <p style="color: var(--muted); font-size: 13px; margin: -4px 0 12px;">Aggregated actual totals by category and transaction type.</p>
+              <div class="table-wrap compact">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Group / Category</th>
+                      <th>Type</th>
+                      <th class="number">Entries</th>
+                      <th class="number">Total Actual</th>
+                      <th class="number">Share</th>
+                    </tr>
+                  </thead>
+                  <tbody id="historyGroupedTable"></tbody>
+                </table>
+              </div>
+            </section>
           </div>
 
           <section class="panel">

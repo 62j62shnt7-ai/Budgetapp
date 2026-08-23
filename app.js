@@ -2270,8 +2270,10 @@ function renderHistory() {
 
       let varianceHtml = `<span class="variance-pill neutral">—</span>`;
       if (plannedVal > 0) {
+        const roundedPlanned = Math.round(plannedVal);
+        const roundedActual = Math.round(actualVal);
         if (entry.type === "expense") {
-          const diff = plannedVal - actualVal;
+          const diff = roundedPlanned - roundedActual;
           if (diff > 0) {
             varianceHtml = `<span class="variance-pill favorable">+${escapeHtml(money(diff))} under</span>`;
           } else if (diff < 0) {
@@ -2280,7 +2282,7 @@ function renderHistory() {
             varianceHtml = `<span class="variance-pill neutral">On budget</span>`;
           }
         } else {
-          const diff = actualVal - plannedVal;
+          const diff = roundedActual - roundedPlanned;
           if (diff > 0) {
             varianceHtml = `<span class="variance-pill favorable">+${escapeHtml(money(diff))} extra</span>`;
           } else if (diff < 0) {
@@ -2316,6 +2318,117 @@ function renderHistory() {
     .join("");
 
   detailsTable.innerHTML = detailRows || `<tr><td colspan="9">No validated entries match the selected filters</td></tr>`;
+
+  // 3. Grouped Category & Source Summary + Donut Chart
+  const categoryGroups = new Map();
+  filteredEntries.forEach((entry) => {
+    const key = `${entry.category || "Uncategorized"}|${entry.type || "expense"}`;
+    if (!categoryGroups.has(key)) {
+      categoryGroups.set(key, {
+        category: entry.category || "Uncategorized",
+        type: entry.type || "expense",
+        count: 0,
+        totalActual: 0,
+        totalForecast: 0
+      });
+    }
+    const group = categoryGroups.get(key);
+    group.count += 1;
+    group.totalActual += getEntryActualAmount(entry);
+    group.totalForecast += Number(entry.amount || 0);
+  });
+
+  const sortedGroups = [...categoryGroups.values()].sort((a, b) => b.totalActual - a.totalActual);
+  const totalFilteredActual = sortedGroups.reduce((sum, g) => sum + g.totalActual, 0);
+
+  const groupTable = document.getElementById("historyGroupedTable");
+  const categoryList = document.getElementById("historyCategoryGroupList");
+  const pieChart = document.getElementById("historyPieChart");
+  const pieCenterVal = document.getElementById("historyPieCenterValue");
+  const groupedCountEl = document.getElementById("historyGroupedCount");
+
+  if (groupedCountEl) {
+    groupedCountEl.textContent = `${sortedGroups.length} ${sortedGroups.length === 1 ? "group" : "groups"}`;
+  }
+
+  const palette = [
+    "#0f766e", "#2f5f9f", "#a46a18", "#b8463f", "#1f7a4d", "#8b5cf6", "#ec4899", "#f97316", "#06b6d4", "#84cc16"
+  ];
+
+  if (totalFilteredActual <= 0 || sortedGroups.length === 0) {
+    if (groupTable) groupTable.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--muted);">No actualized data for current filter</td></tr>`;
+    if (categoryList) categoryList.innerHTML = `<div style="color:var(--muted);font-size:13px;text-align:center;padding:12px 0;">No category data for selection</div>`;
+    if (pieChart) pieChart.style.background = "var(--line)";
+    if (pieCenterVal) pieCenterVal.textContent = "0 EGP";
+  } else {
+    // Generate Donut Chart conic-gradient slices
+    let currentAngle = 0;
+    const gradientSlices = sortedGroups.map((group, idx) => {
+      const share = group.totalActual / totalFilteredActual;
+      const angle = share * 360;
+      const color = palette[idx % palette.length];
+      const startAngle = currentAngle;
+      const endAngle = currentAngle + angle;
+      currentAngle = endAngle;
+      return `${color} ${startAngle.toFixed(1)}deg ${endAngle.toFixed(1)}deg`;
+    });
+
+    if (pieChart) {
+      pieChart.style.background = `conic-gradient(${gradientSlices.join(", ")})`;
+    }
+    if (pieCenterVal) {
+      pieCenterVal.textContent = money(totalFilteredActual);
+    }
+
+    // Render Grouped List with Progress bars
+    if (categoryList) {
+      categoryList.innerHTML = sortedGroups
+        .map((group, idx) => {
+          const color = palette[idx % palette.length];
+          const pct = Math.round((group.totalActual / totalFilteredActual) * 100) || 0;
+          return `
+            <div class="list-row" style="flex-direction:column; align-items:stretch; gap:4px; padding:8px 10px;">
+              <div style="display:flex; justify-content:space-between; font-size:12.5px; font-weight:700;">
+                <span style="display:flex; align-items:center; gap:6px;">
+                  <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:${color}; flex-shrink:0;"></span>
+                  ${escapeHtml(group.category)}
+                  <span class="pill ${escapeHtml(group.type)}" style="font-size:10px; min-height:18px; padding:0 6px;">${escapeHtml(group.type)}</span>
+                </span>
+                <span>${escapeHtml(money(group.totalActual))} <small style="font-weight:normal; color:var(--muted)">(${pct}%)</small></span>
+              </div>
+              <div class="progress-bar-bg" style="height:5px;">
+                <div class="progress-bar-fill" style="width:${pct}%; background-color:${color}; height:100%;"></div>
+              </div>
+            </div>
+          `;
+        })
+        .join("");
+    }
+
+    // Render Grouped Table
+    if (groupTable) {
+      groupTable.innerHTML = sortedGroups
+        .map((group, idx) => {
+          const color = palette[idx % palette.length];
+          const pct = Math.round((group.totalActual / totalFilteredActual) * 100) || 0;
+          return `
+            <tr>
+              <td>
+                <span style="display:inline-flex; align-items:center; gap:6px;">
+                  <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${color}; flex-shrink:0;"></span>
+                  <strong>${escapeHtml(group.category)}</strong>
+                </span>
+              </td>
+              <td><span class="pill ${escapeHtml(group.type)}">${escapeHtml(group.type)}</span></td>
+              <td class="number">${group.count}</td>
+              <td class="number" style="font-weight:600;">${escapeHtml(money(group.totalActual))}</td>
+              <td class="number"><span class="variance-pill neutral">${pct}%</span></td>
+            </tr>
+          `;
+        })
+        .join("");
+    }
+  }
 }
 
 async function commitHistoryEntryActual(input) {
