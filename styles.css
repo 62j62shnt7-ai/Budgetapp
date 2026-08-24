@@ -696,6 +696,25 @@ tr.loan-entry-row td:first-child {
   vertical-align: middle;
 }
 
+#historyAdminToggleBtn.admin-unlocked {
+  background: rgba(217, 142, 43, 0.18) !important;
+  color: var(--amber) !important;
+  border-color: var(--amber) !important;
+  font-weight: 700;
+}
+
+tr.history-admin-row {
+  cursor: pointer;
+}
+
+tr.history-admin-row:hover {
+  background-color: rgba(47, 95, 159, 0.07) !important;
+}
+
+[data-theme="dark"] tr.history-admin-row:hover {
+  background-color: rgba(47, 95, 159, 0.14) !important;
+}
+
 [data-theme="dark"] tr.recovery-entry-row {
   background-color: rgba(47, 163, 105, 0.12) !important;
 }

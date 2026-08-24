@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title>Budget Control</title>
-    <link rel="stylesheet" href="styles.css?v=30">
+    <link rel="stylesheet" href="styles.css?v=31">
   </head>
   <body>
     <aside class="sidebar">
@@ -504,6 +504,12 @@
           <section class="panel">
             <div class="panel-heading">
               <h3>Individual Validated Entries</h3>
+              <button class="ghost-button" id="historyAdminToggleBtn" type="button" style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 10px;" title="Lock or unlock admin rights to edit, reallocate, or delete any history record">
+                <span id="historyAdminLockIcon">🔒</span> <span id="historyAdminLockText">Admin Mode: Locked</span>
+              </button>
+            </div>
+            <div id="historyAdminBanner" style="display: none; background: rgba(217,142,43,0.12); border: 1px solid rgba(217,142,43,0.35); border-radius: 6px; padding: 8px 12px; font-size: 12.5px; color: var(--ink); margin-bottom: 12px;">
+              <span>🔓 <strong>Admin Mode Active:</strong> You can edit any field (date, category, account, forecast, actual) or delete entries directly from this table.</span>
             </div>
             <p style="color: var(--muted); font-size: 13px; margin: -4px 0 12px;">Detailed record of every planned entry that has had an actual amount spent or received.</p>
             <div class="table-wrap">
@@ -1102,6 +1108,6 @@
       </div>
     </dialog>
 
-    <script src="app.js?v=38"></script>
+    <script src="app.js?v=39"></script>
   </body>
 </html>

@@ -28,7 +28,8 @@ const keys = {
   theme: "budget-control-theme",
   gistToken: "budget-control-gist-token",
   gistId: "budget-control-gist-id",
-  gistAutoSync: "budget-control-gist-autosync"
+  gistAutoSync: "budget-control-gist-autosync",
+  historyAdminUnlocked: "budget-control-history-admin-unlocked"
 };
 
 const seedVersion = "blank-template-v2";
@@ -679,6 +680,7 @@ let deletedForecasts = loadSetting(keys.deletedForecasts, []);
 let archivedEntries = loadSetting(keys.archivedEntries, []);
 let categoryCaps = loadSetting(keys.categoryCaps, defaultCategoryCaps);
 let savingsGoals = loadSetting(keys.savingsGoals, defaultSavingsGoals);
+let historyAdminUnlocked = loadSetting(keys.historyAdminUnlocked, false);
 let editingEntry = null;
 let editingInstallmentIndex = null;
 
@@ -2466,6 +2468,21 @@ function renderHistory() {
   const fCountEl = document.getElementById("historyFilteredCount");
   if (fCountEl) fCountEl.textContent = `${filteredEntries.length} ${filteredEntries.length === 1 ? "entry" : "entries"}`;
 
+  // Update Admin Mode Button & Banner
+  const adminToggleBtn = document.getElementById("historyAdminToggleBtn");
+  const adminLockIcon = document.getElementById("historyAdminLockIcon");
+  const adminLockText = document.getElementById("historyAdminLockText");
+  const adminBanner = document.getElementById("historyAdminBanner");
+
+  if (adminToggleBtn) {
+    adminToggleBtn.classList.toggle("admin-unlocked", historyAdminUnlocked);
+    if (adminLockIcon) adminLockIcon.textContent = historyAdminUnlocked ? "🔓" : "🔒";
+    if (adminLockText) adminLockText.textContent = historyAdminUnlocked ? "Admin Mode: Unlocked" : "Admin Mode: Locked";
+  }
+  if (adminBanner) {
+    adminBanner.style.display = historyAdminUnlocked ? "block" : "none";
+  }
+
   // Render individual rows
   const detailRows = filteredEntries
     .map((entry) => {
@@ -2513,16 +2530,28 @@ function renderHistory() {
         }
       }
 
-      const actualCell = isEditable
+      const actualCell = isEditable || historyAdminUnlocked
         ? `<input class="inline-actual-input" data-history-entry-input="${escapeHtml(entryId)}" type="number" min="0" step="1" value="${actualVal > 0 ? actualVal : ""}" placeholder="0" style="width: 100px; text-align: right;">`
         : `<span>${actualVal > 0 ? escapeHtml(money(actualVal)) : "—"}</span>`;
 
-      const action = isEditable && entry.source !== "starting balance"
-        ? `<button class="delete-button" data-history-entry-clear="${escapeHtml(entryId)}" type="button">Clear</button>`
-        : "";
+      let action = "";
+      if (historyAdminUnlocked) {
+        action = `
+          <div style="display:inline-flex; gap:4px; justify-content:flex-end; align-items:center; white-space:nowrap;">
+            <button class="ghost-button" data-history-entry-edit="${escapeHtml(entryId)}" type="button" style="font-size:11px; padding:2px 7px; color:var(--blue); border-color:var(--blue);" title="Edit all fields of this entry">✏️ Edit</button>
+            ${actualVal > 0 ? `<button class="delete-button" data-history-entry-clear="${escapeHtml(entryId)}" type="button" style="font-size:11px; padding:2px 7px;" title="Reset actual amount to 0">Clear</button>` : ""}
+            <button class="delete-button" data-history-entry-delete="${escapeHtml(entryId)}" type="button" style="font-size:11px; padding:2px 7px;" title="Permanently delete this entry from history and forecast">🗑️</button>
+          </div>
+        `;
+      } else if (isEditable && entry.source !== "starting balance") {
+        action = `<button class="delete-button" data-history-entry-clear="${escapeHtml(entryId)}" type="button">Clear</button>`;
+      }
+
+      const rowClass = historyAdminUnlocked ? "history-admin-row" : "";
+      const rowTitle = historyAdminUnlocked ? "Click to edit full entry details" : "";
 
       return `
-        <tr>
+        <tr class="${rowClass}" data-history-row-id="${escapeHtml(entryId)}" title="${escapeHtml(rowTitle)}">
           <td>${dateCellHtml}</td>
           <td>${escapeHtml(entry.category || "—")}</td>
           <td>${escapeHtml((entry.account || "cash").toUpperCase())}</td>
@@ -2706,10 +2735,46 @@ async function clearHistoryEntryActual(entryId) {
 function clearHistoryActualEntry(entry) {
   const deleteKey = getEntryId(entry);
   delete entryActuals[deleteKey];
+  delete entryActualDates[deleteKey];
   if (entry && entry.actualAmount !== undefined) {
     entry.actualAmount = 0;
   }
   saveSetting(keys.entryActuals, entryActuals);
+  saveSetting(keys.entryActualDates, entryActualDates);
+}
+
+async function deleteHistoryEntryCompletely(entryId) {
+  const { entry, isArchived, archivedIndex } = findHistoryEntry(entryId);
+  if (!entry) return;
+
+  const confirmed = await confirmAction(
+    "Delete History Entry",
+    `Permanently delete "${entry.category}" (${money(entry.amount || getEntryActualAmount(entry))}) from budget history and forecasts?`
+  );
+  if (!confirmed) return;
+
+  const cashIdx = cashEntries.findIndex((e) => getEntryId(e) === entryId);
+  if (cashIdx !== -1) {
+    cashEntries.splice(cashIdx, 1);
+    saveSetting(keys.entries, cashEntries);
+  }
+
+  if (isArchived && archivedIndex !== -1) {
+    archivedEntries.splice(archivedIndex, 1);
+    saveSetting(keys.archivedEntries, archivedEntries);
+  }
+
+  delete entryActuals[entryId];
+  delete entryActualDates[entryId];
+  saveSetting(keys.entryActuals, entryActuals);
+  saveSetting(keys.entryActualDates, entryActualDates);
+
+  if (!deletedForecasts.includes(entryId)) {
+    deletedForecasts.push(entryId);
+    saveSetting(keys.deletedForecasts, deletedForecasts);
+  }
+
+  renderAll();
 }
 
 function renderAccounts() {
@@ -3025,7 +3090,8 @@ function openEntryDialog(type, entry = null) {
   updateCurrencyConversionNote();
 
   if (entry) {
-    form.elements.date.value = entry.date || form.elements.date.value;
+    const actDate = getEntryActualDate(entry);
+    form.elements.date.value = actDate || entry.date || form.elements.date.value;
     form.elements.category.value = entry.category || "";
     form.elements.account.value = entry.account || "";
     form.elements.type.value = entry.type || type;
@@ -3108,25 +3174,39 @@ async function persistEntryForm(event) {
       cashEntries[idx] = updatedEntry;
       if (actualAmountInEgp > 0) {
         setEntryActualAmount(updatedEntry, actualAmountInEgp);
+        setEntryActualDate(updatedEntry, form.elements.date.value);
         if (isLoanInflow(updatedEntry)) {
           if (!Array.isArray(updatedEntry.draws) || updatedEntry.draws.length === 0) {
             updatedEntry.draws = [{ date: form.elements.date.value || DateUtils.todayString(), amount: actualAmountInEgp }];
           } else if (deltaActualAmount > 0) {
-            updatedEntry.draws.push({ date: DateUtils.todayString(), amount: deltaActualAmount });
+            updatedEntry.draws.push({ date: form.elements.date.value || DateUtils.todayString(), amount: deltaActualAmount });
           }
         }
       } else {
         delete entryActuals[getEntryId(editingEntry)];
+        delete entryActualDates[getEntryId(editingEntry)];
         updatedEntry.draws = [];
       }
     } else {
       const originalId = getEntryId(editingEntry);
+      const archIdx = archivedEntries.findIndex((e) => getEntryId(e) === originalId);
+      if (archIdx !== -1) {
+        archivedEntries[archIdx] = updatedEntry;
+        saveSetting(keys.archivedEntries, archivedEntries);
+      } else {
+        cashEntries.push(updatedEntry);
+        saveSetting(keys.entries, cashEntries);
+      }
+
       if (actualAmountInEgp > 0) {
-        entryActuals[originalId] = Math.round(Number(actualAmountInEgp));
+        setEntryActualAmount(updatedEntry, actualAmountInEgp);
+        setEntryActualDate(updatedEntry, form.elements.date.value);
       } else {
         delete entryActuals[originalId];
+        delete entryActualDates[originalId];
+        saveSetting(keys.entryActuals, entryActuals);
+        saveSetting(keys.entryActualDates, entryActualDates);
       }
-      saveSetting(keys.entryActuals, entryActuals);
     }
   } else {
     const isLoanCat = form.elements.category.value.trim().toLowerCase().includes("loan");
@@ -4590,6 +4670,13 @@ function setupEventListeners() {
     renderHistory();
   });
 
+  // History admin lock toggle
+  on("historyAdminToggleBtn", "click", () => {
+    historyAdminUnlocked = !historyAdminUnlocked;
+    saveSetting(keys.historyAdminUnlocked, historyAdminUnlocked);
+    renderHistory();
+  });
+
   // History inline actual input
   document.addEventListener("keydown", async (event) => {
     const input = event.target.closest("[data-history-entry-input]");
@@ -4604,14 +4691,48 @@ function setupEventListeners() {
     await commitHistoryEntryActual(input);
   });
 
-  // History clear entry actual
+  // History action buttons & row click
   document.addEventListener("click", async (event) => {
-    const button = event.target.closest("[data-history-entry-clear]");
-    if (!button) return;
-    event.stopPropagation();
-    const entryId = button.dataset.historyEntryClear;
-    if (entryId) {
-      await clearHistoryEntryActual(entryId);
+    const editBtn = event.target.closest("[data-history-entry-edit]");
+    if (editBtn) {
+      event.stopPropagation();
+      const entryId = editBtn.dataset.historyEntryEdit;
+      const { entry } = findHistoryEntry(entryId);
+      if (entry) {
+        openEntryDialog(entry.type, entry);
+      }
+      return;
+    }
+
+    const delBtn = event.target.closest("[data-history-entry-delete]");
+    if (delBtn) {
+      event.stopPropagation();
+      const entryId = delBtn.dataset.historyEntryDelete;
+      if (entryId) {
+        await deleteHistoryEntryCompletely(entryId);
+      }
+      return;
+    }
+
+    const clearBtn = event.target.closest("[data-history-entry-clear]");
+    if (clearBtn) {
+      event.stopPropagation();
+      const entryId = clearBtn.dataset.historyEntryClear;
+      if (entryId) {
+        await clearHistoryEntryActual(entryId);
+      }
+      return;
+    }
+
+    if (historyAdminUnlocked) {
+      const row = event.target.closest("tr[data-history-row-id]");
+      if (row && !event.target.closest("input, button, select")) {
+        const entryId = row.dataset.historyRowId;
+        const { entry } = findHistoryEntry(entryId);
+        if (entry) {
+          openEntryDialog(entry.type, entry);
+        }
+      }
     }
   });
 }
