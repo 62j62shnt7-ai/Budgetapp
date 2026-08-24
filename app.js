@@ -858,9 +858,14 @@ function setEntryActualAmount(entry, value) {
   saveSetting(keys.entryActuals, entryActuals);
 }
 
+function isPartialTracked(entry) {
+  if (!entry) return false;
+  return entry.type === "expense" || (entry.source === "loan" && entry.type === "income");
+}
+
 function getRemainingForecastAmount(entry) {
   const actualAmount = getEntryActualAmount(entry);
-  if (entry.type === "expense" && actualAmount > 0) {
+  if (isPartialTracked(entry) && actualAmount > 0) {
     return Math.max(0, Number(entry.amount || 0) - actualAmount);
   }
   return Number(entry.amount || 0);
@@ -903,7 +908,7 @@ function forecastEntries() {
   return getForecastCandidateEntries()
     .filter((entry) => !entry.date || entry.date >= today)
     .filter((entry) => {
-      if (entry.type === "expense") {
+      if (isPartialTracked(entry)) {
         const actualAmount = getEntryActualAmount(entry);
         if (actualAmount > 0) {
           return getRemainingForecastAmount(entry) > 0;
@@ -912,7 +917,7 @@ function forecastEntries() {
       return getEntryActualAmount(entry) <= 0;
     })
     .map((entry) => {
-      if (entry.type === "expense" && getEntryActualAmount(entry) > 0) {
+      if (isPartialTracked(entry) && getEntryActualAmount(entry) > 0) {
         return { ...entry, amount: getRemainingForecastAmount(entry) };
       }
       return entry;
@@ -1536,9 +1541,9 @@ function getDeficitSummary() {
   const overdueItems = getForecastCandidateEntries()
     .filter((entry) => entry.date && entry.date < today)
     .map((entry) => {
-      const isExpense = entry.type === "expense";
-      const remaining = isExpense ? getRemainingForecastAmount(entry) : Number(entry.amount || 0);
-      const settled = isExpense ? remaining <= 0 : getEntryActualAmount(entry) > 0;
+      const isPartial = isPartialTracked(entry);
+      const remaining = isPartial ? getRemainingForecastAmount(entry) : Number(entry.amount || 0);
+      const settled = isPartial ? remaining <= 0 : getEntryActualAmount(entry) > 0;
       return { entry, remaining, settled, daysOverdue: DateUtils.daysBetween(entry.date, today) };
     })
     .filter((item) => !item.settled)
@@ -1912,11 +1917,11 @@ function renderEntries() {
     .filter((entry) => {
       const actualAmount = getEntryActualAmount(entry);
       if (actualAmount <= 0) return true;
-      return entry.type === "expense" && getRemainingForecastAmount(entry) > 0;
+      return isPartialTracked(entry) && getRemainingForecastAmount(entry) > 0;
     })
     .map((entry) => {
       const actualAmount = getEntryActualAmount(entry);
-      if (entry.type === "expense" && actualAmount > 0) {
+      if (isPartialTracked(entry) && actualAmount > 0) {
         return { ...entry, amount: getRemainingForecastAmount(entry) };
       }
       return entry;
@@ -1957,10 +1962,17 @@ function renderEntries() {
       const actualValue = getEntryActualAmount(entry);
       const editable = isEditableEntry(entry);
       const clickable = editable || isOpeningBalance;
+      const isLoanInflow = entry.source === "loan" && entry.type === "income";
+      const remainingAmt = getRemainingForecastAmount(entry);
+      const inputPlaceholder = isLoanInflow ? "Add draw" : entry.type === "income" ? "Add actual" : "Add spend";
+      const progressLabel = isLoanInflow
+        ? `Drawn so far: ${escapeHtml(money(actualValue))} (Remaining: ${escapeHtml(money(remainingAmt))})`
+        : `Spent so far: ${escapeHtml(money(actualValue))}`;
+
       const actualCell = editable
         ? `<div>
-            <input class="inline-actual-input" data-entry-actual-input="${escapeHtml(deleteKey)}" type="number" min="0" step="0.01" value="" placeholder="Add spend">
-            ${actualValue > 0 ? `<small style="display:block;color:var(--muted);margin-top:4px;white-space:nowrap;">Spent so far: ${escapeHtml(money(actualValue))}</small>` : ""}
+            <input class="inline-actual-input" data-entry-actual-input="${escapeHtml(deleteKey)}" type="number" min="0" step="0.01" value="" placeholder="${escapeHtml(inputPlaceholder)}">
+            ${actualValue > 0 ? `<small style="display:block;color:var(--muted);margin-top:4px;white-space:nowrap;">${progressLabel}</small>` : ""}
           </div>`
         : `<span>${actualValue > 0 ? escapeHtml(money(actualValue)) : "—"}</span>`;
       const dateCell = escapeHtml(entry.date);
@@ -2110,7 +2122,8 @@ async function commitEntryActualInput(input) {
 
   if (typedAmount > 0) {
     const previousActual = getEntryActualAmount(entry);
-    setEntryActualAmount(entry, previousActual + typedAmount);
+    const newActual = previousActual + typedAmount;
+    setEntryActualAmount(entry, newActual);
 
     renderAll();
 
@@ -2118,6 +2131,10 @@ async function commitEntryActualInput(input) {
     if (selectedAcc) {
       adjustAccountBalance(selectedAcc, typedAmount, entry.type || "expense");
       renderAll();
+    }
+
+    if (entry.source === "loan" && entry.type === "income") {
+      await handleLoanRepaymentAdjustmentPrompt(entry, newActual);
     }
   } else {
     renderAll();
@@ -2918,6 +2935,7 @@ async function persistEntryForm(event) {
   }
 
   const action = editingEntry ? "update" : "save";
+  const targetEntryForLoanPrompt = editingEntry;
   saveSetting(keys.entries, cashEntries);
   saveSetting(keys.entryActuals, entryActuals);
   editingEntry = null;
@@ -2932,6 +2950,13 @@ async function persistEntryForm(event) {
     if (selectedAcc) {
       adjustAccountBalance(selectedAcc, deltaActualAmount, entryType);
       renderAll();
+    }
+
+    if (entryType === "income" && ((targetEntryForLoanPrompt && targetEntryForLoanPrompt.source === "loan") || (entryCat && entryCat.toLowerCase().startsWith("loan inflow")))) {
+      const entryRef = targetEntryForLoanPrompt || cashEntries[cashEntries.length - 1];
+      if (entryRef) {
+        await handleLoanRepaymentAdjustmentPrompt(entryRef, actualAmountInEgp);
+      }
     }
   }
 }
@@ -3019,9 +3044,12 @@ function handleLoanBridgeSubmit(event) {
     return;
   }
 
+  const loanId = generateId();
+
   // 1. Inflow Entry (Income)
   const inflowEntry = {
     id: generateId(),
+    loanId: loanId,
     date: disbursementDate,
     category: `Loan Inflow: ${name}`,
     account: account,
@@ -3037,6 +3065,7 @@ function handleLoanBridgeSubmit(event) {
     const repaymentAmount = Number(form.elements.repaymentAmount.value) || amount;
     const repaymentEntry = {
       id: generateId(),
+      loanId: loanId,
       date: dueDate,
       category: `Loan Repayment: ${name}`,
       account: account,
@@ -3052,6 +3081,8 @@ function handleLoanBridgeSubmit(event) {
     const day = Number(form.elements.installmentDay.value) || 15;
 
     installments.push({
+      id: generateId(),
+      loanId: loanId,
       name: `Loan Repayment: ${name}`,
       amount: instAmount,
       day: day,
@@ -3065,6 +3096,177 @@ function handleLoanBridgeSubmit(event) {
   saveSetting(keys.entries, cashEntries);
   if (dialog) dialog.close("saved");
   renderAll();
+}
+
+function findLinkedLoanRepayment(inflowEntry) {
+  if (!inflowEntry) return null;
+
+  // 1. Check by explicit loanId
+  if (inflowEntry.loanId) {
+    const singleRepayment = cashEntries.find(
+      (e) => e.loanId === inflowEntry.loanId && e.type === "expense"
+    );
+    if (singleRepayment) {
+      return { type: "single", target: singleRepayment };
+    }
+    const installmentRepayment = installments.find(
+      (inst) => inst.loanId === inflowEntry.loanId
+    );
+    if (installmentRepayment) {
+      return { type: "installment", target: installmentRepayment };
+    }
+  }
+
+  // 2. Fallback check by name: "Loan Inflow: <Name>" <-> "Loan Repayment: <Name>"
+  const inflowCat = (inflowEntry.category || "").trim();
+  if (inflowCat.toLowerCase().startsWith("loan inflow:")) {
+    const loanName = inflowCat.replace(/^loan inflow:\s*/i, "").trim();
+    if (loanName) {
+      const expectedRepaymentCat = `loan repayment: ${loanName}`.toLowerCase();
+      const singleRepayment = cashEntries.find(
+        (e) => (e.category || "").trim().toLowerCase() === expectedRepaymentCat && e.type === "expense"
+      );
+      if (singleRepayment) {
+        return { type: "single", target: singleRepayment };
+      }
+      const installmentRepayment = installments.find(
+        (inst) => (inst.name || "").trim().toLowerCase() === expectedRepaymentCat
+      );
+      if (installmentRepayment) {
+        return { type: "installment", target: installmentRepayment };
+      }
+    }
+  }
+
+  return null;
+}
+
+function promptLoanRepaymentAdjustment(inflowEntry, linkedInfo, totalDrawn) {
+  return new Promise((resolve) => {
+    const dialog = document.getElementById("adjustLoanRepaymentDialog");
+    if (!dialog) {
+      resolve(null);
+      return;
+    }
+
+    const plannedLoan = Number(inflowEntry.amount || 0);
+    if (plannedLoan <= 0 || totalDrawn <= 0 || totalDrawn >= plannedLoan) {
+      resolve(null);
+      return;
+    }
+
+    const ratio = totalDrawn / plannedLoan;
+    const isSingle = linkedInfo.type === "single";
+    const repTarget = linkedInfo.target;
+    const originalAmount = Number(repTarget.amount || 0);
+    const scaledAmount = Math.max(1, Math.round(originalAmount * ratio));
+
+    const msgEl = document.getElementById("adjustLoanRepaymentMessage");
+    const descEl = document.getElementById("adjustLoanRepaymentDetails");
+    const keepBtn = document.getElementById("adjustLoanRepaymentKeepBtn");
+    const scaleBtn = document.getElementById("adjustLoanRepaymentScaleBtn");
+
+    if (msgEl) {
+      msgEl.innerHTML = `You recorded a draw of <strong>${money(totalDrawn)}</strong> out of planned <strong>${money(plannedLoan)}</strong> for <em>${escapeHtml(inflowEntry.category)}</em>.`;
+    }
+
+    if (descEl) {
+      if (isSingle) {
+        descEl.innerHTML = `
+          <div style="background: var(--bg-alt, #f6f8fa); padding: 12px; border-radius: 8px; border: 1px solid var(--line); font-size: 13px; margin: 10px 0;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+              <span style="color: var(--muted)">Current Scheduled Repayment:</span>
+              <strong>${money(originalAmount)}</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; color: var(--blue, #2563eb);">
+              <span>Scaled to Drawn Amount:</span>
+              <strong>${money(scaledAmount)}</strong>
+            </div>
+          </div>
+        `;
+      } else {
+        const months = Number(repTarget.months || 1);
+        descEl.innerHTML = `
+          <div style="background: var(--bg-alt, #f6f8fa); padding: 12px; border-radius: 8px; border: 1px solid var(--line); font-size: 13px; margin: 10px 0;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+              <span style="color: var(--muted)">Current Installments:</span>
+              <strong>${months} × ${money(originalAmount)}/mo (${money(originalAmount * months)})</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; color: var(--blue, #2563eb);">
+              <span>Scaled Installments:</span>
+              <strong>${months} × ${money(scaledAmount)}/mo (${money(scaledAmount * months)})</strong>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    if (scaleBtn) {
+      scaleBtn.textContent = isSingle ? `Scale to ${money(scaledAmount)}` : `Scale to ${money(scaledAmount)}/mo`;
+    }
+
+    let settled = false;
+    const cleanup = () => {
+      dialog.removeEventListener("cancel", handleCancel);
+      dialog.removeEventListener("close", handleClose);
+      if (keepBtn) keepBtn.removeEventListener("click", handleKeep);
+      if (scaleBtn) scaleBtn.removeEventListener("click", handleScale);
+    };
+
+    const handleKeep = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      dialog.close("keep");
+      resolve("keep");
+    };
+
+    const handleScale = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      dialog.close("scale");
+      resolve({ action: "scale", scaledAmount });
+    };
+
+    const handleCancel = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve("keep");
+    };
+
+    const handleClose = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve("keep");
+    };
+
+    dialog.addEventListener("cancel", handleCancel);
+    dialog.addEventListener("close", handleClose);
+    if (keepBtn) keepBtn.addEventListener("click", handleKeep);
+    if (scaleBtn) scaleBtn.addEventListener("click", handleScale);
+
+    dialog.showModal();
+  });
+}
+
+async function handleLoanRepaymentAdjustmentPrompt(inflowEntry, totalDrawn) {
+  const linked = findLinkedLoanRepayment(inflowEntry);
+  if (!linked) return;
+
+  const result = await promptLoanRepaymentAdjustment(inflowEntry, linked, totalDrawn);
+  if (result && result.action === "scale" && result.scaledAmount) {
+    if (linked.type === "single") {
+      linked.target.amount = result.scaledAmount;
+      saveSetting(keys.entries, cashEntries);
+    } else if (linked.type === "installment") {
+      linked.target.amount = result.scaledAmount;
+      saveSetting(keys.installments, installments);
+    }
+    renderAll();
+  }
 }
 
 function setupEventListeners() {

@@ -1054,6 +1054,24 @@
       </form>
     </dialog>
 
+    <dialog id="adjustLoanRepaymentDialog">
+      <form method="dialog" class="entry-form" id="adjustLoanRepaymentForm">
+        <div class="dialog-heading">
+          <h3>💳 Adjust Linked Repayment?</h3>
+          <button class="icon-button" type="button" aria-label="Close" onclick="document.getElementById('adjustLoanRepaymentDialog').close('keep')">x</button>
+        </div>
+        <p id="adjustLoanRepaymentMessage" style="margin: 12px 0 6px; color: var(--text); font-size: 14px; line-height: 1.5;"></p>
+        <p style="margin: 0 0 10px; color: var(--muted); font-size: 12.5px; line-height: 1.4;">
+          If you plan to draw the rest of this loan later, keep the full scheduled repayment. If this is the total amount you are borrowing, scale the repayment down to match what was drawn.
+        </p>
+        <div id="adjustLoanRepaymentDetails"></div>
+        <div class="dialog-actions" style="margin-top: 18px; display: flex; gap: 8px; justify-content: flex-end;">
+          <button class="ghost-button" id="adjustLoanRepaymentKeepBtn" value="keep" type="button">Keep Full Repayment</button>
+          <button class="primary-button" id="adjustLoanRepaymentScaleBtn" value="scale" type="button">Scale Repayment</button>
+        </div>
+      </form>
+    </dialog>
+
     <dialog id="confirmDialog">
       <div class="dialog-heading">
         <h3 id="confirmTitle">Confirm Action</h3>
@@ -1066,6 +1084,6 @@
       </div>
     </dialog>
 
-    <script src="app.js?v=26"></script>
+    <script src="app.js?v=27"></script>
   </body>
 </html>
