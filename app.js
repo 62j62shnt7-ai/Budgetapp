@@ -17,6 +17,7 @@ const keys = {
   creditDues: "budget-control-credit-dues",
   creditDueMonths: "budget-control-credit-due-months",
   entryActuals: "budget-control-entry-actuals",
+  entryActualDates: "budget-control-entry-actual-dates",
   deletedForecasts: "budget-control-deleted-forecasts",
   archivedEntries: "budget-control-archived-entries",
   categoryCaps: "budget-control-category-caps",
@@ -85,6 +86,7 @@ const exportableDataKeys = {
   creditDues: keys.creditDues,
   creditDueMonths: keys.creditDueMonths,
   entryActuals: keys.entryActuals,
+  entryActualDates: keys.entryActualDates,
   deletedForecasts: keys.deletedForecasts,
   archivedEntries: keys.archivedEntries,
   categoryCaps: keys.categoryCaps,
@@ -672,6 +674,7 @@ let irqJobs = loadSetting(keys.irq, []);
 let creditDues = loadSetting(keys.creditDues, {});
 let creditDueMonths = loadSetting(keys.creditDueMonths, {});
 let entryActuals = loadSetting(keys.entryActuals, {});
+let entryActualDates = loadSetting(keys.entryActualDates, {});
 let deletedForecasts = loadSetting(keys.deletedForecasts, []);
 let archivedEntries = loadSetting(keys.archivedEntries, []);
 let categoryCaps = loadSetting(keys.categoryCaps, defaultCategoryCaps);
@@ -848,12 +851,42 @@ function getEntryActualAmount(entry) {
   return 0;
 }
 
+function getEntryActualDate(entry) {
+  if (!entry) return DateUtils.todayString();
+  if (entry.actualDate) return entry.actualDate;
+  const id = getEntryId(entry);
+  if (entryActualDates && entryActualDates[id]) return entryActualDates[id];
+  if (entry.draws && Array.isArray(entry.draws) && entry.draws.length > 0) {
+    const lastDraw = entry.draws[entry.draws.length - 1];
+    return lastDraw ? lastDraw.date : (entry.date || DateUtils.todayString());
+  }
+  return entry.date || DateUtils.todayString();
+}
+
+function setEntryActualDate(entry, date) {
+  if (!entry) return;
+  const dateStr = date || DateUtils.todayString();
+  entry.actualDate = dateStr;
+  const id = getEntryId(entry);
+  entryActualDates[id] = dateStr;
+  saveSetting(keys.entryActualDates, entryActualDates);
+}
+
 function setEntryActualAmount(entry, value) {
   const id = getEntryId(entry);
   const rounded = value === "" || value === null || value === undefined ? 0 : Math.round(Number(value) || 0);
   entryActuals[id] = rounded;
   if (entry && entry.actualAmount !== undefined) {
     entry.actualAmount = rounded;
+  }
+  if (rounded > 0) {
+    if (!entry.actualDate && (!entryActualDates || !entryActualDates[id])) {
+      setEntryActualDate(entry, DateUtils.todayString());
+    }
+  } else {
+    delete entryActualDates[id];
+    delete entry.actualDate;
+    saveSetting(keys.entryActualDates, entryActualDates);
   }
   saveSetting(keys.entryActuals, entryActuals);
 }
@@ -2270,7 +2303,8 @@ function renderHistory() {
         if (k) months.add(k);
       });
     } else {
-      const key = DateUtils.getMonthKey(entry.date);
+      const actDate = getEntryActualDate(entry);
+      const key = DateUtils.getMonthKey(actDate);
       if (key) months.add(key);
     }
   });
@@ -2289,10 +2323,13 @@ function renderHistory() {
         const monthTotal = monthDraws.reduce((sum, d) => sum + Number(d.amount || 0), 0);
         if (entry.type === "income") income += monthTotal;
         else expenses += monthTotal;
-      } else if (DateUtils.getMonthKey(entry.date) === month) {
-        const amt = getEntryActualAmount(entry);
-        if (entry.type === "income") income += amt;
-        else expenses += amt;
+      } else {
+        const actDate = getEntryActualDate(entry);
+        if (DateUtils.getMonthKey(actDate) === month) {
+          const amt = getEntryActualAmount(entry);
+          if (entry.type === "income") income += amt;
+          else expenses += amt;
+        }
       }
     });
 
@@ -2361,7 +2398,8 @@ function renderHistory() {
   const searchTerm = searchEl ? searchEl.value.trim().toLowerCase() : "";
 
   const filteredEntries = actualEntries.filter((entry) => {
-    const entryMonth = DateUtils.getMonthKey(entry.date);
+    const actDate = getEntryActualDate(entry);
+    const entryMonth = DateUtils.getMonthKey(actDate);
     if (selectedMonth !== "all" && entryMonth !== selectedMonth) return false;
     if (selectedType !== "all" && entry.type !== selectedType) return false;
     if (selectedAccount !== "all" && (entry.account || "cash").toLowerCase() !== selectedAccount.toLowerCase()) return false;
@@ -2374,8 +2412,8 @@ function renderHistory() {
     return true;
   });
 
-  // Sort newest first
-  filteredEntries.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  // Sort newest first by actual date
+  filteredEntries.sort((a, b) => (getEntryActualDate(b) || "").localeCompare(getEntryActualDate(a) || ""));
 
   // Calculate filtered summary
   const filteredIncome = filteredEntries
@@ -2407,14 +2445,17 @@ function renderHistory() {
       const isEditable = isEditableEntry(entry);
       const span = getEntryDateSpan(entry);
       const drawsSummary = getEntryDrawsSummary(entry);
+      const actualDate = getEntryActualDate(entry);
       let dateCellHtml = "";
       if (span.isSpan) {
         dateCellHtml = `<strong style="white-space:nowrap;">${escapeHtml(span.display)}</strong>${drawsSummary ? `<small style="display:block;color:var(--muted);font-size:11px;margin-top:2px;" title="${escapeHtml(drawsSummary)}">${escapeHtml(drawsSummary)}</small>` : ""}`;
       } else if (isLoanInflow(entry) && actualVal > 0) {
-        const startFormatted = DateUtils.formatDisplayDate(entry.date);
+        const startFormatted = DateUtils.formatDisplayDate(actualDate);
         dateCellHtml = `<strong style="white-space:nowrap;">From ${escapeHtml(startFormatted)}</strong>${drawsSummary ? `<small style="display:block;color:var(--muted);font-size:11px;margin-top:2px;" title="${escapeHtml(drawsSummary)}">${escapeHtml(drawsSummary)}</small>` : ""}`;
       } else {
-        dateCellHtml = `<strong>${escapeHtml(DateUtils.formatDisplayDate(entry.date) || "—")}</strong>`;
+        const displayActualDate = DateUtils.formatDisplayDate(actualDate);
+        const isDiffFromForecast = entry.date && entry.date !== actualDate;
+        dateCellHtml = `<strong>${escapeHtml(displayActualDate || "—")}</strong>${isDiffFromForecast ? `<small style="display:block;color:var(--muted);font-size:11px;margin-top:2px;" title="Originally forecasted for ${escapeHtml(DateUtils.formatDisplayDate(entry.date))}">Forecasted: ${escapeHtml(DateUtils.formatDisplayDate(entry.date))}</small>` : ""}`;
       }
 
       let varianceHtml = `<span class="variance-pill neutral">—</span>`;
