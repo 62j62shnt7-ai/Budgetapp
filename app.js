@@ -2121,14 +2121,21 @@ function renderEntries() {
 
       if (isOpeningBalance) {
         rowClass += " opening-balance-row";
-      } else if (isDeficit) {
-        rowClass += " deficit-entry-row danger-row";
-        rowTitle = `Deficit spell: Projected cash balance ${money(statusInfo.balance)}`;
-        statusBadge = `<span class="deficit-badge active" style="margin-left: 6px; font-size: 10px; vertical-align: middle;">Deficit</span>`;
-      } else if (isRecovery) {
-        rowClass += " recovery-entry-row success-row";
-        rowTitle = `Recovery: Projected cash balance recovered to ${money(statusInfo.balance)}`;
-        statusBadge = `<span class="deficit-badge resolved" style="margin-left: 6px; font-size: 10px; vertical-align: middle;">Recovery</span>`;
+      } else {
+        if (isLoan) {
+          rowClass += " loan-entry-row";
+          rowTitle = "Loan facility / borrowed funds (not your earned income)";
+          statusBadge += `<span class="borrowed-funds-tag" title="Borrowed funds · not your earned income">💳 Borrowed</span>`;
+        }
+        if (isDeficit) {
+          rowClass += " deficit-entry-row danger-row";
+          rowTitle = `Deficit spell: Projected cash balance ${money(statusInfo.balance)}`;
+          statusBadge += `<span class="deficit-badge active" style="margin-left: 6px; font-size: 10px; vertical-align: middle;">Deficit</span>`;
+        } else if (isRecovery) {
+          rowClass += " recovery-entry-row success-row";
+          rowTitle = `Recovery: Projected cash balance recovered to ${money(statusInfo.balance)}`;
+          statusBadge += `<span class="deficit-badge resolved" style="margin-left: 6px; font-size: 10px; vertical-align: middle;">Recovery</span>`;
+        }
       }
 
       return `

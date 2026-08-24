@@ -658,6 +658,44 @@ tr.recovery-entry-row td:first-child {
   font-weight: 600;
 }
 
+tr.loan-entry-row {
+  background-color: rgba(217, 142, 43, 0.08) !important;
+}
+
+tr.loan-entry-row:hover {
+  background-color: rgba(217, 142, 43, 0.14) !important;
+}
+
+tr.loan-entry-row td:first-child {
+  box-shadow: inset 4px 0 0 var(--amber);
+  font-weight: 600;
+}
+
+[data-theme="dark"] tr.loan-entry-row {
+  background-color: rgba(217, 142, 43, 0.12) !important;
+}
+
+[data-theme="dark"] tr.loan-entry-row:hover {
+  background-color: rgba(217, 142, 43, 0.18) !important;
+}
+
+.borrowed-funds-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 4px;
+  background: rgba(217, 142, 43, 0.15);
+  color: var(--amber);
+  border: 1px solid rgba(217, 142, 43, 0.35);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
 [data-theme="dark"] tr.recovery-entry-row {
   background-color: rgba(47, 163, 105, 0.12) !important;
 }
