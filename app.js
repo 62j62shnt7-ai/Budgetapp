@@ -1925,10 +1925,15 @@ function renderEntries() {
     })
     .map((entry) => {
       const actualAmount = getEntryActualAmount(entry);
-      if (isPartialTracked(entry) && actualAmount > 0) {
-        return { ...entry, amount: getRemainingForecastAmount(entry) };
-      }
-      return entry;
+      const remainingAmount = isPartialTracked(entry) && actualAmount > 0
+        ? getRemainingForecastAmount(entry)
+        : Number(entry.amount || 0);
+      return {
+        ...entry,
+        originalPlannedAmount: Number(entry.amount || 0),
+        amount: remainingAmount,
+        remainingAmount: remainingAmount
+      };
     })
     .filter(matchesFilters)
     .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
@@ -1967,11 +1972,11 @@ function renderEntries() {
       const editable = isEditableEntry(entry);
       const clickable = editable || isOpeningBalance;
       const isLoanInflow = isPartialTracked(entry) && entry.type === "income";
-      const remainingAmt = getRemainingForecastAmount(entry);
+      const remainingAmt = entry.remainingAmount !== undefined ? entry.remainingAmount : getRemainingForecastAmount(entry);
       const inputPlaceholder = isLoanInflow ? "Add draw" : entry.type === "income" ? "Add actual" : "Add spend";
       const progressLabel = isLoanInflow
         ? `Drawn so far: ${escapeHtml(money(actualValue))} (Remaining: ${escapeHtml(money(remainingAmt))})`
-        : `Spent so far: ${escapeHtml(money(actualValue))}`;
+        : `Spent so far: ${escapeHtml(money(actualValue))} (Remaining: ${escapeHtml(money(remainingAmt))})`;
 
       const actualCell = editable
         ? `<div>
