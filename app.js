@@ -2048,6 +2048,7 @@ function renderEntries() {
             <input class="inline-actual-input" data-entry-actual-input="${escapeHtml(deleteKey)}" type="number" min="0" step="0.01" value="" placeholder="${escapeHtml(inputPlaceholder)}">
             ${actualValue > 0 ? `<small style="display:block;color:var(--muted);margin-top:4px;white-space:nowrap;">${progressLabel}</small>` : ""}
           </div>`
+        : `<span>${actualValue > 0 ? escapeHtml(money(actualValue)) : "—"}</span>`;
       const span = getEntryDateSpan(entry);
       let dateCell = escapeHtml(DateUtils.formatDisplayDate(entry.date) || entry.date || "—");
       if (isLoan && remainingAmt > 0 && !entry.isClosed) {
