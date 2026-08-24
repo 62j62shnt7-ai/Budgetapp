@@ -2018,8 +2018,10 @@ function renderEntries() {
   const openingRows = openingBalanceEntries().filter(matchesFilters);
   const forecastRows = getForecastCandidateEntries()
     .filter((entry) => {
+      if (entry.isClosed) return false;
       const actualAmount = getEntryActualAmount(entry);
       if (actualAmount <= 0) return true;
+      if (entry.keepOngoing) return true;
       return isPartialTracked(entry) && getRemainingForecastAmount(entry) > 0;
     })
     .map((entry) => {
@@ -2073,7 +2075,7 @@ function renderEntries() {
       const isLoan = isLoanInflow(entry);
       const remainingAmt = entry.remainingAmount !== undefined ? entry.remainingAmount : getRemainingForecastAmount(entry);
       const isPastDate = entry.date && entry.date < DateUtils.todayString();
-      const canFinish = isPartial && !entry.isClosed && remainingAmt > 0 && (actualValue > 0 || isPastDate || isLoan);
+      const canFinish = isPartial && !entry.isClosed && (remainingAmt > 0 || entry.keepOngoing) && (actualValue > 0 || isPastDate || isLoan);
 
       const finishTitle = isLoan
         ? "Finish loan facility at current drawn amount"
@@ -2084,9 +2086,11 @@ function renderEntries() {
       const action = !deleteKey || !canDelete ? "" : `${finishAction}<button class="delete-button" data-delete-key="${escapeHtml(deleteKey)}" type="button">Delete</button>`;
 
       const inputPlaceholder = isLoan ? "Add draw" : entry.type === "income" ? "Add actual" : "Add spend";
+      const origPlanned = Number(entry.originalPlannedAmount !== undefined ? entry.originalPlannedAmount : entry.amount) || 0;
+      const isFull = origPlanned > 0 && actualValue >= origPlanned;
       const progressLabel = isLoan
-        ? `Drawn so far: ${escapeHtml(money(actualValue))} (Remaining: ${escapeHtml(money(remainingAmt))})`
-        : `Spent so far: ${escapeHtml(money(actualValue))} (Remaining: ${escapeHtml(money(remainingAmt))})`;
+        ? (isFull ? `Drawn so far: ${escapeHtml(money(actualValue))} (Full amount reached · Ongoing)` : `Drawn so far: ${escapeHtml(money(actualValue))} (Remaining: ${escapeHtml(money(remainingAmt))})`)
+        : (isFull ? `Spent so far: ${escapeHtml(money(actualValue))} (Full budget reached · Ongoing)` : `Spent so far: ${escapeHtml(money(actualValue))} (Remaining: ${escapeHtml(money(remainingAmt))})`);
 
       const actualCell = editable
         ? `<div>
@@ -2096,7 +2100,7 @@ function renderEntries() {
         : `<span>${actualValue > 0 ? escapeHtml(money(actualValue)) : "—"}</span>`;
       const span = getEntryDateSpan(entry);
       let dateCell = escapeHtml(DateUtils.formatDisplayDate(entry.date) || entry.date || "—");
-      if (isPartial && remainingAmt > 0 && !entry.isClosed) {
+      if (isPartial && (remainingAmt > 0 || entry.keepOngoing) && !entry.isClosed) {
         if (span.isSpan) {
           dateCell = `<span><strong>${escapeHtml(span.display)}</strong> <span class="source-pill ${isLoan ? "loan" : ""}" style="font-size:10px; margin-left:4px; padding:1px 6px;" title="Active ongoing budget">Ongoing</span></span>`;
         } else if (actualValue > 0 || isPastDate) {
@@ -2277,6 +2281,21 @@ async function commitEntryActualInput(input) {
 
     if (isLoanInflow(entry)) {
       await handleLoanRepaymentAdjustmentPrompt(entry, newActual);
+    }
+
+    const plannedAmount = Number(entry.amount || 0);
+    // Modal prompt when exact or full planned amount is reached
+    if (newActual >= plannedAmount && plannedAmount > 0 && !entry.isClosed) {
+      const decision = await promptExactAmountDecision(entry, newActual, plannedAmount);
+      if (decision === "keep") {
+        entry.keepOngoing = true;
+        entry.isClosed = false;
+      } else {
+        entry.isClosed = true;
+        entry.keepOngoing = false;
+      }
+      saveSetting(keys.entries, cashEntries);
+      renderAll();
     }
   } else {
     renderAll();
@@ -3490,6 +3509,111 @@ async function handleLoanRepaymentAdjustmentPrompt(inflowEntry, totalDrawn) {
     }
     renderAll();
   }
+}
+
+function promptExactAmountDecision(entry, actualAmount, plannedAmount) {
+  return new Promise((resolve) => {
+    const dialog = document.getElementById("exactAmountDecisionDialog");
+    if (!dialog) {
+      resolve("finish");
+      return;
+    }
+
+    const titleEl = document.getElementById("exactAmountDecisionTitle");
+    const msgEl = document.getElementById("exactAmountDecisionMessage");
+    const subtitleEl = document.getElementById("exactAmountDecisionSubtitle");
+    const detailsEl = document.getElementById("exactAmountDecisionDetails");
+    const keepBtn = document.getElementById("exactAmountKeepBtn");
+    const finishBtn = document.getElementById("exactAmountFinishBtn");
+
+    const isIncome = entry.type === "income";
+    const isLoan = isLoanInflow(entry);
+    const itemName = entry.category || (isIncome ? "Income" : "Expense");
+    const verb = isLoan ? "drawn" : isIncome ? "received" : "spent";
+
+    if (titleEl) {
+      titleEl.innerHTML = isLoan ? "💳 Full Loan Facility Drawn" : isIncome ? "💰 Full Income Received" : "✓ Full Budget Reached";
+    }
+
+    if (msgEl) {
+      msgEl.innerHTML = `You recorded ${verb} of <strong>${money(actualAmount)}</strong> (100% of planned <strong>${money(plannedAmount)}</strong>) for <em>${escapeHtml(itemName)}</em>.`;
+    }
+
+    if (subtitleEl) {
+      subtitleEl.textContent = isLoan
+        ? "Choose whether to finish and close this loan facility, or keep it open in your Cash Flow to log further draws."
+        : isIncome
+        ? "Choose whether to finish and complete this income (move to History), or keep it ongoing in Cash Flow."
+        : "Choose whether to finish and complete this expense budget (move to History), or keep it ongoing in Cash Flow to log more spends.";
+    }
+
+    if (detailsEl) {
+      detailsEl.innerHTML = `
+        <div style="background: var(--bg-alt, #f6f8fa); padding: 12px; border-radius: 8px; border: 1px solid var(--line); font-size: 13px; margin: 10px 0;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+            <span style="color: var(--muted)">Planned Amount:</span>
+            <strong>${money(plannedAmount)}</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; color: var(--green);">
+            <span>Total ${isLoan ? "Drawn" : isIncome ? "Received" : "Spent"}:</span>
+            <strong>${money(actualAmount)}</strong>
+          </div>
+        </div>
+      `;
+    }
+
+    if (keepBtn) {
+      keepBtn.textContent = isLoan ? "Keep Loan Open" : "Keep Ongoing in Cash Flow";
+    }
+    if (finishBtn) {
+      finishBtn.textContent = isLoan ? "Finish & Close Facility" : "Finish & Fulfill";
+    }
+
+    let settled = false;
+    const cleanup = () => {
+      dialog.removeEventListener("cancel", handleCancel);
+      dialog.removeEventListener("close", handleClose);
+      if (keepBtn) keepBtn.removeEventListener("click", handleKeep);
+      if (finishBtn) finishBtn.removeEventListener("click", handleFinish);
+    };
+
+    const handleKeep = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      dialog.close("keep");
+      resolve("keep");
+    };
+
+    const handleFinish = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      dialog.close("finish");
+      resolve("finish");
+    };
+
+    const handleCancel = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve("finish");
+    };
+
+    const handleClose = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve("finish");
+    };
+
+    dialog.addEventListener("cancel", handleCancel);
+    dialog.addEventListener("close", handleClose);
+    if (keepBtn) keepBtn.addEventListener("click", handleKeep);
+    if (finishBtn) finishBtn.addEventListener("click", handleFinish);
+
+    dialog.showModal();
+  });
 }
 
 function setupEventListeners() {

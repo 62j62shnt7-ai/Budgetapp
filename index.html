@@ -1072,6 +1072,24 @@
       </form>
     </dialog>
 
+    <dialog id="exactAmountDecisionDialog">
+      <form method="dialog" class="entry-form" id="exactAmountDecisionForm">
+        <div class="dialog-heading">
+          <h3 id="exactAmountDecisionTitle">✓ Full Amount Reached</h3>
+          <button class="icon-button" type="button" aria-label="Close" onclick="document.getElementById('exactAmountDecisionDialog').close('finish')">x</button>
+        </div>
+        <p id="exactAmountDecisionMessage" style="margin: 12px 0 6px; color: var(--text); font-size: 14px; line-height: 1.5;"></p>
+        <p id="exactAmountDecisionSubtitle" style="margin: 0 0 10px; color: var(--muted); font-size: 12.5px; line-height: 1.4;">
+          Choose whether to finish and complete this item (move to History), or keep it ongoing in your Cash Flow to log more payments.
+        </p>
+        <div id="exactAmountDecisionDetails"></div>
+        <div class="dialog-actions" style="margin-top: 18px; display: flex; gap: 8px; justify-content: flex-end;">
+          <button class="ghost-button" id="exactAmountKeepBtn" value="keep" type="button">Keep Ongoing</button>
+          <button class="primary-button" id="exactAmountFinishBtn" value="finish" type="button">Finish & Complete</button>
+        </div>
+      </form>
+    </dialog>
+
     <dialog id="confirmDialog">
       <div class="dialog-heading">
         <h3 id="confirmTitle">Confirm Action</h3>
@@ -1084,6 +1102,6 @@
       </div>
     </dialog>
 
-    <script src="app.js?v=36"></script>
+    <script src="app.js?v=37"></script>
   </body>
 </html>
