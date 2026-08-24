@@ -3162,16 +3162,52 @@ function promptLoanRepaymentAdjustment(inflowEntry, linkedInfo, totalDrawn) {
     }
 
     const plannedLoan = Number(inflowEntry.amount || 0);
-    if (plannedLoan <= 0 || totalDrawn <= 0 || totalDrawn >= plannedLoan) {
+    if (plannedLoan <= 0 || totalDrawn <= 0) {
       resolve(null);
       return;
     }
 
-    const ratio = totalDrawn / plannedLoan;
     const isSingle = linkedInfo.type === "single";
     const repTarget = linkedInfo.target;
-    const originalAmount = Number(repTarget.amount || 0);
-    const scaledAmount = Math.max(1, Math.round(originalAmount * ratio));
+    const currentRepAmount = Number(repTarget.amount || 0);
+
+    // Calculate baseline total repayment from initial planned amount, not the already-scaled amount
+    let baselineTotal = 0;
+    let months = 1;
+
+    if (isSingle) {
+      const storedInitial = Number(repTarget.initialAmount || repTarget.plannedAmount || 0);
+      if (storedInitial > 0) {
+        baselineTotal = storedInitial;
+      } else {
+        // Fallback for existing loans where initialAmount wasn't recorded
+        baselineTotal = Math.max(currentRepAmount, plannedLoan);
+      }
+      if (!repTarget.initialAmount) {
+        repTarget.initialAmount = baselineTotal;
+      }
+    } else {
+      months = Number(repTarget.months || 1);
+      const storedInitialInst = Number(repTarget.initialAmount || repTarget.plannedAmount || 0);
+      if (storedInitialInst > 0) {
+        baselineTotal = storedInitialInst * months;
+      } else {
+        baselineTotal = Math.max(currentRepAmount * months, plannedLoan);
+      }
+      if (!repTarget.initialAmount) {
+        repTarget.initialAmount = Math.round(baselineTotal / months);
+      }
+    }
+
+    const markup = Math.max(1, baselineTotal / plannedLoan);
+    const scaledTotal = Math.round(totalDrawn * markup);
+    const scaledAmount = isSingle ? scaledTotal : Math.max(1, Math.round(scaledTotal / months));
+
+    // If repayment is already exact, no need to prompt
+    if (scaledAmount === currentRepAmount) {
+      resolve(null);
+      return;
+    }
 
     const msgEl = document.getElementById("adjustLoanRepaymentMessage");
     const descEl = document.getElementById("adjustLoanRepaymentDetails");
@@ -3179,7 +3215,7 @@ function promptLoanRepaymentAdjustment(inflowEntry, linkedInfo, totalDrawn) {
     const scaleBtn = document.getElementById("adjustLoanRepaymentScaleBtn");
 
     if (msgEl) {
-      msgEl.innerHTML = `You recorded a draw of <strong>${money(totalDrawn)}</strong> out of planned <strong>${money(plannedLoan)}</strong> for <em>${escapeHtml(inflowEntry.category)}</em>.`;
+      msgEl.innerHTML = `You recorded a draw of <strong>${money(totalDrawn)}</strong> (out of <strong>${money(plannedLoan)}</strong> loan facility) for <em>${escapeHtml(inflowEntry.category)}</em>.`;
     }
 
     if (descEl) {
@@ -3188,24 +3224,23 @@ function promptLoanRepaymentAdjustment(inflowEntry, linkedInfo, totalDrawn) {
           <div style="background: var(--bg-alt, #f6f8fa); padding: 12px; border-radius: 8px; border: 1px solid var(--line); font-size: 13px; margin: 10px 0;">
             <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
               <span style="color: var(--muted)">Current Scheduled Repayment:</span>
-              <strong>${money(originalAmount)}</strong>
+              <strong>${money(currentRepAmount)}</strong>
             </div>
             <div style="display: flex; justify-content: space-between; color: var(--blue, #2563eb);">
-              <span>Scaled to Drawn Amount:</span>
+              <span>Scaled to Drawn (${money(totalDrawn)}):</span>
               <strong>${money(scaledAmount)}</strong>
             </div>
           </div>
         `;
       } else {
-        const months = Number(repTarget.months || 1);
         descEl.innerHTML = `
           <div style="background: var(--bg-alt, #f6f8fa); padding: 12px; border-radius: 8px; border: 1px solid var(--line); font-size: 13px; margin: 10px 0;">
             <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
               <span style="color: var(--muted)">Current Installments:</span>
-              <strong>${months} × ${money(originalAmount)}/mo (${money(originalAmount * months)})</strong>
+              <strong>${months} × ${money(currentRepAmount)}/mo (${money(currentRepAmount * months)})</strong>
             </div>
             <div style="display: flex; justify-content: space-between; color: var(--blue, #2563eb);">
-              <span>Scaled Installments:</span>
+              <span>Scaled to Drawn (${money(totalDrawn)}):</span>
               <strong>${months} × ${money(scaledAmount)}/mo (${money(scaledAmount * months)})</strong>
             </div>
           </div>
