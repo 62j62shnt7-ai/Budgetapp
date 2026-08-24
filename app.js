@@ -867,7 +867,14 @@ function isPartialTracked(entry) {
   return false;
 }
 
+function isLoanInflow(entry) {
+  if (!entry) return false;
+  const isLoan = entry.source === "loan" || (entry.category && /loan/i.test(entry.category));
+  return Boolean(isLoan && entry.type === "income");
+}
+
 function getRemainingForecastAmount(entry) {
+  if (entry && entry.isClosed) return 0;
   const actualAmount = getEntryActualAmount(entry);
   if (isPartialTracked(entry) && actualAmount > 0) {
     return Math.max(0, Number(entry.amount || 0) - actualAmount);
@@ -910,7 +917,13 @@ function getForecastCandidateEntries() {
 function forecastEntries() {
   const today = DateUtils.todayString();
   return getForecastCandidateEntries()
-    .filter((entry) => !entry.date || entry.date >= today)
+    .filter((entry) => {
+      // If it's an unclosed loan inflow with remaining undrawn funds, persist it even if date is in the past
+      if (isLoanInflow(entry) && !entry.isClosed && getRemainingForecastAmount(entry) > 0) {
+        return true;
+      }
+      return !entry.date || entry.date >= today;
+    })
     .filter((entry) => {
       if (isPartialTracked(entry)) {
         const actualAmount = getEntryActualAmount(entry);
@@ -921,10 +934,15 @@ function forecastEntries() {
       return getEntryActualAmount(entry) <= 0;
     })
     .map((entry) => {
-      if (isPartialTracked(entry) && getEntryActualAmount(entry) > 0) {
-        return { ...entry, amount: getRemainingForecastAmount(entry) };
+      let effDate = entry.date;
+      // Carry forward undrawn loan funds to today in the projection so they remain available
+      if (isLoanInflow(entry) && entry.date && entry.date < today && getRemainingForecastAmount(entry) > 0) {
+        effDate = today;
       }
-      return entry;
+      if (isPartialTracked(entry) && getEntryActualAmount(entry) > 0) {
+        return { ...entry, date: effDate, amount: getRemainingForecastAmount(entry) };
+      }
+      return { ...entry, date: effDate };
     });
 }
 
@@ -1967,14 +1985,21 @@ function renderEntries() {
       const isOpeningBalance = entry.source === "starting balance";
       const deleteKey = getEntryId(entry);
       const canDelete = canDeleteEntry(entry);
-      const action = !deleteKey || !canDelete ? "" : `<button class="delete-button" data-delete-key="${escapeHtml(deleteKey)}" type="button">Delete</button>`;
       const actualValue = getEntryActualAmount(entry);
       const editable = isEditableEntry(entry);
       const clickable = editable || isOpeningBalance;
-      const isLoanInflow = isPartialTracked(entry) && entry.type === "income";
+      const isLoan = isLoanInflow(entry);
       const remainingAmt = entry.remainingAmount !== undefined ? entry.remainingAmount : getRemainingForecastAmount(entry);
-      const inputPlaceholder = isLoanInflow ? "Add draw" : entry.type === "income" ? "Add actual" : "Add spend";
-      const progressLabel = isLoanInflow
+      const isPastDate = entry.date && entry.date < DateUtils.todayString();
+      const canFinish = isLoan && !entry.isClosed && remainingAmt > 0;
+
+      const finishAction = canFinish
+        ? `<button class="ghost-button finish-loan-btn" data-finish-loan-key="${escapeHtml(deleteKey)}" type="button" style="font-size:11px; padding:3px 8px; color:var(--green); border-color:var(--green); margin-right:4px;" title="Finish taking draws and close loan facility at current drawn amount">✓ Finish</button>`
+        : "";
+      const action = !deleteKey || !canDelete ? "" : `${finishAction}<button class="delete-button" data-delete-key="${escapeHtml(deleteKey)}" type="button">Delete</button>`;
+
+      const inputPlaceholder = isLoan ? "Add draw" : entry.type === "income" ? "Add actual" : "Add spend";
+      const progressLabel = isLoan
         ? `Drawn so far: ${escapeHtml(money(actualValue))} (Remaining: ${escapeHtml(money(remainingAmt))})`
         : `Spent so far: ${escapeHtml(money(actualValue))} (Remaining: ${escapeHtml(money(remainingAmt))})`;
 
@@ -1984,7 +2009,9 @@ function renderEntries() {
             ${actualValue > 0 ? `<small style="display:block;color:var(--muted);margin-top:4px;white-space:nowrap;">${progressLabel}</small>` : ""}
           </div>`
         : `<span>${actualValue > 0 ? escapeHtml(money(actualValue)) : "—"}</span>`;
-      const dateCell = escapeHtml(entry.date);
+      const dateCell = isPastDate && isLoan && remainingAmt > 0
+        ? `<span>${escapeHtml(entry.date)} <span class="source-pill loan" style="font-size:10px; margin-left:4px; padding:1px 6px;" title="Undrawn balance carried forward">Ongoing</span></span>`
+        : escapeHtml(entry.date);
 
       const statusInfo = !isOpeningBalance ? entryStatusMap.get(deleteKey) : null;
       const isDeficit = statusInfo && statusInfo.type === "deficit";
@@ -3695,6 +3722,53 @@ function setupEventListeners() {
   });
 
   on("entriesTable", "click", async (event) => {
+    const finishButton = event.target.closest("[data-finish-loan-key]");
+    if (finishButton) {
+      event.stopPropagation();
+      const deleteKey = finishButton.dataset.finishLoanKey;
+      const entry = findEntryById(deleteKey);
+      if (!entry) return;
+
+      const drawnAmount = getEntryActualAmount(entry);
+      const remainingAmount = getRemainingForecastAmount(entry);
+      const loanName = entry.category || "Loan";
+
+      const confirmed = await confirmAction(
+        "Finish & Close Loan",
+        `Do you want to finalize "${loanName}"?\n\n• Amount Drawn: ${money(drawnAmount)}\n• Undrawn Remaining (${money(remainingAmount)}) will be closed and removed from forecast.\n• Linked repayment will be finalized to match ${money(drawnAmount)}.`,
+        "Finish Loan"
+      );
+      if (!confirmed) return;
+
+      entry.isClosed = true;
+      entry.amount = drawnAmount;
+      saveSetting(keys.entries, cashEntries);
+
+      // Finalize linked repayment to drawn amount
+      const linked = findLinkedLoanRepayment(entry);
+      if (linked) {
+        const isSingle = linked.type === "single";
+        const repTarget = linked.target;
+        const months = Number(repTarget.months || 1);
+        const baselineTotal = Number(repTarget.initialAmount || repTarget.plannedAmount || (isSingle ? repTarget.amount : repTarget.amount * months) || drawnAmount);
+        const originalLoan = Number(entry.initialAmount || entry.amount || drawnAmount) || 1;
+        const markup = Math.max(1, baselineTotal / originalLoan);
+        const scaledTotal = Math.round(drawnAmount * markup);
+        const scaledAmount = isSingle ? scaledTotal : Math.max(1, Math.round(scaledTotal / months));
+
+        if (isSingle) {
+          repTarget.amount = scaledAmount;
+          saveSetting(keys.entries, cashEntries);
+        } else {
+          repTarget.amount = scaledAmount;
+          saveSetting(keys.installments, installments);
+        }
+      }
+
+      renderAll();
+      return;
+    }
+
     const button = event.target.closest("[data-delete-key]");
     if (button) {
       event.stopPropagation();
