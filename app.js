@@ -920,7 +920,7 @@ function getEntryDateSpan(entry) {
   const startDate = entry.date || DateUtils.todayString();
   const actualAmount = getEntryActualAmount(entry);
 
-  if (isLoanInflow(entry) && actualAmount > 0 && (!entry.draws || !Array.isArray(entry.draws) || entry.draws.length === 0)) {
+  if (isPartialTracked(entry) && actualAmount > 0 && (!entry.draws || !Array.isArray(entry.draws) || entry.draws.length === 0)) {
     entry.draws = [{ date: startDate, amount: actualAmount }];
   }
 
@@ -955,10 +955,12 @@ function getEntryDrawsSummary(entry) {
   if (!entry || !entry.draws || !Array.isArray(entry.draws) || entry.draws.length <= 1) {
     return "";
   }
+  const isIncome = entry.type === "income";
+  const verb = isIncome ? "draws" : "payments";
   const parts = entry.draws.map(
     (d) => `${money(d.amount)} (${DateUtils.formatDisplayDate(d.date)})`
   );
-  return `${entry.draws.length} draws: ${parts.join(" · ")}`;
+  return `${entry.draws.length} ${verb}: ${parts.join(" · ")}`;
 }
 
 function syncForecastPeriodSettings() {
@@ -997,8 +999,8 @@ function forecastEntries() {
   const today = DateUtils.todayString();
   return getForecastCandidateEntries()
     .filter((entry) => {
-      // If it's an unclosed loan inflow with remaining undrawn funds, persist it even if date is in the past
-      if (isLoanInflow(entry) && !entry.isClosed && getRemainingForecastAmount(entry) > 0) {
+      // If it's an unclosed partial-tracked entry (expense or loan) with remaining balance, persist it past its date
+      if (isPartialTracked(entry) && !entry.isClosed && getRemainingForecastAmount(entry) > 0) {
         return true;
       }
       return !entry.date || entry.date >= today;
@@ -1014,8 +1016,8 @@ function forecastEntries() {
     })
     .map((entry) => {
       let effDate = entry.date;
-      // Carry forward undrawn loan funds to today in the projection so they remain available
-      if (isLoanInflow(entry) && entry.date && entry.date < today && getRemainingForecastAmount(entry) > 0) {
+      // Carry forward undrawn/unspent funds to today in the projection so they remain active
+      if (isPartialTracked(entry) && entry.date && entry.date < today && getRemainingForecastAmount(entry) > 0) {
         effDate = today;
       }
       if (isPartialTracked(entry) && getEntryActualAmount(entry) > 0) {
@@ -2067,13 +2069,17 @@ function renderEntries() {
       const actualValue = getEntryActualAmount(entry);
       const editable = isEditableEntry(entry);
       const clickable = editable || isOpeningBalance;
+      const isPartial = isPartialTracked(entry);
       const isLoan = isLoanInflow(entry);
       const remainingAmt = entry.remainingAmount !== undefined ? entry.remainingAmount : getRemainingForecastAmount(entry);
       const isPastDate = entry.date && entry.date < DateUtils.todayString();
-      const canFinish = isLoan && !entry.isClosed && remainingAmt > 0;
+      const canFinish = isPartial && !entry.isClosed && remainingAmt > 0 && (actualValue > 0 || isPastDate || isLoan);
 
+      const finishTitle = isLoan
+        ? "Finish loan facility at current drawn amount"
+        : "Finish spending and close budget at current spent amount";
       const finishAction = canFinish
-        ? `<button class="ghost-button finish-loan-btn" data-finish-loan-key="${escapeHtml(deleteKey)}" type="button" style="font-size:11px; padding:3px 8px; color:var(--green); border-color:var(--green); margin-right:4px;" title="Finish taking draws and close loan facility at current drawn amount">✓ Finish</button>`
+        ? `<button class="ghost-button finish-loan-btn" data-finish-loan-key="${escapeHtml(deleteKey)}" type="button" style="font-size:11px; padding:3px 8px; color:var(--green); border-color:var(--green); margin-right:4px;" title="${escapeHtml(finishTitle)}">✓ Finish</button>`
         : "";
       const action = !deleteKey || !canDelete ? "" : `${finishAction}<button class="delete-button" data-delete-key="${escapeHtml(deleteKey)}" type="button">Delete</button>`;
 
@@ -2090,14 +2096,14 @@ function renderEntries() {
         : `<span>${actualValue > 0 ? escapeHtml(money(actualValue)) : "—"}</span>`;
       const span = getEntryDateSpan(entry);
       let dateCell = escapeHtml(DateUtils.formatDisplayDate(entry.date) || entry.date || "—");
-      if (isLoan && remainingAmt > 0 && !entry.isClosed) {
+      if (isPartial && remainingAmt > 0 && !entry.isClosed) {
         if (span.isSpan) {
-          dateCell = `<span><strong>${escapeHtml(span.display)}</strong> <span class="source-pill loan" style="font-size:10px; margin-left:4px; padding:1px 6px;" title="Active facility">Ongoing</span></span>`;
+          dateCell = `<span><strong>${escapeHtml(span.display)}</strong> <span class="source-pill ${isLoan ? "loan" : ""}" style="font-size:10px; margin-left:4px; padding:1px 6px;" title="Active ongoing budget">Ongoing</span></span>`;
         } else if (actualValue > 0 || isPastDate) {
           const todayFormatted = DateUtils.formatDisplayDate(DateUtils.todayString());
           const startFormatted = DateUtils.formatDisplayDate(entry.date);
           const displaySpan = startFormatted !== todayFormatted ? `${startFormatted} → Today` : `From ${startFormatted}`;
-          dateCell = `<span><strong>${escapeHtml(displaySpan)}</strong> <span class="source-pill loan" style="font-size:10px; margin-left:4px; padding:1px 6px;" title="Active facility">Ongoing</span></span>`;
+          dateCell = `<span><strong>${escapeHtml(displaySpan)}</strong> <span class="source-pill ${isLoan ? "loan" : ""}" style="font-size:10px; margin-left:4px; padding:1px 6px;" title="Active ongoing budget">Ongoing</span></span>`;
         }
       }
 
@@ -2249,19 +2255,17 @@ async function commitEntryActualInput(input) {
     const newActual = previousActual + typedAmount;
     setEntryActualAmount(entry, newActual);
 
-    // Record dated draw transaction
-    if (isLoanInflow(entry)) {
-      if (!Array.isArray(entry.draws)) {
-        entry.draws = previousActual > 0
-          ? [{ date: entry.date || DateUtils.todayString(), amount: previousActual }]
-          : [];
-      }
-      entry.draws.push({
-        date: DateUtils.todayString(),
-        amount: typedAmount
-      });
-      saveSetting(keys.entries, cashEntries);
+    // Record dated transaction tranche (spend or draw)
+    if (!Array.isArray(entry.draws)) {
+      entry.draws = previousActual > 0
+        ? [{ date: entry.actualDate || entry.date || DateUtils.todayString(), amount: previousActual }]
+        : [];
     }
+    entry.draws.push({
+      date: DateUtils.todayString(),
+      amount: typedAmount
+    });
+    saveSetting(keys.entries, cashEntries);
 
     renderAll();
 
@@ -3874,39 +3878,47 @@ function setupEventListeners() {
       const entry = findEntryById(deleteKey);
       if (!entry) return;
 
-      const drawnAmount = getEntryActualAmount(entry);
+      const actualSpentOrDrawn = getEntryActualAmount(entry);
       const remainingAmount = getRemainingForecastAmount(entry);
-      const loanName = entry.category || "Loan";
+      const itemName = entry.category || (entry.type === "income" ? "Income" : "Expense");
+      const isLoan = isLoanInflow(entry);
+
+      const confirmTitle = isLoan ? "Finish & Close Loan" : "Finish & Close Expense";
+      const promptBody = isLoan
+        ? `Do you want to finalize "${itemName}"?\n\n• Amount Drawn: ${money(actualSpentOrDrawn)}\n• Undrawn Remaining (${money(remainingAmount)}) will be closed and removed from forecast.\n• Linked repayment will be finalized to match ${money(actualSpentOrDrawn)}.`
+        : `Do you want to finalize "${itemName}"?\n\n• Amount Spent to Date: ${money(actualSpentOrDrawn)}\n• Remaining Budget (${money(remainingAmount)}) will be closed and removed from future forecast.`;
 
       const confirmed = await confirmAction(
-        "Finish & Close Loan",
-        `Do you want to finalize "${loanName}"?\n\n• Amount Drawn: ${money(drawnAmount)}\n• Undrawn Remaining (${money(remainingAmount)}) will be closed and removed from forecast.\n• Linked repayment will be finalized to match ${money(drawnAmount)}.`,
-        "Finish Loan"
+        confirmTitle,
+        promptBody,
+        "Finish"
       );
       if (!confirmed) return;
 
       entry.isClosed = true;
-      entry.amount = drawnAmount;
+      entry.amount = actualSpentOrDrawn;
       saveSetting(keys.entries, cashEntries);
 
-      // Finalize linked repayment to drawn amount
-      const linked = findLinkedLoanRepayment(entry);
-      if (linked) {
-        const isSingle = linked.type === "single";
-        const repTarget = linked.target;
-        const months = Number(repTarget.months || 1);
-        const baselineTotal = Number(repTarget.initialAmount || repTarget.plannedAmount || (isSingle ? repTarget.amount : repTarget.amount * months) || drawnAmount);
-        const originalLoan = Number(entry.initialAmount || entry.amount || drawnAmount) || 1;
-        const markup = Math.max(1, baselineTotal / originalLoan);
-        const scaledTotal = Math.round(drawnAmount * markup);
-        const scaledAmount = isSingle ? scaledTotal : Math.max(1, Math.round(scaledTotal / months));
+      // Finalize linked repayment if it's a loan
+      if (isLoan) {
+        const linked = findLinkedLoanRepayment(entry);
+        if (linked) {
+          const isSingle = linked.type === "single";
+          const repTarget = linked.target;
+          const months = Number(repTarget.months || 1);
+          const baselineTotal = Number(repTarget.initialAmount || repTarget.plannedAmount || (isSingle ? repTarget.amount : repTarget.amount * months) || actualSpentOrDrawn);
+          const originalLoan = Number(entry.initialAmount || entry.amount || actualSpentOrDrawn) || 1;
+          const markup = Math.max(1, baselineTotal / originalLoan);
+          const scaledTotal = Math.round(actualSpentOrDrawn * markup);
+          const scaledAmount = isSingle ? scaledTotal : Math.max(1, Math.round(scaledTotal / months));
 
-        if (isSingle) {
-          repTarget.amount = scaledAmount;
-          saveSetting(keys.entries, cashEntries);
-        } else {
-          repTarget.amount = scaledAmount;
-          saveSetting(keys.installments, installments);
+          if (isSingle) {
+            repTarget.amount = scaledAmount;
+            saveSetting(keys.entries, cashEntries);
+          } else {
+            repTarget.amount = scaledAmount;
+            saveSetting(keys.installments, installments);
+          }
         }
       }
 
