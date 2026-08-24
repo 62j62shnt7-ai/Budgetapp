@@ -860,7 +860,11 @@ function setEntryActualAmount(entry, value) {
 
 function isPartialTracked(entry) {
   if (!entry) return false;
-  return entry.type === "expense" || (entry.source === "loan" && entry.type === "income");
+  if (entry.type === "expense") return true;
+  if (entry.source === "loan") return true;
+  const cat = (entry.category || "").toLowerCase();
+  if (cat.includes("loan")) return true;
+  return false;
 }
 
 function getRemainingForecastAmount(entry) {
@@ -1962,7 +1966,7 @@ function renderEntries() {
       const actualValue = getEntryActualAmount(entry);
       const editable = isEditableEntry(entry);
       const clickable = editable || isOpeningBalance;
-      const isLoanInflow = entry.source === "loan" && entry.type === "income";
+      const isLoanInflow = isPartialTracked(entry) && entry.type === "income";
       const remainingAmt = getRemainingForecastAmount(entry);
       const inputPlaceholder = isLoanInflow ? "Add draw" : entry.type === "income" ? "Add actual" : "Add spend";
       const progressLabel = isLoanInflow
@@ -2887,6 +2891,8 @@ async function persistEntryForm(event) {
 
   if (editingEntry) {
     const idx = cashEntries.findIndex((entry) => getEntryId(entry) === getEntryId(editingEntry));
+    const prevSource = idx !== -1 ? cashEntries[idx].source : editingEntry.source;
+    const isLoanCat = form.elements.category.value.trim().toLowerCase().includes("loan");
     const updatedEntry = {
       ...(idx !== -1 ? cashEntries[idx] : editingEntry),
       id: idx !== -1 ? cashEntries[idx].id : editingEntry.id || generateId(),
@@ -2896,7 +2902,7 @@ async function persistEntryForm(event) {
       type: form.elements.type.value,
       amount: plannedAmountInEgp,
       creditType: form.elements.creditType.value || "",
-      source: form.elements.type.value === "expense" ? "expense" : "income"
+      source: prevSource || (isLoanCat ? "loan" : form.elements.type.value === "expense" ? "expense" : "income")
     };
 
     if (idx !== -1) {
@@ -2916,6 +2922,7 @@ async function persistEntryForm(event) {
       saveSetting(keys.entryActuals, entryActuals);
     }
   } else {
+    const isLoanCat = form.elements.category.value.trim().toLowerCase().includes("loan");
     const baseEntry = {
       id: generateId(),
       date: form.elements.date.value,
@@ -2924,7 +2931,7 @@ async function persistEntryForm(event) {
       type: form.elements.type.value,
       amount: plannedAmountInEgp,
       creditType: form.elements.creditType.value || "",
-      source: form.elements.type.value === "expense" ? "expense" : "income"
+      source: isLoanCat ? "loan" : form.elements.type.value === "expense" ? "expense" : "income"
     };
     const months = form.elements.recurring.checked ? Number(form.elements.months.value) || 1 : 1;
     cashEntries.push(...buildRecurringEntries(baseEntry, months));
