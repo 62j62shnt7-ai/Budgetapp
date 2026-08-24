@@ -882,6 +882,46 @@ function getRemainingForecastAmount(entry) {
   return Number(entry.amount || 0);
 }
 
+function getEntryDateSpan(entry) {
+  if (!entry) return { isSpan: false, startDate: "", endDate: "", display: "" };
+  const startDate = entry.date || DateUtils.todayString();
+  if (entry.draws && Array.isArray(entry.draws) && entry.draws.length > 0) {
+    const dates = entry.draws.map((d) => d.date).filter(Boolean).sort();
+    const firstDate = dates[0] || startDate;
+    const lastDate = dates[dates.length - 1] || startDate;
+    if (firstDate !== lastDate) {
+      return {
+        isSpan: true,
+        startDate: firstDate,
+        endDate: lastDate,
+        display: `${DateUtils.formatDisplayDate(firstDate)} → ${DateUtils.formatDisplayDate(lastDate)}`
+      };
+    }
+    return {
+      isSpan: false,
+      startDate: firstDate,
+      endDate: firstDate,
+      display: DateUtils.formatDisplayDate(firstDate)
+    };
+  }
+  return {
+    isSpan: false,
+    startDate: startDate,
+    endDate: startDate,
+    display: DateUtils.formatDisplayDate(startDate)
+  };
+}
+
+function getEntryDrawsSummary(entry) {
+  if (!entry || !entry.draws || !Array.isArray(entry.draws) || entry.draws.length <= 1) {
+    return "";
+  }
+  const parts = entry.draws.map(
+    (d) => `${money(d.amount)} (${DateUtils.formatDisplayDate(d.date)})`
+  );
+  return `${entry.draws.length} draws: ${parts.join(" · ")}`;
+}
+
 function syncForecastPeriodSettings() {
   const startInput = document.getElementById("salaryPeriodStart");
   const quartersInput = document.getElementById("salaryPeriodQuarters");
@@ -2008,10 +2048,15 @@ function renderEntries() {
             <input class="inline-actual-input" data-entry-actual-input="${escapeHtml(deleteKey)}" type="number" min="0" step="0.01" value="" placeholder="${escapeHtml(inputPlaceholder)}">
             ${actualValue > 0 ? `<small style="display:block;color:var(--muted);margin-top:4px;white-space:nowrap;">${progressLabel}</small>` : ""}
           </div>`
-        : `<span>${actualValue > 0 ? escapeHtml(money(actualValue)) : "—"}</span>`;
-      const dateCell = isPastDate && isLoan && remainingAmt > 0
-        ? `<span>${escapeHtml(entry.date)} <span class="source-pill loan" style="font-size:10px; margin-left:4px; padding:1px 6px;" title="Undrawn balance carried forward">Ongoing</span></span>`
-        : escapeHtml(entry.date);
+      const span = getEntryDateSpan(entry);
+      let dateCell = escapeHtml(DateUtils.formatDisplayDate(entry.date) || entry.date || "—");
+      if (isLoan && remainingAmt > 0 && !entry.isClosed) {
+        if (span.isSpan) {
+          dateCell = `<span><strong>${escapeHtml(span.display)}</strong> <span class="source-pill loan" style="font-size:10px; margin-left:4px; padding:1px 6px;" title="Undrawn balance carried forward">Ongoing</span></span>`;
+        } else if (isPastDate) {
+          dateCell = `<span><strong>${escapeHtml(DateUtils.formatDisplayDate(entry.date))}</strong> → <strong style="color:var(--green);">Ongoing</strong> <span class="source-pill loan" style="font-size:10px; margin-left:4px; padding:1px 6px;" title="Undrawn balance carried forward">Active</span></span>`;
+        }
+      }
 
       const statusInfo = !isOpeningBalance ? entryStatusMap.get(deleteKey) : null;
       const isDeficit = statusInfo && statusInfo.type === "deficit";
@@ -2161,6 +2206,20 @@ async function commitEntryActualInput(input) {
     const newActual = previousActual + typedAmount;
     setEntryActualAmount(entry, newActual);
 
+    // Record dated draw transaction
+    if (isLoanInflow(entry)) {
+      if (!Array.isArray(entry.draws)) {
+        entry.draws = previousActual > 0
+          ? [{ date: entry.date || DateUtils.todayString(), amount: previousActual }]
+          : [];
+      }
+      entry.draws.push({
+        date: DateUtils.todayString(),
+        amount: typedAmount
+      });
+      saveSetting(keys.entries, cashEntries);
+    }
+
     renderAll();
 
     const selectedAcc = await promptAccountAdjustment(entry.type || "expense", typedAmount, entry.account || "cash", entry.category || "");
@@ -2169,7 +2228,7 @@ async function commitEntryActualInput(input) {
       renderAll();
     }
 
-    if (entry.source === "loan" && entry.type === "income") {
+    if (isLoanInflow(entry)) {
       await handleLoanRepaymentAdjustmentPrompt(entry, newActual);
     }
   } else {
@@ -2195,8 +2254,15 @@ function renderHistory() {
   // 1. Monthly Summary Calculation
   const months = new Set();
   actualEntries.forEach((entry) => {
-    const key = DateUtils.getMonthKey(entry.date);
-    if (key) months.add(key);
+    if (entry.draws && Array.isArray(entry.draws) && entry.draws.length > 0) {
+      entry.draws.forEach((d) => {
+        const k = DateUtils.getMonthKey(d.date);
+        if (k) months.add(k);
+      });
+    } else {
+      const key = DateUtils.getMonthKey(entry.date);
+      if (key) months.add(key);
+    }
   });
   const orderedMonths = [...months].sort();
 
@@ -2204,13 +2270,22 @@ function renderHistory() {
   let totalLifetimeExpenses = 0;
 
   const rows = orderedMonths.map((month) => {
-    const monthlyEntries = actualEntries.filter((entry) => DateUtils.getMonthKey(entry.date) === month);
-    const income = monthlyEntries
-      .filter((entry) => entry.type === "income")
-      .reduce((sum, entry) => sum + getEntryActualAmount(entry), 0);
-    const expenses = monthlyEntries
-      .filter((entry) => entry.type === "expense")
-      .reduce((sum, entry) => sum + getEntryActualAmount(entry), 0);
+    let income = 0;
+    let expenses = 0;
+
+    actualEntries.forEach((entry) => {
+      if (entry.draws && Array.isArray(entry.draws) && entry.draws.length > 0) {
+        const monthDraws = entry.draws.filter((d) => DateUtils.getMonthKey(d.date) === month);
+        const monthTotal = monthDraws.reduce((sum, d) => sum + Number(d.amount || 0), 0);
+        if (entry.type === "income") income += monthTotal;
+        else expenses += monthTotal;
+      } else if (DateUtils.getMonthKey(entry.date) === month) {
+        const amt = getEntryActualAmount(entry);
+        if (entry.type === "income") income += amt;
+        else expenses += amt;
+      }
+    });
+
     const net = income - expenses;
     const savingsRate = income > 0 ? Math.round((net / income) * 100) : 0;
 
@@ -2320,6 +2395,11 @@ function renderHistory() {
       const actualVal = getEntryActualAmount(entry);
       const plannedVal = Number(entry.amount) || 0;
       const isEditable = isEditableEntry(entry);
+      const span = getEntryDateSpan(entry);
+      const drawsSummary = getEntryDrawsSummary(entry);
+      const dateCellHtml = span.isSpan
+        ? `<strong style="white-space:nowrap;">${escapeHtml(span.display)}</strong>${drawsSummary ? `<small style="display:block;color:var(--muted);font-size:11px;margin-top:2px;" title="${escapeHtml(drawsSummary)}">${escapeHtml(drawsSummary)}</small>` : ""}`
+        : `<strong>${escapeHtml(DateUtils.formatDisplayDate(entry.date) || "—")}</strong>`;
 
       let varianceHtml = `<span class="variance-pill neutral">—</span>`;
       if (plannedVal > 0) {
@@ -2356,7 +2436,7 @@ function renderHistory() {
 
       return `
         <tr>
-          <td><strong>${escapeHtml(entry.date || "—")}</strong></td>
+          <td>${dateCellHtml}</td>
           <td>${escapeHtml(entry.category || "—")}</td>
           <td>${escapeHtml((entry.account || "cash").toUpperCase())}</td>
           <td><span class="pill ${escapeHtml(entry.type)}">${escapeHtml(entry.type)}</span></td>
@@ -2941,8 +3021,16 @@ async function persistEntryForm(event) {
       cashEntries[idx] = updatedEntry;
       if (actualAmountInEgp > 0) {
         setEntryActualAmount(updatedEntry, actualAmountInEgp);
+        if (isLoanInflow(updatedEntry)) {
+          if (!Array.isArray(updatedEntry.draws) || updatedEntry.draws.length === 0) {
+            updatedEntry.draws = [{ date: form.elements.date.value || DateUtils.todayString(), amount: actualAmountInEgp }];
+          } else if (deltaActualAmount > 0) {
+            updatedEntry.draws.push({ date: DateUtils.todayString(), amount: deltaActualAmount });
+          }
+        }
       } else {
         delete entryActuals[getEntryId(editingEntry)];
+        updatedEntry.draws = [];
       }
     } else {
       const originalId = getEntryId(editingEntry);
