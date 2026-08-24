@@ -908,6 +908,20 @@ function isLoanInflow(entry) {
   return Boolean(isLoan && entry.type === "income");
 }
 
+function isOngoingEntry(entry) {
+  if (!entry) return false;
+  if (entry.isClosed) return false;
+  if (entry.keepOngoing) return true;
+  if (isLoanInflow(entry)) {
+    // Unclosed loan facilities that have begun or are active are ongoing facilities, not overdue
+    return true;
+  }
+  if (isPartialTracked(entry) && getEntryActualAmount(entry) > 0 && getRemainingForecastAmount(entry) > 0) {
+    return true;
+  }
+  return false;
+}
+
 function getRemainingForecastAmount(entry) {
   if (entry && entry.isClosed) return 0;
   const actualAmount = getEntryActualAmount(entry);
@@ -1645,6 +1659,7 @@ function getDeficitSummary() {
   const today = DateUtils.todayString();
   const overdueItems = getForecastCandidateEntries()
     .filter((entry) => entry.date && entry.date < today)
+    .filter((entry) => !isOngoingEntry(entry))
     .map((entry) => {
       const isPartial = isPartialTracked(entry);
       const remaining = isPartial ? getRemainingForecastAmount(entry) : Number(entry.amount || 0);
