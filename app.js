@@ -885,6 +885,12 @@ function getRemainingForecastAmount(entry) {
 function getEntryDateSpan(entry) {
   if (!entry) return { isSpan: false, startDate: "", endDate: "", display: "" };
   const startDate = entry.date || DateUtils.todayString();
+  const actualAmount = getEntryActualAmount(entry);
+
+  if (isLoanInflow(entry) && actualAmount > 0 && (!entry.draws || !Array.isArray(entry.draws) || entry.draws.length === 0)) {
+    entry.draws = [{ date: startDate, amount: actualAmount }];
+  }
+
   if (entry.draws && Array.isArray(entry.draws) && entry.draws.length > 0) {
     const dates = entry.draws.map((d) => d.date).filter(Boolean).sort();
     const firstDate = dates[0] || startDate;
@@ -2053,9 +2059,12 @@ function renderEntries() {
       let dateCell = escapeHtml(DateUtils.formatDisplayDate(entry.date) || entry.date || "—");
       if (isLoan && remainingAmt > 0 && !entry.isClosed) {
         if (span.isSpan) {
-          dateCell = `<span><strong>${escapeHtml(span.display)}</strong> <span class="source-pill loan" style="font-size:10px; margin-left:4px; padding:1px 6px;" title="Undrawn balance carried forward">Ongoing</span></span>`;
-        } else if (isPastDate) {
-          dateCell = `<span><strong>${escapeHtml(DateUtils.formatDisplayDate(entry.date))}</strong> → <strong style="color:var(--green);">Ongoing</strong> <span class="source-pill loan" style="font-size:10px; margin-left:4px; padding:1px 6px;" title="Undrawn balance carried forward">Active</span></span>`;
+          dateCell = `<span><strong>${escapeHtml(span.display)}</strong> <span class="source-pill loan" style="font-size:10px; margin-left:4px; padding:1px 6px;" title="Active facility">Ongoing</span></span>`;
+        } else if (actualValue > 0 || isPastDate) {
+          const todayFormatted = DateUtils.formatDisplayDate(DateUtils.todayString());
+          const startFormatted = DateUtils.formatDisplayDate(entry.date);
+          const displaySpan = startFormatted !== todayFormatted ? `${startFormatted} → Today` : `From ${startFormatted}`;
+          dateCell = `<span><strong>${escapeHtml(displaySpan)}</strong> <span class="source-pill loan" style="font-size:10px; margin-left:4px; padding:1px 6px;" title="Active facility">Ongoing</span></span>`;
         }
       }
 
@@ -2398,9 +2407,15 @@ function renderHistory() {
       const isEditable = isEditableEntry(entry);
       const span = getEntryDateSpan(entry);
       const drawsSummary = getEntryDrawsSummary(entry);
-      const dateCellHtml = span.isSpan
-        ? `<strong style="white-space:nowrap;">${escapeHtml(span.display)}</strong>${drawsSummary ? `<small style="display:block;color:var(--muted);font-size:11px;margin-top:2px;" title="${escapeHtml(drawsSummary)}">${escapeHtml(drawsSummary)}</small>` : ""}`
-        : `<strong>${escapeHtml(DateUtils.formatDisplayDate(entry.date) || "—")}</strong>`;
+      let dateCellHtml = "";
+      if (span.isSpan) {
+        dateCellHtml = `<strong style="white-space:nowrap;">${escapeHtml(span.display)}</strong>${drawsSummary ? `<small style="display:block;color:var(--muted);font-size:11px;margin-top:2px;" title="${escapeHtml(drawsSummary)}">${escapeHtml(drawsSummary)}</small>` : ""}`;
+      } else if (isLoanInflow(entry) && actualVal > 0) {
+        const startFormatted = DateUtils.formatDisplayDate(entry.date);
+        dateCellHtml = `<strong style="white-space:nowrap;">From ${escapeHtml(startFormatted)}</strong>${drawsSummary ? `<small style="display:block;color:var(--muted);font-size:11px;margin-top:2px;" title="${escapeHtml(drawsSummary)}">${escapeHtml(drawsSummary)}</small>` : ""}`;
+      } else {
+        dateCellHtml = `<strong>${escapeHtml(DateUtils.formatDisplayDate(entry.date) || "—")}</strong>`;
+      }
 
       let varianceHtml = `<span class="variance-pill neutral">—</span>`;
       if (plannedVal > 0) {
