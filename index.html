@@ -701,15 +701,38 @@
           Actual amount
           <input name="actualAmount" type="number" step="1" min="0" placeholder="0">
         </label>
-        <div id="recurringField" class="entry-field">
+        <div id="recurringField" class="entry-field recurring-group">
           <label class="check-row">
-            <input name="recurring" type="checkbox">
-            Repeat monthly
+            <input name="recurring" id="entryRecurringCheckbox" type="checkbox">
+            Repeat this entry
           </label>
-          <label class="recurring-field">
-            Number of months
-            <input name="months" type="number" min="1" max="120" value="12">
-          </label>
+          <div id="recurringOptions" class="recurring-options is-hidden">
+            <label>
+              Frequency
+              <select name="recurringFrequency" id="entryRecurringFrequency">
+                <option value="monthly">Monthly</option>
+                <option value="weekly">Weekly</option>
+                <option value="biweekly">Bi-weekly (Every 2 weeks)</option>
+              </select>
+            </label>
+            <label id="recurringDayOfWeekField" class="is-hidden">
+              Day of the week
+              <select name="recurringDayOfWeek" id="entryRecurringDayOfWeek">
+                <option value="5">Friday</option>
+                <option value="6">Saturday</option>
+                <option value="0">Sunday</option>
+                <option value="1">Monday</option>
+                <option value="2">Tuesday</option>
+                <option value="3">Wednesday</option>
+                <option value="4">Thursday</option>
+              </select>
+            </label>
+            <label id="recurringCountLabel">
+              <span id="recurringCountLabelText">Number of months</span>
+              <input name="months" id="entryRecurringCount" type="number" min="1" max="120" value="12">
+            </label>
+            <div id="recurringSummaryNote" class="recurring-summary-note"></div>
+          </div>
         </div>
         <div class="dialog-actions">
           <button class="ghost-button" value="cancel" formnovalidate type="button" onclick="document.getElementById('entryDialog').close('cancel')">Cancel</button>

@@ -796,19 +796,60 @@ function buildInstallmentEntries() {
   });
 }
 
-function buildRecurringEntries(baseEntry, months) {
-  const [startYear, startMonth, day] = baseEntry.date.split("-").map(Number);
+function buildRecurringEntries(baseEntry, optionsOrMonths) {
+  let frequency = "monthly";
+  let count = 1;
+  let dayOfWeek = null;
+
+  if (typeof optionsOrMonths === "number") {
+    count = Math.max(1, optionsOrMonths);
+  } else if (optionsOrMonths && typeof optionsOrMonths === "object") {
+    frequency = optionsOrMonths.frequency || "monthly";
+    count = Math.max(1, Number(optionsOrMonths.count) || 1);
+    dayOfWeek = optionsOrMonths.dayOfWeek;
+  }
+
   const result = [];
-  for (let index = 0; index < months; index += 1) {
-    const targetMonthIndex = startMonth - 1 + index;
-    const year = startYear + Math.floor(targetMonthIndex / 12);
-    const month = (targetMonthIndex % 12) + 1;
-    const lastDay = DateUtils.getLastDayOfMonth(year, month);
-    result.push({
-      ...baseEntry,
-      id: generateId(),
-      date: DateUtils.formatDate(year, month, Math.min(day, lastDay))
-    });
+  const [startYear, startMonth, startDay] = (baseEntry.date || DateUtils.todayString()).split("-").map(Number);
+
+  if (frequency === "weekly" || frequency === "biweekly") {
+    const intervalWeeks = frequency === "biweekly" ? 2 : 1;
+    const baseUtc = new Date(Date.UTC(startYear, startMonth - 1, startDay));
+    const baseDayOfWeek = baseUtc.getUTCDay(); // 0 = Sun, 1 = Mon, ..., 5 = Fri, 6 = Sat
+
+    let firstUtc = new Date(baseUtc);
+    if (dayOfWeek !== null && dayOfWeek !== undefined && dayOfWeek !== "") {
+      const targetDow = Number(dayOfWeek);
+      const diffDays = (targetDow - baseDayOfWeek + 7) % 7;
+      firstUtc.setUTCDate(firstUtc.getUTCDate() + diffDays);
+    }
+
+    for (let index = 0; index < count; index += 1) {
+      const entryUtc = new Date(firstUtc);
+      entryUtc.setUTCDate(firstUtc.getUTCDate() + index * (intervalWeeks * 7));
+      const year = entryUtc.getUTCFullYear();
+      const month = entryUtc.getUTCMonth() + 1;
+      const day = entryUtc.getUTCDate();
+      result.push({
+        ...baseEntry,
+        id: generateId(),
+        date: DateUtils.formatDate(year, month, day),
+        source: baseEntry.source || "expense"
+      });
+    }
+  } else {
+    for (let index = 0; index < count; index += 1) {
+      const targetMonthIndex = startMonth - 1 + index;
+      const year = startYear + Math.floor(targetMonthIndex / 12);
+      const month = (targetMonthIndex % 12) + 1;
+      const lastDay = DateUtils.getLastDayOfMonth(year, month);
+      result.push({
+        ...baseEntry,
+        id: generateId(),
+        date: DateUtils.formatDate(year, month, Math.min(startDay, lastDay)),
+        source: baseEntry.source || "expense"
+      });
+    }
   }
   return result;
 }
@@ -3052,6 +3093,81 @@ function upsertSalaryEntriesForPeriod(startMonth = forecastStartMonth, quarters 
   renderAll();
 }
 
+const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+function getOrdinalSuffix(day) {
+  if (day > 3 && day < 21) return "th";
+  switch (day % 10) {
+    case 1: return "st";
+    case 2: return "nd";
+    case 3: return "rd";
+    default: return "th";
+  }
+}
+
+function syncRecurringFields(autoSyncDayOfWeek = false) {
+  const form = document.getElementById("entryForm");
+  if (!form) return;
+
+  const isRecurring = Boolean(form.elements.recurring && form.elements.recurring.checked);
+  const optionsEl = document.getElementById("recurringOptions");
+  if (optionsEl) optionsEl.classList.toggle("is-hidden", !isRecurring);
+
+  if (!isRecurring) return;
+
+  const freq = form.elements.recurringFrequency ? form.elements.recurringFrequency.value : "monthly";
+  const dowField = document.getElementById("recurringDayOfWeekField");
+  const countLabel = document.getElementById("recurringCountLabelText");
+  const summaryEl = document.getElementById("recurringSummaryNote");
+
+  const isWeeklyOrBi = freq === "weekly" || freq === "biweekly";
+  if (dowField) dowField.classList.toggle("is-hidden", !isWeeklyOrBi);
+
+  if (autoSyncDayOfWeek && form.elements.date && form.elements.date.value && form.elements.recurringDayOfWeek) {
+    const [y, m, d] = form.elements.date.value.split("-").map(Number);
+    if (y && m && d) {
+      const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+      form.elements.recurringDayOfWeek.value = String(dow);
+    }
+  }
+
+  const countVal = Number(form.elements.months.value) || 1;
+
+  if (countLabel) {
+    if (freq === "weekly") {
+      countLabel.textContent = "Number of weeks";
+    } else if (freq === "biweekly") {
+      countLabel.textContent = "Number of occurrences (every 2 weeks)";
+    } else {
+      countLabel.textContent = "Number of months";
+    }
+  }
+
+  if (summaryEl) {
+    const dateVal = form.elements.date ? form.elements.date.value : "";
+    if (!dateVal) {
+      summaryEl.textContent = "";
+      return;
+    }
+    const [y, m, d] = dateVal.split("-").map(Number);
+    const dateUtc = new Date(Date.UTC(y, m - 1, d));
+    const baseDow = dateUtc.getUTCDay();
+
+    if (freq === "weekly" || freq === "biweekly") {
+      const targetDow = Number(form.elements.recurringDayOfWeek ? form.elements.recurringDayOfWeek.value : baseDow);
+      const diffDays = (targetDow - baseDow + 7) % 7;
+      const firstDateUtc = new Date(dateUtc);
+      firstDateUtc.setUTCDate(firstDateUtc.getUTCDate() + diffDays);
+      const firstDateStr = DateUtils.formatDate(firstDateUtc.getUTCFullYear(), firstDateUtc.getUTCMonth() + 1, firstDateUtc.getUTCDate());
+      const dayName = WEEKDAY_NAMES[targetDow] || "Friday";
+      const scheduleText = freq === "biweekly" ? `every 2 weeks on ${dayName}` : `weekly on ${dayName}`;
+      summaryEl.textContent = `Generates ${countVal} entries (${scheduleText}), starting ${DateUtils.formatDisplayDate(firstDateStr)}.`;
+    } else {
+      summaryEl.textContent = `Generates ${countVal} monthly entries on the ${d}${getOrdinalSuffix(d)} of each month, starting ${DateUtils.formatDisplayDate(dateVal)}.`;
+    }
+  }
+}
+
 function syncEntryFormMode() {
   const form = document.getElementById("entryForm");
   if (!form) return;
@@ -3070,8 +3186,9 @@ function syncEntryFormMode() {
   if (isCreditDue) {
     form.elements.type.value = "expense";
     form.elements.category.value = "Credit Due";
-    form.elements.recurring.checked = false;
+    if (form.elements.recurring) form.elements.recurring.checked = false;
   }
+  syncRecurringFields();
 }
 
 function updateCurrencyConversionNote() {
@@ -3097,10 +3214,18 @@ function openEntryDialog(type, entry = null) {
   if (!form) return;
   form.reset();
   editingEntry = entry;
-  form.elements.date.value = new Date().toISOString().slice(0, 10);
+  const todayStr = DateUtils.todayString();
+  form.elements.date.value = todayStr;
   form.elements.type.value = type;
   form.elements.currency.value = "EGP";
   form.elements.months.value = 12;
+  if (form.elements.recurringFrequency) form.elements.recurringFrequency.value = "monthly";
+  if (form.elements.recurring) form.elements.recurring.checked = false;
+  if (form.elements.recurringDayOfWeek) {
+    const [ty, tm, td] = todayStr.split("-").map(Number);
+    const todayDow = new Date(Date.UTC(ty, tm - 1, td)).getUTCDay();
+    form.elements.recurringDayOfWeek.value = String(todayDow);
+  }
   form.elements.actualAmount.value = "";
   updateCurrencyConversionNote();
 
@@ -3113,11 +3238,12 @@ function openEntryDialog(type, entry = null) {
     form.elements.amount.value = entry.amount || "";
     form.elements.creditType.value = entry.creditType || "";
     form.elements.actualAmount.value = getEntryActualAmount(entry) || "";
-    form.elements.recurring.checked = Boolean(entry.source && entry.source.includes("monthly"));
+    if (form.elements.recurring) form.elements.recurring.checked = false;
     form.elements.months.value = entry.months || 12;
   }
 
   syncEntryFormMode();
+  syncRecurringFields(false);
   const title = entry ? "Edit entry" : type === "income" ? "Add income" : "Add expense";
   const titleEl = document.getElementById("entryDialogTitle");
   if (titleEl) titleEl.textContent = title;
@@ -3235,11 +3361,20 @@ async function persistEntryForm(event) {
       creditType: form.elements.creditType.value || "",
       source: isLoanCat ? "loan" : form.elements.type.value === "expense" ? "expense" : "income"
     };
-    const months = form.elements.recurring.checked ? Number(form.elements.months.value) || 1 : 1;
-    cashEntries.push(...buildRecurringEntries(baseEntry, months));
+
+    const isRecurring = Boolean(form.elements.recurring && form.elements.recurring.checked);
+    const frequency = isRecurring && form.elements.recurringFrequency ? form.elements.recurringFrequency.value : "monthly";
+    const dayOfWeek = isRecurring && form.elements.recurringDayOfWeek ? form.elements.recurringDayOfWeek.value : null;
+    const count = isRecurring ? Math.max(1, Number(form.elements.months.value) || 1) : 1;
+
+    const entriesToAdd = isRecurring
+      ? buildRecurringEntries(baseEntry, { frequency, count, dayOfWeek })
+      : [baseEntry];
+
+    cashEntries.push(...entriesToAdd);
 
     if (actualAmountInEgp > 0) {
-      setEntryActualAmount(cashEntries[cashEntries.length - months], actualAmountInEgp);
+      setEntryActualAmount(entriesToAdd[0], actualAmountInEgp);
     }
   }
 
@@ -3982,6 +4117,21 @@ function setupEventListeners() {
   if (entryForm) {
     if (entryForm.elements && entryForm.elements.creditType) {
       entryForm.elements.creditType.addEventListener("change", syncEntryFormMode);
+    }
+    if (entryForm.elements && entryForm.elements.recurring) {
+      entryForm.elements.recurring.addEventListener("change", () => syncRecurringFields(false));
+    }
+    if (entryForm.elements && entryForm.elements.recurringFrequency) {
+      entryForm.elements.recurringFrequency.addEventListener("change", () => syncRecurringFields(false));
+    }
+    if (entryForm.elements && entryForm.elements.recurringDayOfWeek) {
+      entryForm.elements.recurringDayOfWeek.addEventListener("change", () => syncRecurringFields(false));
+    }
+    if (entryForm.elements && entryForm.elements.months) {
+      entryForm.elements.months.addEventListener("input", () => syncRecurringFields(false));
+    }
+    if (entryForm.elements && entryForm.elements.date) {
+      entryForm.elements.date.addEventListener("change", () => syncRecurringFields(false));
     }
     on("entryCurrencySelect", "change", updateCurrencyConversionNote);
     on("entryAmountInput", "input", updateCurrencyConversionNote);

@@ -25,7 +25,7 @@ A lightweight, local-first personal financial planning and cashflow forecasting 
 - **Category Budget Caps**: Monthly spending thresholds per category with real-time visual progress bars.
 - **Savings Goals**: Track target funding amounts and progress toward emergency reserves and long-term milestones.
 - **Salary & Income Scheduling**: Multi-quarter salary generator (supports split payments like 15th / 30th) and income streams.
-- **Recurring Installments**: Configure fixed monthly payment installments with custom start dates and duration.
+- **Recurring Entries & Installments**: Configure fixed monthly, weekly, or bi-weekly recurring expenses and income on custom schedules (including set weekdays like Friday) with flexible durations.
 - **Forecast Ledger**: Searchable, filterable entries table supporting forecast amounts vs. actual amounts.
 
 ### 4. Historical Actuals & Validations Ledger
