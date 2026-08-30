@@ -292,6 +292,10 @@ select {
   color: var(--red);
 }
 
+.warning-text {
+  color: var(--amber);
+}
+
 .content-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));

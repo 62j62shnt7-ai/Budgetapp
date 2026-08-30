@@ -1337,8 +1337,9 @@ function renderDashboard() {
     forecastLowDateEl.textContent = `Lowest in ${escapeHtml(lowPoint.month)}`;
   }
 
-  const isNegative = forecast.some((item) => item.balance < 0);
-  updateCashflowStatus(isNegative);
+  const deficitSummary = getDeficitSummary();
+  const risk = evaluateCashflowRisk(forecast, deficitSummary);
+  updateCashflowStatus(risk);
 
   renderBalanceChart(forecast);
   renderCategoryBreakdown(entries);
@@ -1346,7 +1347,6 @@ function renderDashboard() {
   renderExpenseMix(entries);
   renderWarnings(forecast);
 
-  const deficitSummary = getDeficitSummary();
   renderDeficitBanner(deficitSummary);
   renderDeficits(deficitSummary);
 
@@ -1357,18 +1357,78 @@ function renderDashboard() {
   renderSmartInsights(smartInsights);
 }
 
-function updateCashflowStatus(isNegative) {
+function isStrictObligation(entryOrStep) {
+  if (!entryOrStep) return false;
+  if (entryOrStep.source === "installment") return true;
+  if (entryOrStep.source === "loan") return true;
+  if (entryOrStep.creditType) return true;
+  const cat = (entryOrStep.category || "").toLowerCase();
+  if (cat.includes("installment") || cat.includes("check") || cat.includes("cheque") || cat.includes("chq")) return true;
+  if (cat.includes("credit") || cat.includes("loan") || cat.includes("tuition") || cat.includes("school")) return true;
+  return false;
+}
+
+function evaluateCashflowRisk(forecast, deficitSummary) {
+  const { deficitPeriods } = deficitSummary || {};
+  const hasMonthEndDeficit = forecast.some((item) => item.balance < 0);
+  const periods = deficitPeriods || [];
+
+  if (!hasMonthEndDeficit && periods.length === 0) {
+    return {
+      status: "OK",
+      tier: "safe",
+      note: "Cash stays positive across all months"
+    };
+  }
+
+  // Check if any deficit spell involves a strict hard deadline (checks, installments, credit dues, loans)
+  const strictPeriod = periods.find((p) => {
+    return (p.steps || []).some((s) => isStrictObligation(s)) || isStrictObligation(p.initialEntry);
+  });
+
+  const firstPeriod = periods.length ? periods[0] : null;
+
+  // RED (Risk): Strict obligation during deficit, or month-end negative, or unresolved/long deficit (> 14 days)
+  if (hasMonthEndDeficit || strictPeriod || (firstPeriod && (!firstPeriod.isResolved || firstPeriod.daysInDeficit > 14))) {
+    const targetPeriod = strictPeriod || firstPeriod;
+    const strictStep = targetPeriod ? (targetPeriod.steps || []).find((s) => isStrictObligation(s)) : null;
+    const triggerLabel = strictStep ? strictStep.category : (targetPeriod ? targetPeriod.initialTrigger : "Expenses");
+    const peakAmt = targetPeriod ? money(targetPeriod.lowestBalance) : (forecast.find((f) => f.balance < 0) ? money(forecast.find((f) => f.balance < 0).balance) : "");
+    const dateLabel = targetPeriod && targetPeriod.startDate ? ` on ${DateUtils.formatDisplayDate(targetPeriod.startDate)}` : "";
+
+    return {
+      status: "Risk",
+      tier: "danger",
+      note: targetPeriod
+        ? `Strict payment in deficit (${triggerLabel} ${peakAmt}${dateLabel})`
+        : `Expenses exceed cash in forecast (${peakAmt})`
+    };
+  }
+
+  // AMBER (Tight): Short flexible timing gap with only discretionary spending that recovers automatically
+  return {
+    status: "Tight",
+    tier: "warning",
+    note: `Flexible ${firstPeriod.daysInDeficit}d gap until ${DateUtils.formatDisplayDate(firstPeriod.resolvedDate)} salary (${money(firstPeriod.lowestBalance)})`
+  };
+}
+
+function updateCashflowStatus(risk) {
+  const isDanger = risk.tier === "danger";
+  const isWarning = risk.tier === "warning";
+
   ["cashflowStatus", "cfCashflowStatus"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) {
-      el.textContent = isNegative ? "Risk" : "OK";
-      el.classList.toggle("danger-text", isNegative);
+      el.textContent = risk.status;
+      el.classList.toggle("danger-text", isDanger);
+      el.classList.toggle("warning-text", isWarning);
     }
   });
   ["cashflowStatusNote", "cfCashflowStatusNote"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) {
-      el.textContent = isNegative ? "Expenses exceed cash in forecast" : "Cash stays above zero";
+      el.textContent = risk.note;
     }
   });
 }
