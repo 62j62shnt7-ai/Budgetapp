@@ -4179,17 +4179,49 @@ function setupEventListeners() {
   });
 
   // Deficits 1-click Quick Settlement
-  on("deficitOverdueList", "click", (event) => {
+  on("deficitOverdueList", "click", async (event) => {
     const button = event.target.closest("[data-settle-id]");
     if (!button) return;
     const entryId = button.dataset.settleId;
     const amount = Number(button.dataset.settleAmount || 0);
 
     const entry = findEntryById(entryId);
-    if (!entry) return;
+    if (!entry || amount <= 0) return;
 
-    setEntryActualAmount(entry, amount);
+    const previousActual = getEntryActualAmount(entry);
+    const newActual = previousActual + amount;
+    setEntryActualAmount(entry, newActual);
+
+    // Record dated transaction tranche (spend or draw)
+    if (!Array.isArray(entry.draws)) {
+      entry.draws = previousActual > 0
+        ? [{ date: entry.actualDate || entry.date || DateUtils.todayString(), amount: previousActual }]
+        : [];
+    }
+    entry.draws.push({
+      date: DateUtils.todayString(),
+      amount: amount
+    });
+    saveSetting(keys.entries, cashEntries);
+
     renderAll();
+
+    const selectedAcc = await promptAccountAdjustment(entry.type || "expense", amount, entry.account || "cash", entry.category || "");
+    if (selectedAcc) {
+      adjustAccountBalance(selectedAcc, amount, entry.type || "expense");
+      renderAll();
+    }
+
+    if (isLoanInflow(entry)) {
+      await handleLoanRepaymentAdjustmentPrompt(entry, newActual);
+    }
+
+    const plannedAmount = Number(entry.amount || 0);
+    if (newActual >= plannedAmount && plannedAmount > 0 && !entry.isClosed) {
+      entry.isClosed = true;
+      saveSetting(keys.entries, cashEntries);
+      renderAll();
+    }
   });
 
   on("typeFilter", "change", renderEntries);
