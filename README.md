@@ -15,10 +15,9 @@ A lightweight, local-first personal financial planning and cashflow forecasting 
 - **Visual Analytics**: Interactive balance forecast chart, category expense breakdowns, and asset allocation summaries.
 - **Dynamic Color Interpolation**: Continuous RGB color transitions (Green → Amber → Red) on category budget progress bars and financial health tracks.
 
-### 2. Deficit & Shortfall Detection
+### 2. Deficit & Liquidity Monitoring
 - **Forecast Deficit Spells**: Identifies exact time windows where projected cash drops below zero before incoming revenue arrives.
 - **Overdue & Unpaid Tracker**: Flags past-due expenses that lack recorded actual amounts.
-- **Actual Shortfalls**: Calculates actual historical balance health based on confirmed payments.
 
 ### 3. Cashflow & Planning
 - **Customizable Summary Range**: Filter forecast metrics across custom date ranges or view full lifetime projections.

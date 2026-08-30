@@ -1710,29 +1710,14 @@ function getDeficitSummary() {
     .filter((item) => !item.settled)
     .sort((a, b) => b.daysOverdue - a.daysOverdue);
 
-  const realized = actualizedEntries().filter((entry) => entry.date && entry.date <= today);
-  const months = groupByMonth(realized, (entry) => {
-    const actualAmount = getEntryActualAmount(entry);
-    if (!actualAmount) return 0;
-    return entry.type === "income" ? actualAmount : -actualAmount;
-  });
-  const ordered = Object.keys(months).sort();
-  const totalOpeningBalance = Object.values(accountBalances).reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
-  let running = totalOpeningBalance;
-  const actualMonths = [];
-  ordered.forEach((month) => {
-    running += months[month];
-    if (running < 0) actualMonths.push({ month, balance: running, net: months[month] });
-  });
-
-  return { forecastMonths, deficitPeriods, overdueItems, actualMonths };
+  return { forecastMonths, deficitPeriods, overdueItems };
 }
 
 function renderDeficitBanner(summary) {
   const banner = document.getElementById("deficitBanner");
   if (!banner) return;
-  const { forecastMonths, deficitPeriods, overdueItems, actualMonths } = summary;
-  const hasAny = (deficitPeriods && deficitPeriods.length) || forecastMonths.length || overdueItems.length || actualMonths.length;
+  const { forecastMonths, deficitPeriods, overdueItems } = summary;
+  const hasAny = (deficitPeriods && deficitPeriods.length) || forecastMonths.length || overdueItems.length;
 
   if (!hasAny) {
     banner.hidden = true;
@@ -1750,7 +1735,6 @@ function renderDeficitBanner(summary) {
   }
 
   if (overdueItems.length) parts.push(`${overdueItems.length} item${overdueItems.length === 1 ? "" : "s"} overdue`);
-  if (actualMonths.length) parts.push(`${actualMonths.length} past month${actualMonths.length === 1 ? "" : "s"} with an actual shortfall`);
 
   banner.hidden = false;
   const summaryEl = document.getElementById("deficitBannerSummary");
@@ -1758,7 +1742,7 @@ function renderDeficitBanner(summary) {
 }
 
 function renderDeficits(summary) {
-  const { forecastMonths, deficitPeriods, overdueItems, actualMonths } = summary;
+  const { forecastMonths, deficitPeriods, overdueItems } = summary;
 
   const fcEl = document.getElementById("deficitForecastCount");
   if (fcEl) {
@@ -1778,9 +1762,6 @@ function renderDeficits(summary) {
 
   const odEl = document.getElementById("deficitOverdueCount");
   if (odEl) odEl.textContent = String(overdueItems.length);
-
-  const acEl = document.getElementById("deficitActualCount");
-  if (acEl) acEl.textContent = String(actualMonths.length);
 
   const forecastList = document.getElementById("deficitForecastList");
   if (forecastList) {
@@ -1874,22 +1855,6 @@ function renderDeficits(summary) {
           )
           .join("")
       : `<div class="list-row success-row"><span>Nothing overdue</span><strong>All settled</strong></div>`;
-  }
-
-  const actualList = document.getElementById("deficitActualList");
-  if (actualList) {
-    actualList.innerHTML = actualMonths.length
-      ? actualMonths
-          .map(
-            (item) => `
-              <div class="list-row danger-row">
-                <span><strong>${escapeHtml(item.month)}</strong></span>
-                <strong style="color:var(--red); font-size:14px;">${escapeHtml(money(item.balance))}</strong>
-              </div>
-            `
-          )
-          .join("")
-      : `<div class="list-row success-row"><span>No actual shortfall on record</span><strong>Realized balance stayed positive</strong></div>`;
   }
 }
 
