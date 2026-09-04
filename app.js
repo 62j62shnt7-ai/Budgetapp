@@ -614,6 +614,12 @@ function loadSetting(key, fallback) {
   }
 }
 
+function notifyStorageQuotaExceeded() {
+  if (window._quotaAlertShown) return;
+  window._quotaAlertShown = true;
+  alert("⚠️ Browser Storage Quota Reached!\n\nYour browser's local storage is almost full. Please export a JSON backup immediately and archive old transactions or clear unused history to prevent data loss.");
+}
+
 function saveSetting(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
@@ -627,6 +633,9 @@ function saveSetting(key, value) {
     }
   } catch (e) {
     console.error(`Error saving to localStorage key "${key}":`, e);
+    if (e && (e.name === "QuotaExceededError" || e.name === "NS_ERROR_DOM_QUOTA_REACHED" || e.code === 22 || e.code === 1014)) {
+      notifyStorageQuotaExceeded();
+    }
   }
 }
 
@@ -1476,7 +1485,14 @@ function renderAssetDistribution(actualCashNow, storageTotal) {
 
   const filtered = assets.filter((a) => a.amount > 0).sort((a, b) => b.amount - a.amount);
 
-  container.innerHTML = filtered
+  const segmentsHtml = `<div class="asset-segmented-bar">${filtered
+    .map((item) => {
+      const pct = (item.amount / totalNetWorth) * 100;
+      return `<div class="asset-segment" style="width: ${pct.toFixed(1)}%; background: ${item.color};" title="${escapeHtml(item.label)}: ${pct.toFixed(0)}%"></div>`;
+    })
+    .join("")}</div>`;
+
+  container.innerHTML = segmentsHtml + filtered
     .map((item) => {
       const pct = Math.round((item.amount / totalNetWorth) * 100);
       return `
@@ -1781,16 +1797,21 @@ function renderDeficitBanner(summary) {
 
   if (!hasAny) {
     banner.hidden = true;
+    const adviceEl = document.getElementById("deficitRemediationAdvice");
+    if (adviceEl) adviceEl.style.display = "none";
     return;
   }
 
   const parts = [];
+  let peakDeficit = 0;
   if (deficitPeriods && deficitPeriods.length) {
     const firstPeriod = deficitPeriods[0];
     const durStr = firstPeriod.daysInDeficit > 0 ? ` (${firstPeriod.daysInDeficit} days negative)` : "";
     const deficitAmt = money(firstPeriod.startAmount || firstPeriod.lowestBalance);
+    peakDeficit = Math.abs(firstPeriod.lowestBalance || firstPeriod.startAmount || 0);
     parts.push(`Balance turns negative on ${DateUtils.formatDisplayDate(firstPeriod.startDate)}${durStr} · First deficit: ${deficitAmt}`);
   } else if (forecastMonths.length) {
+    peakDeficit = Math.abs(forecastMonths[0].balance || 0);
     parts.push(`${forecastMonths.length} month${forecastMonths.length === 1 ? "" : "s"} projected negative (First deficit: ${money(forecastMonths[0].balance)})`);
   }
 
@@ -1799,6 +1820,32 @@ function renderDeficitBanner(summary) {
   banner.hidden = false;
   const summaryEl = document.getElementById("deficitBannerSummary");
   if (summaryEl) summaryEl.textContent = parts.join(" · ");
+
+  const adviceEl = document.getElementById("deficitRemediationAdvice");
+  if (adviceEl) {
+    if (peakDeficit > 0) {
+      const accountsWithBuffer = Object.entries(accountBalances)
+        .filter(([_, acc]) => Number(acc.balance || 0) >= peakDeficit)
+        .map(([_, acc]) => `${acc.name} (${money(acc.balance)})`);
+
+      const gold21Rate = (ratesData.gold || []).find((g) => g.name === "Gold 21")?.sell || 3150;
+      const goldGramsNeeded = (peakDeficit / gold21Rate).toFixed(1);
+      const usdRate = (ratesData.currencies || []).find((c) => c.name === "USD")?.sell || 48.5;
+      const usdNeeded = Math.round(peakDeficit / usdRate);
+
+      let suggestion = "";
+      if (accountsWithBuffer.length > 0) {
+        suggestion = `💡 <strong>Remediation Option:</strong> Transfer ${money(peakDeficit)} from ${accountsWithBuffer[0]} to cover deficit.`;
+      } else {
+        suggestion = `💡 <strong>Remediation Option:</strong> Liquidate ~${goldGramsNeeded}g Gold 21, exchange ~$${usdNeeded} USD, or bridge via Take Loan.`;
+      }
+
+      adviceEl.innerHTML = suggestion;
+      adviceEl.style.display = "inline-flex";
+    } else {
+      adviceEl.style.display = "none";
+    }
+  }
 }
 
 function renderDeficits(summary) {
@@ -1997,18 +2044,24 @@ function exportToCSV() {
     return;
   }
 
-  const headers = ["Date", "Category", "Account", "Type", "Source", "Planned Amount (EGP)", "Actual Amount (EGP)"];
+  const escapeCsv = (val) => {
+    if (val === null || val === undefined) return '""';
+    return `"${String(val).replace(/"/g, '""')}"`;
+  };
+
+  const headers = ["Date", "Actual Date", "Category", "Account", "Type", "Source", "Planned Amount (EGP)", "Actual Amount (EGP)"];
   const rows = allEntries.map((e) => [
-    `"${e.date || ""}"`,
-    `"${e.category || ""}"`,
-    `"${e.account || ""}"`,
-    `"${e.type || ""}"`,
-    `"${e.source || ""}"`,
+    escapeCsv(e.date || ""),
+    escapeCsv(getEntryActualDate(e) || ""),
+    escapeCsv(e.category || ""),
+    escapeCsv(e.account || ""),
+    escapeCsv(e.type || ""),
+    escapeCsv(e.source || ""),
     Number(e.amount || 0),
     getEntryActualAmount(e)
   ]);
 
-  const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+  const csvContent = "\uFEFF" + [headers.join(","), ...rows.map((r) => r.join(","))].join("\r\n");
   const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const stamp = new Date().toISOString().slice(0, 10);
@@ -3058,21 +3111,64 @@ function openManualGoldEdit() {
   if (dlg) dlg.showModal();
 }
 
+let currentActiveView = "dashboard";
+const dirtyViews = new Set(["dashboard", "deficits", "cashflow", "history", "accounts", "storage", "jobs", "rates"]);
+
+function renderView(viewId) {
+  switch (viewId) {
+    case "dashboard":
+      renderDashboard();
+      renderCategoryCaps();
+      renderSavingsGoals();
+      break;
+    case "deficits":
+      renderDeficits(getDeficitSummary());
+      break;
+    case "cashflow":
+      renderSalarySchedule();
+      renderEntries();
+      renderInstallments();
+      renderCashflowSummary();
+      break;
+    case "history":
+      renderHistory();
+      break;
+    case "accounts":
+      renderAccounts();
+      break;
+    case "storage":
+      renderStorage();
+      break;
+    case "jobs":
+      renderJobs();
+      break;
+    case "rates":
+      renderRates();
+      break;
+    default:
+      break;
+  }
+  dirtyViews.delete(viewId);
+}
+
 function renderAll() {
+  // Always update core Dashboard summaries so metrics and alerts remain synchronized
   renderDashboard();
-  renderSalarySchedule();
-  renderEntries();
-  renderInstallments();
-  renderAccounts();
-  renderStorage();
-  renderJobs();
-  renderRates();
-  renderHistory();
   renderCategoryCaps();
   renderSavingsGoals();
+  dirtyViews.delete("dashboard");
+
+  // Mark other views as dirty
+  ["deficits", "cashflow", "history", "accounts", "storage", "jobs", "rates"].forEach((v) => dirtyViews.add(v));
+
+  // If the user is on an active non-dashboard view, render that view immediately
+  if (currentActiveView && currentActiveView !== "dashboard") {
+    renderView(currentActiveView);
+  }
 }
 
 function activateView(viewId) {
+  currentActiveView = viewId;
   document.querySelectorAll(".nav-item").forEach((item) => {
     item.classList.toggle("active", item.dataset.view === viewId);
   });
@@ -3082,6 +3178,11 @@ function activateView(viewId) {
   const targetButton = document.querySelector(`.nav-item[data-view="${viewId}"]`);
   const titleEl = document.getElementById("viewTitle");
   if (titleEl) titleEl.textContent = targetButton ? targetButton.textContent : "Dashboard";
+
+  // Lazily render view if marked dirty
+  if (dirtyViews.has(viewId) || viewId === "deficits") {
+    renderView(viewId);
+  }
 }
 
 function updateUndoResetVisibility() {
@@ -3888,6 +3989,51 @@ function setupEventListeners() {
   on("themeToggle", "click", toggleTheme);
   on("exportCSV", "click", exportToCSV);
 
+  on("openDataToolsBtn", "click", () => {
+    const dlg = document.getElementById("dataToolsDialog");
+    if (dlg) dlg.showModal();
+  });
+
+  document.addEventListener("click", (e) => {
+    const closeBtn = e.target.closest("[data-close]");
+    if (closeBtn) {
+      const targetId = closeBtn.dataset.close;
+      const dlg = document.getElementById(targetId);
+      if (dlg) dlg.close();
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      document.querySelectorAll("dialog[open]").forEach((d) => d.close());
+      return;
+    }
+
+    const active = document.activeElement;
+    const isInput = active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.tagName === "SELECT" || active.isContentEditable);
+    if (isInput) return;
+
+    if (e.key === "e" || e.key === "E") {
+      e.preventDefault();
+      openEntryDialog("expense");
+    } else if (e.key === "i" || e.key === "I") {
+      e.preventDefault();
+      openEntryDialog("income");
+    } else if (e.key === "l" || e.key === "L") {
+      e.preventDefault();
+      openLoanBridgeDialog();
+    } else if (e.key === "/") {
+      e.preventDefault();
+      if (currentActiveView === "history") {
+        const s = document.getElementById("historySearch");
+        if (s) s.focus();
+      } else {
+        const s = document.getElementById("cfSearch");
+        if (s) s.focus();
+      }
+    }
+  });
+
   on("deficitBannerAction", "click", () => {
     activateView("deficits");
   });
@@ -3910,6 +4056,7 @@ function setupEventListeners() {
         creditDues,
         creditDueMonths,
         entryActuals,
+        entryActualDates,
         deletedForecasts,
         archivedEntries,
         categoryCaps,
@@ -4007,6 +4154,7 @@ function setupEventListeners() {
       creditDues: clone(creditDues),
       creditDueMonths: clone(creditDueMonths),
       entryActuals: clone(entryActuals),
+      entryActualDates: clone(entryActualDates),
       deletedForecasts: clone(deletedForecasts),
       archivedEntries: clone(archivedEntries),
       categoryCaps: clone(categoryCaps),
@@ -4027,6 +4175,7 @@ function setupEventListeners() {
     creditDues = {};
     creditDueMonths = {};
     entryActuals = {};
+    entryActualDates = {};
     deletedForecasts = [];
     archivedEntries = [];
 
@@ -4045,6 +4194,7 @@ function setupEventListeners() {
     saveSetting(keys.creditDues, creditDues);
     saveSetting(keys.creditDueMonths, creditDueMonths);
     saveSetting(keys.entryActuals, entryActuals);
+    saveSetting(keys.entryActualDates, entryActualDates);
     saveSetting(keys.deletedForecasts, deletedForecasts);
     saveSetting(keys.archivedEntries, archivedEntries);
 
@@ -4070,6 +4220,7 @@ function setupEventListeners() {
     creditDues = backup.creditDues || {};
     creditDueMonths = backup.creditDueMonths || {};
     entryActuals = backup.entryActuals || {};
+    entryActualDates = backup.entryActualDates || {};
     deletedForecasts = backup.deletedForecasts || [];
     archivedEntries = backup.archivedEntries || [];
 
@@ -4087,6 +4238,7 @@ function setupEventListeners() {
     saveSetting(keys.creditDues, creditDues);
     saveSetting(keys.creditDueMonths, creditDueMonths);
     saveSetting(keys.entryActuals, entryActuals);
+    saveSetting(keys.entryActualDates, entryActualDates);
     saveSetting(keys.deletedForecasts, deletedForecasts);
     saveSetting(keys.archivedEntries, archivedEntries);
 
@@ -4995,6 +5147,7 @@ function getFullBudgetPayload() {
       creditDues,
       creditDueMonths,
       entryActuals,
+      entryActualDates,
       deletedForecasts,
       archivedEntries,
       categoryCaps,
@@ -5627,6 +5780,15 @@ function initApp() {
     setupEventListeners();
     renderAll();
     initGistSync();
+
+    // Register PWA Service Worker when served via HTTP / HTTPS
+    if ("serviceWorker" in navigator && (location.protocol === "http:" || location.protocol === "https:")) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("./sw.js").catch((err) => {
+          console.warn("ServiceWorker registration failed:", err);
+        });
+      });
+    }
   } catch (e) {
     console.error("Error during app initialization:", e);
   }
