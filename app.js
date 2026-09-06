@@ -1629,7 +1629,11 @@ function getDeficitPeriods(entries = forecastEntries()) {
   const totalOpeningBalance = Object.values(accountBalances).reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
   const sorted = [...entries]
     .filter((e) => e.date)
-    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    .sort((a, b) => {
+      if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+      if (a.type !== b.type) return a.type === "income" ? -1 : 1;
+      return 0;
+    });
 
   let running = totalOpeningBalance;
   const periods = [];
@@ -2173,7 +2177,12 @@ function renderEntries() {
       };
     })
     .filter(matchesFilters)
-    .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+    .sort((a, b) => {
+      const dateCmp = (a.date || "").localeCompare(b.date || "");
+      if (dateCmp !== 0) return dateCmp;
+      if (a.type !== b.type) return a.type === "income" ? -1 : 1;
+      return 0;
+    });
 
   const filtered = [...openingRows, ...forecastRows];
 
