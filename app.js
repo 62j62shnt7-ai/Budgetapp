@@ -1828,22 +1828,60 @@ function renderDeficitBanner(summary) {
   const adviceEl = document.getElementById("deficitRemediationAdvice");
   if (adviceEl) {
     if (peakDeficit > 0) {
-      const accountsWithBuffer = Object.entries(accountBalances)
-        .filter(([_, acc]) => Number(acc.balance || 0) >= peakDeficit)
-        .map(([_, acc]) => `${acc.name} (${money(acc.balance)})`);
+      const suggestions = [];
+      const firstPeriod = deficitPeriods && deficitPeriods.length ? deficitPeriods[0] : null;
 
-      const gold21Rate = (ratesData.gold || []).find((g) => g.name === "Gold 21")?.sell || 3150;
-      const goldGramsNeeded = (peakDeficit / gold21Rate).toFixed(1);
-      const usdRate = (ratesData.currencies || []).find((c) => c.name === "USD")?.sell || 48.5;
-      const usdNeeded = Math.round(peakDeficit / usdRate);
-
-      let suggestion = "";
-      if (accountsWithBuffer.length > 0) {
-        suggestion = `💡 <strong>Remediation Option:</strong> Transfer ${money(peakDeficit)} from ${accountsWithBuffer[0]} to cover deficit.`;
-      } else {
-        suggestion = `💡 <strong>Remediation Option:</strong> Liquidate ~${goldGramsNeeded}g Gold 21, exchange ~$${usdNeeded} USD, or bridge via Take Loan.`;
+      // 1. Postpone / Cut upcoming expenses leading into or causing the deficit
+      let candidateExpense = null;
+      if (firstPeriod) {
+        if (firstPeriod.initialEntry && firstPeriod.initialEntry.type === "expense") {
+          candidateExpense = firstPeriod.initialEntry;
+        } else if (firstPeriod.lowestEntry && firstPeriod.lowestEntry.type === "expense") {
+          candidateExpense = firstPeriod.lowestEntry;
+        } else if (Array.isArray(firstPeriod.steps)) {
+          candidateExpense = firstPeriod.steps.find((s) => s.type === "expense" && s.amount > 0);
+        }
       }
 
+      if (candidateExpense && candidateExpense.amount) {
+        const catName = escapeHtml(candidateExpense.category || "expense");
+        suggestions.push(`Postpone <strong>${catName}</strong> (${money(candidateExpense.amount)})`);
+      } else if (firstPeriod && firstPeriod.startDate) {
+        suggestions.push(`Cut ${money(peakDeficit)} in expenses before ${DateUtils.formatDisplayDate(firstPeriod.startDate)}`);
+      }
+
+      // 2. Liquidate off-budget reserves / storage assets (Gold, foreign currencies)
+      const userAssets = (storageAssets || []).filter(
+        (a) => Number(a.quantity || 0) > 0 && Number(a.rate || 0) > 0
+      );
+      const goldUserAsset = userAssets.find((a) => (a.name || "").toLowerCase().includes("gold"));
+      const fxUserAsset = userAssets.find((a) =>
+        ["usd", "eur", "sar", "aed", "gbp"].some((c) => (a.name || "").toLowerCase().includes(c))
+      );
+
+      if (goldUserAsset) {
+        const needed = (peakDeficit / Number(goldUserAsset.rate)).toFixed(1);
+        suggestions.push(`Liquidate ~${needed}${goldUserAsset.unit ? ` ${goldUserAsset.unit}` : "g"} ${escapeHtml(goldUserAsset.name)}`);
+      } else if (fxUserAsset) {
+        const needed = Math.ceil(peakDeficit / Number(fxUserAsset.rate));
+        suggestions.push(`Exchange ~${needed} ${escapeHtml(fxUserAsset.name)}`);
+      } else {
+        const gold21Rate = (ratesData.gold || []).find((g) => g.name === "Gold 21")?.sell || 3150;
+        const goldGramsNeeded = (peakDeficit / gold21Rate).toFixed(1);
+        const usdRate = (ratesData.currencies || []).find((c) => c.name === "USD")?.sell || 48.5;
+        const usdNeeded = Math.round(peakDeficit / usdRate);
+        suggestions.push(`Liquidate ~${goldGramsNeeded}g Gold or ~$${usdNeeded} USD`);
+      }
+
+      // 3. Short-term bridging until next forecasted income
+      if (firstPeriod && firstPeriod.resolvedDate) {
+        const dur = firstPeriod.daysInDeficit > 0 ? ` (${firstPeriod.daysInDeficit}d)` : "";
+        suggestions.push(`Bridge via loan/credit until ${DateUtils.formatDisplayDate(firstPeriod.resolvedDate)}${dur}`);
+      } else {
+        suggestions.push(`Bridge ${money(peakDeficit)} via short-term loan/credit`);
+      }
+
+      const suggestion = `💡 <strong>Remediation:</strong> ${suggestions.join(" · ")}`;
       adviceEl.innerHTML = suggestion;
       adviceEl.style.display = "inline-flex";
     } else {
