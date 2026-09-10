@@ -1368,12 +1368,15 @@ function renderDashboard() {
 
 function isStrictObligation(entryOrStep) {
   if (!entryOrStep) return false;
-  if (entryOrStep.source === "installment") return true;
-  if (entryOrStep.source === "loan") return true;
-  if (entryOrStep.creditType) return true;
-  const cat = (entryOrStep.category || "").toLowerCase();
+  const e = entryOrStep.entry || entryOrStep;
+  if (e.source === "installment" || e.source === "recurring credit" || e.source === "loan") return true;
+  if (e.source && (e.source.includes("credit") || e.source.includes("installment"))) return true;
+  if (e.account === "installment" || (e.account && e.account.includes("credit"))) return true;
+  if (e.creditType) return true;
+  const cat = (e.category || "").toLowerCase().trim();
   if (cat.includes("installment") || cat.includes("check") || cat.includes("cheque") || cat.includes("chq")) return true;
-  if (cat.includes("credit") || cat.includes("loan") || cat.includes("tuition") || cat.includes("school")) return true;
+  if (cat.includes("credit") || cat.includes("loan") || cat.includes("tuition") || cat.includes("school") || cat.includes("mortgage") || cat.includes("rent")) return true;
+  if (Array.isArray(installments) && installments.some((inst) => (inst.name || "").trim().toLowerCase() === cat)) return true;
   return false;
 }
 
@@ -1666,6 +1669,9 @@ function getDeficitPeriods(entries = forecastEntries()) {
               amount: Number(entry.amount || 0),
               balance: running,
               delta,
+              source: entry.source,
+              account: entry.account,
+              entry,
               entryId: getEntryId(entry)
             }
           ]
@@ -1685,6 +1691,9 @@ function getDeficitPeriods(entries = forecastEntries()) {
           amount: Number(entry.amount || 0),
           balance: running,
           delta,
+          source: entry.source,
+          account: entry.account,
+          entry,
           entryId: getEntryId(entry)
         });
       }
@@ -1831,49 +1840,90 @@ function renderDeficitBanner(summary) {
       const suggestions = [];
       const firstPeriod = deficitPeriods && deficitPeriods.length ? deficitPeriods[0] : null;
 
-      // 1. Postpone / Cut upcoming expenses leading into or causing the deficit
-      let candidateExpense = null;
-      if (firstPeriod) {
-        if (firstPeriod.initialEntry && firstPeriod.initialEntry.type === "expense") {
-          candidateExpense = firstPeriod.initialEntry;
-        } else if (firstPeriod.lowestEntry && firstPeriod.lowestEntry.type === "expense") {
-          candidateExpense = firstPeriod.lowestEntry;
-        } else if (Array.isArray(firstPeriod.steps)) {
-          candidateExpense = firstPeriod.steps.find((s) => s.type === "expense" && s.amount > 0);
-        }
-      }
-
-      if (candidateExpense && candidateExpense.amount) {
-        const catName = escapeHtml(candidateExpense.category || "expense");
-        suggestions.push(`Postpone <strong>${catName}</strong> (${money(candidateExpense.amount)})`);
-      } else if (firstPeriod && firstPeriod.startDate) {
-        suggestions.push(`Cut ${money(peakDeficit)} in expenses before ${DateUtils.formatDisplayDate(firstPeriod.startDate)}`);
-      }
-
-      // 2. Liquidate off-budget reserves / storage assets (Gold, foreign currencies)
+      // Available active storage assets
       const userAssets = (storageAssets || []).filter(
         (a) => Number(a.quantity || 0) > 0 && Number(a.rate || 0) > 0
       );
-      const goldUserAsset = userAssets.find((a) => (a.name || "").toLowerCase().includes("gold"));
-      const fxUserAsset = userAssets.find((a) =>
-        ["usd", "eur", "sar", "aed", "gbp"].some((c) => (a.name || "").toLowerCase().includes(c))
-      );
 
-      if (goldUserAsset) {
-        const needed = (peakDeficit / Number(goldUserAsset.rate)).toFixed(1);
-        suggestions.push(`Liquidate ~${needed}${goldUserAsset.unit ? ` ${goldUserAsset.unit}` : "g"} ${escapeHtml(goldUserAsset.name)}`);
-      } else if (fxUserAsset) {
-        const needed = Math.ceil(peakDeficit / Number(fxUserAsset.rate));
-        suggestions.push(`Exchange ~${needed} ${escapeHtml(fxUserAsset.name)}`);
+      // --- Option 1: Foreign Currency FIRST (EUR & USD) ---
+      const eurAsset = userAssets.find((a) => {
+        const n = (a.name || "").toLowerCase();
+        return n.includes("eur") || n.includes("euro");
+      });
+      const usdAsset = userAssets.find((a) => {
+        const n = (a.name || "").toLowerCase();
+        return n.includes("usd") || n.includes("dollar");
+      });
+      const otherFxAsset = userAssets.find((a) => {
+        const n = (a.name || "").toLowerCase();
+        return a !== eurAsset && a !== usdAsset && ["sar", "aed", "gbp", "currency", "foreign"].some((c) => n.includes(c));
+      });
+
+      const marketEur = (ratesData.currencies || []).find((c) => c.name === "EUR")?.sell || 52.0;
+      const marketUsd = (ratesData.currencies || []).find((c) => c.name === "USD")?.sell || 48.5;
+
+      const eurRate = eurAsset ? Number(eurAsset.rate) || marketEur : marketEur;
+      const usdRate = usdAsset ? Number(usdAsset.rate) || marketUsd : marketUsd;
+
+      const eurNeeded = Math.ceil(peakDeficit / (eurRate || 52.0));
+      const usdNeeded = Math.round(peakDeficit / (usdRate || 48.5));
+
+      if (eurAsset && usdAsset) {
+        suggestions.push(`Exchange ~€${eurNeeded} EUR (or ~$${usdNeeded} USD)`);
+      } else if (eurAsset) {
+        suggestions.push(`Exchange ~€${eurNeeded} EUR`);
+      } else if (usdAsset) {
+        suggestions.push(`Exchange ~$${usdNeeded} USD`);
+      } else if (otherFxAsset) {
+        const needed = Math.ceil(peakDeficit / Number(otherFxAsset.rate));
+        suggestions.push(`Exchange ~${needed} ${escapeHtml(otherFxAsset.name)}`);
+      } else {
+        suggestions.push(`Exchange ~€${eurNeeded} EUR or ~$${usdNeeded} USD`);
+      }
+
+      // --- Option 2: Liquidate Gold SECOND ---
+      const goldAsset = userAssets.find((a) => {
+        const n = (a.name || "").toLowerCase();
+        return n.includes("gold") || n.includes("ذهب");
+      });
+
+      if (goldAsset) {
+        const needed = (peakDeficit / Number(goldAsset.rate)).toFixed(1);
+        suggestions.push(`Liquidate ~${needed}${goldAsset.unit ? ` ${goldAsset.unit}` : "g"} ${escapeHtml(goldAsset.name)}`);
       } else {
         const gold21Rate = (ratesData.gold || []).find((g) => g.name === "Gold 21")?.sell || 3150;
         const goldGramsNeeded = (peakDeficit / gold21Rate).toFixed(1);
-        const usdRate = (ratesData.currencies || []).find((c) => c.name === "USD")?.sell || 48.5;
-        const usdNeeded = Math.round(peakDeficit / usdRate);
-        suggestions.push(`Liquidate ~${goldGramsNeeded}g Gold or ~$${usdNeeded} USD`);
+        suggestions.push(`Liquidate ~${goldGramsNeeded}g Gold 21`);
       }
 
-      // 3. Short-term bridging until next forecasted income
+      // --- Option 3: Postpone ONLY flexible / discretionary expenses (NEVER installments or credit dues) ---
+      let flexibleCandidate = null;
+      if (firstPeriod) {
+        // Step 1: Check steps within the deficit spell that are strictly flexible
+        if (Array.isArray(firstPeriod.steps)) {
+          flexibleCandidate = firstPeriod.steps.find((s) => s.type === "expense" && !isStrictObligation(s) && Number(s.amount || 0) > 0);
+        }
+        // Step 2: Check candidate upcoming expenses right before deficit start date
+        if (!flexibleCandidate) {
+          const entries = forecastEntries();
+          const discretionary = entries.filter((e) =>
+            e.type === "expense" &&
+            e.date &&
+            e.date <= firstPeriod.startDate &&
+            !isStrictObligation(e) &&
+            Number(e.amount || 0) >= peakDeficit * 0.25
+          );
+          discretionary.sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0));
+          flexibleCandidate = discretionary[0] || null;
+        }
+      }
+
+      if (flexibleCandidate && flexibleCandidate.amount) {
+        const catName = escapeHtml(flexibleCandidate.category || "flexible expense");
+        suggestions.push(`Postpone <strong>${catName}</strong> (${money(flexibleCandidate.amount)})`);
+      }
+
+      // --- Option 4: Short-term bridging until next forecasted income ---
       if (firstPeriod && firstPeriod.resolvedDate) {
         const dur = firstPeriod.daysInDeficit > 0 ? ` (${firstPeriod.daysInDeficit}d)` : "";
         suggestions.push(`Bridge via loan/credit until ${DateUtils.formatDisplayDate(firstPeriod.resolvedDate)}${dur}`);
