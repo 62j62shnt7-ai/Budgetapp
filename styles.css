@@ -1344,7 +1344,11 @@ label {
     font-size: 22px;
   }
 
-  .metrics-grid,
+  .metrics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
   .content-grid,
   .salary-grid,
   .history-analytics-grid {
@@ -1429,6 +1433,18 @@ label {
     padding: 14px;
   }
 
+  .metric strong {
+    font-size: 20px;
+  }
+
+  .metric span {
+    font-size: 11.5px;
+  }
+
+  .metric small {
+    font-size: 11px;
+  }
+
   .credit-due-controls {
     grid-template-columns: 1fr;
     width: 100%;
@@ -1436,6 +1452,12 @@ label {
 
   .dialog-heading h3 {
     font-size: 16px;
+  }
+}
+
+@media (max-width: 360px) {
+  .metrics-grid {
+    grid-template-columns: 1fr;
   }
 }
 
