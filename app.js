@@ -693,7 +693,9 @@ let categoryCaps = loadSetting(keys.categoryCaps, defaultCategoryCaps);
 let savingsGoals = loadSetting(keys.savingsGoals, defaultSavingsGoals);
 let historyAdminUnlocked = loadSetting(keys.historyAdminUnlocked, false);
 let forecastLineRangeMonths = loadSetting(keys.forecastLineMonths, 12);
-let forecastLineChartMode = loadSetting(keys.forecastLineMode, "balance");
+let forecastLineChartMode = loadSetting(keys.forecastLineMode, "entries");
+let simulatedSpendAmount = 0;
+let simulatedSpendDate = null;
 let editingEntry = null;
 let editingInstallmentIndex = null;
 
@@ -1658,32 +1660,17 @@ function buildSmoothSvgPath(points) {
 }
 
 function getForecastTimeSeries(requestedMonths = forecastLineRangeMonths) {
-  const allEntries = forecastEntries();
   const currentYm = DateUtils.currentYearMonth();
   const [startYear, startMonth] = DateUtils.parseYearMonth(currentYm);
+  const today = DateUtils.todayString();
 
-  // Group entries by month
-  const monthlyIncomes = {};
-  const monthlyExpenses = {};
-  const monthlyIncomeCount = {};
-  const monthlyExpenseCount = {};
-
-  allEntries.forEach((entry) => {
-    const month = DateUtils.getMonthKey(entry.date);
-    if (!month) return;
-    const amount = Number(entry.amount || 0);
-    if (entry.type === "income") {
-      monthlyIncomes[month] = (monthlyIncomes[month] || 0) + amount;
-      monthlyIncomeCount[month] = (monthlyIncomeCount[month] || 0) + 1;
-    } else {
-      monthlyExpenses[month] = (monthlyExpenses[month] || 0) + amount;
-      monthlyExpenseCount[month] = (monthlyExpenseCount[month] || 0) + 1;
-    }
-  });
+  // Base candidate entries from forecastEntries()
+  const baseEntries = forecastEntries();
 
   // Find max horizon in entries
-  const allMonthsInEntries = Object.keys({ ...monthlyIncomes, ...monthlyExpenses })
-    .filter((m) => m >= currentYm)
+  const allMonthsInEntries = baseEntries
+    .map((e) => DateUtils.getMonthKey(e.date))
+    .filter((m) => m && m >= currentYm)
     .sort();
 
   let maxHorizonMonths = 12;
@@ -1701,47 +1688,172 @@ function getForecastTimeSeries(requestedMonths = forecastLineRangeMonths) {
     count = Math.max(1, Number(requestedMonths) || 12);
   }
 
+  // End cutoff month and date for selected window
+  const endMonthIndex = count - 1;
+  const cutoffYear = startYear + Math.floor((startMonth - 1 + endMonthIndex) / 12);
+  const cutoffMonth = ((startMonth - 1 + endMonthIndex) % 12) + 1;
+  const cutoffYm = `${cutoffYear}-${String(cutoffMonth).padStart(2, "0")}`;
+  const cutoffDate = `${cutoffYm}-${String(DateUtils.getLastDayOfMonth(cutoffYear, cutoffMonth)).padStart(2, "0")}`;
+
   const totalOpeningBalance = Object.values(accountBalances).reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
-  let running = totalOpeningBalance;
+
   const series = [];
 
-  for (let i = 0; i < count; i++) {
-    const y = startYear + Math.floor((startMonth - 1 + i) / 12);
-    const m = ((startMonth - 1 + i) % 12) + 1;
-    const monthKey = `${y}-${String(m).padStart(2, "0")}`;
-
-    const income = monthlyIncomes[monthKey] || 0;
-    const expense = monthlyExpenses[monthKey] || 0;
-    const net = income - expense;
-    const opening = running;
-    running += net;
-
-    const dateObj = new Date(Date.UTC(y, m - 1, 1));
-    const shortLabel = dateObj.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
-    const fullLabel = dateObj.toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
-
+  if (forecastLineChartMode === "entries") {
+    // --- MODE: ENTRY POINTS ---
+    // Initial entry represents starting position today
     series.push({
-      index: i,
-      month: monthKey,
-      shortLabel,
-      fullLabel,
-      openingBalance: opening,
-      closingBalance: running,
-      balance: running,
-      income,
-      expense,
-      net,
-      incomeCount: monthlyIncomeCount[monthKey] || 0,
-      expenseCount: monthlyExpenseCount[monthKey] || 0,
-      direction: net >= 0 ? "up" : "down"
+      index: 0,
+      date: today,
+      shortLabel: "Today",
+      fullLabel: `${DateUtils.formatDisplayDate(today)} (Current Balance)`,
+      category: "Current Cash",
+      type: "opening",
+      amount: 0,
+      delta: 0,
+      openingBalance: totalOpeningBalance,
+      closingBalance: totalOpeningBalance,
+      balance: totalOpeningBalance,
+      net: 0,
+      isOpening: true,
+      direction: "flat"
     });
+
+    const filtered = baseEntries
+      .filter((e) => e.date && e.date >= today && e.date <= cutoffDate)
+      .sort((a, b) => {
+        if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+        if (a.type !== b.type) return a.type === "income" ? -1 : 1;
+        return 0;
+      });
+
+    let running = totalOpeningBalance;
+    filtered.forEach((entry) => {
+      const amt = Number(entry.amount || 0);
+      const delta = entry.type === "income" ? amt : -amt;
+      const prevBal = running;
+      running += delta;
+
+      const [ey, em, ed] = DateUtils.parseDate(entry.date);
+      const dObj = new Date(Date.UTC(ey, em - 1, ed));
+      const shortLabel = dObj.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+      const fullLabel = DateUtils.formatDisplayDate(entry.date);
+
+      series.push({
+        index: series.length,
+        date: entry.date,
+        shortLabel,
+        fullLabel,
+        category: entry.category || (entry.type === "income" ? "Income" : "Expense"),
+        type: entry.type,
+        amount: amt,
+        delta,
+        openingBalance: prevBal,
+        closingBalance: running,
+        balance: running,
+        net: delta,
+        direction: delta >= 0 ? "up" : "down",
+        entry
+      });
+    });
+
+  } else {
+    // --- MODE: MONTHLY ---
+    const monthlyIncomes = {};
+    const monthlyExpenses = {};
+    const monthlyIncomeCount = {};
+    const monthlyExpenseCount = {};
+
+    baseEntries.forEach((entry) => {
+      const month = DateUtils.getMonthKey(entry.date);
+      if (!month) return;
+      const amount = Number(entry.amount || 0);
+      if (entry.type === "income") {
+        monthlyIncomes[month] = (monthlyIncomes[month] || 0) + amount;
+        monthlyIncomeCount[month] = (monthlyIncomeCount[month] || 0) + 1;
+      } else {
+        monthlyExpenses[month] = (monthlyExpenses[month] || 0) + amount;
+        monthlyExpenseCount[month] = (monthlyExpenseCount[month] || 0) + 1;
+      }
+    });
+
+    let running = totalOpeningBalance;
+    for (let i = 0; i < count; i++) {
+      const y = startYear + Math.floor((startMonth - 1 + i) / 12);
+      const m = ((startMonth - 1 + i) % 12) + 1;
+      const monthKey = `${y}-${String(m).padStart(2, "0")}`;
+
+      const income = monthlyIncomes[monthKey] || 0;
+      const expense = monthlyExpenses[monthKey] || 0;
+      const net = income - expense;
+      const opening = running;
+      running += net;
+
+      const dateObj = new Date(Date.UTC(y, m - 1, 1));
+      const shortLabel = dateObj.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
+      const fullLabel = dateObj.toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
+
+      series.push({
+        index: i,
+        month: monthKey,
+        shortLabel,
+        fullLabel,
+        openingBalance: opening,
+        closingBalance: running,
+        balance: running,
+        income,
+        expense,
+        net,
+        incomeCount: monthlyIncomeCount[monthKey] || 0,
+        expenseCount: monthlyExpenseCount[monthKey] || 0,
+        direction: net >= 0 ? "up" : "down"
+      });
+    }
   }
+
+  // Backward-pass: Compute Safe-to-Spend for every point i = max(0, min_{j >= i}(balance_j))
+  let minFromRight = Infinity;
+  let baselineLowestBal = totalOpeningBalance;
+  let baselineLowestDate = today;
+
+  for (let i = series.length - 1; i >= 0; i--) {
+    const b = series[i].balance;
+    if (b < minFromRight) minFromRight = b;
+    series[i].safeToSpend = Math.max(0, minFromRight);
+    series[i].minFutureBal = minFromRight;
+    if (b < baselineLowestBal) {
+      baselineLowestBal = b;
+      baselineLowestDate = series[i].date || series[i].shortLabel;
+    }
+  }
+
+  // If simulation is active, compute simulated balance curve for each point
+  const isSimActive = simulatedSpendAmount > 0 && !!simulatedSpendDate;
+  series.forEach((s) => {
+    let isPost = false;
+    if (isSimActive) {
+      if (s.date) {
+        isPost = s.date >= simulatedSpendDate;
+      } else if (s.month) {
+        isPost = s.month >= DateUtils.getMonthKey(simulatedSpendDate);
+      }
+    }
+    s.simulatedBalance = isPost ? s.balance - simulatedSpendAmount : s.balance;
+    s.isPostSim = isPost;
+  });
+
+  const safeToSpend = series[0] ? series[0].safeToSpend : Math.max(0, baselineLowestBal);
 
   return {
     series,
     openingBalance: totalOpeningBalance,
     totalAvailableMonths: maxHorizonMonths,
-    activeMonthsCount: count
+    activeMonthsCount: count,
+    cutoffDate,
+    baselineLowestBal,
+    baselineLowestDate,
+    safeToSpend,
+    isSimActive
   };
 }
 
@@ -1756,10 +1868,120 @@ function setForecastLineRange(months) {
 }
 
 function setForecastLineMode(mode) {
-  if (mode !== "balance" && mode !== "net") mode = "balance";
+  if (mode !== "entries" && mode !== "monthly") mode = "entries";
   forecastLineChartMode = mode;
   saveSetting(keys.forecastLineMode, forecastLineChartMode);
   renderForecastLineChart();
+}
+
+function runSpendSimulator() {
+  const amtInput = document.getElementById("forecastSimAmount");
+  const dateInput = document.getElementById("forecastSimDate");
+  const clearBtn = document.getElementById("forecastSimClearBtn");
+
+  const amount = Number(amtInput ? amtInput.value : 0);
+  if (!amount || amount <= 0) {
+    if (amtInput) {
+      amtInput.focus();
+      amtInput.style.borderColor = "#ef4444";
+      setTimeout(() => (amtInput.style.borderColor = ""), 1500);
+    }
+    return;
+  }
+
+  const date = (dateInput && dateInput.value) ? dateInput.value : DateUtils.todayString();
+  simulatedSpendAmount = amount;
+  simulatedSpendDate = date;
+
+  if (clearBtn) clearBtn.style.display = "inline-flex";
+
+  renderForecastLineChart();
+  updateSimulatorVerdict();
+}
+
+function clearSpendSimulator() {
+  simulatedSpendAmount = 0;
+  simulatedSpendDate = null;
+  const amtInput = document.getElementById("forecastSimAmount");
+  const verdictEl = document.getElementById("forecastSimVerdict");
+  const clearBtn = document.getElementById("forecastSimClearBtn");
+
+  if (amtInput) amtInput.value = "";
+  if (clearBtn) clearBtn.style.display = "none";
+  if (verdictEl) {
+    verdictEl.style.display = "none";
+    verdictEl.className = "forecast-sim-verdict";
+    verdictEl.innerHTML = "";
+  }
+
+  renderForecastLineChart();
+}
+
+function updateSimulatorVerdict() {
+  const verdictEl = document.getElementById("forecastSimVerdict");
+  if (!verdictEl) return;
+
+  if (!simulatedSpendAmount || !simulatedSpendDate) {
+    verdictEl.style.display = "none";
+    verdictEl.className = "forecast-sim-verdict";
+    verdictEl.innerHTML = "";
+    return;
+  }
+
+  const totalOpeningBalance = Object.values(accountBalances).reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
+  const allEntries = forecastEntries();
+  const sorted = [
+    ...allEntries,
+    {
+      date: simulatedSpendDate,
+      amount: Number(simulatedSpendAmount),
+      type: "expense",
+      category: "Test Spend",
+      isSimulated: true
+    }
+  ]
+    .filter((e) => e.date && e.date >= DateUtils.todayString())
+    .sort((a, b) => {
+      if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+      if (a.type !== b.type) return a.type === "income" ? -1 : 1;
+      return 0;
+    });
+
+  let running = totalOpeningBalance;
+  let lowestPostBal = Infinity;
+  let lowestPostItem = null;
+
+  sorted.forEach((e) => {
+    const delta = Number(e.amount || 0) * (e.type === "income" ? 1 : -1);
+    running += delta;
+    if (e.date >= simulatedSpendDate) {
+      if (running < lowestPostBal) {
+        lowestPostBal = running;
+        lowestPostItem = e;
+      }
+    }
+  });
+
+  if (lowestPostBal === Infinity) {
+    lowestPostBal = running;
+    lowestPostItem = { date: simulatedSpendDate };
+  }
+
+  const formattedDate = DateUtils.formatDisplayDate(simulatedSpendDate);
+  const lowestDateStr = lowestPostItem && lowestPostItem.date ? DateUtils.formatDisplayDate(lowestPostItem.date) : formattedDate;
+
+  verdictEl.style.display = "flex";
+  if (lowestPostBal < 0) {
+    verdictEl.className = "forecast-sim-verdict danger";
+    verdictEl.innerHTML = `
+      <span>⚠️ <strong>Deficit Triggered:</strong> Spending ${money(simulatedSpendAmount)} on ${escapeHtml(formattedDate)} causes a deficit of <strong>-${money(Math.abs(lowestPostBal))}</strong> on ${escapeHtml(lowestDateStr)}.</span>
+    `;
+  } else {
+    verdictEl.className = "forecast-sim-verdict safe";
+    verdictEl.innerHTML = `
+      <span>✅ <strong>Safe to Spend:</strong> Spending ${money(simulatedSpendAmount)} on ${escapeHtml(formattedDate)} leaves a safe cash cushion of <strong>${money(lowestPostBal)}</strong> (lowest point on ${escapeHtml(lowestDateStr)}).</span>
+    `;
+  }
 }
 
 function renderForecastLineChart() {
@@ -1767,7 +1989,7 @@ function renderForecastLineChart() {
   if (!container) return;
 
   const data = getForecastTimeSeries(forecastLineRangeMonths);
-  const { series, openingBalance, totalAvailableMonths, activeMonthsCount } = data;
+  const { series, openingBalance, totalAvailableMonths, activeMonthsCount, baselineLowestBal, safeToSpend, isSimActive } = data;
 
   // 1. Update Range Badge & Date Description
   const badgeEl = document.getElementById("forecastLineRangeBadge");
@@ -1775,11 +1997,18 @@ function renderForecastLineChart() {
     badgeEl.textContent = forecastLineRangeMonths === "all" ? `All (${activeMonthsCount}M)` : `${activeMonthsCount} Month${activeMonthsCount === 1 ? "" : "s"}`;
   }
 
+  // Deficit Alert Badge
+  const deficitBadge = document.getElementById("forecastDeficitAlertBadge");
+  const hasDeficit = baselineLowestBal < 0 || (isSimActive && series.some((s) => s.simulatedBalance < 0));
+  if (deficitBadge) {
+    deficitBadge.style.display = hasDeficit ? "inline-flex" : "none";
+  }
+
   const dateSpanEl = document.getElementById("forecastLineDateSpan");
   if (dateSpanEl && series.length > 0) {
     const startStr = series[0].fullLabel;
     const endStr = series[series.length - 1].fullLabel;
-    const modeDesc = forecastLineChartMode === "net" ? "Monthly net cashflow" : "Dynamic projected balance";
+    const modeDesc = forecastLineChartMode === "entries" ? "Entry-by-entry cashflow trajectory" : "Monthly closing trajectory";
     dateSpanEl.textContent = `${startStr} → ${endStr} • ${modeDesc}`;
   }
 
@@ -1801,63 +2030,80 @@ function renderForecastLineChart() {
   }
 
   // 3. Update Mode Toggle Buttons
-  const modeBalBtn = document.getElementById("forecastModeBalance");
-  const modeNetBtn = document.getElementById("forecastModeNet");
-  if (modeBalBtn) modeBalBtn.classList.toggle("active", forecastLineChartMode === "balance");
-  if (modeNetBtn) modeNetBtn.classList.toggle("active", forecastLineChartMode === "net");
+  const modeEntriesBtn = document.getElementById("forecastModeEntries");
+  const modeMonthlyBtn = document.getElementById("forecastModeMonthly");
+  if (modeEntriesBtn) modeEntriesBtn.classList.toggle("active", forecastLineChartMode === "entries");
+  if (modeMonthlyBtn) modeMonthlyBtn.classList.toggle("active", forecastLineChartMode === "monthly");
 
   // 4. Update KPI Mini Cards
   const startCashEl = document.getElementById("fLineStartCash");
   const startMonthEl = document.getElementById("fLineStartMonth");
   if (startCashEl) startCashEl.textContent = money(openingBalance);
-  if (startMonthEl) startMonthEl.textContent = series[0] ? series[0].fullLabel : "Current";
+  if (startMonthEl) startMonthEl.textContent = "Today";
 
   const endItem = series[series.length - 1];
   const endCashEl = document.getElementById("fLineEndCash");
   const endMonthEl = document.getElementById("fLineEndMonth");
-  if (endCashEl) endCashEl.textContent = endItem ? money(endItem.balance) : money(openingBalance);
-  if (endMonthEl) endMonthEl.textContent = endItem ? endItem.fullLabel : "—";
+  if (endCashEl) endCashEl.textContent = endItem ? money(isSimActive ? endItem.simulatedBalance : endItem.balance) : money(openingBalance);
+  if (endMonthEl) endMonthEl.textContent = endItem ? (endItem.shortLabel || endItem.fullLabel) : "—";
 
-  const netTrajectory = endItem ? endItem.balance - openingBalance : 0;
-  const netChangeEl = document.getElementById("fLineNetChange");
-  const netPctEl = document.getElementById("fLineNetPct");
-  if (netChangeEl) {
-    const sign = netTrajectory >= 0 ? "+" : "-";
-    netChangeEl.textContent = `${sign}${money(Math.abs(netTrajectory))}`;
-    netChangeEl.classList.remove("f-trend-up", "f-trend-down");
-    netChangeEl.classList.add(netTrajectory >= 0 ? "f-trend-up" : "f-trend-down");
-  }
-  if (netPctEl) {
-    if (openingBalance !== 0) {
-      const pct = ((netTrajectory / Math.abs(openingBalance)) * 100).toFixed(1);
-      const sign = netTrajectory >= 0 ? "▲ +" : "▼ ";
-      netPctEl.textContent = `${sign}${pct}% vs current`;
-    } else {
-      netPctEl.textContent = "Net projection delta";
-    }
-  }
-
-  let lowestPoint = series.reduce((min, cur) => (cur.balance < min.balance ? cur : min), series[0] || { balance: openingBalance, fullLabel: "Current" });
-  let peakPoint = series.reduce((max, cur) => (cur.balance > max.balance ? cur : max), series[0] || { balance: openingBalance, fullLabel: "Current" });
+  // Lowest Balance KPI
+  const lowestPoint = series.reduce(
+    (min, cur) => {
+      const b = isSimActive ? cur.simulatedBalance : cur.balance;
+      const minB = isSimActive ? min.simulatedBalance : min.balance;
+      return b < minB ? cur : min;
+    },
+    series[0] || { balance: openingBalance, simulatedBalance: openingBalance, fullLabel: "Today" }
+  );
+  const currentLowestVal = isSimActive ? lowestPoint.simulatedBalance : lowestPoint.balance;
 
   const lowEl = document.getElementById("fLineLowestPoint");
   const lowDateEl = document.getElementById("fLineLowestDate");
   if (lowEl) {
-    lowEl.textContent = money(lowestPoint.balance);
-    lowEl.classList.toggle("f-trend-down", lowestPoint.balance < 0);
+    lowEl.textContent = money(currentLowestVal);
+    lowEl.classList.toggle("f-trend-down", currentLowestVal < 0);
   }
   if (lowDateEl) {
-    lowDateEl.textContent = lowestPoint.balance < 0 ? `⚠️ Deficit in ${lowestPoint.fullLabel}` : `Lowest in ${lowestPoint.fullLabel}`;
+    lowDateEl.textContent = currentLowestVal < 0 ? `⚠️ Deficit: ${lowestPoint.shortLabel || lowestPoint.fullLabel}` : `Floor: ${lowestPoint.shortLabel || lowestPoint.fullLabel}`;
   }
 
-  const peakEl = document.getElementById("fLinePeakPoint");
-  const peakDateEl = document.getElementById("fLinePeakDate");
-  if (peakEl) {
-    peakEl.textContent = money(peakPoint.balance);
-    peakEl.classList.add("f-trend-up");
+  // Safe to Spend Today KPI
+  const safeEl = document.getElementById("fLineSafeToSpend");
+  const safeSubEl = document.getElementById("fLineSafeSub");
+  if (safeEl) {
+    safeEl.textContent = money(safeToSpend);
+    safeEl.style.color = safeToSpend > 0 ? "#10b981" : "#ef4444";
   }
-  if (peakDateEl) {
-    peakDateEl.textContent = `Peak in ${peakPoint.fullLabel}`;
+  if (safeSubEl) {
+    if (baselineLowestBal <= 0) {
+      safeSubEl.textContent = `Deficit of ${money(Math.abs(baselineLowestBal))} ahead`;
+      safeSubEl.style.color = "#ef4444";
+    } else {
+      safeSubEl.textContent = `Safe floor: ${money(baselineLowestBal)}`;
+      safeSubEl.style.color = "var(--muted)";
+    }
+  }
+
+  // Plotted Entries / Net Change KPI
+  const entryCountEl = document.getElementById("fLineEntryCount");
+  const netChangeEl = document.getElementById("fLineNetChange");
+  if (entryCountEl) {
+    if (forecastLineChartMode === "entries") {
+      const cnt = Math.max(0, series.length - 1);
+      entryCountEl.textContent = `${cnt} Entr${cnt === 1 ? "y" : "ies"}`;
+    } else {
+      entryCountEl.textContent = `${series.length} Months`;
+    }
+  }
+
+  const effectiveEndBal = endItem ? (isSimActive ? endItem.simulatedBalance : endItem.balance) : openingBalance;
+  const netTrajectory = effectiveEndBal - openingBalance;
+  if (netChangeEl) {
+    const sign = netTrajectory >= 0 ? "+" : "-";
+    netChangeEl.textContent = `${sign}${money(Math.abs(netTrajectory))} Net`;
+    netChangeEl.classList.remove("f-trend-up", "f-trend-down");
+    netChangeEl.classList.add(netTrajectory >= 0 ? "f-trend-up" : "f-trend-down");
   }
 
   // 5. Render SVG Line Chart
@@ -1869,20 +2115,17 @@ function renderForecastLineChart() {
     return;
   }
 
-  const isNetMode = forecastLineChartMode === "net";
-  const values = series.map((s) => (isNetMode ? s.net : s.balance));
+  const baseValues = series.map((s) => s.balance);
+  const simValues = isSimActive ? series.map((s) => s.simulatedBalance) : [];
+  const allPlotValues = [...baseValues, ...simValues];
 
-  const rawMin = Math.min(...values);
-  const rawMax = Math.max(...values);
+  const rawMin = Math.min(...allPlotValues);
+  const rawMax = Math.max(...allPlotValues);
 
   let minVal, maxVal;
   if (rawMin === rawMax) {
     minVal = rawMin - 1000;
     maxVal = rawMax + 1000;
-  } else if (isNetMode) {
-    const absMax = Math.max(Math.abs(rawMin), Math.abs(rawMax), 1000);
-    minVal = -absMax * 1.15;
-    maxVal = absMax * 1.15;
   } else {
     if (rawMin < 0) {
       minVal = rawMin * 1.18;
@@ -1906,8 +2149,8 @@ function renderForecastLineChart() {
 
   const points = series.map((s, i) => ({
     x: getX(i),
-    y: getY(values[i]),
-    val: values[i],
+    y: getY(s.balance),
+    val: s.balance,
     data: s
   }));
 
@@ -1932,22 +2175,41 @@ function renderForecastLineChart() {
     `;
   }
 
-  // Zero Reference Line
+  // Deficit Hazard Zone & Zero Reference Line
   let zeroLineHtml = "";
+  let deficitZoneHtml = "";
   if (minVal <= 0 && maxVal >= 0) {
     const zeroY = getY(0);
+    const zoneH = Math.max(0, padT + chartH - zeroY);
+    deficitZoneHtml = `
+      <rect x="${padL}" y="${zeroY.toFixed(1)}" width="${chartW}" height="${zoneH.toFixed(1)}" fill="rgba(239, 68, 68, 0.08)" />
+      <text x="${padL + 8}" y="${Math.min(padT + chartH - 6, zeroY + 14).toFixed(1)}" font-size="9" font-weight="700" fill="#ef4444" opacity="0.85">⚠️ DEFICIT HAZARD ZONE (&lt; 0 EGP)</text>
+    `;
     zeroLineHtml = `
-      <line x1="${padL}" y1="${zeroY.toFixed(1)}" x2="${viewBoxW - padR}" y2="${zeroY.toFixed(1)}" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.85" />
+      <line x1="${padL}" y1="${zeroY.toFixed(1)}" x2="${viewBoxW - padR}" y2="${zeroY.toFixed(1)}" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.9" />
       <text x="${viewBoxW - padR}" y="${(zeroY - 5).toFixed(1)}" text-anchor="end" font-size="9.5" font-weight="700" fill="#ef4444">0 EGP Threshold</text>
     `;
   }
 
-  // Smooth line path
+  // Smooth line path for baseline
   const pathD = buildSmoothSvgPath(points);
 
   // Area Fill path
   const areaBottomY = padT + chartH;
   const areaD = `${pathD} L ${points[points.length - 1].x.toFixed(1)},${areaBottomY} L ${points[0].x.toFixed(1)},${areaBottomY} Z`;
+
+  // Secondary "What-If" Simulation Trajectory Path
+  let simPathHtml = "";
+  if (isSimActive) {
+    const simPoints = series.map((s, i) => ({
+      x: getX(i),
+      y: getY(s.simulatedBalance)
+    }));
+    const simPathD = buildSmoothSvgPath(simPoints);
+    simPathHtml = `
+      <path d="${simPathD}" fill="none" stroke="#f59e0b" stroke-width="2.5" stroke-dasharray="6 4" opacity="0.95" />
+    `;
+  }
 
   // Segmented colored indicators / micro-badges & dots
   let nodesHtml = "";
@@ -1955,41 +2217,48 @@ function renderForecastLineChart() {
   const colW = chartW / Math.max(1, series.length);
 
   // Determine interval for X-axis labels
-  let labelStep = 1;
-  if (series.length > 24) labelStep = 3;
-  else if (series.length > 14) labelStep = 2;
+  const maxXTicks = 7;
+  const tickStep = Math.max(1, Math.floor(series.length / maxXTicks));
 
   points.forEach((p, i) => {
     const s = p.data;
-    const isClimbing = i === 0 ? s.net >= 0 : s.balance >= series[i - 1].balance;
-    const isNegativeBalance = s.balance < 0;
+    const isClimbing = i === 0 ? true : s.balance >= series[i - 1].balance;
+    const isNegativeBalance = isSimActive ? s.simulatedBalance < 0 : s.balance < 0;
     const dotColor = isNegativeBalance ? "#ef4444" : isClimbing ? "#10b981" : "#0f766e";
+    const dotRadius = series.length > 36 ? "3" : "4.5";
 
-    // Data Point Dot
+    // Baseline Data Point Dot
     nodesHtml += `
-      <circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="4.5" fill="${dotColor}" stroke="var(--surface)" stroke-width="2.5" id="fLineDot-${i}" class="forecast-dot" />
+      <circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${dotRadius}" fill="${dotColor}" stroke="var(--surface)" stroke-width="2" id="fLineDot-${i}" class="forecast-dot" />
     `;
 
-    // Micro up/down arrow above nodes if not overcrowded
-    if (series.length <= 16 && i > 0) {
+    // Simulated secondary dot if active and post-sim date
+    if (isSimActive && s.isPostSim) {
+      const simY = getY(s.simulatedBalance);
+      nodesHtml += `
+        <circle cx="${p.x.toFixed(1)}" cy="${simY.toFixed(1)}" r="3.5" fill="#f59e0b" stroke="#ffffff" stroke-width="1.5" />
+      `;
+    }
+
+    if (series.length <= 16 && i > 0 && !s.isOpening) {
       const arrowChar = isClimbing ? "▲" : "▼";
       const arrowColor = isClimbing ? "#10b981" : "#ef4444";
-      const arrowY = isClimbing ? p.y - 9 : p.y + 16;
+      const arrowY = isClimbing ? p.y - 9 : p.y + 15;
       nodesHtml += `
         <text x="${p.x.toFixed(1)}" y="${arrowY.toFixed(1)}" text-anchor="middle" font-size="8.5" font-weight="700" fill="${arrowColor}">${arrowChar}</text>
       `;
     }
 
-    // X-Axis Month Label
-    if (i % labelStep === 0 || i === series.length - 1) {
+    // X-Axis Month/Date Label
+    if (i === 0 || i === series.length - 1 || (i % tickStep === 0 && i < series.length - Math.floor(tickStep / 2))) {
       nodesHtml += `
-        <text x="${p.x.toFixed(1)}" y="${padT + chartH + 18}" text-anchor="middle" font-size="10.5" font-weight="600" fill="var(--muted)">${escapeHtml(s.shortLabel)}</text>
+        <text x="${p.x.toFixed(1)}" y="${padT + chartH + 18}" text-anchor="middle" font-size="10" font-weight="600" fill="var(--muted)">${escapeHtml(s.shortLabel)}</text>
       `;
     }
 
-    // Invisible interactive hover column
+    // Invisible interactive hover/click column
     hoverColsHtml += `
-      <rect x="${(p.x - colW / 2).toFixed(1)}" y="${padT}" width="${colW.toFixed(1)}" height="${chartH}" fill="transparent" style="cursor: pointer;" data-fline-idx="${i}" />
+      <rect x="${(p.x - colW / 2).toFixed(1)}" y="${padT}" width="${colW.toFixed(1)}" height="${chartH}" fill="transparent" style="cursor: pointer;" data-fline-idx="${i}" title="Click to test spend at this date" />
     `;
   });
 
@@ -2008,6 +2277,9 @@ function renderForecastLineChart() {
         </linearGradient>
       </defs>
 
+      <!-- Deficit Hazard Area -->
+      ${deficitZoneHtml}
+
       <!-- Background Grid & Axes -->
       ${gridLinesHtml}
       ${zeroLineHtml}
@@ -2015,8 +2287,11 @@ function renderForecastLineChart() {
       <!-- Area Fill -->
       <path d="${areaD}" fill="url(#forecastAreaGrad)" />
 
-      <!-- Master Line -->
+      <!-- Baseline Trajectory Line -->
       <path d="${pathD}" fill="none" stroke="url(#forecastLineGrad)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+
+      <!-- Simulated What-If Comparison Curve -->
+      ${simPathHtml}
 
       <!-- Active Hover Crosshair Line -->
       <line id="fLineCrosshair" x1="0" y1="${padT}" x2="0" y2="${padT + chartH}" stroke="var(--teal)" stroke-width="1.5" stroke-dasharray="3 3" opacity="0" pointer-events="none" />
@@ -2040,37 +2315,108 @@ function renderForecastLineChart() {
     const p = points[idx];
     if (!s || !p || !tooltip) return;
 
-    const isClimbing = idx === 0 ? s.net >= 0 : s.balance >= series[idx - 1].balance;
+    const isClimbing = idx === 0 ? true : s.balance >= series[idx - 1].balance;
     const cumChange = s.balance - openingBalance;
     const cumPct = openingBalance !== 0 ? ((cumChange / Math.abs(openingBalance)) * 100).toFixed(1) : 0;
     const sign = cumChange >= 0 ? "+" : "";
+    const safeBuffer = s.safeToSpend || 0;
 
-    tooltip.innerHTML = `
-      <div class="forecast-tooltip-title">
-        <span>${escapeHtml(s.fullLabel)}</span>
-        <span class="forecast-tooltip-badge ${isClimbing ? "up" : "down"}">
-          ${isClimbing ? "▲" : "▼"} ${s.net >= 0 ? "+" : ""}${money(s.net)}
-        </span>
-      </div>
-      <div class="forecast-tooltip-row">
-        <span style="color: var(--muted);">Projected Cash:</span>
-        <strong style="color: ${s.balance < 0 ? "#ef4444" : "var(--ink)"};">${money(s.balance)}</strong>
-      </div>
-      <div class="forecast-tooltip-row sub">
-        <span>Forecast Income (${s.incomeCount}):</span>
-        <span style="color: #10b981; font-weight: 600;">+${money(s.income)}</span>
-      </div>
-      <div class="forecast-tooltip-row sub">
-        <span>Forecast Expenses (${s.expenseCount}):</span>
-        <span style="color: #ef4444; font-weight: 600;">-${money(s.expense)}</span>
-      </div>
-      <div class="forecast-tooltip-row sub" style="margin-top: 5px; border-top: 1px dashed var(--line); padding-top: 4px;">
-        <span>Growth from Start:</span>
-        <span style="font-weight: 700; color: ${cumChange >= 0 ? "#10b981" : "#ef4444"};">
-          ${sign}${money(cumChange)} (${cumPct}%)
-        </span>
-      </div>
-    `;
+    let simRowHtml = "";
+    if (isSimActive && s.isPostSim) {
+      simRowHtml = `
+        <div class="forecast-tooltip-row sub" style="border-top: 1px dashed rgba(245, 158, 11, 0.4); margin-top: 5px; padding-top: 4px;">
+          <span style="color: #f59e0b; font-weight: 600;">With Test Spend (-${money(simulatedSpendAmount)}):</span>
+          <strong style="color: ${s.simulatedBalance < 0 ? "#ef4444" : "#f59e0b"};">${money(s.simulatedBalance)}</strong>
+        </div>
+      `;
+    }
+
+    if (s.isOpening) {
+      tooltip.innerHTML = `
+        <div class="forecast-tooltip-title">
+          <span>Starting Balance</span>
+          <span class="forecast-tooltip-badge up">Opening</span>
+        </div>
+        <div class="forecast-tooltip-row">
+          <span style="color: var(--muted);">Current Cash:</span>
+          <strong style="color: var(--ink);">${money(s.balance)}</strong>
+        </div>
+        <div class="forecast-tooltip-row sub">
+          <span>Safe-to-Spend Today:</span>
+          <strong style="color: ${safeBuffer > 0 ? "#10b981" : "#ef4444"};">${money(safeBuffer)}</strong>
+        </div>
+        <div class="forecast-tooltip-row sub">
+          <span>Date:</span>
+          <span>${escapeHtml(s.fullLabel)}</span>
+        </div>
+        ${simRowHtml}
+      `;
+    } else if (forecastLineChartMode === "entries") {
+      const isIncome = s.type === "income";
+      tooltip.innerHTML = `
+        <div class="forecast-tooltip-title">
+          <span style="max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(s.category)}</span>
+          <span class="forecast-tooltip-badge ${isIncome ? "up" : "down"}">
+            ${isIncome ? "▲ +" : "▼ -"}${money(s.amount)}
+          </span>
+        </div>
+        <div class="forecast-tooltip-row">
+          <span style="color: var(--muted);">Running Cash:</span>
+          <strong style="color: ${s.balance < 0 ? "#ef4444" : "var(--ink)"};">${money(s.balance)}</strong>
+        </div>
+        <div class="forecast-tooltip-row sub">
+          <span>Date:</span>
+          <span>${escapeHtml(s.fullLabel)}</span>
+        </div>
+        <div class="forecast-tooltip-row sub">
+          <span>Type:</span>
+          <span style="text-transform: capitalize; color: ${isIncome ? "#10b981" : "#ef4444"}; font-weight: 600;">${escapeHtml(s.type)}</span>
+        </div>
+        <div class="forecast-tooltip-row sub" style="margin-top: 5px; border-top: 1px dashed var(--line); padding-top: 4px;">
+          <span>Safe-to-Spend Here:</span>
+          <strong style="color: ${safeBuffer > 0 ? "#10b981" : "#ef4444"};">${money(safeBuffer)}</strong>
+        </div>
+        <div class="forecast-tooltip-row sub">
+          <span>Net from Start:</span>
+          <span style="font-weight: 700; color: ${cumChange >= 0 ? "#10b981" : "#ef4444"};">
+            ${sign}${money(cumChange)} (${cumPct}%)
+          </span>
+        </div>
+        ${simRowHtml}
+      `;
+    } else {
+      tooltip.innerHTML = `
+        <div class="forecast-tooltip-title">
+          <span>${escapeHtml(s.fullLabel)}</span>
+          <span class="forecast-tooltip-badge ${isClimbing ? "up" : "down"}">
+            ${isClimbing ? "▲" : "▼"} ${s.net >= 0 ? "+" : ""}${money(s.net)}
+          </span>
+        </div>
+        <div class="forecast-tooltip-row">
+          <span style="color: var(--muted);">Closing Balance:</span>
+          <strong style="color: ${s.balance < 0 ? "#ef4444" : "var(--ink)"};">${money(s.balance)}</strong>
+        </div>
+        <div class="forecast-tooltip-row sub">
+          <span>Safe-to-Spend Here:</span>
+          <strong style="color: ${safeBuffer > 0 ? "#10b981" : "#ef4444"};">${money(safeBuffer)}</strong>
+        </div>
+        <div class="forecast-tooltip-row sub">
+          <span>Forecast Income (${s.incomeCount}):</span>
+          <span style="color: #10b981; font-weight: 600;">+${money(s.income)}</span>
+        </div>
+        <div class="forecast-tooltip-row sub">
+          <span>Forecast Expenses (${s.expenseCount}):</span>
+          <span style="color: #ef4444; font-weight: 600;">-${money(s.expense)}</span>
+        </div>
+        <div class="forecast-tooltip-row sub" style="margin-top: 5px; border-top: 1px dashed var(--line); padding-top: 4px;">
+          <span>Net from Start:</span>
+          <span style="font-weight: 700; color: ${cumChange >= 0 ? "#10b981" : "#ef4444"};">
+            ${sign}${money(cumChange)} (${cumPct}%)
+          </span>
+        </div>
+        ${simRowHtml}
+      `;
+    }
 
     // Position tooltip relative to container
     const leftPct = (p.x / viewBoxW) * 100;
@@ -2099,8 +2445,8 @@ function renderForecastLineChart() {
     if (tooltip) tooltip.setAttribute("hidden", "");
     if (crosshair) crosshair.setAttribute("opacity", "0");
     document.querySelectorAll(".forecast-dot").forEach((d) => {
-      d.setAttribute("r", "4.5");
-      d.setAttribute("stroke-width", "2.5");
+      d.setAttribute("r", series.length > 36 ? "3" : "4.5");
+      d.setAttribute("stroke-width", "2");
     });
   };
 
@@ -2109,6 +2455,16 @@ function renderForecastLineChart() {
     col.addEventListener("mouseenter", () => showTooltipForIndex(idx));
     col.addEventListener("mousemove", () => showTooltipForIndex(idx));
     col.addEventListener("mouseleave", hideTooltip);
+    col.addEventListener("click", () => {
+      const s = series[idx];
+      if (s) {
+        const targetDate = s.date || DateUtils.todayString();
+        const dateInput = document.getElementById("forecastSimDate");
+        const amtInput = document.getElementById("forecastSimAmount");
+        if (dateInput) dateInput.value = targetDate;
+        if (amtInput) amtInput.focus();
+      }
+    });
   });
 
   svgWrap.addEventListener("mouseleave", hideTooltip);
@@ -4588,13 +4944,35 @@ function setupEventListeners() {
     setForecastLineRange(e.target.value);
   });
 
-  on("forecastModeBalance", "click", () => {
-    setForecastLineMode("balance");
+  on("forecastModeEntries", "click", () => {
+    setForecastLineMode("entries");
   });
 
-  on("forecastModeNet", "click", () => {
-    setForecastLineMode("net");
+  on("forecastModeMonthly", "click", () => {
+    setForecastLineMode("monthly");
   });
+
+  // "Can I Spend X?" Simulator Event Listeners
+  on("forecastSimRunBtn", "click", () => {
+    runSpendSimulator();
+  });
+
+  on("forecastSimClearBtn", "click", () => {
+    clearSpendSimulator();
+  });
+
+  on("forecastSimAmount", "keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      runSpendSimulator();
+    }
+  });
+
+  const simDateInput = document.getElementById("forecastSimDate");
+  if (simDateInput && !simDateInput.value) {
+    simDateInput.value = DateUtils.todayString();
+    simDateInput.min = DateUtils.todayString();
+  }
 
   // Re-render forecast line chart on window resize with debounce
   let resizeTimer = null;

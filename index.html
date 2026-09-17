@@ -12,7 +12,7 @@
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="apple-touch-icon" href="icon.svg">
     <link rel="icon" type="image/svg+xml" href="icon.svg">
-    <link rel="stylesheet" href="styles.css?v=34">
+    <link rel="stylesheet" href="styles.css?v=35">
   </head>
   <body>
     <aside class="sidebar">
@@ -134,13 +134,14 @@
                 <div style="display: flex; align-items: center; gap: 8px;">
                   <h3>Forecast Trajectory</h3>
                   <span id="forecastLineRangeBadge" class="forecast-range-badge">12 Months Projection</span>
+                  <span id="forecastDeficitAlertBadge" class="forecast-deficit-alert-badge" style="display: none;">⚠️ Deficit Detected</span>
                 </div>
-                <span id="forecastLineDateSpan" style="font-size: 12px; color: var(--muted); margin-top: 2px; display: block;">Dynamic balance curve driven by planned entries</span>
+                <span id="forecastLineDateSpan" style="font-size: 12px; color: var(--muted); margin-top: 2px; display: block;">Entry-by-entry cashflow trajectory with deficit awareness</span>
               </div>
               <div class="forecast-toolbar">
                 <div class="forecast-view-toggle">
-                  <button type="button" class="forecast-mode-btn active" data-mode="balance" id="forecastModeBalance">Running Cash</button>
-                  <button type="button" class="forecast-mode-btn" data-mode="net" id="forecastModeNet">Monthly Net</button>
+                  <button type="button" class="forecast-mode-btn active" data-mode="entries" id="forecastModeEntries">Entry Points</button>
+                  <button type="button" class="forecast-mode-btn" data-mode="monthly" id="forecastModeMonthly">Monthly</button>
                 </div>
                 <div class="forecast-range-group" role="group" aria-label="Forecast Month Range">
                   <span class="forecast-range-label">Range:</span>
@@ -159,12 +160,28 @@
               </div>
             </div>
 
+            <!-- "Can I Spend X?" Simulator Toolbar -->
+            <div class="forecast-sim-bar" id="forecastSimBar">
+              <div class="forecast-sim-inputs">
+                <span class="forecast-sim-label">🎯 Can I Spend:</span>
+                <div class="forecast-sim-input-group">
+                  <input type="number" id="forecastSimAmount" placeholder="Amount (e.g. 15,000)" min="1" step="500" class="forecast-sim-input">
+                  <span class="forecast-sim-currency">EGP</span>
+                </div>
+                <span class="forecast-sim-label">on</span>
+                <input type="date" id="forecastSimDate" class="forecast-sim-date" title="Select date for test spend">
+                <button type="button" class="primary-button forecast-sim-btn" id="forecastSimRunBtn">Test Spend</button>
+                <button type="button" class="ghost-button forecast-sim-btn" id="forecastSimClearBtn" style="display: none;">Clear Test</button>
+              </div>
+              <div class="forecast-sim-verdict" id="forecastSimVerdict" style="display: none;"></div>
+            </div>
+
             <!-- KPI Mini Cards Row -->
             <div class="forecast-kpi-grid">
               <div class="forecast-kpi-card">
                 <span class="forecast-kpi-label">Starting Cash</span>
                 <strong class="forecast-kpi-value" id="fLineStartCash">0 EGP</strong>
-                <small class="forecast-kpi-sub" id="fLineStartMonth">Current Month</small>
+                <small class="forecast-kpi-sub" id="fLineStartMonth">Today</small>
               </div>
               <div class="forecast-kpi-card">
                 <span class="forecast-kpi-label">Projected Ending</span>
@@ -172,19 +189,19 @@
                 <small class="forecast-kpi-sub" id="fLineEndMonth">—</small>
               </div>
               <div class="forecast-kpi-card">
-                <span class="forecast-kpi-label">Net Trajectory</span>
-                <strong class="forecast-kpi-value" id="fLineNetChange">0 EGP</strong>
-                <small class="forecast-kpi-sub" id="fLineNetPct">—</small>
-              </div>
-              <div class="forecast-kpi-card">
                 <span class="forecast-kpi-label">Lowest Balance</span>
                 <strong class="forecast-kpi-value" id="fLineLowestPoint">0 EGP</strong>
-                <small class="forecast-kpi-sub" id="fLineLowestDate">Lowest in period</small>
+                <small class="forecast-kpi-sub" id="fLineLowestDate">Lowest cash floor</small>
+              </div>
+              <div class="forecast-kpi-card" style="border-color: rgba(16, 185, 129, 0.4);">
+                <span class="forecast-kpi-label" style="color: #10b981;">Safe to Spend Today</span>
+                <strong class="forecast-kpi-value" id="fLineSafeToSpend" style="color: #10b981;">0 EGP</strong>
+                <small class="forecast-kpi-sub" id="fLineSafeSub">Before any deficit</small>
               </div>
               <div class="forecast-kpi-card">
-                <span class="forecast-kpi-label">Peak Balance</span>
-                <strong class="forecast-kpi-value" id="fLinePeakPoint">0 EGP</strong>
-                <small class="forecast-kpi-sub" id="fLinePeakDate">Peak in period</small>
+                <span class="forecast-kpi-label">Plotted Entries</span>
+                <strong class="forecast-kpi-value" id="fLineEntryCount">0</strong>
+                <small class="forecast-kpi-sub" id="fLineNetChange">+0 EGP Net</small>
               </div>
             </div>
 
