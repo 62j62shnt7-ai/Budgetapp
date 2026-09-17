@@ -1759,7 +1759,7 @@ label {
   display: flex;
   flex-direction: column;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .forecast-line-heading {
@@ -1954,18 +1954,20 @@ label {
 .forecast-chart-container {
   position: relative;
   width: 100%;
-  min-height: 290px;
-  overflow: hidden;
+  min-height: 400px;
+  overflow: visible;
   background: var(--surface-soft);
   border: 1px solid var(--line);
   border-radius: 10px;
-  padding: 12px 8px 8px 8px;
+  padding: 14px 10px 10px 10px;
+  z-index: 10;
 }
 
 .forecast-line-svg-wrap {
   width: 100%;
-  height: 270px;
+  height: 380px;
   position: relative;
+  overflow: visible;
 }
 
 .forecast-line-svg {
@@ -2172,6 +2174,9 @@ label {
   }
   .forecast-kpi-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+  .forecast-line-svg-wrap {
+    height: 320px;
   }
 }
 

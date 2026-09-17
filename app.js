@@ -2132,15 +2132,15 @@ function renderForecastLineChart() {
     } else {
       minVal = Math.max(0, rawMin - (rawMax - rawMin) * 0.22);
     }
-    maxVal = rawMax + (rawMax - minVal) * 0.16;
+    maxVal = rawMax + (rawMax - minVal) * 0.20;
   }
 
   const viewBoxW = 860;
-  const viewBoxH = 260;
+  const viewBoxH = 340;
   const padL = 74;
   const padR = 40;
-  const padT = 24;
-  const padB = 38;
+  const padT = 38;
+  const padB = 40;
   const chartW = viewBoxW - padL - padR;
   const chartH = viewBoxH - padT - padB;
 
@@ -2424,6 +2424,16 @@ function renderForecastLineChart() {
 
     tooltip.style.left = `${leftPct}%`;
     tooltip.style.top = `${topPct}%`;
+
+    // Smart adaptive positioning so tooltip is never cut off:
+    // If point is in upper portion (topPct < 45%), flip tooltip downwards below the dot
+    const flipDown = topPct < 45;
+    let xAlign = "-50%";
+    if (leftPct < 22) xAlign = "0%";
+    else if (leftPct > 78) xAlign = "-100%";
+
+    const yAlign = flipDown ? "16px" : "calc(-100% - 14px)";
+    tooltip.style.transform = `translate(${xAlign}, ${yAlign})`;
     tooltip.removeAttribute("hidden");
 
     // Move crosshair
