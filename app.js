@@ -355,10 +355,30 @@ function generateSmartInsights({ entries, forecast, deficitSummary, actualCashNo
       text: `<strong>Deficit Horizon:</strong> Projected balance turns negative on <strong>${startFmt}</strong>${durStr}${fixStr} (Peak deficit: ${money(nextDeficit.lowestBalance)}).`
     });
   } else {
+    // Calculate entry-by-entry cash floor for the clean runway insight
+    const today = DateUtils.todayString();
+    const sortedFuture = [...entries]
+      .filter((e) => e.date && e.date >= today)
+      .sort((a, b) => {
+        if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+        if (a.type !== b.type) return a.type === "income" ? -1 : 1;
+        return 0;
+      });
+    let runningFloor = actualCashNow;
+    let minFloor = actualCashNow;
+    let minDate = today;
+    sortedFuture.forEach((e) => {
+      runningFloor += Number(e.amount || 0) * (e.type === "income" ? 1 : -1);
+      if (runningFloor < minFloor) {
+        minFloor = runningFloor;
+        minDate = e.date;
+      }
+    });
+    const floorLabel = minDate === today ? `Lowest floor: ${money(minFloor)} (Current)` : `Lowest floor: ${money(minFloor)} on ${DateUtils.formatDisplayDate(minDate)}`;
     insights.push({
       icon: "✅",
       type: "success",
-      text: `<strong>Clean Runway:</strong> Projected cash balance remains positive across all ${forecast.length} forecasted months.`
+      text: `<strong>Clean Runway:</strong> Projected cash balance remains positive across all ${forecast.length} forecasted months (${floorLabel}).`
     });
   }
 
@@ -1307,10 +1327,28 @@ function renderDashboard() {
   const actualCashNow = Object.values(accountBalances).reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
   const totalOpeningBalance = Object.values(accountBalances).reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
   const currentCash = forecast.length ? forecast[forecast.length - 1].balance : totalOpeningBalance;
-  const lowPoint = forecast.reduce(
-    (lowest, item) => (item.balance < lowest.balance ? item : lowest),
-    { month: forecastStartMonth, balance: totalOpeningBalance }
-  );
+  const today = DateUtils.todayString();
+  const sortedFutureEntries = [...entries]
+    .filter((e) => e.date && e.date >= today)
+    .sort((a, b) => {
+      if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+      if (a.type !== b.type) return a.type === "income" ? -1 : 1;
+      return 0;
+    });
+
+  let runningCash = totalOpeningBalance;
+  let lowestBal = totalOpeningBalance;
+  let lowestDate = today;
+
+  sortedFutureEntries.forEach((entry) => {
+    const delta = Number(entry.amount || 0) * (entry.type === "income" ? 1 : -1);
+    runningCash += delta;
+    if (runningCash < lowestBal) {
+      lowestBal = runningCash;
+      lowestDate = entry.date;
+    }
+  });
+
   const storageTotal = storageAssets.reduce((sum, item) => sum + storageValue(item), 0);
   const totalNetWorth = actualCashNow + storageTotal;
 
@@ -1345,11 +1383,20 @@ function renderDashboard() {
   if (storageTotalEl) storageTotalEl.textContent = money(storageTotal);
 
   const forecastLowEl = document.getElementById("forecastLow");
-  if (forecastLowEl) forecastLowEl.textContent = money(lowPoint.balance);
+  if (forecastLowEl) {
+    forecastLowEl.textContent = money(lowestBal);
+    forecastLowEl.classList.toggle("f-trend-down", lowestBal < 0);
+  }
 
   const forecastLowDateEl = document.getElementById("forecastLowDate");
   if (forecastLowDateEl) {
-    forecastLowDateEl.textContent = `Lowest in ${escapeHtml(lowPoint.month)}`;
+    if (lowestBal < 0) {
+      forecastLowDateEl.textContent = `⚠️ Deficit on ${DateUtils.formatDisplayDate(lowestDate)}`;
+      forecastLowDateEl.classList.add("danger-text");
+    } else {
+      forecastLowDateEl.textContent = lowestDate === today ? "Cash floor (Today)" : `Floor on ${DateUtils.formatDisplayDate(lowestDate)}`;
+      forecastLowDateEl.classList.remove("danger-text");
+    }
   }
 
   const deficitSummary = getDeficitSummary();
@@ -1395,7 +1442,7 @@ function evaluateCashflowRisk(forecast, deficitSummary) {
     return {
       status: "OK",
       tier: "safe",
-      note: "Cash stays positive across all months"
+      note: "Cash stays positive across entire forecast"
     };
   }
 
