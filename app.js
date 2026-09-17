@@ -3636,7 +3636,7 @@ function renderHistory() {
 
       return `
         <tr class="${rowClass}" data-history-row-id="${escapeHtml(entryId)}" title="${escapeHtml(rowTitle)}">
-          <td>${dateCellHtml}</td>
+          <td class="history-date-cell">${dateCellHtml}</td>
           <td>${escapeHtml(entry.category || "—")}</td>
           <td>${escapeHtml((entry.account || "cash").toUpperCase())}</td>
           <td><span class="pill ${escapeHtml(entry.type)}">${escapeHtml(entry.type)}</span></td>

@@ -727,6 +727,26 @@ tr.history-admin-row:hover {
   background-color: rgba(47, 163, 105, 0.18) !important;
 }
 
+.history-date-cell {
+  max-width: 220px;
+  min-width: 140px;
+  white-space: normal !important;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  line-height: 1.35;
+}
+
+.history-date-cell strong {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.history-date-cell small {
+  display: block;
+  white-space: normal !important;
+  line-height: 1.3;
+}
+
 .asset-grid,
 .rate-grid,
 .salary-grid {
