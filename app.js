@@ -1356,7 +1356,6 @@ function renderDashboard() {
   const risk = evaluateCashflowRisk(forecast, deficitSummary);
   updateCashflowStatus(risk);
 
-  renderBalanceChart(forecast);
   renderForecastLineChart();
   renderCategoryBreakdown(entries);
   renderAssetDistribution(actualCashNow, storageTotal);
@@ -1588,51 +1587,6 @@ function groupByMonth(source, amountFn) {
     }
     return groups;
   }, {});
-}
-
-function renderBalanceChart(forecast) {
-  const chart = document.getElementById("balanceChart");
-  if (!chart) return;
-  
-  if (!forecast.length) {
-    chart.innerHTML = `<div style="padding: 24px; color: var(--muted); text-align: center; width: 100%;">No forecast data available</div>`;
-    return;
-  }
-
-  const maxAbs = Math.max(...forecast.map((item) => Math.abs(item.balance)), 1);
-
-  const allEntries = forecastEntries();
-  const monthlyIncomes = groupByMonth(allEntries, (e) => (e.type === "income" ? Number(e.amount || 0) : 0));
-  const monthlyExpenses = groupByMonth(allEntries, (e) => (e.type === "expense" ? Number(e.amount || 0) : 0));
-
-  chart.innerHTML = forecast
-    .map((item) => {
-      const height = Math.max(8, Math.round((Math.abs(item.balance) / maxAbs) * 210));
-      const label = DateUtils.getShortMonth(item.month);
-      const isNegative = item.balance < 0;
-      const tone = isNegative ? "negative" : "";
-      
-      const income = monthlyIncomes[item.month] || 0;
-      const expense = monthlyExpenses[item.month] || 0;
-      const net = item.net || (income - expense);
-
-      const tooltipText = `${item.month}\n• Projected Balance: ${money(item.balance)}\n• Net Month Change: ${net >= 0 ? "+" : ""}${money(net)}\n• Income: +${money(income)}\n• Expenses: -${money(expense)}`;
-
-      return `
-        <div class="bar-wrap" data-month="${escapeHtml(item.month)}" title="${escapeHtml(tooltipText)}">
-          <div class="bar-value-preview ${tone}">${money(item.balance)}</div>
-          <div class="bar ${tone}" style="height:${height}px"></div>
-          <span>${escapeHtml(label)}</span>
-        </div>
-      `;
-    })
-    .join("");
-
-  const rangeEl = document.getElementById("forecastRange");
-  if (rangeEl) {
-    const range = forecast.length ? `${forecast[0].month} to ${forecast[forecast.length - 1].month}` : "No entries";
-    rangeEl.textContent = range;
-  }
 }
 
 // --- Forecast Line Chart & Trajectory Logic ---
