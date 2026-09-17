@@ -1526,7 +1526,7 @@ function renderAssetDistribution(actualCashNow, storageTotal) {
   }
 
   if (totalNetWorth <= 0) {
-    container.innerHTML = `<div class="list-row"><span>No assets recorded</span><strong>0</strong></div>`;
+    container.innerHTML = `<div class="list-row empty-row"><span>🪙 No assets recorded yet · Add gold, currency, or account balances</span></div>`;
     return;
   }
 
@@ -1580,7 +1580,7 @@ function renderCategoryBreakdown(entries) {
 
   const totalExpense = Object.values(totals).reduce((a, b) => a + b, 0);
   if (totalExpense <= 0) {
-    container.innerHTML = `<div class="list-row"><span>No expense categories yet</span><strong>0</strong></div>`;
+    container.innerHTML = `<div class="list-row empty-row"><span>📊 No expense categories yet · Add upcoming expenses to view distribution</span></div>`;
     return;
   }
 
@@ -2088,10 +2088,16 @@ function renderForecastLineChart() {
   const safeSubEl = document.getElementById("fLineSafeSub");
   if (safeEl) {
     safeEl.textContent = money(safeToSpend);
-    safeEl.style.color = safeToSpend > 0 ? "#10b981" : "#ef4444";
+    if (safeToSpend > 0) {
+      safeEl.style.color = "#10b981";
+    } else if (baselineLowestBal < 0) {
+      safeEl.style.color = "#ef4444";
+    } else {
+      safeEl.style.color = "var(--ink)";
+    }
   }
   if (safeSubEl) {
-    if (baselineLowestBal <= 0) {
+    if (baselineLowestBal < 0) {
       safeSubEl.textContent = `Deficit of ${money(Math.abs(baselineLowestBal))} ahead`;
       safeSubEl.style.color = "#ef4444";
     } else {
@@ -2139,8 +2145,13 @@ function renderForecastLineChart() {
 
   let minVal, maxVal;
   if (rawMin === rawMax) {
-    minVal = rawMin - 1000;
-    maxVal = rawMax + 1000;
+    if (rawMin >= 0) {
+      minVal = 0;
+      maxVal = rawMin === 0 ? 1000 : rawMin * 1.35;
+    } else {
+      minVal = rawMin * 1.35;
+      maxVal = 0;
+    }
   } else {
     if (rawMin < 0) {
       minVal = rawMin * 1.18;
@@ -2193,7 +2204,7 @@ function renderForecastLineChart() {
   // Deficit Hazard Zone & Zero Reference Line
   let zeroLineHtml = "";
   let deficitZoneHtml = "";
-  if (minVal <= 0 && maxVal >= 0) {
+  if (minVal < 0 && maxVal >= 0) {
     const zeroY = getY(0);
     const zoneH = Math.max(0, padT + chartH - zeroY);
     deficitZoneHtml = `
@@ -2647,7 +2658,7 @@ function renderExpenseMix(entries) {
     .join("");
 
   const el = document.getElementById("expenseList");
-  if (el) el.innerHTML = rows || `<div class="list-row"><span>No expenses yet</span><strong>0</strong></div>`;
+  if (el) el.innerHTML = rows || `<div class="list-row empty-row"><span>💳 No expenses logged yet · Add an expense to view category mix</span></div>`;
 }
 
 function getDeficitSummary() {
