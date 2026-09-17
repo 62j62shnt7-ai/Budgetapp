@@ -1951,11 +1951,15 @@ function updateSimulatorVerdict() {
   let running = totalOpeningBalance;
   let lowestPostBal = Infinity;
   let lowestPostItem = null;
+  let firstDeficitItem = null;
 
   sorted.forEach((e) => {
     const delta = Number(e.amount || 0) * (e.type === "income" ? 1 : -1);
     running += delta;
     if (e.date >= simulatedSpendDate) {
+      if (running < 0 && !firstDeficitItem) {
+        firstDeficitItem = { date: e.date, balance: running, entry: e };
+      }
       if (running < lowestPostBal) {
         lowestPostBal = running;
         lowestPostItem = e;
@@ -1974,8 +1978,18 @@ function updateSimulatorVerdict() {
   verdictEl.style.display = "flex";
   if (lowestPostBal < 0) {
     verdictEl.className = "forecast-sim-verdict danger";
+    const firstDeficitDateStr = firstDeficitItem && firstDeficitItem.date ? DateUtils.formatDisplayDate(firstDeficitItem.date) : lowestDateStr;
+    const firstDeficitAmt = firstDeficitItem ? Math.abs(firstDeficitItem.balance) : Math.abs(lowestPostBal);
+
+    let deficitMsg = "";
+    if (firstDeficitItem && lowestPostItem && firstDeficitItem.date !== lowestPostItem.date) {
+      deficitMsg = `causes balance to turn negative on <strong>${escapeHtml(firstDeficitDateStr)}</strong> (-${money(firstDeficitAmt)}), dropping to a low of <strong>-${money(Math.abs(lowestPostBal))}</strong> on ${escapeHtml(lowestDateStr)}.`;
+    } else {
+      deficitMsg = `causes a deficit of <strong>-${money(Math.abs(lowestPostBal))}</strong> on ${escapeHtml(firstDeficitDateStr)}.`;
+    }
+
     verdictEl.innerHTML = `
-      <span>⚠️ <strong>Deficit Triggered:</strong> Spending ${money(simulatedSpendAmount)} on ${escapeHtml(formattedDate)} causes a deficit of <strong>-${money(Math.abs(lowestPostBal))}</strong> on ${escapeHtml(lowestDateStr)}.</span>
+      <span>⚠️ <strong>Deficit Triggered:</strong> Spending ${money(simulatedSpendAmount)} on ${escapeHtml(formattedDate)} ${deficitMsg}</span>
     `;
   } else {
     verdictEl.className = "forecast-sim-verdict safe";
