@@ -840,6 +840,10 @@ tr.history-admin-row:hover {
   width: 100%;
 }
 
+.salary-fields {
+  grid-template-columns: 72px 64px 1fr;
+}
+
 .storage-fields {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -1277,6 +1281,10 @@ label {
     grid-template-columns: 1fr;
   }
 
+  .salary-fields {
+    grid-template-columns: 74px 68px 1fr;
+  }
+
   .storage-fields {
     grid-template-columns: 1fr;
   }
@@ -1349,8 +1357,28 @@ label {
     gap: 10px;
   }
 
+  #historyFilteredSummary .metric:nth-child(3) {
+    grid-column: 1 / -1;
+  }
+
+  .salary-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .salary-controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .salary-controls button {
+    grid-column: 1 / -1;
+    width: 100%;
+    justify-content: center;
+  }
+
   .content-grid,
-  .salary-grid,
   .history-analytics-grid {
     grid-template-columns: 1fr;
   }
@@ -1369,8 +1397,15 @@ label {
 
   .history-filters-bar {
     display: grid;
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
     gap: 10px;
+  }
+
+  .history-filters-bar label:nth-child(4),
+  .history-filters-bar button {
+    grid-column: 1 / -1;
+    width: 100%;
+    justify-content: center;
   }
 
   .top-actions,
@@ -1456,7 +1491,11 @@ label {
 }
 
 @media (max-width: 360px) {
-  .metrics-grid {
+  .metrics-grid,
+  .salary-grid,
+  .salary-fields,
+  .salary-controls,
+  .history-filters-bar {
     grid-template-columns: 1fr;
   }
 }

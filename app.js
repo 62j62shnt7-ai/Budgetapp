@@ -3304,7 +3304,7 @@ function renderSalarySchedule() {
           <small>Payment ${index + 1} — ${escapeHtml(groupMonthsLabel(Number(payment.monthOffset) || 0))}</small>
           <button class="delete-button" data-salary-delete="${index}" type="button">Delete</button>
         </div>
-        <div class="inline-fields" style="grid-template-columns: 60px 56px 1fr;">
+        <div class="inline-fields salary-fields">
           <label>
             Group
             <select data-salary-index="${index}" data-salary-field="monthOffset">
