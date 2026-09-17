@@ -1747,3 +1747,311 @@ label {
   transition: width 0.3s ease;
 }
 
+/* ==========================================================================
+   Forecast Line Chart & Trajectory Styles
+   ========================================================================== */
+.panel-full-width {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+.forecast-line-panel {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+
+.forecast-line-heading {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.forecast-heading-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.forecast-range-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: rgba(15, 118, 110, 0.12);
+  color: var(--teal);
+  border: 1px solid rgba(15, 118, 110, 0.25);
+  letter-spacing: 0.3px;
+}
+
+[data-theme="dark"] .forecast-range-badge {
+  background: rgba(20, 184, 166, 0.15);
+  color: #2dd4bf;
+  border-color: rgba(20, 184, 166, 0.3);
+}
+
+.forecast-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.forecast-view-toggle {
+  display: inline-flex;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.forecast-mode-btn {
+  padding: 5px 11px;
+  font-size: 11.5px;
+  font-weight: 600;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.forecast-mode-btn:hover {
+  color: var(--ink);
+}
+
+.forecast-mode-btn.active {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+[data-theme="dark"] .forecast-mode-btn.active {
+  background: #232f2c;
+  color: #f1f5f9;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.forecast-range-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.forecast-range-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.forecast-presets {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.forecast-preset-btn {
+  padding: 4px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+  color: var(--muted);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.forecast-preset-btn:hover {
+  border-color: var(--teal);
+  color: var(--ink);
+}
+
+.forecast-preset-btn.active {
+  background: var(--teal);
+  color: #fff;
+  border-color: var(--teal);
+  box-shadow: 0 2px 6px rgba(15, 118, 110, 0.25);
+}
+
+.forecast-slider-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 4px;
+}
+
+.forecast-slider-wrap input[type="range"] {
+  accent-color: var(--teal);
+  cursor: pointer;
+  width: 74px;
+  height: 4px;
+}
+
+.forecast-slider-val {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--ink);
+  min-width: 26px;
+}
+
+/* KPI Summary Cards */
+.forecast-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+  gap: 10px;
+  margin: 10px 0 16px;
+}
+
+.forecast-kpi-card {
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.forecast-kpi-card:hover {
+  border-color: rgba(15, 118, 110, 0.4);
+}
+
+.forecast-kpi-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.forecast-kpi-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.forecast-kpi-sub {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.f-trend-up {
+  color: #10b981 !important;
+}
+
+.f-trend-down {
+  color: #ef4444 !important;
+}
+
+/* SVG Chart Container & Tooltip */
+.forecast-chart-container {
+  position: relative;
+  width: 100%;
+  min-height: 290px;
+  overflow: hidden;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 8px 8px 8px;
+}
+
+.forecast-line-svg-wrap {
+  width: 100%;
+  height: 270px;
+  position: relative;
+}
+
+.forecast-line-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+}
+
+.forecast-tooltip {
+  position: absolute;
+  pointer-events: none;
+  z-index: 30;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 14px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  transform: translate(-50%, -100%) translateY(-12px);
+  white-space: nowrap;
+  max-width: 280px;
+}
+
+[data-theme="dark"] .forecast-tooltip {
+  background: #1c2624;
+  border-color: #2e3d3a;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+}
+
+.forecast-tooltip-title {
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.forecast-tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-top: 3px;
+}
+
+.forecast-tooltip-row.sub {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.forecast-tooltip-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.forecast-tooltip-badge.up {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+}
+
+.forecast-tooltip-badge.down {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+@media (max-width: 768px) {
+  .forecast-line-heading {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .forecast-toolbar {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .forecast-kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+

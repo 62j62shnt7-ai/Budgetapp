@@ -12,7 +12,7 @@
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="apple-touch-icon" href="icon.svg">
     <link rel="icon" type="image/svg+xml" href="icon.svg">
-    <link rel="stylesheet" href="styles.css?v=33">
+    <link rel="stylesheet" href="styles.css?v=34">
   </head>
   <body>
     <aside class="sidebar">
@@ -124,6 +124,75 @@
               <span style="font-size: 11px; color: var(--muted);">Real-time Advisory</span>
             </div>
             <div id="smartInsightsList" class="smart-insights-list"></div>
+          </section>
+        </div>
+
+        <div class="content-grid" style="margin-top: 18px;">
+          <section class="panel panel-full-width forecast-line-panel">
+            <div class="panel-heading forecast-line-heading">
+              <div class="forecast-heading-left">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <h3>Forecast Trajectory</h3>
+                  <span id="forecastLineRangeBadge" class="forecast-range-badge">12 Months Projection</span>
+                </div>
+                <span id="forecastLineDateSpan" style="font-size: 12px; color: var(--muted); margin-top: 2px; display: block;">Dynamic balance curve driven by planned entries</span>
+              </div>
+              <div class="forecast-toolbar">
+                <div class="forecast-view-toggle">
+                  <button type="button" class="forecast-mode-btn active" data-mode="balance" id="forecastModeBalance">Running Cash</button>
+                  <button type="button" class="forecast-mode-btn" data-mode="net" id="forecastModeNet">Monthly Net</button>
+                </div>
+                <div class="forecast-range-group" role="group" aria-label="Forecast Month Range">
+                  <span class="forecast-range-label">Range:</span>
+                  <div class="forecast-presets">
+                    <button type="button" class="forecast-preset-btn" data-months="3">3M</button>
+                    <button type="button" class="forecast-preset-btn" data-months="6">6M</button>
+                    <button type="button" class="forecast-preset-btn active" data-months="12">12M</button>
+                    <button type="button" class="forecast-preset-btn" data-months="24">24M</button>
+                    <button type="button" class="forecast-preset-btn" data-months="all">All</button>
+                  </div>
+                  <div class="forecast-slider-wrap" title="Custom month range">
+                    <input type="range" id="forecastRangeSlider" min="1" max="36" value="12" step="1">
+                    <span id="forecastSliderValue" class="forecast-slider-val">12m</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- KPI Mini Cards Row -->
+            <div class="forecast-kpi-grid">
+              <div class="forecast-kpi-card">
+                <span class="forecast-kpi-label">Starting Cash</span>
+                <strong class="forecast-kpi-value" id="fLineStartCash">0 EGP</strong>
+                <small class="forecast-kpi-sub" id="fLineStartMonth">Current Month</small>
+              </div>
+              <div class="forecast-kpi-card">
+                <span class="forecast-kpi-label">Projected Ending</span>
+                <strong class="forecast-kpi-value" id="fLineEndCash">0 EGP</strong>
+                <small class="forecast-kpi-sub" id="fLineEndMonth">—</small>
+              </div>
+              <div class="forecast-kpi-card">
+                <span class="forecast-kpi-label">Net Trajectory</span>
+                <strong class="forecast-kpi-value" id="fLineNetChange">0 EGP</strong>
+                <small class="forecast-kpi-sub" id="fLineNetPct">—</small>
+              </div>
+              <div class="forecast-kpi-card">
+                <span class="forecast-kpi-label">Lowest Balance</span>
+                <strong class="forecast-kpi-value" id="fLineLowestPoint">0 EGP</strong>
+                <small class="forecast-kpi-sub" id="fLineLowestDate">Lowest in period</small>
+              </div>
+              <div class="forecast-kpi-card">
+                <span class="forecast-kpi-label">Peak Balance</span>
+                <strong class="forecast-kpi-value" id="fLinePeakPoint">0 EGP</strong>
+                <small class="forecast-kpi-sub" id="fLinePeakDate">Peak in period</small>
+              </div>
+            </div>
+
+            <!-- Interactive SVG Line Chart Area -->
+            <div class="forecast-chart-container" id="forecastLineChartContainer">
+              <div class="forecast-line-svg-wrap" id="forecastLineSvgWrap"></div>
+              <div class="forecast-tooltip" id="forecastLineTooltip" hidden></div>
+            </div>
           </section>
         </div>
 

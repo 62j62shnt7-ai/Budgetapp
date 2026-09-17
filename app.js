@@ -29,7 +29,9 @@ const keys = {
   gistToken: "budget-control-gist-token",
   gistId: "budget-control-gist-id",
   gistAutoSync: "budget-control-gist-autosync",
-  historyAdminUnlocked: "budget-control-history-admin-unlocked"
+  historyAdminUnlocked: "budget-control-history-admin-unlocked",
+  forecastLineMonths: "budget-control-forecast-line-months",
+  forecastLineMode: "budget-control-forecast-line-mode"
 };
 
 const seedVersion = "blank-template-v2";
@@ -690,6 +692,8 @@ let archivedEntries = loadSetting(keys.archivedEntries, []);
 let categoryCaps = loadSetting(keys.categoryCaps, defaultCategoryCaps);
 let savingsGoals = loadSetting(keys.savingsGoals, defaultSavingsGoals);
 let historyAdminUnlocked = loadSetting(keys.historyAdminUnlocked, false);
+let forecastLineRangeMonths = loadSetting(keys.forecastLineMonths, 12);
+let forecastLineChartMode = loadSetting(keys.forecastLineMode, "balance");
 let editingEntry = null;
 let editingInstallmentIndex = null;
 
@@ -1351,6 +1355,7 @@ function renderDashboard() {
   updateCashflowStatus(risk);
 
   renderBalanceChart(forecast);
+  renderForecastLineChart();
   renderCategoryBreakdown(entries);
   renderAssetDistribution(actualCashNow, storageTotal);
   renderExpenseMix(entries);
@@ -1626,6 +1631,487 @@ function renderBalanceChart(forecast) {
     const range = forecast.length ? `${forecast[0].month} to ${forecast[forecast.length - 1].month}` : "No entries";
     rangeEl.textContent = range;
   }
+}
+
+// --- Forecast Line Chart & Trajectory Logic ---
+
+function buildSmoothSvgPath(points) {
+  if (!points || points.length === 0) return "";
+  if (points.length === 1) return `M ${points[0].x},${points[0].y}`;
+  if (points.length === 2) return `M ${points[0].x},${points[0].y} L ${points[1].x},${points[1].y}`;
+
+  let d = `M ${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[Math.max(0, i - 1)];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[Math.min(points.length - 1, i + 2)];
+
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+    d += ` C ${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`;
+  }
+  return d;
+}
+
+function getForecastTimeSeries(requestedMonths = forecastLineRangeMonths) {
+  const allEntries = forecastEntries();
+  const currentYm = DateUtils.currentYearMonth();
+  const [startYear, startMonth] = DateUtils.parseYearMonth(currentYm);
+
+  // Group entries by month
+  const monthlyIncomes = {};
+  const monthlyExpenses = {};
+  const monthlyIncomeCount = {};
+  const monthlyExpenseCount = {};
+
+  allEntries.forEach((entry) => {
+    const month = DateUtils.getMonthKey(entry.date);
+    if (!month) return;
+    const amount = Number(entry.amount || 0);
+    if (entry.type === "income") {
+      monthlyIncomes[month] = (monthlyIncomes[month] || 0) + amount;
+      monthlyIncomeCount[month] = (monthlyIncomeCount[month] || 0) + 1;
+    } else {
+      monthlyExpenses[month] = (monthlyExpenses[month] || 0) + amount;
+      monthlyExpenseCount[month] = (monthlyExpenseCount[month] || 0) + 1;
+    }
+  });
+
+  // Find max horizon in entries
+  const allMonthsInEntries = Object.keys({ ...monthlyIncomes, ...monthlyExpenses })
+    .filter((m) => m >= currentYm)
+    .sort();
+
+  let maxHorizonMonths = 12;
+  if (allMonthsInEntries.length > 0) {
+    const lastMonth = allMonthsInEntries[allMonthsInEntries.length - 1];
+    const [ly, lm] = DateUtils.parseYearMonth(lastMonth);
+    const diff = (ly - startYear) * 12 + (lm - startMonth) + 1;
+    maxHorizonMonths = Math.max(12, diff);
+  }
+
+  let count = 12;
+  if (requestedMonths === "all") {
+    count = maxHorizonMonths;
+  } else {
+    count = Math.max(1, Number(requestedMonths) || 12);
+  }
+
+  const totalOpeningBalance = Object.values(accountBalances).reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
+  let running = totalOpeningBalance;
+  const series = [];
+
+  for (let i = 0; i < count; i++) {
+    const y = startYear + Math.floor((startMonth - 1 + i) / 12);
+    const m = ((startMonth - 1 + i) % 12) + 1;
+    const monthKey = `${y}-${String(m).padStart(2, "0")}`;
+
+    const income = monthlyIncomes[monthKey] || 0;
+    const expense = monthlyExpenses[monthKey] || 0;
+    const net = income - expense;
+    const opening = running;
+    running += net;
+
+    const dateObj = new Date(Date.UTC(y, m - 1, 1));
+    const shortLabel = dateObj.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
+    const fullLabel = dateObj.toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
+
+    series.push({
+      index: i,
+      month: monthKey,
+      shortLabel,
+      fullLabel,
+      openingBalance: opening,
+      closingBalance: running,
+      balance: running,
+      income,
+      expense,
+      net,
+      incomeCount: monthlyIncomeCount[monthKey] || 0,
+      expenseCount: monthlyExpenseCount[monthKey] || 0,
+      direction: net >= 0 ? "up" : "down"
+    });
+  }
+
+  return {
+    series,
+    openingBalance: totalOpeningBalance,
+    totalAvailableMonths: maxHorizonMonths,
+    activeMonthsCount: count
+  };
+}
+
+function setForecastLineRange(months) {
+  if (months === "all") {
+    forecastLineRangeMonths = "all";
+  } else {
+    forecastLineRangeMonths = Math.max(1, Number(months) || 12);
+  }
+  saveSetting(keys.forecastLineMonths, forecastLineRangeMonths);
+  renderForecastLineChart();
+}
+
+function setForecastLineMode(mode) {
+  if (mode !== "balance" && mode !== "net") mode = "balance";
+  forecastLineChartMode = mode;
+  saveSetting(keys.forecastLineMode, forecastLineChartMode);
+  renderForecastLineChart();
+}
+
+function renderForecastLineChart() {
+  const container = document.getElementById("forecastLineChartContainer");
+  if (!container) return;
+
+  const data = getForecastTimeSeries(forecastLineRangeMonths);
+  const { series, openingBalance, totalAvailableMonths, activeMonthsCount } = data;
+
+  // 1. Update Range Badge & Date Description
+  const badgeEl = document.getElementById("forecastLineRangeBadge");
+  if (badgeEl) {
+    badgeEl.textContent = forecastLineRangeMonths === "all" ? `All (${activeMonthsCount}M)` : `${activeMonthsCount} Month${activeMonthsCount === 1 ? "" : "s"}`;
+  }
+
+  const dateSpanEl = document.getElementById("forecastLineDateSpan");
+  if (dateSpanEl && series.length > 0) {
+    const startStr = series[0].fullLabel;
+    const endStr = series[series.length - 1].fullLabel;
+    const modeDesc = forecastLineChartMode === "net" ? "Monthly net cashflow" : "Dynamic projected balance";
+    dateSpanEl.textContent = `${startStr} → ${endStr} • ${modeDesc}`;
+  }
+
+  // 2. Update Toolbar Preset Buttons & Slider
+  document.querySelectorAll(".forecast-preset-btn").forEach((btn) => {
+    const btnVal = btn.dataset.months;
+    const isActive = (forecastLineRangeMonths === "all" && btnVal === "all") || (String(forecastLineRangeMonths) === btnVal);
+    btn.classList.toggle("active", isActive);
+  });
+
+  const slider = document.getElementById("forecastRangeSlider");
+  const sliderVal = document.getElementById("forecastSliderValue");
+  if (slider) {
+    slider.max = String(Math.max(24, totalAvailableMonths));
+    slider.value = String(forecastLineRangeMonths === "all" ? totalAvailableMonths : activeMonthsCount);
+  }
+  if (sliderVal) {
+    sliderVal.textContent = forecastLineRangeMonths === "all" ? "All" : `${activeMonthsCount}m`;
+  }
+
+  // 3. Update Mode Toggle Buttons
+  const modeBalBtn = document.getElementById("forecastModeBalance");
+  const modeNetBtn = document.getElementById("forecastModeNet");
+  if (modeBalBtn) modeBalBtn.classList.toggle("active", forecastLineChartMode === "balance");
+  if (modeNetBtn) modeNetBtn.classList.toggle("active", forecastLineChartMode === "net");
+
+  // 4. Update KPI Mini Cards
+  const startCashEl = document.getElementById("fLineStartCash");
+  const startMonthEl = document.getElementById("fLineStartMonth");
+  if (startCashEl) startCashEl.textContent = money(openingBalance);
+  if (startMonthEl) startMonthEl.textContent = series[0] ? series[0].fullLabel : "Current";
+
+  const endItem = series[series.length - 1];
+  const endCashEl = document.getElementById("fLineEndCash");
+  const endMonthEl = document.getElementById("fLineEndMonth");
+  if (endCashEl) endCashEl.textContent = endItem ? money(endItem.balance) : money(openingBalance);
+  if (endMonthEl) endMonthEl.textContent = endItem ? endItem.fullLabel : "—";
+
+  const netTrajectory = endItem ? endItem.balance - openingBalance : 0;
+  const netChangeEl = document.getElementById("fLineNetChange");
+  const netPctEl = document.getElementById("fLineNetPct");
+  if (netChangeEl) {
+    const sign = netTrajectory >= 0 ? "+" : "-";
+    netChangeEl.textContent = `${sign}${money(Math.abs(netTrajectory))}`;
+    netChangeEl.classList.remove("f-trend-up", "f-trend-down");
+    netChangeEl.classList.add(netTrajectory >= 0 ? "f-trend-up" : "f-trend-down");
+  }
+  if (netPctEl) {
+    if (openingBalance !== 0) {
+      const pct = ((netTrajectory / Math.abs(openingBalance)) * 100).toFixed(1);
+      const sign = netTrajectory >= 0 ? "▲ +" : "▼ ";
+      netPctEl.textContent = `${sign}${pct}% vs current`;
+    } else {
+      netPctEl.textContent = "Net projection delta";
+    }
+  }
+
+  let lowestPoint = series.reduce((min, cur) => (cur.balance < min.balance ? cur : min), series[0] || { balance: openingBalance, fullLabel: "Current" });
+  let peakPoint = series.reduce((max, cur) => (cur.balance > max.balance ? cur : max), series[0] || { balance: openingBalance, fullLabel: "Current" });
+
+  const lowEl = document.getElementById("fLineLowestPoint");
+  const lowDateEl = document.getElementById("fLineLowestDate");
+  if (lowEl) {
+    lowEl.textContent = money(lowestPoint.balance);
+    lowEl.classList.toggle("f-trend-down", lowestPoint.balance < 0);
+  }
+  if (lowDateEl) {
+    lowDateEl.textContent = lowestPoint.balance < 0 ? `⚠️ Deficit in ${lowestPoint.fullLabel}` : `Lowest in ${lowestPoint.fullLabel}`;
+  }
+
+  const peakEl = document.getElementById("fLinePeakPoint");
+  const peakDateEl = document.getElementById("fLinePeakDate");
+  if (peakEl) {
+    peakEl.textContent = money(peakPoint.balance);
+    peakEl.classList.add("f-trend-up");
+  }
+  if (peakDateEl) {
+    peakDateEl.textContent = `Peak in ${peakPoint.fullLabel}`;
+  }
+
+  // 5. Render SVG Line Chart
+  const svgWrap = document.getElementById("forecastLineSvgWrap");
+  if (!svgWrap) return;
+
+  if (series.length === 0) {
+    svgWrap.innerHTML = `<div style="padding: 40px; text-align: center; color: var(--muted);">No forecast data available</div>`;
+    return;
+  }
+
+  const isNetMode = forecastLineChartMode === "net";
+  const values = series.map((s) => (isNetMode ? s.net : s.balance));
+
+  const rawMin = Math.min(...values);
+  const rawMax = Math.max(...values);
+
+  let minVal, maxVal;
+  if (rawMin === rawMax) {
+    minVal = rawMin - 1000;
+    maxVal = rawMax + 1000;
+  } else if (isNetMode) {
+    const absMax = Math.max(Math.abs(rawMin), Math.abs(rawMax), 1000);
+    minVal = -absMax * 1.15;
+    maxVal = absMax * 1.15;
+  } else {
+    if (rawMin < 0) {
+      minVal = rawMin * 1.18;
+    } else {
+      minVal = Math.max(0, rawMin - (rawMax - rawMin) * 0.22);
+    }
+    maxVal = rawMax + (rawMax - minVal) * 0.16;
+  }
+
+  const viewBoxW = 860;
+  const viewBoxH = 260;
+  const padL = 74;
+  const padR = 40;
+  const padT = 24;
+  const padB = 38;
+  const chartW = viewBoxW - padL - padR;
+  const chartH = viewBoxH - padT - padB;
+
+  const getX = (i) => padL + (series.length === 1 ? chartW / 2 : (i / (series.length - 1)) * chartW);
+  const getY = (v) => padT + chartH - ((v - minVal) / (maxVal - minVal || 1)) * chartH;
+
+  const points = series.map((s, i) => ({
+    x: getX(i),
+    y: getY(values[i]),
+    val: values[i],
+    data: s
+  }));
+
+  // Generate gridlines and Y-axis tick labels
+  const tickCount = 4;
+  let gridLinesHtml = "";
+  for (let t = 0; t <= tickCount; t++) {
+    const val = minVal + (t / tickCount) * (maxVal - minVal);
+    const y = getY(val);
+    let label;
+    const absVal = Math.abs(val);
+    if (absVal >= 1000000) {
+      label = `${(val / 1000000).toFixed(1)}M`;
+    } else if (absVal >= 1000) {
+      label = `${Math.round(val / 1000)}k`;
+    } else {
+      label = `${Math.round(val)}`;
+    }
+    gridLinesHtml += `
+      <line x1="${padL}" y1="${y.toFixed(1)}" x2="${viewBoxW - padR}" y2="${y.toFixed(1)}" stroke="var(--line)" stroke-width="1" stroke-dasharray="3 3" />
+      <text x="${padL - 10}" y="${(y + 3.5).toFixed(1)}" text-anchor="end" font-size="10" font-weight="600" fill="var(--muted)">${label}</text>
+    `;
+  }
+
+  // Zero Reference Line
+  let zeroLineHtml = "";
+  if (minVal <= 0 && maxVal >= 0) {
+    const zeroY = getY(0);
+    zeroLineHtml = `
+      <line x1="${padL}" y1="${zeroY.toFixed(1)}" x2="${viewBoxW - padR}" y2="${zeroY.toFixed(1)}" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.85" />
+      <text x="${viewBoxW - padR}" y="${(zeroY - 5).toFixed(1)}" text-anchor="end" font-size="9.5" font-weight="700" fill="#ef4444">0 EGP Threshold</text>
+    `;
+  }
+
+  // Smooth line path
+  const pathD = buildSmoothSvgPath(points);
+
+  // Area Fill path
+  const areaBottomY = padT + chartH;
+  const areaD = `${pathD} L ${points[points.length - 1].x.toFixed(1)},${areaBottomY} L ${points[0].x.toFixed(1)},${areaBottomY} Z`;
+
+  // Segmented colored indicators / micro-badges & dots
+  let nodesHtml = "";
+  let hoverColsHtml = "";
+  const colW = chartW / Math.max(1, series.length);
+
+  // Determine interval for X-axis labels
+  let labelStep = 1;
+  if (series.length > 24) labelStep = 3;
+  else if (series.length > 14) labelStep = 2;
+
+  points.forEach((p, i) => {
+    const s = p.data;
+    const isClimbing = i === 0 ? s.net >= 0 : s.balance >= series[i - 1].balance;
+    const isNegativeBalance = s.balance < 0;
+    const dotColor = isNegativeBalance ? "#ef4444" : isClimbing ? "#10b981" : "#0f766e";
+
+    // Data Point Dot
+    nodesHtml += `
+      <circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="4.5" fill="${dotColor}" stroke="var(--surface)" stroke-width="2.5" id="fLineDot-${i}" class="forecast-dot" />
+    `;
+
+    // Micro up/down arrow above nodes if not overcrowded
+    if (series.length <= 16 && i > 0) {
+      const arrowChar = isClimbing ? "▲" : "▼";
+      const arrowColor = isClimbing ? "#10b981" : "#ef4444";
+      const arrowY = isClimbing ? p.y - 9 : p.y + 16;
+      nodesHtml += `
+        <text x="${p.x.toFixed(1)}" y="${arrowY.toFixed(1)}" text-anchor="middle" font-size="8.5" font-weight="700" fill="${arrowColor}">${arrowChar}</text>
+      `;
+    }
+
+    // X-Axis Month Label
+    if (i % labelStep === 0 || i === series.length - 1) {
+      nodesHtml += `
+        <text x="${p.x.toFixed(1)}" y="${padT + chartH + 18}" text-anchor="middle" font-size="10.5" font-weight="600" fill="var(--muted)">${escapeHtml(s.shortLabel)}</text>
+      `;
+    }
+
+    // Invisible interactive hover column
+    hoverColsHtml += `
+      <rect x="${(p.x - colW / 2).toFixed(1)}" y="${padT}" width="${colW.toFixed(1)}" height="${chartH}" fill="transparent" style="cursor: pointer;" data-fline-idx="${i}" />
+    `;
+  });
+
+  const svgContent = `
+    <svg class="forecast-line-svg" viewBox="0 0 ${viewBoxW} ${viewBoxH}" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="forecastAreaGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#0f766e" stop-opacity="0.32" />
+          <stop offset="60%" stop-color="#0f766e" stop-opacity="0.08" />
+          <stop offset="100%" stop-color="#0f766e" stop-opacity="0.0" />
+        </linearGradient>
+        <linearGradient id="forecastLineGrad" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="#0f766e" />
+          <stop offset="50%" stop-color="#14b8a6" />
+          <stop offset="100%" stop-color="#2dd4bf" />
+        </linearGradient>
+      </defs>
+
+      <!-- Background Grid & Axes -->
+      ${gridLinesHtml}
+      ${zeroLineHtml}
+
+      <!-- Area Fill -->
+      <path d="${areaD}" fill="url(#forecastAreaGrad)" />
+
+      <!-- Master Line -->
+      <path d="${pathD}" fill="none" stroke="url(#forecastLineGrad)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+
+      <!-- Active Hover Crosshair Line -->
+      <line id="fLineCrosshair" x1="0" y1="${padT}" x2="0" y2="${padT + chartH}" stroke="var(--teal)" stroke-width="1.5" stroke-dasharray="3 3" opacity="0" pointer-events="none" />
+
+      <!-- Nodes & Labels -->
+      ${nodesHtml}
+
+      <!-- Interactive Columns -->
+      ${hoverColsHtml}
+    </svg>
+  `;
+
+  svgWrap.innerHTML = svgContent;
+
+  // 6. Tooltip & Crosshair Interactive Events
+  const tooltip = document.getElementById("forecastLineTooltip");
+  const crosshair = document.getElementById("fLineCrosshair");
+
+  const showTooltipForIndex = (idx) => {
+    const s = series[idx];
+    const p = points[idx];
+    if (!s || !p || !tooltip) return;
+
+    const isClimbing = idx === 0 ? s.net >= 0 : s.balance >= series[idx - 1].balance;
+    const cumChange = s.balance - openingBalance;
+    const cumPct = openingBalance !== 0 ? ((cumChange / Math.abs(openingBalance)) * 100).toFixed(1) : 0;
+    const sign = cumChange >= 0 ? "+" : "";
+
+    tooltip.innerHTML = `
+      <div class="forecast-tooltip-title">
+        <span>${escapeHtml(s.fullLabel)}</span>
+        <span class="forecast-tooltip-badge ${isClimbing ? "up" : "down"}">
+          ${isClimbing ? "▲" : "▼"} ${s.net >= 0 ? "+" : ""}${money(s.net)}
+        </span>
+      </div>
+      <div class="forecast-tooltip-row">
+        <span style="color: var(--muted);">Projected Cash:</span>
+        <strong style="color: ${s.balance < 0 ? "#ef4444" : "var(--ink)"};">${money(s.balance)}</strong>
+      </div>
+      <div class="forecast-tooltip-row sub">
+        <span>Forecast Income (${s.incomeCount}):</span>
+        <span style="color: #10b981; font-weight: 600;">+${money(s.income)}</span>
+      </div>
+      <div class="forecast-tooltip-row sub">
+        <span>Forecast Expenses (${s.expenseCount}):</span>
+        <span style="color: #ef4444; font-weight: 600;">-${money(s.expense)}</span>
+      </div>
+      <div class="forecast-tooltip-row sub" style="margin-top: 5px; border-top: 1px dashed var(--line); padding-top: 4px;">
+        <span>Growth from Start:</span>
+        <span style="font-weight: 700; color: ${cumChange >= 0 ? "#10b981" : "#ef4444"};">
+          ${sign}${money(cumChange)} (${cumPct}%)
+        </span>
+      </div>
+    `;
+
+    // Position tooltip relative to container
+    const leftPct = (p.x / viewBoxW) * 100;
+    const topPct = (p.y / viewBoxH) * 100;
+
+    tooltip.style.left = `${leftPct}%`;
+    tooltip.style.top = `${topPct}%`;
+    tooltip.removeAttribute("hidden");
+
+    // Move crosshair
+    if (crosshair) {
+      crosshair.setAttribute("x1", String(p.x));
+      crosshair.setAttribute("x2", String(p.x));
+      crosshair.setAttribute("opacity", "0.9");
+    }
+
+    // Highlight dot
+    const dot = document.getElementById(`fLineDot-${idx}`);
+    if (dot) {
+      dot.setAttribute("r", "7");
+      dot.setAttribute("stroke-width", "3.5");
+    }
+  };
+
+  const hideTooltip = () => {
+    if (tooltip) tooltip.setAttribute("hidden", "");
+    if (crosshair) crosshair.setAttribute("opacity", "0");
+    document.querySelectorAll(".forecast-dot").forEach((d) => {
+      d.setAttribute("r", "4.5");
+      d.setAttribute("stroke-width", "2.5");
+    });
+  };
+
+  svgWrap.querySelectorAll("[data-fline-idx]").forEach((col) => {
+    const idx = Number(col.dataset.flineIdx);
+    col.addEventListener("mouseenter", () => showTooltipForIndex(idx));
+    col.addEventListener("mousemove", () => showTooltipForIndex(idx));
+    col.addEventListener("mouseleave", hideTooltip);
+  });
+
+  svgWrap.addEventListener("mouseleave", hideTooltip);
 }
 
 function getDeficitPeriods(entries = forecastEntries()) {
@@ -4089,6 +4575,36 @@ function setupEventListeners() {
   on("openDataToolsBtn", "click", () => {
     const dlg = document.getElementById("dataToolsDialog");
     if (dlg) dlg.showModal();
+  });
+
+  // Forecast Line Chart Controls
+  document.querySelectorAll(".forecast-preset-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      setForecastLineRange(btn.dataset.months);
+    });
+  });
+
+  on("forecastRangeSlider", "input", (e) => {
+    setForecastLineRange(e.target.value);
+  });
+
+  on("forecastModeBalance", "click", () => {
+    setForecastLineMode("balance");
+  });
+
+  on("forecastModeNet", "click", () => {
+    setForecastLineMode("net");
+  });
+
+  // Re-render forecast line chart on window resize with debounce
+  let resizeTimer = null;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      if (!currentActiveView || currentActiveView === "dashboard") {
+        renderForecastLineChart();
+      }
+    }, 150);
   });
 
   document.addEventListener("click", (e) => {
