@@ -916,21 +916,34 @@ function isCardExpenseForAccount(entry, accountKey) {
 }
 
 function isCreditDueLumpSum(entry) {
-  if (!entry) return false;
+  if (!entry || entry.type !== "expense") return false;
+  if (isCreditCardExpense(entry)) return false;
+  const id = getEntryId(entry);
+  if (id.startsWith("credit-settlement-")) return true;
   const t = (entry.creditType || "").toLowerCase();
   const cat = (entry.category || "").toLowerCase();
-  if (t === "cib" || t === "hsbc") return cat === "credit due";
-  return cat === "credit due";
+  const acc = (entry.account || "").toLowerCase();
+  if (t === "cib" || t === "hsbc") return true;
+  if (cat === "credit due") return true;
+  if ((acc.includes("cib") || acc.includes("hsbc")) && cat.includes("credit")) return true;
+  return false;
 }
 
 function isLumpCreditDueForAccount(entry, accountKey) {
   if (!entry || entry.type !== "expense") return false;
+  if (isCreditCardExpense(entry)) return false;
+  const id = getEntryId(entry);
+  const target = (accountKey || "").toLowerCase();
+  if (id.startsWith("credit-settlement-")) {
+    const parts = id.split("-");
+    return parts[2] === target;
+  }
   const t = (entry.creditType || "").toLowerCase();
   const cat = (entry.category || "").toLowerCase();
   const acc = (entry.account || "").toLowerCase();
-  const target = (accountKey || "").toLowerCase();
-  if (t === target && cat === "credit due") return true;
-  if (!t && cat === "credit due" && (acc === target || acc.includes(target))) return true;
+  if (t === target) return true;
+  if (cat === "credit due" && (acc === target || acc.includes(target))) return true;
+  if (acc.includes(target) && cat.includes("credit")) return true;
   return false;
 }
 
@@ -1049,7 +1062,7 @@ function creditDueEntries() {
       const baseDue = Number(monthData[monthKey] || 0);
 
       const manualLumpEntries = allExpenses.filter(
-        (entry) => isLumpCreditDueForAccount(entry, accountKey) && DateUtils.getMonthKey(entry.date) === monthKey
+        (entry) => isLumpCreditDueForAccount(entry, accountKey) && DateUtils.getMonthKey(entry.date) === monthKey && !getEntryId(entry).startsWith("credit-settlement-")
       );
       const lumpAmount = manualLumpEntries.reduce((sum, e) => {
         const act = getEntryActualAmount(e);
@@ -1293,8 +1306,9 @@ function syncForecastPeriodSettings() {
 
 function getForecastCandidateEntries() {
   syncForecastPeriodSettings();
+  const nonLumpCashEntries = cashEntries.filter((entry) => !isCreditDueLumpSum(entry));
   const all = [
-    ...cashEntries,
+    ...nonLumpCashEntries,
     ...buildInstallmentEntries(),
     ...creditDueEntries()
   ];
@@ -1352,13 +1366,16 @@ function openingBalanceEntries() {
 
 function actualizedEntries() {
   syncForecastPeriodSettings();
+  const nonLumpCashEntries = cashEntries.filter((entry) => !isCreditDueLumpSum(entry));
   const activeCandidates = [
-    ...cashEntries,
+    ...nonLumpCashEntries,
     ...buildInstallmentEntries(),
     ...creditDueEntries()
   ].filter((entry) => getEntryActualAmount(entry) > 0);
   
-  const archivedWithActuals = archivedEntries.filter((entry) => getEntryActualAmount(entry) > 0);
+  const archivedWithActuals = archivedEntries
+    .filter((entry) => !isCreditDueLumpSum(entry) || !entry.id?.startsWith("credit-settlement-"))
+    .filter((entry) => getEntryActualAmount(entry) > 0);
   return [...activeCandidates, ...archivedWithActuals];
 }
 
@@ -4807,23 +4824,57 @@ async function persistEntryForm(event) {
       }
     } else {
       const originalId = getEntryId(editingEntry);
-      const archIdx = archivedEntries.findIndex((e) => getEntryId(e) === originalId);
-      if (archIdx !== -1) {
-        archivedEntries[archIdx] = updatedEntry;
-        saveSetting(keys.archivedEntries, archivedEntries);
-      } else {
-        cashEntries.push(updatedEntry);
+      if (originalId.startsWith("credit-settlement-")) {
+        const parts = originalId.split("-");
+        const accountKey = parts[2];
+        const monthKey = `${parts[3]}-${parts[4]}`;
+        const manualPortion = Math.max(0, plannedAmountInEgp - (editingEntry.cardSpendTotal || 0));
+        const lumpIdx = cashEntries.findIndex((e) => isLumpCreditDueForAccount(e, accountKey) && DateUtils.getMonthKey(e.date) === monthKey && !getEntryId(e).startsWith("credit-settlement-"));
+        if (lumpIdx !== -1) {
+          cashEntries[lumpIdx].amount = manualPortion;
+          cashEntries[lumpIdx].date = form.elements.date.value;
+        } else if (manualPortion > 0) {
+          cashEntries.push({
+            id: generateId(),
+            date: form.elements.date.value,
+            category: "Credit Due",
+            account: accountKey,
+            type: "expense",
+            amount: manualPortion,
+            creditType: accountKey,
+            source: "expense"
+          });
+        }
         saveSetting(keys.entries, cashEntries);
-      }
 
-      if (actualAmountInEgp > 0) {
-        setEntryActualAmount(updatedEntry, actualAmountInEgp);
-        setEntryActualDate(updatedEntry, form.elements.date.value);
+        if (actualAmountInEgp > 0) {
+          setEntryActualAmount(editingEntry, actualAmountInEgp);
+          setEntryActualDate(editingEntry, form.elements.date.value);
+        } else {
+          delete entryActuals[originalId];
+          delete entryActualDates[originalId];
+          saveSetting(keys.entryActuals, entryActuals);
+          saveSetting(keys.entryActualDates, entryActualDates);
+        }
       } else {
-        delete entryActuals[originalId];
-        delete entryActualDates[originalId];
-        saveSetting(keys.entryActuals, entryActuals);
-        saveSetting(keys.entryActualDates, entryActualDates);
+        const archIdx = archivedEntries.findIndex((e) => getEntryId(e) === originalId);
+        if (archIdx !== -1) {
+          archivedEntries[archIdx] = updatedEntry;
+          saveSetting(keys.archivedEntries, archivedEntries);
+        } else {
+          cashEntries.push(updatedEntry);
+          saveSetting(keys.entries, cashEntries);
+        }
+
+        if (actualAmountInEgp > 0) {
+          setEntryActualAmount(updatedEntry, actualAmountInEgp);
+          setEntryActualDate(updatedEntry, form.elements.date.value);
+        } else {
+          delete entryActuals[originalId];
+          delete entryActualDates[originalId];
+          saveSetting(keys.entryActuals, entryActuals);
+          saveSetting(keys.entryActualDates, entryActualDates);
+        }
       }
     }
   } else {
@@ -5968,6 +6019,17 @@ function setupEventListeners() {
       if (actualAmount > 0) {
         archivedEntries.push(entry);
         saveSetting(keys.archivedEntries, archivedEntries);
+      }
+
+      if (deleteKey.startsWith("credit-settlement-")) {
+        const parts = deleteKey.split("-");
+        const accountKey = parts[2];
+        const monthKey = `${parts[3]}-${parts[4]}`;
+        const prevLen = cashEntries.length;
+        cashEntries = cashEntries.filter((e) => !(isLumpCreditDueForAccount(e, accountKey) && DateUtils.getMonthKey(e.date) === monthKey));
+        if (cashEntries.length !== prevLen) {
+          saveSetting(keys.entries, cashEntries);
+        }
       }
 
       if (!deletedForecasts.includes(deleteKey)) {
