@@ -2386,3 +2386,67 @@ label {
   background: var(--line);
   flex-shrink: 0;
 }
+
+/* --- Collapsible Panel Styles --- */
+.collapsible-panel .collapse-toggle-btn {
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 14px;
+  border: 1px solid var(--line);
+  cursor: pointer;
+  transition: transform 0.2s ease, background-color 0.2s ease;
+}
+
+.collapsible-panel.is-collapsed .collapse-icon {
+  transform: rotate(-90deg);
+}
+
+.collapsible-panel .collapse-icon {
+  display: inline-block;
+  transition: transform 0.2s ease;
+}
+
+.collapsible-panel .collapsible-content {
+  overflow: hidden;
+  transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease, margin 0.25s ease;
+  max-height: 1200px;
+  opacity: 1;
+}
+
+.collapsible-panel.is-collapsed .collapsible-content {
+  max-height: 0 !important;
+  opacity: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  pointer-events: none;
+}
+
+.history-scroll-list::-webkit-scrollbar,
+.history-scroll-table::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.history-scroll-list::-webkit-scrollbar-thumb,
+.history-scroll-table::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 3px;
+}
+
+.history-subitems-summary {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

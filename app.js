@@ -31,7 +31,9 @@ const keys = {
   gistAutoSync: "budget-control-gist-autosync",
   historyAdminUnlocked: "budget-control-history-admin-unlocked",
   forecastLineMonths: "budget-control-forecast-line-months",
-  forecastLineMode: "budget-control-forecast-line-mode"
+  forecastLineMode: "budget-control-forecast-line-mode",
+  historyDistributionCollapsed: "budget-control-history-dist-collapsed",
+  historyGroupedSummaryCollapsed: "budget-control-history-grouped-collapsed"
 };
 
 const seedVersion = "blank-template-v2";
@@ -712,6 +714,8 @@ let archivedEntries = loadSetting(keys.archivedEntries, []);
 let categoryCaps = loadSetting(keys.categoryCaps, defaultCategoryCaps);
 let savingsGoals = loadSetting(keys.savingsGoals, defaultSavingsGoals);
 let historyAdminUnlocked = loadSetting(keys.historyAdminUnlocked, false);
+let historyDistributionCollapsed = loadSetting(keys.historyDistributionCollapsed, false);
+let historyGroupedSummaryCollapsed = loadSetting(keys.historyGroupedSummaryCollapsed, false);
 let forecastLineRangeMonths = loadSetting(keys.forecastLineMonths, 12);
 let forecastLineChartMode = loadSetting(keys.forecastLineMode, "entries");
 let simulatedSpendAmount = 0;
@@ -4098,16 +4102,46 @@ function renderHistory() {
   detailsTable.innerHTML = detailRows || `<tr><td colspan="9">No validated entries match the selected filters</td></tr>`;
 
   // 3. Grouped Category & Source Summary + Donut Chart
+  // Helper to map category and type into high-level smart buckets
+  function getSmartGroupBucket(category, type, source) {
+    const cat = (category || "").toLowerCase();
+    const src = (source || "").toLowerCase();
+    if (type === "income") {
+      if (cat.includes("salary")) return "Salary";
+      if (cat.includes("loan") || src.includes("loan")) return "Loans Received";
+      return "Other Income";
+    }
+    // Expense grouping
+    if (cat.includes("bill") || cat.includes("utility") || cat.includes("utilities") || cat.includes("rent") || cat.includes("telecom") || cat.includes("internet") || cat.includes("subscription") || cat.includes("mobile") || cat.includes("phone") || cat.includes("we") || cat.includes("vodafone") || cat.includes("orange") || cat.includes("etisalat") || cat.includes("electricity") || cat.includes("water") || cat.includes("gas") || cat.includes("club")) {
+      return "Bills & Utilities";
+    }
+    if (src.includes("recurring credit") || isCreditDueLumpSum({ type: "expense", category, creditType: cat, account: cat }) || cat.includes("credit") || cat.includes("cib") || cat.includes("hsbc")) {
+      return "Credit & Cards";
+    }
+    if (src.includes("installment") || cat.includes("installment") || cat.includes("valyou") || cat.includes("sympl") || cat.includes("souhoola")) {
+      return "Installments";
+    }
+    if (src.includes("loan") || cat.includes("loan") || cat.includes("repay")) {
+      return "Loan Repayments";
+    }
+    if (cat.includes("food") || cat.includes("grocer") || cat.includes("market") || cat.includes("dining") || cat.includes("cafe") || cat.includes("coffee") || cat.includes("restaurant") || cat.includes("fuel") || cat.includes("car") || cat.includes("transport") || cat.includes("uber") || cat.includes("health") || cat.includes("pharmacy") || cat.includes("doctor") || cat.includes("personal") || cat.includes("shopping")) {
+      return "Living & Daily Spend";
+    }
+    return category || "General Expenses";
+  }
+
   const categoryGroups = new Map();
   filteredEntries.forEach((entry) => {
-    const key = `${entry.category || "Uncategorized"}|${entry.type || "expense"}`;
+    const smartBucket = getSmartGroupBucket(entry.category, entry.type || "expense", entry.source);
+    const key = `${smartBucket}|${entry.type || "expense"}`;
     if (!categoryGroups.has(key)) {
       categoryGroups.set(key, {
-        category: entry.category || "Uncategorized",
+        category: smartBucket,
         type: entry.type || "expense",
         count: 0,
         totalActual: 0,
-        totalForecast: 0
+        totalForecast: 0,
+        subCategories: new Map()
       });
     }
     const group = categoryGroups.get(key);
@@ -4123,6 +4157,9 @@ function renderHistory() {
     }
     group.totalActual += actualForGroup;
     group.totalForecast += Number(entry.amount || 0);
+
+    const subCatName = entry.category || "General";
+    group.subCategories.set(subCatName, (group.subCategories.get(subCatName) || 0) + actualForGroup);
   });
 
   const sortedGroups = [...categoryGroups.values()].sort((a, b) => b.totalActual - a.totalActual);
@@ -4133,6 +4170,16 @@ function renderHistory() {
   const pieChart = document.getElementById("historyPieChart");
   const pieCenterVal = document.getElementById("historyPieCenterValue");
   const groupedCountEl = document.getElementById("historyGroupedCount");
+
+  // Apply collapsible panel state
+  const distPanel = document.getElementById("historyDistributionPanel");
+  if (distPanel) {
+    distPanel.classList.toggle("is-collapsed", Boolean(historyDistributionCollapsed));
+  }
+  const groupedPanel = document.getElementById("historyGroupedSummaryPanel");
+  if (groupedPanel) {
+    groupedPanel.classList.toggle("is-collapsed", Boolean(historyGroupedSummaryCollapsed));
+  }
 
   if (groupedCountEl) {
     groupedCountEl.textContent = `${sortedGroups.length} ${sortedGroups.length === 1 ? "group" : "groups"}`;
@@ -4167,12 +4214,16 @@ function renderHistory() {
       pieCenterVal.textContent = money(totalFilteredActual);
     }
 
-    // Render Grouped List with Progress bars
+    // Render Grouped List with Progress bars and subcategory breakdowns
     if (categoryList) {
       categoryList.innerHTML = sortedGroups
         .map((group, idx) => {
           const color = palette[idx % palette.length];
           const pct = Math.round((group.totalActual / totalFilteredActual) * 100) || 0;
+          const subItemsText = [...group.subCategories.entries()]
+            .map(([subName, subAmt]) => `${subName} (${money(subAmt)})`)
+            .join(" · ");
+
           return `
             <div class="list-row" style="flex-direction:column; align-items:stretch; gap:4px; padding:8px 10px;">
               <div style="display:flex; justify-content:space-between; font-size:12.5px; font-weight:700;">
@@ -4186,6 +4237,7 @@ function renderHistory() {
               <div class="progress-bar-bg" style="height:5px;">
                 <div class="progress-bar-fill" style="width:${pct}%; background-color:${color}; height:100%;"></div>
               </div>
+              ${subItemsText ? `<span class="history-subitems-summary" title="${escapeHtml(subItemsText)}">${escapeHtml(subItemsText)}</span>` : ""}
             </div>
           `;
         })
@@ -4198,6 +4250,10 @@ function renderHistory() {
         .map((group, idx) => {
           const color = palette[idx % palette.length];
           const pct = Math.round((group.totalActual / totalFilteredActual) * 100) || 0;
+          const subItemsText = [...group.subCategories.entries()]
+            .map(([subName, subAmt]) => `${subName}: ${money(subAmt)}`)
+            .join(", ");
+
           return `
             <tr>
               <td>
@@ -4205,6 +4261,7 @@ function renderHistory() {
                   <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${color}; flex-shrink:0;"></span>
                   <strong>${escapeHtml(group.category)}</strong>
                 </span>
+                ${subItemsText ? `<small style="display:block; color:var(--muted); font-size:11px; margin-top:2px;" title="${escapeHtml(subItemsText)}">${escapeHtml(subItemsText)}</small>` : ""}
               </td>
               <td><span class="pill ${escapeHtml(group.type)}">${escapeHtml(group.type)}</span></td>
               <td class="number">${group.count}</td>
@@ -6625,6 +6682,21 @@ function setupEventListeners() {
     historyAdminUnlocked = !historyAdminUnlocked;
     saveSetting(keys.historyAdminUnlocked, historyAdminUnlocked);
     renderHistory();
+  });
+
+  // History collapsible distribution & summary panels
+  on("historyDistributionToggle", "click", () => {
+    historyDistributionCollapsed = !historyDistributionCollapsed;
+    saveSetting(keys.historyDistributionCollapsed, historyDistributionCollapsed);
+    const panel = document.getElementById("historyDistributionPanel");
+    if (panel) panel.classList.toggle("is-collapsed", historyDistributionCollapsed);
+  });
+
+  on("historyGroupedSummaryToggle", "click", () => {
+    historyGroupedSummaryCollapsed = !historyGroupedSummaryCollapsed;
+    saveSetting(keys.historyGroupedSummaryCollapsed, historyGroupedSummaryCollapsed);
+    const panel = document.getElementById("historyGroupedSummaryPanel");
+    if (panel) panel.classList.toggle("is-collapsed", historyGroupedSummaryCollapsed);
   });
 
   // History inline actual input

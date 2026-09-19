@@ -554,42 +554,60 @@
           </div>
 
           <div class="content-grid history-analytics-grid" style="margin-bottom: 18px;">
-            <section class="panel">
-              <div class="panel-heading">
-                <h3>Category &amp; Source Distribution</h3>
-                <span id="historyGroupedSummaryNote">Filtered actuals</span>
-              </div>
-              <div class="history-chart-layout">
-                <div class="donut-chart-container" id="historyPieChartContainer">
-                  <div class="donut-chart" id="historyPieChart"></div>
-                  <div class="donut-center-label" id="historyPieCenter">
-                    <span id="historyPieCenterTitle">Total</span>
-                    <strong id="historyPieCenterValue">0</strong>
-                  </div>
+            <section class="panel collapsible-panel" id="historyDistributionPanel">
+              <div class="panel-heading" style="cursor: pointer;" id="historyDistributionToggle">
+                <div>
+                  <h3>Category &amp; Source Distribution</h3>
+                  <span id="historyGroupedSummaryNote" style="font-size: 11.5px; color: var(--muted);">Filtered actuals</span>
                 </div>
-                <div id="historyCategoryGroupList" class="stack-list" style="flex: 1; min-width: 220px;"></div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <button class="ghost-button collapse-toggle-btn" type="button" aria-label="Toggle Category & Source Distribution">
+                    <span class="collapse-icon">▾</span>
+                  </button>
+                </div>
+              </div>
+              <div class="collapsible-content" id="historyDistributionBody">
+                <div class="history-chart-layout">
+                  <div class="donut-chart-container" id="historyPieChartContainer">
+                    <div class="donut-chart" id="historyPieChart"></div>
+                    <div class="donut-center-label" id="historyPieCenter">
+                      <span id="historyPieCenterTitle">Total</span>
+                      <strong id="historyPieCenterValue">0</strong>
+                    </div>
+                  </div>
+                  <div id="historyCategoryGroupList" class="stack-list history-scroll-list" style="flex: 1; min-width: 220px; max-height: 280px; overflow-y: auto;"></div>
+                </div>
               </div>
             </section>
 
-            <section class="panel">
-              <div class="panel-heading">
-                <h3>Grouped Sources Summary</h3>
-                <span id="historyGroupedCount">0 groups</span>
+            <section class="panel collapsible-panel" id="historyGroupedSummaryPanel">
+              <div class="panel-heading" style="cursor: pointer;" id="historyGroupedSummaryToggle">
+                <div>
+                  <h3>Grouped Sources Summary</h3>
+                  <span id="historyGroupedCount" style="font-size: 11.5px; color: var(--muted);">0 groups</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <button class="ghost-button collapse-toggle-btn" type="button" aria-label="Toggle Grouped Sources Summary">
+                    <span class="collapse-icon">▾</span>
+                  </button>
+                </div>
               </div>
-              <p style="color: var(--muted); font-size: 13px; margin: -4px 0 12px;">Aggregated actual totals by category and transaction type.</p>
-              <div class="table-wrap compact">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Group / Category</th>
-                      <th>Type</th>
-                      <th class="number">Entries</th>
-                      <th class="number">Total Actual</th>
-                      <th class="number">Share</th>
-                    </tr>
-                  </thead>
-                  <tbody id="historyGroupedTable"></tbody>
-                </table>
+              <div class="collapsible-content" id="historyGroupedSummaryBody">
+                <p style="color: var(--muted); font-size: 13px; margin: -4px 0 12px;">Aggregated actual totals by category and transaction type.</p>
+                <div class="table-wrap compact history-scroll-table" style="max-height: 280px; overflow-y: auto;">
+                  <table>
+                    <thead style="position: sticky; top: 0; background: var(--surface); z-index: 1;">
+                      <tr>
+                        <th>Group / Category</th>
+                        <th>Type</th>
+                        <th class="number">Entries</th>
+                        <th class="number">Total Actual</th>
+                        <th class="number">Share</th>
+                      </tr>
+                    </thead>
+                    <tbody id="historyGroupedTable"></tbody>
+                  </table>
+                </div>
               </div>
             </section>
           </div>
