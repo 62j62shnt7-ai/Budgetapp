@@ -889,27 +889,238 @@ function buildRecurringEntries(baseEntry, optionsOrMonths) {
   return result;
 }
 
+// --- Credit Card Cycle & Settlement Calculations ---
+function isCreditCardExpense(entry) {
+  if (!entry || entry.type !== "expense") return false;
+  const t = (entry.creditType || "").toLowerCase();
+  const acc = (entry.account || "").toLowerCase();
+  const cat = (entry.category || "").toLowerCase();
+  if (t === "cib_card" || t === "hsbc_card" || t === "cib-card" || t === "hsbc-card") return true;
+  if ((t === "cib" || t === "hsbc") && cat !== "credit due") return true;
+  if (acc === "cib credit" || acc === "cib_credit" || acc === "cib-credit" || acc === "hsbc credit" || acc === "hsbc_credit" || acc === "hsbc-credit") return true;
+  return false;
+}
+
+function isCardExpenseForAccount(entry, accountKey) {
+  if (!isCreditCardExpense(entry)) return false;
+  const t = (entry.creditType || "").toLowerCase();
+  const acc = (entry.account || "").toLowerCase();
+  const target = (accountKey || "").toLowerCase();
+  if (target === "cib") {
+    return t.includes("cib") || acc.includes("cib");
+  }
+  if (target === "hsbc") {
+    return t.includes("hsbc") || acc.includes("hsbc");
+  }
+  return false;
+}
+
+function isCreditDueLumpSum(entry) {
+  if (!entry) return false;
+  const t = (entry.creditType || "").toLowerCase();
+  const cat = (entry.category || "").toLowerCase();
+  if (t === "cib" || t === "hsbc") return cat === "credit due";
+  return cat === "credit due";
+}
+
+function isLumpCreditDueForAccount(entry, accountKey) {
+  if (!entry || entry.type !== "expense") return false;
+  const t = (entry.creditType || "").toLowerCase();
+  const cat = (entry.category || "").toLowerCase();
+  const acc = (entry.account || "").toLowerCase();
+  const target = (accountKey || "").toLowerCase();
+  if (t === target && cat === "credit due") return true;
+  if (!t && cat === "credit due" && (acc === target || acc.includes(target))) return true;
+  return false;
+}
+
+function calculateCreditSettlementDate(dateStr, creditType) {
+  if (!dateStr) dateStr = DateUtils.todayString();
+  const [y, m, d] = DateUtils.parseDate(dateStr);
+  const type = (creditType || "").toLowerCase();
+
+  if (type.includes("hsbc")) {
+    // HSBC Rule: Spend in month M settles on the last day of following month (M+1)
+    let targetYear = y;
+    let targetMonth = m + 1;
+    if (targetMonth > 12) {
+      targetMonth = 1;
+      targetYear += 1;
+    }
+    const lastDay = DateUtils.getLastDayOfMonth(targetYear, targetMonth);
+    return DateUtils.formatDate(targetYear, targetMonth, lastDay);
+  }
+
+  // CIB Rule: Cycle starts on 15th.
+  // Spent <= 15th -> settles 15th of next month (M+1).
+  // Spent > 15th -> settles 15th of 2 months later (M+2).
+  let targetYear = y;
+  let targetMonth = d <= 15 ? m + 1 : m + 2;
+  while (targetMonth > 12) {
+    targetMonth -= 12;
+    targetYear += 1;
+  }
+  return DateUtils.formatDate(targetYear, targetMonth, 15);
+}
+
+function getCreditCycleHint(dateStr, creditType) {
+  if (!dateStr) return "";
+  const [y, m, d] = DateUtils.parseDate(dateStr);
+  const type = (creditType || "").toLowerCase();
+  const monthName = new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
+
+  if (type.includes("hsbc")) {
+    const dueStr = calculateCreditSettlementDate(dateStr, creditType);
+    return `HSBC cycle: ${monthName} spending settles end of following month (${DateUtils.formatDisplayDate(dueStr)})`;
+  }
+  if (type.includes("cib") || !type) {
+    const dueStr = calculateCreditSettlementDate(dateStr, creditType);
+    if (d <= 15) {
+      return `CIB cycle: ${monthName} 1–15 settles on ${DateUtils.formatDisplayDate(dueStr)}`;
+    }
+    return `CIB cycle: Spent after 15th (${monthName} 16–next 15th) settles on ${DateUtils.formatDisplayDate(dueStr)}`;
+  }
+  return "";
+}
+
+function getCreditSettlementDate(entry) {
+  if (!entry) return "";
+  if (entry.creditSettlementDate) return entry.creditSettlementDate;
+  if (isCreditCardExpense(entry)) {
+    const t = (entry.creditType || "").toLowerCase();
+    const acc = (entry.account || "").toLowerCase();
+    const type = (t.includes("hsbc") || acc.includes("hsbc")) ? "hsbc_card" : "cib_card";
+    const d = getEntryActualDate(entry) || entry.date;
+    return calculateCreditSettlementDate(d, type);
+  }
+  return entry.date || "";
+}
+
+function getCreditSettlementMonth(entry) {
+  const sDate = getCreditSettlementDate(entry);
+  return sDate ? DateUtils.getMonthKey(sDate) : "";
+}
+
+function getEntryForecastCashDate(entry) {
+  if (isCreditCardExpense(entry)) {
+    return getCreditSettlementDate(entry);
+  }
+  return entry.date;
+}
+
 function creditDueEntries() {
   const entries = [];
-  Object.entries(creditDues).forEach(([id, monthData]) => {
-    const acc = accountBalances[id];
-    if (!acc) return;
+  const targetAccounts = ["cib", "hsbc"];
+  const allAccountIds = new Set([
+    ...Object.keys(accountBalances || {}),
+    ...Object.keys(creditDues || {}),
+    ...targetAccounts
+  ]);
 
-    Object.entries(monthData).forEach(([monthKey, amount]) => {
-      if (Number(amount) <= 0) return;
+  const allExpenses = [
+    ...(cashEntries || []),
+    ...(archivedEntries || [])
+  ].filter((entry) => entry && entry.type === "expense");
+
+  targetAccounts.forEach((accountKey) => {
+    const matchingBalanceKey = Object.keys(accountBalances || {}).find((k) => k.toLowerCase() === accountKey) || accountKey;
+    const acc = (accountBalances && accountBalances[matchingBalanceKey]) || {
+      name: accountKey === "cib" ? "CIB" : "HSBC",
+      maturityDay: accountKey === "cib" ? 15 : 30
+    };
+    const monthData = (creditDues && (creditDues[accountKey] || creditDues[matchingBalanceKey])) || {};
+
+    // Collect all months that have base dues, manual lump sums, or tracked card purchases
+    const settlementMonths = new Set(Object.keys(monthData));
+
+    allExpenses.forEach((entry) => {
+      if (isCardExpenseForAccount(entry, accountKey)) {
+        const sMonth = getCreditSettlementMonth(entry);
+        if (sMonth) settlementMonths.add(sMonth);
+      } else if (isLumpCreditDueForAccount(entry, accountKey)) {
+        const sMonth = DateUtils.getMonthKey(entry.date);
+        if (sMonth) settlementMonths.add(sMonth);
+      }
+    });
+
+    const orderedSettlementMonths = [...settlementMonths].sort();
+
+    orderedSettlementMonths.forEach((monthKey) => {
+      const baseDue = Number(monthData[monthKey] || 0);
+
+      const manualLumpEntries = allExpenses.filter(
+        (entry) => isLumpCreditDueForAccount(entry, accountKey) && DateUtils.getMonthKey(entry.date) === monthKey
+      );
+      const lumpAmount = manualLumpEntries.reduce((sum, e) => {
+        const act = getEntryActualAmount(e);
+        return sum + (act > 0 ? act : Number(e.amount || 0));
+      }, 0);
+
+      const cardExpenses = allExpenses.filter(
+        (entry) => isCardExpenseForAccount(entry, accountKey) && getCreditSettlementMonth(entry) === monthKey
+      );
+      const cardSpendTotal = cardExpenses.reduce((sum, e) => {
+        const act = getEntryActualAmount(e);
+        return sum + (act > 0 ? act : Number(e.amount || 0));
+      }, 0);
+
+      const totalPlannedDue = baseDue + lumpAmount + cardSpendTotal;
+      if (totalPlannedDue <= 0) return;
+
       const [year, month] = DateUtils.parseYearMonth(monthKey);
       const lastDay = DateUtils.getLastDayOfMonth(year, month);
-      const day = Math.min(acc.maturityDay, lastDay);
+      const maturityDay = Number(acc.maturityDay) || (accountKey === "cib" ? 15 : lastDay);
+      const day = Math.min(maturityDay, lastDay);
+      const defaultSettlementDate = DateUtils.formatDate(year, month, day);
+
+      const explicitDateEntry = cardExpenses.find((e) => e.creditSettlementDate);
+      const settlementDate = explicitDateEntry && explicitDateEntry.creditSettlementDate ? explicitDateEntry.creditSettlementDate : defaultSettlementDate;
+
+      const settlementId = `credit-settlement-${accountKey}-${monthKey}`;
+
       entries.push({
-        date: DateUtils.formatDate(year, month, day),
+        id: settlementId,
+        date: settlementDate,
         category: `${acc.name} Credit`,
-        account: id,
+        account: matchingBalanceKey,
         type: "expense",
-        amount: Number(amount),
+        amount: totalPlannedDue,
+        baseDue,
+        cardSpendTotal,
+        cardExpenseCount: cardExpenses.length,
         source: "recurring credit"
       });
     });
   });
+
+  // Also include any other credit accounts with monthData in creditDues
+  allAccountIds.forEach((id) => {
+    const accountKey = (id || "").toLowerCase();
+    if (targetAccounts.includes(accountKey)) return;
+    const acc = accountBalances && accountBalances[id];
+    if (!acc) return;
+    const monthData = (creditDues && creditDues[id]) || {};
+    Object.entries(monthData).forEach(([monthKey, amount]) => {
+      const num = Number(amount || 0);
+      if (num <= 0) return;
+      const [year, month] = DateUtils.parseYearMonth(monthKey);
+      const lastDay = DateUtils.getLastDayOfMonth(year, month);
+      const day = Math.min(Number(acc.maturityDay) || lastDay, lastDay);
+      entries.push({
+        id: `credit-settlement-${accountKey}-${monthKey}`,
+        date: DateUtils.formatDate(year, month, day),
+        category: `${acc.name} Credit`,
+        account: id,
+        type: "expense",
+        amount: num,
+        baseDue: num,
+        cardSpendTotal: 0,
+        cardExpenseCount: 0,
+        source: "recurring credit"
+      });
+    });
+  });
+
   return entries;
 }
 
@@ -919,7 +1130,11 @@ function getEntryId(entry) {
 
 function getEntryActualAmount(entry) {
   const id = getEntryId(entry);
-  const rawValue = entryActuals[id];
+  let rawValue = entryActuals[id];
+  if ((rawValue === undefined || rawValue === null || rawValue === "") && entry && entry.id) {
+    const legacyId = `${entry.date}-${entry.category}-${entry.amount}-${entry.type}-${entry.account || "cash"}`;
+    rawValue = entryActuals[legacyId];
+  }
   if (rawValue !== undefined && rawValue !== null && rawValue !== "") {
     return Math.round(Number(rawValue) || 0);
   }
@@ -1091,12 +1306,15 @@ function forecastEntries() {
   const today = DateUtils.todayString();
   return getForecastCandidateEntries()
     .filter((entry) => {
+      // Exclude individual credit card purchases from being direct cash outflows,
+      // because creditDueEntries() creates the consolidated credit settlement entry on their due date!
+      if (isCreditCardExpense(entry)) return false;
+
       // If it's an unclosed partial-tracked entry (expense or loan) with remaining balance, persist it past its date
       if (isPartialTracked(entry) && !entry.isClosed && getRemainingForecastAmount(entry) > 0) {
         return true;
       }
-      const cashDate = getEntryForecastCashDate(entry);
-      return !cashDate || cashDate >= today;
+      return !entry.date || entry.date >= today;
     })
     .filter((entry) => {
       if (isPartialTracked(entry)) {
@@ -1108,15 +1326,15 @@ function forecastEntries() {
       return getEntryActualAmount(entry) <= 0;
     })
     .map((entry) => {
-      let effDate = getEntryForecastCashDate(entry);
+      let effDate = entry.date;
       // Carry forward undrawn/unspent funds to today in the projection so they remain active
       if (isPartialTracked(entry) && effDate && effDate < today && getRemainingForecastAmount(entry) > 0) {
         effDate = today;
       }
       if (isPartialTracked(entry) && getEntryActualAmount(entry) > 0) {
-        return { ...entry, date: effDate, originalDate: entry.date, amount: getRemainingForecastAmount(entry) };
+        return { ...entry, date: effDate, amount: getRemainingForecastAmount(entry) };
       }
-      return { ...entry, date: effDate, originalDate: entry.date };
+      return { ...entry, date: effDate };
     });
 }
 
@@ -1168,91 +1386,17 @@ function materializeLegacySalaryEntries() {
   localStorage.setItem(keys.salaryMaterialized, "true");
 }
 
-// --- Credit Card Cycle & Settlement Calculations ---
-function isCreditCardExpense(entry) {
-  if (!entry) return false;
-  const t = (entry.creditType || "").toLowerCase();
-  return t === "cib_card" || t === "hsbc_card";
-}
-
-function isCreditDueLumpSum(entry) {
-  if (!entry) return false;
-  const t = (entry.creditType || "").toLowerCase();
-  return t === "cib" || t === "hsbc";
-}
-
-function calculateCreditSettlementDate(dateStr, creditType) {
-  if (!dateStr) dateStr = DateUtils.todayString();
-  const [y, m, d] = DateUtils.parseDate(dateStr);
-  const type = (creditType || "").toLowerCase();
-
-  if (type === "hsbc_card" || type === "hsbc") {
-    // HSBC Rule: Spend in month M settles on the last day of following month (M+1)
-    let targetYear = y;
-    let targetMonth = m + 1;
-    if (targetMonth > 12) {
-      targetMonth = 1;
-      targetYear += 1;
-    }
-    const lastDay = DateUtils.getLastDayOfMonth(targetYear, targetMonth);
-    return DateUtils.formatDate(targetYear, targetMonth, lastDay);
-  }
-
-  // CIB Rule: Cycle starts on 15th.
-  // Spent <= 15th -> settles 15th of next month (M+1).
-  // Spent > 15th -> settles 15th of 2 months later (M+2).
-  let targetYear = y;
-  let targetMonth = d <= 15 ? m + 1 : m + 2;
-  while (targetMonth > 12) {
-    targetMonth -= 12;
-    targetYear += 1;
-  }
-  return DateUtils.formatDate(targetYear, targetMonth, 15);
-}
-
-function getCreditCycleHint(dateStr, creditType) {
-  if (!dateStr) return "";
-  const [y, m, d] = DateUtils.parseDate(dateStr);
-  const type = (creditType || "").toLowerCase();
-  const monthName = new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
-
-  if (type === "hsbc_card") {
-    const dueStr = calculateCreditSettlementDate(dateStr, creditType);
-    return `HSBC cycle: ${monthName} spending settles end of following month (${DateUtils.formatDisplayDate(dueStr)})`;
-  }
-  if (type === "cib_card") {
-    const dueStr = calculateCreditSettlementDate(dateStr, creditType);
-    if (d <= 15) {
-      return `CIB cycle: ${monthName} 1–15 settles on ${DateUtils.formatDisplayDate(dueStr)}`;
-    }
-    return `CIB cycle: Spent after 15th (${monthName} 16–next 15th) settles on ${DateUtils.formatDisplayDate(dueStr)}`;
-  }
-  return "";
-}
-
-function getCreditSettlementDate(entry) {
-  if (!entry) return "";
-  if (entry.creditSettlementDate) return entry.creditSettlementDate;
-  if (isCreditCardExpense(entry)) {
-    return calculateCreditSettlementDate(entry.date, entry.creditType);
-  }
-  return entry.date || "";
-}
-
-function getCreditSettlementMonth(entry) {
-  const sDate = getCreditSettlementDate(entry);
-  return sDate ? DateUtils.getMonthKey(sDate) : "";
-}
-
-function getEntryForecastCashDate(entry) {
-  if (isCreditCardExpense(entry)) {
-    return getCreditSettlementDate(entry);
-  }
-  return entry.date;
-}
-
 function getSavedCreditDueMonths(id) {
-  return Object.keys(creditDues[id] || {}).sort();
+  const accountKey = (id || "").toLowerCase();
+  const months = new Set(Object.keys((creditDues && creditDues[id]) || {}));
+  const allExpenses = [...(cashEntries || []), ...(archivedEntries || [])];
+  allExpenses.forEach((entry) => {
+    if (isCardExpenseForAccount(entry, accountKey)) {
+      const sm = getCreditSettlementMonth(entry);
+      if (sm) months.add(sm);
+    }
+  });
+  return [...months].sort();
 }
 
 function getDefaultCreditDueMonth() {
@@ -1284,31 +1428,32 @@ function getRemainingCreditDueAmount(id) {
   // 1. Base recurring credit due set in settings
   const baseDue = getCreditDueAmount(id);
 
-  // 2. Manual lump sum credit entries added via "Add expense" with creditType matching this account
-  const manualLumpEntries = cashEntries.filter(
-    (entry) => entry.type === "expense" && (entry.creditType || "").toLowerCase() === accountKey
+  const allExpenses = [
+    ...(cashEntries || []),
+    ...(archivedEntries || [])
+  ].filter((entry) => entry && entry.type === "expense");
+
+  // 2. Manual lump sum credit entries
+  const activeLumpEntries = allExpenses.filter(
+    (entry) => isLumpCreditDueForAccount(entry, accountKey) && (!selectedMonth || DateUtils.getMonthKey(entry.date) === selectedMonth)
   );
-  const activeLumpEntries = manualLumpEntries.filter((entry) => {
-    if (entry.date && selectedMonth) {
-      return DateUtils.getMonthKey(entry.date) === selectedMonth;
-    }
-    return true;
-  });
 
   // 3. Tracked credit card purchases maturing in selectedMonth
-  const cardTypeKey = `${accountKey}_card`;
-  const cardExpenses = cashEntries.filter(
-    (entry) => entry.type === "expense" && (entry.creditType || "").toLowerCase() === cardTypeKey
+  const activeCardExpenses = allExpenses.filter(
+    (entry) => isCardExpenseForAccount(entry, accountKey) && (!selectedMonth || getCreditSettlementMonth(entry) === selectedMonth)
   );
-  const activeCardExpenses = cardExpenses.filter((entry) => {
-    const setMonth = getCreditSettlementMonth(entry);
-    return setMonth === selectedMonth;
-  });
 
-  const totalPlannedDue =
-    baseDue +
-    activeLumpEntries.reduce((sum, entry) => sum + Number(entry.amount || 0), 0) +
-    activeCardExpenses.reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+  const cardSpendTotal = activeCardExpenses.reduce((sum, entry) => {
+    const act = getEntryActualAmount(entry);
+    return sum + (act > 0 ? act : Number(entry.amount || 0));
+  }, 0);
+
+  const lumpAmount = activeLumpEntries.reduce((sum, entry) => {
+    const act = getEntryActualAmount(entry);
+    return sum + (act > 0 ? act : Number(entry.amount || 0));
+  }, 0);
+
+  const totalPlannedDue = baseDue + lumpAmount + cardSpendTotal;
 
   // 4. Actual payments made on recurring credit due
   const creditEntries = creditDueEntries();
@@ -1317,11 +1462,11 @@ function getRemainingCreditDueAmount(id) {
   );
   const recurringActualPaid = monthRecurringEntry ? getEntryActualAmount(monthRecurringEntry) : 0;
 
-  // 5. Actual payments made on manual lump sum entries and card expenses
+  // 5. Actual payments made directly on manual lump sum entries
   const lumpActualPaid = activeLumpEntries.reduce((sum, entry) => sum + getEntryActualAmount(entry), 0);
-  const cardActualPaid = activeCardExpenses.reduce((sum, entry) => sum + getEntryActualAmount(entry), 0);
 
-  const totalPaid = recurringActualPaid + lumpActualPaid + cardActualPaid;
+  // Total paid towards the settlement / bill
+  const totalPaid = recurringActualPaid + lumpActualPaid;
 
   return Math.max(0, totalPlannedDue - totalPaid);
 }
@@ -3350,12 +3495,19 @@ function renderEntries() {
       if (isCreditCardExpense(entry)) {
         const setDateStr = DateUtils.formatDisplayDate(getCreditSettlementDate(entry));
         sourceLabel = `<span style="display:inline-flex; align-items:center; gap:3px; color:var(--blue); font-weight:600;" title="Paid via credit card · Cash settles ${setDateStr}">💳 Settles ${setDateStr}</span>`;
+      } else if (entry.source === "recurring credit" || (entry.id && entry.id.startsWith("credit-settlement-"))) {
+        sourceLabel = `<span class="source-pill" style="color:var(--blue); font-weight:600;" title="Credit card settlement">Settlement</span>`;
+      }
+
+      let categoryDisplayHtml = escapeHtml(entry.category || "—");
+      if (entry.cardSpendTotal > 0) {
+        categoryDisplayHtml += `<small style="display:block; color:var(--muted); font-size:11px; margin-top:2px;">💳 Covers ${money(entry.cardSpendTotal)} card spend${entry.baseDue > 0 ? ` + ${money(entry.baseDue)} base due` : ""}</small>`;
       }
 
       return `
         <tr data-entry-id="${escapeHtml(deleteKey)}" class="${rowClass}" style="cursor:${clickable ? "pointer" : "default"};" title="${escapeHtml(rowTitle)}">
           <td>${dateCell}</td>
-          <td>${escapeHtml(entry.category)}${statusBadge}</td>
+          <td>${categoryDisplayHtml}${statusBadge}</td>
           <td>${escapeHtml(entry.account || "cash")}</td>
           <td><span class="pill ${escapeHtml(entry.type)}">${escapeHtml(entry.type)}</span></td>
           <td><span class="source-pill ${entry.source === "loan" ? "loan" : ""}">${sourceLabel}</span></td>
@@ -4440,8 +4592,10 @@ function syncEntryFormMode() {
   const form = document.getElementById("entryForm");
   if (!form) return;
   const creditType = (form.elements.creditType.value || "").trim().toLowerCase();
-  const isCreditDue = creditType === "cib" || creditType === "hsbc";
-  const isCardExpense = creditType === "cib_card" || creditType === "hsbc_card";
+  const catVal = (form.elements.category.value || "").trim().toLowerCase();
+  const isCardExpense = creditType === "cib_card" || creditType === "hsbc_card" ||
+    ((creditType === "cib" || creditType === "hsbc") && catVal !== "credit due" && catVal !== "");
+  const isCreditDue = (creditType === "cib" || creditType === "hsbc") && !isCardExpense;
 
   const catField = document.getElementById("categoryField");
   if (catField) catField.classList.toggle("is-hidden", isCreditDue);
@@ -4473,7 +4627,7 @@ function syncEntryFormMode() {
       hintEl.textContent = getCreditCycleHint(purchaseDate, creditType);
     }
     if (form.elements.account && (!form.elements.account.value || form.elements.account.value.toLowerCase() === "cash")) {
-      form.elements.account.value = creditType === "cib_card" ? "CIB Credit" : "HSBC Credit";
+      form.elements.account.value = creditType.includes("hsbc") ? "HSBC Credit" : "CIB Credit";
     }
   } else {
     if (hintEl) hintEl.textContent = "";
@@ -4570,8 +4724,10 @@ async function persistEntryForm(event) {
   const form = event.currentTarget;
   const dialog = document.getElementById("entryDialog");
   const creditType = (form.elements.creditType.value || "").trim().toLowerCase();
-  const isCreditDue = creditType === "cib" || creditType === "hsbc";
-  const isCardExpense = creditType === "cib_card" || creditType === "hsbc_card";
+  const catVal = (form.elements.category.value || "").trim().toLowerCase();
+  const isCardExpense = creditType === "cib_card" || creditType === "hsbc_card" ||
+    ((creditType === "cib" || creditType === "hsbc") && catVal !== "credit due" && catVal !== "");
+  const isCreditDue = (creditType === "cib" || creditType === "hsbc") && !isCardExpense;
   const isExpense = form.elements.type.value === "expense";
 
   let creditSettlementDate = "";
@@ -4610,7 +4766,7 @@ async function persistEntryForm(event) {
   const deltaActualAmount = actualAmountInEgp - prevActualInEgp;
   let chosenAccount = form.elements.account.value.trim() || "cash";
   if (isCardExpense && (!chosenAccount || chosenAccount.toLowerCase() === "cash")) {
-    chosenAccount = creditType === "cib_card" ? "CIB Credit" : "HSBC Credit";
+    chosenAccount = creditType.includes("hsbc") ? "HSBC Credit" : "CIB Credit";
   }
   const entryCat = form.elements.category.value.trim();
   const entryType = form.elements.type.value || "expense";
@@ -4621,7 +4777,7 @@ async function persistEntryForm(event) {
     const isLoanCat = form.elements.category.value.trim().toLowerCase().includes("loan");
     const updatedEntry = {
       ...(idx !== -1 ? cashEntries[idx] : editingEntry),
-      id: idx !== -1 ? cashEntries[idx].id : editingEntry.id || generateId(),
+      id: idx !== -1 ? (cashEntries[idx].id || generateId()) : (editingEntry.id || generateId()),
       date: form.elements.date.value,
       category: form.elements.category.value.trim(),
       account: chosenAccount,
@@ -4629,7 +4785,7 @@ async function persistEntryForm(event) {
       amount: plannedAmountInEgp,
       creditType: form.elements.creditType.value || "",
       creditSettlementDate: isCardExpense ? creditSettlementDate : "",
-      source: prevSource || (isCardExpense ? "credit card" : isLoanCat ? "loan" : form.elements.type.value === "expense" ? "expense" : "income")
+      source: isCardExpense ? "credit card" : (prevSource || (isLoanCat ? "loan" : form.elements.type.value === "expense" ? "expense" : "income"))
     };
 
     if (idx !== -1) {
