@@ -2508,7 +2508,7 @@ label {
 .collapsible-panel .collapsible-content {
   overflow: hidden;
   transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease, margin 0.25s ease;
-  max-height: 1200px;
+  max-height: 2500px;
   opacity: 1;
 }
 

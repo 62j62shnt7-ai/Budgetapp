@@ -371,12 +371,20 @@
           </section>
         </div>
 
-        <div class="content-grid salary-layout">
-          <section class="panel">
-            <div class="panel-heading">
-              <h3>Salary structure</h3>
-              <button class="ghost-button" id="addSalaryPayment" type="button">Add payment</button>
+        <section class="panel collapsible-panel" id="salaryStructurePanel" style="margin-bottom: 18px;">
+          <div class="panel-heading" style="cursor: pointer;" id="salaryStructureToggle">
+            <div style="display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;">
+              <h3 style="margin: 0;">Salary structure</h3>
+              <span style="font-size: 13px; color: var(--muted);">Quarter total: <strong id="salaryQuarterTotal" style="color: var(--primary); font-size: 14px;">0</strong></span>
             </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <button class="ghost-button" id="addSalaryPayment" type="button" onclick="event.stopPropagation();">+ Payment</button>
+              <button class="ghost-button collapse-toggle-btn" type="button" aria-label="Toggle Salary Structure">
+                <span class="collapse-icon">▾</span>
+              </button>
+            </div>
+          </div>
+          <div class="collapsible-content" id="salaryStructureBody">
             <div class="salary-controls">
               <label>
                 Start month
@@ -388,34 +396,45 @@
               </label>
               <button class="ghost-button" id="refreshSalaryEntries" type="button">Update salary</button>
             </div>
-            <p style="color: var(--muted); font-size: 13px; margin: -4px 0 12px;">Adds or refreshes salary payments only within the range above. Existing payments outside this range are left untouched — delete a payment individually if you no longer need it.</p>
+            <p style="color: var(--muted); font-size: 13px; margin: -4px 0 12px;">Adds or refreshes salary payments only within the range above. Existing payments outside this range are left untouched — delete a payment individually if you no longer need it. Paid on the 15th and 30th of each month.</p>
             <div id="salarySchedule" class="salary-grid"></div>
-          </section>
-          <section class="panel">
-            <div class="panel-heading">
-              <h3>Quarter total</h3>
-            </div>
-            <div class="summary-block">
-              <span>Fixed salary per quarter</span>
-              <strong id="salaryQuarterTotal">0</strong>
-              <p>Paid on the 15th and 30th of each month.</p>
-            </div>
-          </section>
-        </div>
+          </div>
+        </section>
+
         <div class="content-grid salary-layout">
-          <section class="panel">
-            <div class="panel-heading">
-              <h3>Installments</h3>
-              <button class="ghost-button" id="addInstallment" type="button">Add installment</button>
+          <section class="panel collapsible-panel" id="installmentsPanel">
+            <div class="panel-heading" style="cursor: pointer;" id="installmentsToggle">
+              <div style="display: flex; align-items: baseline; gap: 8px;">
+                <h3 style="margin: 0;">Installments</h3>
+                <span id="installmentCountBadge" style="font-size: 12px; color: var(--muted);"></span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <button class="ghost-button" id="addInstallment" type="button" onclick="event.stopPropagation();">+ Installment</button>
+                <button class="ghost-button collapse-toggle-btn" type="button" aria-label="Toggle Installments">
+                  <span class="collapse-icon">▾</span>
+                </button>
+              </div>
             </div>
-            <p style="color: var(--muted); font-size: 13px; margin: -4px 0 12px;">Recurring payments — edit one to change its amount, day, or schedule going forward. Past entries already recorded as paid are unaffected.</p>
-            <div id="installmentList" class="stack-list"></div>
+            <div class="collapsible-content" id="installmentsBody">
+              <p style="color: var(--muted); font-size: 13px; margin: -4px 0 12px;">Recurring payments — edit one to change its amount, day, or schedule going forward. Past entries already recorded as paid are unaffected.</p>
+              <div id="installmentList" class="stack-list"></div>
+            </div>
           </section>
-          <section class="panel">
-            <div class="panel-heading">
-              <h3>Expense mix</h3>
+
+          <section class="panel collapsible-panel" id="expenseMixPanel">
+            <div class="panel-heading" style="cursor: pointer;" id="expenseMixToggle">
+              <div>
+                <h3 style="margin: 0;">Expense mix</h3>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <button class="ghost-button collapse-toggle-btn" type="button" aria-label="Toggle Expense Mix">
+                  <span class="collapse-icon">▾</span>
+                </button>
+              </div>
             </div>
-            <div id="expenseList" class="stack-list"></div>
+            <div class="collapsible-content" id="expenseMixBody">
+              <div id="expenseList" class="stack-list"></div>
+            </div>
           </section>
         </div>
         <section class="panel">

@@ -33,6 +33,9 @@ const keys = {
   forecastLineMonths: "budget-control-forecast-line-months",
   forecastLineMode: "budget-control-forecast-line-mode",
   sidebarCollapsed: "budget-control-sidebar-collapsed",
+  salaryStructureCollapsed: "budget-control-salary-collapsed",
+  installmentsCollapsed: "budget-control-installments-collapsed",
+  expenseMixCollapsed: "budget-control-expense-mix-collapsed",
   historyAnalyticsCollapsed: "budget-control-history-analytics-collapsed",
   historyAnalyticsView: "budget-control-history-analytics-view",
   historyDistributionCollapsed: "budget-control-history-dist-collapsed",
@@ -739,6 +742,9 @@ let categoryCaps = loadSetting(keys.categoryCaps, defaultCategoryCaps);
 let savingsGoals = loadSetting(keys.savingsGoals, defaultSavingsGoals);
 let historyAdminUnlocked = loadSetting(keys.historyAdminUnlocked, false);
 let sidebarCollapsed = loadSetting(keys.sidebarCollapsed, false);
+let salaryStructureCollapsed = loadSetting(keys.salaryStructureCollapsed, false);
+let installmentsCollapsed = loadSetting(keys.installmentsCollapsed, false);
+let expenseMixCollapsed = loadSetting(keys.expenseMixCollapsed, false);
 let historyAnalyticsCollapsed = loadSetting(
   keys.historyAnalyticsCollapsed,
   loadSetting(keys.historyDistributionCollapsed, false)
@@ -3045,6 +3051,11 @@ function renderExpenseMix(entries) {
 
   const el = document.getElementById("expenseList");
   if (el) el.innerHTML = rows || `<div class="list-row empty-row"><span>💳 No expenses logged yet · Add an expense to view category mix</span></div>`;
+
+  const expenseMixPanel = document.getElementById("expenseMixPanel");
+  if (expenseMixPanel) {
+    expenseMixPanel.classList.toggle("is-collapsed", Boolean(expenseMixCollapsed));
+  }
 }
 
 function getDeficitSummary() {
@@ -3727,6 +3738,11 @@ function renderSalarySchedule() {
 
   const totEl = document.getElementById("salaryQuarterTotal");
   if (totEl) totEl.textContent = money(quarterTotal);
+
+  const salaryPanel = document.getElementById("salaryStructurePanel");
+  if (salaryPanel) {
+    salaryPanel.classList.toggle("is-collapsed", Boolean(salaryStructureCollapsed));
+  }
 }
 
 const frequencyLabels = {
@@ -3742,6 +3758,15 @@ function frequencyLabel(frequency) {
 }
 
 function renderInstallments() {
+  const installmentsPanel = document.getElementById("installmentsPanel");
+  if (installmentsPanel) {
+    installmentsPanel.classList.toggle("is-collapsed", Boolean(installmentsCollapsed));
+  }
+  const countBadge = document.getElementById("installmentCountBadge");
+  if (countBadge) {
+    countBadge.textContent = `${installments.length} active`;
+  }
+
   const list = document.getElementById("installmentList");
   if (!list) return;
   if (!installments.length) {
@@ -5607,6 +5632,30 @@ function setupEventListeners() {
   on("themeToggle", "click", toggleTheme);
   on("sidebarCollapseBtn", "click", toggleSidebar);
   on("sidebarExpandBtn", "click", toggleSidebar);
+
+  // Cashflow collapsible panels
+  on("salaryStructureToggle", "click", (e) => {
+    if (e.target.closest("#addSalaryPayment")) return;
+    salaryStructureCollapsed = !salaryStructureCollapsed;
+    saveSetting(keys.salaryStructureCollapsed, salaryStructureCollapsed);
+    const panel = document.getElementById("salaryStructurePanel");
+    if (panel) panel.classList.toggle("is-collapsed", salaryStructureCollapsed);
+  });
+
+  on("installmentsToggle", "click", (e) => {
+    if (e.target.closest("#addInstallment")) return;
+    installmentsCollapsed = !installmentsCollapsed;
+    saveSetting(keys.installmentsCollapsed, installmentsCollapsed);
+    const panel = document.getElementById("installmentsPanel");
+    if (panel) panel.classList.toggle("is-collapsed", installmentsCollapsed);
+  });
+
+  on("expenseMixToggle", "click", () => {
+    expenseMixCollapsed = !expenseMixCollapsed;
+    saveSetting(keys.expenseMixCollapsed, expenseMixCollapsed);
+    const panel = document.getElementById("expenseMixPanel");
+    if (panel) panel.classList.toggle("is-collapsed", expenseMixCollapsed);
+  });
 
   document.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
