@@ -845,7 +845,8 @@ tr.history-admin-row:hover {
 
 .salary-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  gap: 12px;
 }
 
 .asset-card strong,
@@ -912,7 +913,32 @@ tr.history-admin-row:hover {
 }
 
 .salary-fields {
-  grid-template-columns: 72px 64px 1fr;
+  display: grid;
+  grid-template-columns: 60px 56px minmax(110px, 1fr);
+  gap: 8px;
+  align-items: end;
+}
+
+.salary-fields label {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.salary-fields input,
+.salary-fields select {
+  min-width: 0 !important;
+  width: 100% !important;
+  box-sizing: border-box;
+  padding: 0 8px;
+}
+
+.salary-fields input[data-salary-field="amount"] {
+  font-weight: 700;
+  color: var(--ink);
 }
 
 .storage-fields {
@@ -1349,7 +1375,7 @@ label {
   }
 
   .salary-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   }
 
   .inline-fields {
@@ -1357,7 +1383,8 @@ label {
   }
 
   .salary-fields {
-    grid-template-columns: 74px 68px 1fr;
+    grid-template-columns: 60px 56px minmax(110px, 1fr);
+    gap: 8px;
   }
 
   .storage-fields {
@@ -1562,6 +1589,16 @@ label {
 
   .dialog-heading h3 {
     font-size: 16px;
+  }
+}
+
+@media (max-width: 520px) {
+  .salary-fields {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .salary-fields label:last-child {
+    grid-column: 1 / -1;
   }
 }
 
