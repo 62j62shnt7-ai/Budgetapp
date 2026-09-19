@@ -32,6 +32,7 @@ const keys = {
   historyAdminUnlocked: "budget-control-history-admin-unlocked",
   forecastLineMonths: "budget-control-forecast-line-months",
   forecastLineMode: "budget-control-forecast-line-mode",
+  sidebarCollapsed: "budget-control-sidebar-collapsed",
   historyAnalyticsCollapsed: "budget-control-history-analytics-collapsed",
   historyAnalyticsView: "budget-control-history-analytics-view",
   historyDistributionCollapsed: "budget-control-history-dist-collapsed",
@@ -490,6 +491,27 @@ function toggleTheme() {
   setTheme(current === "dark" ? "light" : "dark");
 }
 
+// --- Sidebar Management ---
+function applySidebarState(collapsed = sidebarCollapsed) {
+  sidebarCollapsed = Boolean(collapsed);
+  document.body.classList.toggle("sidebar-collapsed", sidebarCollapsed);
+  const expandBtn = document.getElementById("sidebarExpandBtn");
+  if (expandBtn) {
+    expandBtn.setAttribute("aria-expanded", String(!sidebarCollapsed));
+    expandBtn.title = sidebarCollapsed ? "Expand sidebar (Ctrl+B)" : "Collapse sidebar (Ctrl+B)";
+  }
+  const collapseBtn = document.getElementById("sidebarCollapseBtn");
+  if (collapseBtn) {
+    collapseBtn.setAttribute("aria-expanded", String(!sidebarCollapsed));
+  }
+}
+
+function toggleSidebar() {
+  sidebarCollapsed = !sidebarCollapsed;
+  saveSetting(keys.sidebarCollapsed, sidebarCollapsed);
+  applySidebarState(sidebarCollapsed);
+}
+
 // --- Promise-based Modal Confirmation ---
 function confirmAction(title, message, confirmButtonText = "Delete") {
   return new Promise((resolve) => {
@@ -716,6 +738,7 @@ let archivedEntries = loadSetting(keys.archivedEntries, []);
 let categoryCaps = loadSetting(keys.categoryCaps, defaultCategoryCaps);
 let savingsGoals = loadSetting(keys.savingsGoals, defaultSavingsGoals);
 let historyAdminUnlocked = loadSetting(keys.historyAdminUnlocked, false);
+let sidebarCollapsed = loadSetting(keys.sidebarCollapsed, false);
 let historyAnalyticsCollapsed = loadSetting(
   keys.historyAnalyticsCollapsed,
   loadSetting(keys.historyDistributionCollapsed, false)
@@ -5582,6 +5605,18 @@ function setupEventListeners() {
   });
 
   on("themeToggle", "click", toggleTheme);
+  on("sidebarCollapseBtn", "click", toggleSidebar);
+  on("sidebarExpandBtn", "click", toggleSidebar);
+
+  document.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
+      const tag = (e.target && e.target.tagName) || "";
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      e.preventDefault();
+      toggleSidebar();
+    }
+  });
+
   on("exportCSV", "click", exportToCSV);
 
   on("openDataToolsBtn", "click", () => {
@@ -7474,6 +7509,7 @@ function initGistSync() {
 function initApp() {
   try {
     initTheme();
+    applySidebarState(sidebarCollapsed);
     materializeLegacySalaryEntries();
     updateUndoResetVisibility();
     setupEventListeners();

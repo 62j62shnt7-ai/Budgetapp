@@ -18,10 +18,13 @@
     <aside class="sidebar">
       <div class="brand">
         <div class="brand-mark">BC</div>
-        <div>
+        <div style="flex: 1; min-width: 0;">
           <h1>Budget Control</h1>
           <p>Cash, jobs, storage</p>
         </div>
+        <button class="sidebar-toggle-btn" id="sidebarCollapseBtn" type="button" title="Collapse sidebar (Ctrl+B)" aria-label="Collapse sidebar">
+          ◀
+        </button>
       </div>
       <nav class="nav" aria-label="Main views">
         <button class="nav-item active" data-view="dashboard" type="button">Dashboard</button>
@@ -37,9 +40,14 @@
 
     <main class="app-shell">
       <header class="topbar">
-        <div>
-          <p class="eyebrow">Personal budget</p>
-          <h2 id="viewTitle">Dashboard</h2>
+        <div class="topbar-title-group" style="display: flex; align-items: center; gap: 12px;">
+          <button class="ghost-button icon-button sidebar-open-btn" id="sidebarExpandBtn" type="button" title="Toggle Sidebar (Ctrl+B)" aria-label="Toggle sidebar">
+            ☰
+          </button>
+          <div>
+            <p class="eyebrow">Personal budget</p>
+            <h2 id="viewTitle">Dashboard</h2>
+          </div>
         </div>
         <div class="top-actions">
           <button class="ghost-button" id="themeToggle" type="button" aria-label="Toggle theme">🌙 Dark mode</button>
