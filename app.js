@@ -495,6 +495,14 @@ function toggleTheme() {
 }
 
 // --- Sidebar Management ---
+function isMobileLayout() {
+  return window.innerWidth <= 980;
+}
+
+function setMobileDrawer(open) {
+  document.body.classList.toggle("mobile-sidebar-open", Boolean(open));
+}
+
 function applySidebarState(collapsed = sidebarCollapsed) {
   sidebarCollapsed = Boolean(collapsed);
   document.body.classList.toggle("sidebar-collapsed", sidebarCollapsed);
@@ -510,6 +518,11 @@ function applySidebarState(collapsed = sidebarCollapsed) {
 }
 
 function toggleSidebar() {
+  if (isMobileLayout()) {
+    const isOpen = document.body.classList.contains("mobile-sidebar-open");
+    setMobileDrawer(!isOpen);
+    return;
+  }
   sidebarCollapsed = !sidebarCollapsed;
   saveSetting(keys.sidebarCollapsed, sidebarCollapsed);
   applySidebarState(sidebarCollapsed);
@@ -3661,14 +3674,14 @@ function renderEntries() {
 
       return `
         <tr data-entry-id="${escapeHtml(deleteKey)}" class="${rowClass}" style="cursor:${clickable ? "pointer" : "default"};" title="${escapeHtml(rowTitle)}">
-          <td>${dateCell}</td>
-          <td>${categoryDisplayHtml}${statusBadge}</td>
-          <td>${escapeHtml(entry.account || "cash")}</td>
-          <td><span class="pill ${escapeHtml(entry.type)}">${escapeHtml(entry.type)}</span></td>
-          <td><span class="source-pill ${entry.source === "loan" ? "loan" : ""}">${sourceLabel}</span></td>
-          <td class="number">${escapeHtml(money(entry.amount))}</td>
-          <td class="number">${actualCell}</td>
-          <td class="number">${action}</td>
+          <td class="cell-date">${dateCell}</td>
+          <td class="cell-category">${categoryDisplayHtml}${statusBadge}</td>
+          <td class="cell-account">${escapeHtml(entry.account || "cash")}</td>
+          <td class="cell-type"><span class="pill ${escapeHtml(entry.type)}">${escapeHtml(entry.type)}</span></td>
+          <td class="cell-source"><span class="source-pill ${entry.source === "loan" ? "loan" : ""}">${sourceLabel}</span></td>
+          <td class="cell-amount number">${escapeHtml(money(entry.amount))}</td>
+          <td class="cell-actual number">${actualCell}</td>
+          <td class="cell-actions number">${action}</td>
         </tr>
       `;
     })
@@ -4140,15 +4153,15 @@ function renderHistory() {
 
       return `
         <tr class="${rowClass}" data-history-row-id="${escapeHtml(entryId)}" title="${escapeHtml(rowTitle)}">
-          <td class="history-date-cell">${dateCellHtml}</td>
-          <td>${categoryCellHtml}</td>
-          <td>${escapeHtml((entry.account || "cash").toUpperCase())}</td>
-          <td><span class="pill ${escapeHtml(entry.type)}">${escapeHtml(entry.type)}</span></td>
-          <td><span class="source-pill ${entry.source === "loan" ? "loan" : ""}">${historySourceLabel}</span></td>
-          <td class="number">${plannedVal > 0 ? escapeHtml(money(plannedVal)) : "—"}</td>
-          <td class="number">${actualCell}</td>
-          <td class="number">${varianceHtml}</td>
-          <td class="number">${action}</td>
+          <td class="cell-date history-date-cell">${dateCellHtml}</td>
+          <td class="cell-category">${categoryCellHtml}</td>
+          <td class="cell-account">${escapeHtml((entry.account || "cash").toUpperCase())}</td>
+          <td class="cell-type"><span class="pill ${escapeHtml(entry.type)}">${escapeHtml(entry.type)}</span></td>
+          <td class="cell-source"><span class="source-pill ${entry.source === "loan" ? "loan" : ""}">${historySourceLabel}</span></td>
+          <td class="cell-amount cell-planned number">${plannedVal > 0 ? escapeHtml(money(plannedVal)) : "—"}</td>
+          <td class="cell-actual number">${actualCell}</td>
+          <td class="cell-variance number">${varianceHtml}</td>
+          <td class="cell-actions number">${action}</td>
         </tr>
       `;
     })
@@ -5626,11 +5639,24 @@ function setupEventListeners() {
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.addEventListener("click", () => {
       activateView(button.dataset.view);
+      if (isMobileLayout()) {
+        setMobileDrawer(false);
+      }
     });
   });
 
+  on("sidebarBackdrop", "click", () => {
+    setMobileDrawer(false);
+  });
+
   on("themeToggle", "click", toggleTheme);
-  on("sidebarCollapseBtn", "click", toggleSidebar);
+  on("sidebarCollapseBtn", "click", () => {
+    if (isMobileLayout()) {
+      setMobileDrawer(false);
+    } else {
+      toggleSidebar();
+    }
+  });
   on("sidebarExpandBtn", "click", toggleSidebar);
 
   // Cashflow collapsible panels
@@ -5658,6 +5684,10 @@ function setupEventListeners() {
   });
 
   document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && document.body.classList.contains("mobile-sidebar-open")) {
+      setMobileDrawer(false);
+      return;
+    }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
       const tag = (e.target && e.target.tagName) || "";
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
