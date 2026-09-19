@@ -1753,6 +1753,22 @@ label {
   gap: 18px;
 }
 
+.history-view-tabs {
+  display: inline-flex;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 2px;
+  gap: 3px;
+}
+
+.history-view-tabs .subnav-tab {
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
 .history-chart-layout {
   display: flex;
   flex-wrap: wrap;

@@ -32,6 +32,8 @@ const keys = {
   historyAdminUnlocked: "budget-control-history-admin-unlocked",
   forecastLineMonths: "budget-control-forecast-line-months",
   forecastLineMode: "budget-control-forecast-line-mode",
+  historyAnalyticsCollapsed: "budget-control-history-analytics-collapsed",
+  historyAnalyticsView: "budget-control-history-analytics-view",
   historyDistributionCollapsed: "budget-control-history-dist-collapsed",
   historyGroupedSummaryCollapsed: "budget-control-history-grouped-collapsed"
 };
@@ -714,8 +716,13 @@ let archivedEntries = loadSetting(keys.archivedEntries, []);
 let categoryCaps = loadSetting(keys.categoryCaps, defaultCategoryCaps);
 let savingsGoals = loadSetting(keys.savingsGoals, defaultSavingsGoals);
 let historyAdminUnlocked = loadSetting(keys.historyAdminUnlocked, false);
-let historyDistributionCollapsed = loadSetting(keys.historyDistributionCollapsed, false);
-let historyGroupedSummaryCollapsed = loadSetting(keys.historyGroupedSummaryCollapsed, false);
+let historyAnalyticsCollapsed = loadSetting(
+  keys.historyAnalyticsCollapsed,
+  loadSetting(keys.historyDistributionCollapsed, false)
+);
+let historyAnalyticsView = loadSetting(keys.historyAnalyticsView, "chart");
+let historyDistributionCollapsed = historyAnalyticsCollapsed;
+let historyGroupedSummaryCollapsed = historyAnalyticsCollapsed;
 let forecastLineRangeMonths = loadSetting(keys.forecastLineMonths, 12);
 let forecastLineChartMode = loadSetting(keys.forecastLineMode, "entries");
 let simulatedSpendAmount = 0;
@@ -4171,15 +4178,12 @@ function renderHistory() {
   const pieCenterVal = document.getElementById("historyPieCenterValue");
   const groupedCountEl = document.getElementById("historyGroupedCount");
 
-  // Apply collapsible panel state
-  const distPanel = document.getElementById("historyDistributionPanel");
-  if (distPanel) {
-    distPanel.classList.toggle("is-collapsed", Boolean(historyDistributionCollapsed));
+  // Apply collapsible panel state and view mode
+  const analyticsPanel = document.getElementById("historyAnalyticsPanel");
+  if (analyticsPanel) {
+    analyticsPanel.classList.toggle("is-collapsed", Boolean(historyAnalyticsCollapsed));
   }
-  const groupedPanel = document.getElementById("historyGroupedSummaryPanel");
-  if (groupedPanel) {
-    groupedPanel.classList.toggle("is-collapsed", Boolean(historyGroupedSummaryCollapsed));
-  }
+  applyHistoryAnalyticsView(historyAnalyticsView);
 
   if (groupedCountEl) {
     groupedCountEl.textContent = `${sortedGroups.length} ${sortedGroups.length === 1 ? "group" : "groups"}`;
@@ -4273,6 +4277,44 @@ function renderHistory() {
         .join("");
     }
   }
+}
+
+function applyHistoryAnalyticsView(mode = historyAnalyticsView) {
+  historyAnalyticsView = mode;
+  const chartView = document.getElementById("historyAnalyticsChartView");
+  const tableView = document.getElementById("historyAnalyticsTableView");
+  const chartBtn = document.getElementById("historyViewModeChart");
+  const tableBtn = document.getElementById("historyViewModeTable");
+  const bothBtn = document.getElementById("historyViewModeBoth");
+
+  if (chartBtn) chartBtn.classList.toggle("active", mode === "chart");
+  if (tableBtn) tableBtn.classList.toggle("active", mode === "table");
+  if (bothBtn) bothBtn.classList.toggle("active", mode === "both");
+
+  if (chartView && tableView) {
+    if (mode === "table") {
+      chartView.style.display = "none";
+      tableView.style.display = "block";
+    } else if (mode === "both") {
+      chartView.style.display = "flex";
+      chartView.style.marginBottom = "16px";
+      chartView.style.borderBottom = "1px solid var(--line)";
+      chartView.style.paddingBottom = "16px";
+      tableView.style.display = "block";
+    } else {
+      chartView.style.display = "flex";
+      chartView.style.marginBottom = "0";
+      chartView.style.borderBottom = "none";
+      chartView.style.paddingBottom = "0";
+      tableView.style.display = "none";
+    }
+  }
+}
+
+function setHistoryAnalyticsView(mode) {
+  historyAnalyticsView = mode;
+  saveSetting(keys.historyAnalyticsView, mode);
+  applyHistoryAnalyticsView(mode);
 }
 
 async function commitHistoryEntryActual(input) {
@@ -6684,19 +6726,28 @@ function setupEventListeners() {
     renderHistory();
   });
 
-  // History collapsible distribution & summary panels
-  on("historyDistributionToggle", "click", () => {
-    historyDistributionCollapsed = !historyDistributionCollapsed;
-    saveSetting(keys.historyDistributionCollapsed, historyDistributionCollapsed);
-    const panel = document.getElementById("historyDistributionPanel");
-    if (panel) panel.classList.toggle("is-collapsed", historyDistributionCollapsed);
+  // History collapsible analytics panel & view toggles
+  on("historyAnalyticsToggle", "click", (e) => {
+    if (e.target.closest(".history-view-tabs")) return;
+    historyAnalyticsCollapsed = !historyAnalyticsCollapsed;
+    saveSetting(keys.historyAnalyticsCollapsed, historyAnalyticsCollapsed);
+    const panel = document.getElementById("historyAnalyticsPanel");
+    if (panel) panel.classList.toggle("is-collapsed", historyAnalyticsCollapsed);
   });
 
-  on("historyGroupedSummaryToggle", "click", () => {
-    historyGroupedSummaryCollapsed = !historyGroupedSummaryCollapsed;
-    saveSetting(keys.historyGroupedSummaryCollapsed, historyGroupedSummaryCollapsed);
-    const panel = document.getElementById("historyGroupedSummaryPanel");
-    if (panel) panel.classList.toggle("is-collapsed", historyGroupedSummaryCollapsed);
+  on("historyViewModeChart", "click", (e) => {
+    e.stopPropagation();
+    setHistoryAnalyticsView("chart");
+  });
+
+  on("historyViewModeTable", "click", (e) => {
+    e.stopPropagation();
+    setHistoryAnalyticsView("table");
+  });
+
+  on("historyViewModeBoth", "click", (e) => {
+    e.stopPropagation();
+    setHistoryAnalyticsView("both");
   });
 
   // History inline actual input

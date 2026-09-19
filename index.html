@@ -553,47 +553,35 @@
             </article>
           </div>
 
-          <div class="content-grid history-analytics-grid" style="margin-bottom: 18px;">
-            <section class="panel collapsible-panel" id="historyDistributionPanel">
-              <div class="panel-heading" style="cursor: pointer;" id="historyDistributionToggle">
-                <div>
-                  <h3>Category &amp; Source Distribution</h3>
-                  <span id="historyGroupedSummaryNote" style="font-size: 11.5px; color: var(--muted);">Filtered actuals</span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <button class="ghost-button collapse-toggle-btn" type="button" aria-label="Toggle Category & Source Distribution">
-                    <span class="collapse-icon">▾</span>
-                  </button>
-                </div>
+          <section class="panel collapsible-panel" id="historyAnalyticsPanel" style="margin-bottom: 18px;">
+            <div class="panel-heading" style="cursor: pointer;" id="historyAnalyticsToggle">
+              <div>
+                <h3 style="margin: 0;">Spending Analytics &amp; Grouped Sources</h3>
+                <span id="historyAnalyticsSummaryNote" style="font-size: 11.5px; color: var(--muted);">Filtered actuals · <span id="historyGroupedCount">0 groups</span></span>
               </div>
-              <div class="collapsible-content" id="historyDistributionBody">
-                <div class="history-chart-layout">
-                  <div class="donut-chart-container" id="historyPieChartContainer">
-                    <div class="donut-chart" id="historyPieChart"></div>
-                    <div class="donut-center-label" id="historyPieCenter">
-                      <span id="historyPieCenterTitle">Total</span>
-                      <strong id="historyPieCenterValue">0</strong>
-                    </div>
+              <div class="history-analytics-actions" style="display: flex; align-items: center; gap: 8px;">
+                <div class="subnav-tabs history-view-tabs" style="padding: 2px;">
+                  <button type="button" class="subnav-tab active" id="historyViewModeChart" style="padding: 4px 10px; font-size: 12px;" title="Chart & Categories">📊 Breakdown</button>
+                  <button type="button" class="subnav-tab" id="historyViewModeTable" style="padding: 4px 10px; font-size: 12px;" title="Grouped Table">📋 Table</button>
+                  <button type="button" class="subnav-tab" id="historyViewModeBoth" style="padding: 4px 10px; font-size: 12px;" title="Stacked Both">📑 Both</button>
+                </div>
+                <button class="ghost-button collapse-toggle-btn" type="button" id="historyAnalyticsCollapseBtn" aria-label="Toggle Spending Analytics">
+                  <span class="collapse-icon">▾</span>
+                </button>
+              </div>
+            </div>
+            <div class="collapsible-content" id="historyAnalyticsBody">
+              <div id="historyAnalyticsChartView" class="history-chart-layout" style="margin-top: 6px;">
+                <div class="donut-chart-container" id="historyPieChartContainer">
+                  <div class="donut-chart" id="historyPieChart"></div>
+                  <div class="donut-center-label" id="historyPieCenter">
+                    <span id="historyPieCenterTitle">Total</span>
+                    <strong id="historyPieCenterValue">0</strong>
                   </div>
-                  <div id="historyCategoryGroupList" class="stack-list history-scroll-list" style="flex: 1; min-width: 220px; max-height: 280px; overflow-y: auto;"></div>
                 </div>
+                <div id="historyCategoryGroupList" class="stack-list history-scroll-list" style="flex: 1; min-width: 260px; max-height: 280px; overflow-y: auto;"></div>
               </div>
-            </section>
-
-            <section class="panel collapsible-panel" id="historyGroupedSummaryPanel">
-              <div class="panel-heading" style="cursor: pointer;" id="historyGroupedSummaryToggle">
-                <div>
-                  <h3>Grouped Sources Summary</h3>
-                  <span id="historyGroupedCount" style="font-size: 11.5px; color: var(--muted);">0 groups</span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <button class="ghost-button collapse-toggle-btn" type="button" aria-label="Toggle Grouped Sources Summary">
-                    <span class="collapse-icon">▾</span>
-                  </button>
-                </div>
-              </div>
-              <div class="collapsible-content" id="historyGroupedSummaryBody">
-                <p style="color: var(--muted); font-size: 13px; margin: -4px 0 12px;">Aggregated actual totals by category and transaction type.</p>
+              <div id="historyAnalyticsTableView" style="display: none; margin-top: 10px;">
                 <div class="table-wrap compact history-scroll-table" style="max-height: 280px; overflow-y: auto;">
                   <table>
                     <thead style="position: sticky; top: 0; background: var(--surface); z-index: 1;">
@@ -609,8 +597,8 @@
                   </table>
                 </div>
               </div>
-            </section>
-          </div>
+            </div>
+          </section>
 
           <section class="panel">
             <div class="panel-heading">
