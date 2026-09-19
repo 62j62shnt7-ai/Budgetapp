@@ -1043,8 +1043,16 @@ function creditDueEntries() {
     };
     const monthData = (creditDues && (creditDues[accountKey] || creditDues[matchingBalanceKey])) || {};
 
-    // Collect all months that have base dues, manual lump sums, or tracked card purchases
+    // Collect all months that have base dues, manual lump sums, tracked card purchases, or recorded actual settlement payments
     const settlementMonths = new Set(Object.keys(monthData));
+
+    // Also include any months where an actual payment was recorded for this credit account
+    Object.keys(entryActuals || {}).forEach((k) => {
+      const prefix = `credit-settlement-${accountKey}-`;
+      if (k.startsWith(prefix) && Number(entryActuals[k]) > 0) {
+        settlementMonths.add(k.slice(prefix.length));
+      }
+    });
 
     allExpenses.forEach((entry) => {
       if (isCardExpenseForAccount(entry, accountKey)) {
@@ -1077,8 +1085,12 @@ function creditDueEntries() {
         return sum + (act > 0 ? act : Number(e.amount || 0));
       }, 0);
 
+      const settlementId = `credit-settlement-${accountKey}-${monthKey}`;
+      const actualPaid = Number(entryActuals[settlementId] || 0);
       const totalPlannedDue = baseDue + lumpAmount + cardSpendTotal;
-      if (totalPlannedDue <= 0) return;
+
+      // Keep entry if there is a planned due OR if an actual payment was recorded (for past settled history)
+      if (totalPlannedDue <= 0 && actualPaid <= 0) return;
 
       const [year, month] = DateUtils.parseYearMonth(monthKey);
       const lastDay = DateUtils.getLastDayOfMonth(year, month);
@@ -1089,15 +1101,13 @@ function creditDueEntries() {
       const explicitDateEntry = cardExpenses.find((e) => e.creditSettlementDate);
       const settlementDate = explicitDateEntry && explicitDateEntry.creditSettlementDate ? explicitDateEntry.creditSettlementDate : defaultSettlementDate;
 
-      const settlementId = `credit-settlement-${accountKey}-${monthKey}`;
-
       entries.push({
         id: settlementId,
         date: settlementDate,
         category: `${acc.name} Credit`,
         account: matchingBalanceKey,
         type: "expense",
-        amount: totalPlannedDue,
+        amount: totalPlannedDue > 0 ? totalPlannedDue : actualPaid,
         baseDue,
         cardSpendTotal,
         cardExpenseCount: cardExpenses.length,
@@ -1406,6 +1416,13 @@ function materializeLegacySalaryEntries() {
 function getSavedCreditDueMonths(id) {
   const accountKey = (id || "").toLowerCase();
   const months = new Set(Object.keys((creditDues && creditDues[id]) || {}));
+  // Also include months that had recorded actual payments
+  Object.keys(entryActuals || {}).forEach((k) => {
+    const prefix = `credit-settlement-${accountKey}-`;
+    if (k.startsWith(prefix) && Number(entryActuals[k]) > 0) {
+      months.add(k.slice(prefix.length));
+    }
+  });
   const allExpenses = [...(cashEntries || []), ...(archivedEntries || [])];
   allExpenses.forEach((entry) => {
     if (isCardExpenseForAccount(entry, accountKey)) {
