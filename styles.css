@@ -2314,3 +2314,75 @@ label {
   }
 }
 
+/* --- Credit Due Dual-Month Metric Card Styles --- */
+.credit-dual-metric .metric-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.credit-metric-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: rgba(47, 95, 159, 0.12);
+  color: var(--blue, #2f5f9f);
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+
+[data-theme="dark"] .credit-metric-badge {
+  background: rgba(99, 149, 219, 0.2);
+  color: #9ec5fe;
+}
+
+.credit-sub-grid {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+  gap: 8px;
+}
+
+.credit-sub-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.credit-sub-item:last-child {
+  text-align: right;
+}
+
+.credit-sub-label {
+  font-size: 11px !important;
+  color: var(--muted) !important;
+  font-weight: 600 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.credit-sub-val {
+  font-size: 13.5px !important;
+  font-weight: 700 !important;
+  color: var(--ink);
+  margin-top: 2px;
+  white-space: nowrap;
+}
+
+.credit-sub-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--line);
+  flex-shrink: 0;
+}

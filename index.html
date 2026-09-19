@@ -72,15 +72,41 @@
             <strong id="actualCashToday">0</strong>
             <small>Sum of account balances only</small>
           </article>
-          <article class="metric">
-            <span>CIB credit due</span>
+          <article class="metric credit-dual-metric">
+            <div class="metric-header-row">
+              <span>CIB credit due</span>
+              <span class="credit-metric-badge" id="cibCreditBadge">Oct 15</span>
+            </div>
             <strong id="cibCreditDue">0</strong>
-            <small>Selected credit month</small>
+            <div class="credit-sub-grid">
+              <div class="credit-sub-item">
+                <span class="credit-sub-label" id="cibCurrentMonthLabel">This Month</span>
+                <span class="credit-sub-val" id="cibCurrentDue">0</span>
+              </div>
+              <div class="credit-sub-divider"></div>
+              <div class="credit-sub-item">
+                <span class="credit-sub-label" id="cibNextMonthLabel">Next Month</span>
+                <span class="credit-sub-val" id="cibNextDue">0</span>
+              </div>
+            </div>
           </article>
-          <article class="metric">
-            <span>HSBC credit due</span>
+          <article class="metric credit-dual-metric">
+            <div class="metric-header-row">
+              <span>HSBC credit due</span>
+              <span class="credit-metric-badge" id="hsbcCreditBadge">Oct 31</span>
+            </div>
             <strong id="hsbcCreditDue">0</strong>
-            <small>Selected credit month</small>
+            <div class="credit-sub-grid">
+              <div class="credit-sub-item">
+                <span class="credit-sub-label" id="hsbcCurrentMonthLabel">This Month</span>
+                <span class="credit-sub-val" id="hsbcCurrentDue">0</span>
+              </div>
+              <div class="credit-sub-divider"></div>
+              <div class="credit-sub-item">
+                <span class="credit-sub-label" id="hsbcNextMonthLabel">Next Month</span>
+                <span class="credit-sub-val" id="hsbcNextDue">0</span>
+              </div>
+            </div>
           </article>
           <article class="metric">
             <span>Stored assets</span>

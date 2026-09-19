@@ -1438,12 +1438,12 @@ function getCreditDueAmount(id) {
   return (creditDues[id] && creditDues[id][monthKey]) || 0;
 }
 
-function getRemainingCreditDueAmount(id) {
+function getRemainingCreditDueAmount(id, targetMonth) {
   const accountKey = (id || "").toLowerCase();
-  const selectedMonth = getCreditDueMonthForAccount(id);
+  const selectedMonth = targetMonth || getCreditDueMonthForAccount(id);
 
   // 1. Base recurring credit due set in settings
-  const baseDue = getCreditDueAmount(id);
+  const baseDue = targetMonth ? ((creditDues[id] && creditDues[id][targetMonth]) || 0) : getCreditDueAmount(id);
 
   const allExpenses = [
     ...(cashEntries || []),
@@ -1611,8 +1611,27 @@ function renderDashboard() {
   const storageTotal = storageAssets.reduce((sum, item) => sum + storageValue(item), 0);
   const totalNetWorth = actualCashNow + storageTotal;
 
-  const cibCredit = getRemainingCreditDueAmount("cib");
-  const hsbcCredit = getRemainingCreditDueAmount("hsbc");
+  // Credit dues: calculate for Current Month and Next Month cycles
+  const currentMonthKey = DateUtils.currentYearMonth();
+  const [cmYear, cmMonth] = DateUtils.parseYearMonth(currentMonthKey);
+  const nextMonthKey = cmMonth === 12
+    ? `${cmYear + 1}-01`
+    : `${cmYear}-${String(cmMonth + 1).padStart(2, "0")}`;
+
+  const currentMonthName = new Date(Date.UTC(cmYear, cmMonth - 1, 1)).toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
+  const nextMonthName = new Date(Date.UTC(cmMonth === 12 ? cmYear + 1 : cmYear, cmMonth === 12 ? 0 : cmMonth, 1)).toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
+
+  const cibCurrent = getRemainingCreditDueAmount("cib", currentMonthKey);
+  const cibNext = getRemainingCreditDueAmount("cib", nextMonthKey);
+  // Main total due is current month if pending, else next cycle due (or sum if both)
+  const cibMainDisplay = (cibCurrent > 0 ? cibCurrent : cibNext);
+
+  const hsbcCurrent = getRemainingCreditDueAmount("hsbc", currentMonthKey);
+  const hsbcNext = getRemainingCreditDueAmount("hsbc", nextMonthKey);
+  const hsbcMainDisplay = (hsbcCurrent > 0 ? hsbcCurrent : hsbcNext);
+
+  const cibCredit = cibMainDisplay;
+  const hsbcCredit = hsbcMainDisplay;
   const totalCreditDue = cibCredit + hsbcCredit;
 
   // Financial Analytics metrics
@@ -1632,11 +1651,57 @@ function renderDashboard() {
   const actualCashEl = document.getElementById("actualCashToday");
   if (actualCashEl) actualCashEl.textContent = money(actualCashNow);
 
+  // Render CIB Dual-Cycle Card
   const cibCreditEl = document.getElementById("cibCreditDue");
-  if (cibCreditEl) cibCreditEl.textContent = money(cibCredit);
+  if (cibCreditEl) cibCreditEl.textContent = money(cibMainDisplay);
 
+  const cibBadgeEl = document.getElementById("cibCreditBadge");
+  if (cibBadgeEl) {
+    cibBadgeEl.textContent = cibCurrent > 0 ? `Due ${currentMonthName} 15` : `Due ${nextMonthName} 15`;
+  }
+
+  const cibCurLabelEl = document.getElementById("cibCurrentMonthLabel");
+  if (cibCurLabelEl) cibCurLabelEl.textContent = `${currentMonthName} (This Mo)`;
+  const cibCurValEl = document.getElementById("cibCurrentDue");
+  if (cibCurValEl) {
+    cibCurValEl.textContent = money(cibCurrent);
+    cibCurValEl.style.color = cibCurrent > 0 ? "var(--red)" : "var(--muted)";
+  }
+
+  const cibNextLabelEl = document.getElementById("cibNextMonthLabel");
+  if (cibNextLabelEl) cibNextLabelEl.textContent = `${nextMonthName} (Next Mo)`;
+  const cibNextValEl = document.getElementById("cibNextDue");
+  if (cibNextValEl) {
+    cibNextValEl.textContent = money(cibNext);
+    cibNextValEl.style.color = cibNext > 0 ? "var(--ink)" : "var(--muted)";
+  }
+
+  // Render HSBC Dual-Cycle Card
   const hsbcCreditEl = document.getElementById("hsbcCreditDue");
-  if (hsbcCreditEl) hsbcCreditEl.textContent = money(hsbcCredit);
+  if (hsbcCreditEl) hsbcCreditEl.textContent = money(hsbcMainDisplay);
+
+  const hsbcBadgeEl = document.getElementById("hsbcCreditBadge");
+  if (hsbcBadgeEl) {
+    const hsbcCurLastDay = DateUtils.getLastDayOfMonth(cmYear, cmMonth);
+    const hsbcNextLastDay = DateUtils.getLastDayOfMonth(cmMonth === 12 ? cmYear + 1 : cmYear, cmMonth === 12 ? 1 : cmMonth + 1);
+    hsbcBadgeEl.textContent = hsbcCurrent > 0 ? `Due ${currentMonthName} ${hsbcCurLastDay}` : `Due ${nextMonthName} ${hsbcNextLastDay}`;
+  }
+
+  const hsbcCurLabelEl = document.getElementById("hsbcCurrentMonthLabel");
+  if (hsbcCurLabelEl) hsbcCurLabelEl.textContent = `${currentMonthName} (This Mo)`;
+  const hsbcCurValEl = document.getElementById("hsbcCurrentDue");
+  if (hsbcCurValEl) {
+    hsbcCurValEl.textContent = money(hsbcCurrent);
+    hsbcCurValEl.style.color = hsbcCurrent > 0 ? "var(--red)" : "var(--muted)";
+  }
+
+  const hsbcNextLabelEl = document.getElementById("hsbcNextMonthLabel");
+  if (hsbcNextLabelEl) hsbcNextLabelEl.textContent = `${nextMonthName} (Next Mo)`;
+  const hsbcNextValEl = document.getElementById("hsbcNextDue");
+  if (hsbcNextValEl) {
+    hsbcNextValEl.textContent = money(hsbcNext);
+    hsbcNextValEl.style.color = hsbcNext > 0 ? "var(--ink)" : "var(--muted)";
+  }
 
   const storageTotalEl = document.getElementById("storageTotal");
   if (storageTotalEl) storageTotalEl.textContent = money(storageTotal);
