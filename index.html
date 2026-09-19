@@ -712,16 +712,23 @@
           <button class="icon-button" type="button" aria-label="Close" onclick="document.getElementById('entryDialog').close('cancel')">x</button>
         </div>
         <label>
-          Credit type
+          Payment / Credit Mode
           <select name="creditType">
-            <option value="">None</option>
-            <option value="cib">CIB credit due</option>
-            <option value="hsbc">HSBC credit due</option>
+            <option value="">Direct (Cash / Bank account)</option>
+            <option value="cib_card">💳 Paid with CIB Credit Card</option>
+            <option value="hsbc_card">💳 Paid with HSBC Credit Card</option>
+            <option value="cib">🏛️ CIB Credit Due (Lump sum)</option>
+            <option value="hsbc">🏛️ HSBC Credit Due (Lump sum)</option>
           </select>
         </label>
-        <label>
+        <label id="dateField">
           Date
           <input name="date" type="date" required>
+        </label>
+        <label id="creditSettlementField" class="entry-field is-hidden">
+          Settlement Due Date
+          <input name="creditSettlementDate" type="date">
+          <small id="creditSettlementHint" style="display:block; color:var(--muted); font-size:11px; margin-top:2px;"></small>
         </label>
         <label id="categoryField" class="entry-field">
           Category
