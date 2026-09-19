@@ -1376,17 +1376,28 @@ function openingBalanceEntries() {
 
 function actualizedEntries() {
   syncForecastPeriodSettings();
-  const nonLumpCashEntries = cashEntries.filter((entry) => !isCreditDueLumpSum(entry));
+  // Include all cashEntries (including manual credit settlements/lump sums), installments, and credit due entries
   const activeCandidates = [
-    ...nonLumpCashEntries,
+    ...cashEntries,
     ...buildInstallmentEntries(),
     ...creditDueEntries()
   ].filter((entry) => getEntryActualAmount(entry) > 0);
   
+  // Deduplicate active candidates so that if a manual cash entry matches a dynamic creditDueEntry, we don't duplicate it
+  const seenIds = new Set();
+  const dedupedActive = [];
+  activeCandidates.forEach((entry) => {
+    const id = getEntryId(entry);
+    if (!seenIds.has(id)) {
+      seenIds.add(id);
+      dedupedActive.push(entry);
+    }
+  });
+
   const archivedWithActuals = archivedEntries
-    .filter((entry) => !isCreditDueLumpSum(entry) || !entry.id?.startsWith("credit-settlement-"))
-    .filter((entry) => getEntryActualAmount(entry) > 0);
-  return [...activeCandidates, ...archivedWithActuals];
+    .filter((entry) => getEntryActualAmount(entry) > 0 && !seenIds.has(getEntryId(entry)));
+
+  return [...dedupedActive, ...archivedWithActuals];
 }
 
 function materializeLegacySalaryEntries() {
