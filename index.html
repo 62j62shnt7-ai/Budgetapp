@@ -757,6 +757,12 @@
                 <option value="AED">AED (د.إ)</option>
               </select>
             </div>
+            <div class="job-sort-filter-wrap">
+              <select id="jobSortFilter" class="job-filter-select" aria-label="Sort Jobs Chronologically">
+                <option value="newest">📅 Newest Date</option>
+                <option value="oldest">📅 Oldest Date</option>
+              </select>
+            </div>
           </div>
           <div class="jobs-actions-group">
             <button class="primary-button" id="addNewJobBtn" type="button">+ New Job / Project</button>
@@ -1124,6 +1130,16 @@
           Client / Company
           <input name="client" type="text" required placeholder="e.g. TechCorp, Acme Ltd">
         </label>
+        <div class="grid-2-cols" style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <label>
+            Start Date
+            <input name="startDate" id="jobStartDate" type="date">
+          </label>
+          <label>
+            End Date (Optional)
+            <input name="endDate" id="jobEndDate" type="date">
+          </label>
+        </div>
         <div class="grid-2-cols" style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px;">
           <label>
             Currency

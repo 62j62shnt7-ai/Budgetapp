@@ -4672,7 +4672,48 @@ function renderStorage() {
 
 let activeJobFilter = "all"; // 'all' | 'active' | 'invoiced' | 'paid'
 let activeJobCurrencyFilter = "all";
+let activeJobSort = "newest"; // 'newest' | 'oldest'
 const expandedJobIds = new Set();
+
+function getJobEffectiveDate(job) {
+  if (job.startDate) return job.startDate;
+  if (Array.isArray(job.daysWorked) && job.daysWorked.length > 0) {
+    const dates = job.daysWorked.map((d) => d.date).filter(Boolean).sort();
+    if (dates.length > 0) return dates[0];
+  }
+  if (job.invoiceDate) return job.invoiceDate;
+  if (job.paidDate) return job.paidDate;
+  return "";
+}
+
+function formatJobDateBadge(job) {
+  const start = job.startDate;
+  const end = job.endDate;
+  if (!start && !end) {
+    if (Array.isArray(job.daysWorked) && job.daysWorked.length > 0) {
+      const dates = job.daysWorked.map((d) => d.date).filter(Boolean).sort();
+      if (dates.length === 1) {
+        return `<span class="job-date-badge" title="Logged date">📅 ${escapeHtml(DateUtils.formatDisplayDate(dates[0]))}</span>`;
+      }
+      if (dates.length > 1) {
+        return `<span class="job-date-badge" title="Logged work period">📅 ${escapeHtml(DateUtils.formatDisplayDate(dates[0]))} – ${escapeHtml(DateUtils.formatDisplayDate(dates[dates.length - 1]))}</span>`;
+      }
+    }
+    if (job.invoiceDate) {
+      return `<span class="job-date-badge" title="Invoice Date">📅 Invoiced ${escapeHtml(DateUtils.formatDisplayDate(job.invoiceDate))}</span>`;
+    }
+    return "";
+  }
+
+  if (start && end) {
+    return `<span class="job-date-badge" title="Job Duration">📅 ${escapeHtml(DateUtils.formatDisplayDate(start))} – ${escapeHtml(DateUtils.formatDisplayDate(end))}</span>`;
+  }
+  if (start) {
+    const isOngoing = (job.status || "active") === "active";
+    return `<span class="job-date-badge" title="Start Date">📅 ${escapeHtml(DateUtils.formatDisplayDate(start))}${isOngoing ? " – Ongoing" : ""}</span>`;
+  }
+  return `<span class="job-date-badge" title="Target End Date">📅 Due ${escapeHtml(DateUtils.formatDisplayDate(end))}</span>`;
+}
 
 function calculateJobFinancials(job) {
   const type = job.type || "daily_rate";
@@ -4820,7 +4861,7 @@ function renderJobs() {
   if (kpiActiveSub) kpiActiveSub.textContent = `${activeJobsCount} job${activeJobsCount === 1 ? "" : "s"} in progress`;
   if (kpiExpensesEgp) kpiExpensesEgp.textContent = money(totalReimbursableEgp);
 
-  // 2. Filter Jobs for Display
+  // 2. Filter & Sort Jobs for Display
   const filteredJobs = partTimeJobs.filter((job) => {
     const fin = calculateJobFinancials(job);
     if (activeJobFilter !== "all") {
@@ -4831,6 +4872,17 @@ function renderJobs() {
     }
     if (activeJobCurrencyFilter !== "all" && (job.currency || "USD").toUpperCase() !== activeJobCurrencyFilter.toUpperCase()) return false;
     return true;
+  });
+
+  filteredJobs.sort((a, b) => {
+    const dateA = getJobEffectiveDate(a);
+    const dateB = getJobEffectiveDate(b);
+    if (dateA && dateB) {
+      return activeJobSort === "oldest" ? dateA.localeCompare(dateB) : dateB.localeCompare(dateA);
+    }
+    if (dateA && !dateB) return -1;
+    if (!dateA && dateB) return 1;
+    return 0;
   });
 
   if (filteredJobs.length === 0) {
@@ -4855,6 +4907,7 @@ function renderJobs() {
       const days = Array.isArray(job.daysWorked) ? job.daysWorked : [];
       const expenses = Array.isArray(job.expenses) ? job.expenses : [];
       const payments = fin.payments;
+      const dateBadgeHtml = formatJobDateBadge(job);
 
       const statusOptions = [
         { value: "active", label: "⏳ Active" },
@@ -4897,6 +4950,7 @@ function renderJobs() {
               <h4 class="job-card-title">${escapeHtml(job.title)}</h4>
               <span class="job-client-pill">🏢 ${escapeHtml(job.client)}</span>
               <span class="job-currency-badge">${escapeHtml(fin.currency)}</span>
+              ${dateBadgeHtml}
               ${statusBadge}
             </div>
             <div style="display: flex; align-items: center; gap: 8px;">
@@ -7149,6 +7203,11 @@ function setupEventListeners() {
     renderJobs();
   });
 
+  on("jobSortFilter", "change", (e) => {
+    activeJobSort = e.target.value;
+    renderJobs();
+  });
+
   // Open New Job Dialog
   on("addNewJobBtn", "click", () => {
     const form = document.getElementById("jobForm");
@@ -7156,6 +7215,8 @@ function setupEventListeners() {
     if (!form || !dlg) return;
     form.reset();
     form.elements.jobId.value = "";
+    if (form.elements.startDate) form.elements.startDate.value = new Date().toISOString().slice(0, 10);
+    if (form.elements.endDate) form.elements.endDate.value = "";
     document.getElementById("jobDialogTitle").textContent = "Add Part-Time Job";
     updateJobFormCurrencyIndicators();
     updateJobFormRateFields();
@@ -7173,6 +7234,8 @@ function setupEventListeners() {
     const client = form.elements.client.value.trim();
     const currency = form.elements.currency.value;
     const type = form.elements.type.value;
+    const startDate = form.elements.startDate ? form.elements.startDate.value : "";
+    const endDate = form.elements.endDate ? form.elements.endDate.value : "";
     const dailyRate = Number(form.elements.dailyRate.value) || 0;
     const lumpSumAmount = Number(form.elements.lumpSumAmount.value) || 0;
     const status = form.elements.status.value;
@@ -7189,6 +7252,8 @@ function setupEventListeners() {
           client,
           currency,
           type,
+          startDate,
+          endDate,
           dailyRate,
           lumpSumAmount,
           status,
@@ -7209,6 +7274,8 @@ function setupEventListeners() {
         client,
         currency,
         type,
+        startDate,
+        endDate,
         dailyRate,
         lumpSumAmount,
         daysWorked: [],
@@ -7504,6 +7571,8 @@ function setupEventListeners() {
         form.elements.jobId.value = job.id;
         form.elements.title.value = job.title;
         form.elements.client.value = job.client;
+        if (form.elements.startDate) form.elements.startDate.value = job.startDate || "";
+        if (form.elements.endDate) form.elements.endDate.value = job.endDate || "";
         form.elements.currency.value = job.currency || "USD";
         form.elements.type.value = job.type || "daily_rate";
         form.elements.dailyRate.value = job.dailyRate || "";
