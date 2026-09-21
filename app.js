@@ -4961,34 +4961,39 @@ function renderJobs() {
 
           ${progressBarHtml}
 
-          <!-- Summary Metric Grid -->
+          <!-- Summary Metric Grid with Accumulated Income & Expenses Cards -->
           <div class="job-summary-grid">
-            <div class="job-summary-col">
-              <span class="job-summary-label">Rate Model</span>
-              <span class="job-summary-value">${escapeHtml(rateTypeLabel)}</span>
-              <span class="job-summary-eq">${fin.type === "daily_rate" ? `${fin.totalDays} day${fin.totalDays === 1 ? "" : "s"} logged` : "Fixed project"}</span>
+            <div class="job-summary-col highlight-income">
+              <span class="job-summary-label">💼 Accumulated Income</span>
+              <span class="job-summary-value text-green">${escapeHtml(formatJobCurrency(fin.grossFee, fin.currency))}</span>
+              <span class="job-summary-eq">${fin.type === "daily_rate" ? `${fin.totalDays} day${fin.totalDays === 1 ? "" : "s"} logged` : "Fixed fee"} &bull; ≈ ${money(fin.grossFeeEgp)}</span>
+            </div>
+            <div class="job-summary-col highlight-expense">
+              <span class="job-summary-label">🧾 Accumulated Expenses</span>
+              <span class="job-summary-value text-amber">${escapeHtml(formatJobCurrency(fin.billableExpenses, fin.currency))}</span>
+              <span class="job-summary-eq">${expenses.filter(e => e.isReimbursable !== false).length} client receipt${expenses.filter(e => e.isReimbursable !== false).length === 1 ? "" : "s"} &bull; ≈ ${money(fin.billableExpensesEgp)}</span>
+            </div>
+            <div class="job-summary-col highlight-charge">
+              <span class="job-summary-label">🏷️ Total to Charge</span>
+              <span class="job-summary-value text-blue">${escapeHtml(formatJobCurrency(fin.totalInvoice, fin.currency))}</span>
+              <span class="job-summary-eq">Labor + Exp &bull; ≈ ${money(fin.totalInvoiceEgp)}</span>
             </div>
             <div class="job-summary-col">
-              <span class="job-summary-label">Invoice Total</span>
-              <span class="job-summary-value">${escapeHtml(formatJobCurrency(fin.totalInvoice, fin.currency))}</span>
-              <span class="job-summary-eq">≈ ${money(fin.totalInvoiceEgp)}</span>
+              <span class="job-summary-label">💵 Paid So Far</span>
+              <span class="job-summary-value">${escapeHtml(formatJobCurrency(fin.totalPaid, fin.currency))}</span>
+              <span class="job-summary-eq">${payments.length} installment${payments.length === 1 ? "" : "s"} (${fin.percentPaid}%)</span>
             </div>
             <div class="job-summary-col">
-              <span class="job-summary-label">Paid So Far</span>
-              <span class="job-summary-value text-green">${escapeHtml(formatJobCurrency(fin.totalPaid, fin.currency))}</span>
-              <span class="job-summary-eq">${payments.length} installment${payments.length === 1 ? "" : "s"}</span>
-            </div>
-            <div class="job-summary-col">
-              <span class="job-summary-label">Remaining Balance</span>
+              <span class="job-summary-label">⏳ Remaining Due</span>
               <span class="job-summary-value ${fin.remainingBalance > 0 ? 'text-amber' : 'text-green'}">
                 ${escapeHtml(formatJobCurrency(fin.remainingBalance, fin.currency))}
               </span>
               <span class="job-summary-eq" style="font-weight: 700; ${fin.remainingBalance > 0 ? 'color: var(--amber);' : 'color: var(--green);'}">
-                ${fin.remainingBalance > 0 ? `≈ ${money(fin.remainingBalanceEgp)}` : '✓ Fully Settled'}
+                ${fin.remainingBalance > 0 ? `≈ ${money(fin.remainingBalanceEgp)} due` : '✓ Fully Settled'}
               </span>
             </div>
             <div class="job-summary-col">
-              <span class="job-summary-label">Net Profit</span>
+              <span class="job-summary-label">📈 Net Profit</span>
               <span class="job-summary-value">${escapeHtml(formatJobCurrency(fin.netEarnings, fin.currency))}</span>
               <span class="job-summary-eq">≈ ${money(fin.netEarningsEgp)}</span>
             </div>
@@ -5001,6 +5006,7 @@ function renderJobs() {
             <div class="job-btn-group">
               ${fin.type === "daily_rate" ? `<button class="ghost-button" data-job-log-day="${job.id}" type="button" style="font-size: 12px; padding: 0 10px; min-height: 32px;">+ Log Day</button>` : ""}
               <button class="ghost-button" data-job-add-expense="${job.id}" type="button" style="font-size: 12px; padding: 0 10px; min-height: 32px;">+ Add Expense</button>
+              <button class="ghost-button" data-job-copy-invoice="${job.id}" type="button" style="font-size: 12px; padding: 0 10px; min-height: 32px;" title="Copy client billing summary to clipboard">📋 Copy Bill</button>
               <button class="job-toggle-btn" data-job-toggle-details="${job.id}" type="button">
                 ${isExpanded ? "▲ Hide Breakdown" : `▼ Breakdown (${days.length} days, ${expenses.length} exp, ${payments.length} pay)`}
               </button>
@@ -7471,6 +7477,49 @@ function setupEventListeners() {
           el.textContent = job.currency || "USD";
         });
         dlg.showModal();
+      }
+      return;
+    }
+
+    // 3b. Copy Bill Summary to Clipboard
+    const copyBtn = event.target.closest("[data-job-copy-invoice]");
+    if (copyBtn) {
+      const id = copyBtn.dataset.jobCopyInvoice;
+      const job = partTimeJobs.find((j) => j.id === id);
+      if (!job) return;
+      const fin = calculateJobFinancials(job);
+      const expenses = Array.isArray(job.expenses) ? job.expenses : [];
+      const billableExp = expenses.filter((e) => e.isReimbursable !== false);
+
+      const laborDetail = fin.type === "daily_rate"
+        ? `${fin.totalDays} day${fin.totalDays === 1 ? "" : "s"} @ ${formatJobCurrency(job.dailyRate, fin.currency)}/day`
+        : "Fixed Lump Sum Project";
+
+      const summaryLines = [
+        `INVOICE / BILLING BREAKDOWN`,
+        `Client: ${job.client}`,
+        `Project: ${job.title}`,
+        job.startDate ? `Period: ${job.startDate}${job.endDate ? ` to ${job.endDate}` : " (Ongoing)"}` : "",
+        `----------------------------------------`,
+        `• Accumulated Labor Income: ${formatJobCurrency(fin.grossFee, fin.currency)} (${laborDetail})`,
+        `• Accumulated Client Expenses: ${formatJobCurrency(fin.billableExpenses, fin.currency)} (${billableExp.length} billable receipt${billableExp.length === 1 ? "" : "s"})`,
+        `----------------------------------------`,
+        `TOTAL TO CHARGE CLIENT: ${formatJobCurrency(fin.totalInvoice, fin.currency)} (≈ ${money(fin.totalInvoiceEgp)})`,
+        `Payments Collected: ${formatJobCurrency(fin.totalPaid, fin.currency)}`,
+        `REMAINING BALANCE DUE: ${formatJobCurrency(fin.remainingBalance, fin.currency)} (≈ ${money(fin.remainingBalanceEgp)})`
+      ].filter(Boolean).join("\n");
+
+      try {
+        await navigator.clipboard.writeText(summaryLines);
+        const originalText = copyBtn.textContent;
+        copyBtn.textContent = "✓ Copied!";
+        copyBtn.classList.add("text-green");
+        setTimeout(() => {
+          copyBtn.textContent = originalText;
+          copyBtn.classList.remove("text-green");
+        }, 2000);
+      } catch {
+        alert(summaryLines);
       }
       return;
     }
