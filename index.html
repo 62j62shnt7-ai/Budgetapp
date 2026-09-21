@@ -714,35 +714,56 @@
       </section>
 
       <section class="view" id="jobs">
-        <div class="content-grid">
-          <section class="panel">
-            <div class="panel-heading">
-              <h3>ASF invoices</h3>
-              <button class="ghost-button" id="addAsf" type="button">Add invoice</button>
-            </div>
-            <div class="table-wrap compact">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th class="number">Invoice</th>
-                    <th class="number">Actual</th>
-                    <th class="number">EGP</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody id="asfTable"></tbody>
-              </table>
-            </div>
-          </section>
-          <section class="panel">
-            <div class="panel-heading">
-              <h3>IRQ work</h3>
-              <button class="ghost-button" id="addIrq" type="button">Add work</button>
-            </div>
-            <div id="irqCards" class="stack-list"></div>
-          </section>
+        <!-- Top Metrics Cards -->
+        <div class="jobs-kpis-grid">
+          <div class="job-kpi-card glass-panel">
+            <span class="job-kpi-label">Pending Invoices</span>
+            <div class="job-kpi-val" id="jobsKpiPendingEgp">0 EGP</div>
+            <div class="job-kpi-sub" id="jobsKpiPendingBreakdown">No pending receivables</div>
+          </div>
+          <div class="job-kpi-card glass-panel">
+            <span class="job-kpi-label">Collected / Paid</span>
+            <div class="job-kpi-val text-green" id="jobsKpiPaidEgp">0 EGP</div>
+            <div class="job-kpi-sub" id="jobsKpiPaidSub">0 jobs settled</div>
+          </div>
+          <div class="job-kpi-card glass-panel">
+            <span class="job-kpi-label">Active Work</span>
+            <div class="job-kpi-val text-blue" id="jobsKpiActiveCount">0</div>
+            <div class="job-kpi-sub" id="jobsKpiActiveSub">Jobs in progress</div>
+          </div>
+          <div class="job-kpi-card glass-panel">
+            <span class="job-kpi-label">Reimbursable Expenses</span>
+            <div class="job-kpi-val text-amber" id="jobsKpiExpensesEgp">0 EGP</div>
+            <div class="job-kpi-sub" id="jobsKpiExpensesSub">Billed to clients</div>
+          </div>
         </div>
+
+        <!-- Controls Toolbar -->
+        <div class="jobs-toolbar glass-panel">
+          <div class="jobs-filters-group">
+            <button class="job-filter-pill is-active" data-job-filter="all" type="button">All Jobs</button>
+            <button class="job-filter-pill" data-job-filter="active" type="button">Active</button>
+            <button class="job-filter-pill" data-job-filter="invoiced" type="button">Invoiced</button>
+            <button class="job-filter-pill" data-job-filter="paid" type="button">Paid</button>
+            <div class="job-currency-filter-wrap">
+              <select id="jobCurrencyFilter" class="job-filter-select" aria-label="Filter by Currency">
+                <option value="all">All Currencies</option>
+                <option value="USD">USD ($)</option>
+                <option value="EUR">EUR (€)</option>
+                <option value="EGP">EGP (Local)</option>
+                <option value="GBP">GBP (£)</option>
+                <option value="SAR">SAR (﷼)</option>
+                <option value="AED">AED (د.إ)</option>
+              </select>
+            </div>
+          </div>
+          <div class="jobs-actions-group">
+            <button class="primary-button" id="addNewJobBtn" type="button">+ New Job / Project</button>
+          </div>
+        </div>
+
+        <!-- Jobs Card Stream -->
+        <div id="jobsList" class="jobs-stream"></div>
       </section>
 
       <section class="view" id="rates">
@@ -1087,35 +1108,185 @@
       </form>
     </dialog>
 
-    <dialog id="asfDialog">
-      <form method="dialog" class="entry-form" id="asfForm">
+    <dialog id="jobDialog">
+      <form method="dialog" class="entry-form" id="jobForm">
         <div class="dialog-heading">
-          <h3>ASF Invoice</h3>
-          <button class="icon-button" type="button" aria-label="Close" onclick="document.getElementById('asfDialog').close('cancel')">x</button>
+          <h3 id="jobDialogTitle">Add Part-Time Job</h3>
+          <button class="icon-button" type="button" aria-label="Close" onclick="document.getElementById('jobDialog').close('cancel')">x</button>
         </div>
-        <label>Date <input name="date" type="date" required></label>
-        <label>Invoice (USD) <input name="invoice" type="number" step="0.01" required></label>
-        <label>Actual (USD) <input name="actual" type="number" step="0.01" required></label>
-        <label>EGP Value <input name="egp" type="number" step="0.01" required></label>
+        <input type="hidden" name="jobId" value="">
+        <label>
+          Job / Project Title
+          <input name="title" type="text" required placeholder="e.g. Design Consulting, Mobile App, etc.">
+        </label>
+        <label>
+          Client / Company
+          <input name="client" type="text" required placeholder="e.g. TechCorp, Acme Ltd">
+        </label>
+        <div class="grid-2-cols" style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <label>
+            Currency
+            <select name="currency" id="jobCurrencySelect">
+              <option value="USD">USD ($)</option>
+              <option value="EUR">EUR (€)</option>
+              <option value="EGP">EGP (Local)</option>
+              <option value="GBP">GBP (£)</option>
+              <option value="SAR">SAR (﷼)</option>
+              <option value="AED">AED (د.إ)</option>
+            </select>
+          </label>
+          <label>
+            Compensation Type
+            <select name="type" id="jobTypeSelect">
+              <option value="daily_rate">Daily Rate</option>
+              <option value="lumpsum">Lump Sum (Fixed)</option>
+            </select>
+          </label>
+        </div>
+        <div id="jobDailyRateWrap">
+          <label>
+            Daily Rate (<span class="job-currency-indicator">USD</span>)
+            <input name="dailyRate" type="number" step="0.01" min="0" placeholder="e.g. 250">
+          </label>
+        </div>
+        <div id="jobLumpSumWrap" class="is-hidden">
+          <label>
+            Lump Sum Amount (<span class="job-currency-indicator">USD</span>)
+            <input name="lumpSumAmount" type="number" step="0.01" min="0" placeholder="e.g. 1500">
+          </label>
+        </div>
+        <label>
+          Status
+          <select name="status" id="jobStatusSelect">
+            <option value="active">Active (In Progress)</option>
+            <option value="invoiced">Invoiced (Waiting Payment)</option>
+            <option value="paid">Paid (Settled)</option>
+          </select>
+        </label>
+        <label>
+          Notes / Contract Details
+          <textarea name="notes" rows="2" placeholder="Deliverables, contract terms, or client contact..."></textarea>
+        </label>
         <div class="dialog-actions">
-          <button class="ghost-button" value="cancel" formnovalidate type="button" onclick="document.getElementById('asfDialog').close('cancel')">Cancel</button>
-          <button class="primary-button" value="save" type="submit">Save invoice</button>
+          <button class="ghost-button" value="cancel" formnovalidate type="button" onclick="document.getElementById('jobDialog').close('cancel')">Cancel</button>
+          <button class="primary-button" value="save" type="submit">Save Job</button>
         </div>
       </form>
     </dialog>
 
-    <dialog id="irqDialog">
-      <form method="dialog" class="entry-form" id="irqForm">
+    <dialog id="jobLogDayDialog">
+      <form method="dialog" class="entry-form" id="jobLogDayForm">
         <div class="dialog-heading">
-          <h3>IRQ Work</h3>
-          <button class="icon-button" type="button" aria-label="Close" onclick="document.getElementById('irqDialog').close('cancel')">x</button>
+          <h3>Log Day / Shift Worked</h3>
+          <button class="icon-button" type="button" aria-label="Close" onclick="document.getElementById('jobLogDayDialog').close('cancel')">x</button>
         </div>
-        <label>Label <input name="label" type="text" required placeholder="e.g. Received"></label>
-        <label>Value <input name="value" type="number" step="0.01" required></label>
-        <label>Note <input name="note" type="text" placeholder="Details..."></label>
+        <input type="hidden" name="jobId" value="">
+        <label>
+          Date Worked
+          <input name="date" type="date" required>
+        </label>
+        <label>
+          Duration / Day Unit
+          <select name="unitPreset" id="jobDayUnitPreset">
+            <option value="1">Full Day (1.0)</option>
+            <option value="0.5">Half Day (0.5)</option>
+            <option value="custom">Custom Units / Shifts</option>
+          </select>
+        </label>
+        <div id="jobDayUnitsCustomWrap" class="is-hidden">
+          <label>
+            Custom Units (e.g. 0.25, 1.5)
+            <input name="units" type="number" step="0.1" min="0.1" value="1.0">
+          </label>
+        </div>
+        <label>
+          Work Summary / Note
+          <input name="note" type="text" placeholder="e.g. Sprint review, backend API integration">
+        </label>
         <div class="dialog-actions">
-          <button class="ghost-button" value="cancel" formnovalidate type="button" onclick="document.getElementById('irqDialog').close('cancel')">Cancel</button>
-          <button class="primary-button" value="save" type="submit">Save entry</button>
+          <button class="ghost-button" value="cancel" formnovalidate type="button" onclick="document.getElementById('jobLogDayDialog').close('cancel')">Cancel</button>
+          <button class="primary-button" value="save" type="submit">Log Day</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="jobExpenseDialog">
+      <form method="dialog" class="entry-form" id="jobExpenseForm">
+        <div class="dialog-heading">
+          <h3>Log Job Expense</h3>
+          <button class="icon-button" type="button" aria-label="Close" onclick="document.getElementById('jobExpenseDialog').close('cancel')">x</button>
+        </div>
+        <input type="hidden" name="jobId" value="">
+        <label>
+          Expense Date
+          <input name="date" type="date" required>
+        </label>
+        <label>
+          Description
+          <input name="title" type="text" required placeholder="e.g. Travel tickets, Cloud hosting, Software license">
+        </label>
+        <label>
+          Amount (<span class="job-expense-currency-indicator">USD</span>)
+          <input name="amount" type="number" step="0.01" min="0.01" required placeholder="0.00">
+        </label>
+        <label class="check-row" style="margin-top: 4px;">
+          <input name="isReimbursable" type="checkbox" checked>
+          <span>Billable to client (Reimbursable in Invoice)</span>
+        </label>
+        <small style="display:block; color:var(--muted); font-size:12px; margin-top:-4px;">
+          Unchecked means it is an out-of-pocket project expense that reduces your net profit.
+        </small>
+        <label>
+          Receipt / Notes (Optional)
+          <input name="receiptNote" type="text" placeholder="Invoice #, receipt URL or payment details">
+        </label>
+        <div class="dialog-actions">
+          <button class="ghost-button" value="cancel" formnovalidate type="button" onclick="document.getElementById('jobExpenseDialog').close('cancel')">Cancel</button>
+          <button class="primary-button" value="save" type="submit">Save Expense</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="jobPaymentDialog">
+      <form method="dialog" class="entry-form" id="jobPaymentForm">
+        <div class="dialog-heading">
+          <h3>Record Job Payment</h3>
+          <button class="icon-button" type="button" aria-label="Close" onclick="document.getElementById('jobPaymentDialog').close('cancel')">x</button>
+        </div>
+        <input type="hidden" name="jobId" value="">
+        <div style="background:var(--surface-soft); padding:12px; border-radius:8px; border:1px solid var(--line); font-size:13px; margin-bottom:12px;">
+          <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+            <span style="color:var(--muted);">Total Invoiced:</span>
+            <strong id="jobPayTotalInvoiced">0.00</strong>
+          </div>
+          <div style="display:flex; justify-content:space-between;">
+            <span style="color:var(--muted);">Approx. EGP Value:</span>
+            <span id="jobPayEgpApprox" style="font-weight:600; color:var(--green);">0 EGP</span>
+          </div>
+        </div>
+        <label>
+          Payment Date
+          <input name="paidDate" type="date" required>
+        </label>
+        <label>
+          Amount Received (<span class="job-pay-currency-indicator">USD</span>)
+          <input name="actualPaidAmount" type="number" step="0.01" min="0" required>
+        </label>
+        <label>
+          Deposit Account
+          <select name="settlementAccount" id="jobPayAccountSelect"></select>
+        </label>
+        <label class="check-row" style="margin-top: 4px;">
+          <input name="syncToBudget" type="checkbox" checked>
+          <span>Record as Income Entry in Cash Forecast & Balance</span>
+        </label>
+        <label>
+          Payment Reference / Note
+          <input name="paymentNote" type="text" placeholder="Wire ref, Swift confirmation, conversion rate...">
+        </label>
+        <div class="dialog-actions">
+          <button class="ghost-button" value="cancel" formnovalidate type="button" onclick="document.getElementById('jobPaymentDialog').close('cancel')">Cancel</button>
+          <button class="primary-button" value="save" type="submit">Confirm Payment</button>
         </div>
       </form>
     </dialog>

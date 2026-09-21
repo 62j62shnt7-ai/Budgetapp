@@ -14,6 +14,7 @@ const keys = {
   asf: "budget-control-asf-jobs",
   rates: "budget-control-rates",
   irq: "budget-control-irq-jobs",
+  partTimeJobs: "budget-control-part-time-jobs",
   creditDues: "budget-control-credit-dues",
   creditDueMonths: "budget-control-credit-due-months",
   entryActuals: "budget-control-entry-actuals",
@@ -94,6 +95,7 @@ const exportableDataKeys = {
   asfJobs: keys.asf,
   ratesData: keys.rates,
   irqJobs: keys.irq,
+  partTimeJobs: keys.partTimeJobs,
   creditDues: keys.creditDues,
   creditDueMonths: keys.creditDueMonths,
   entryActuals: keys.entryActuals,
@@ -142,6 +144,23 @@ const numberFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 
 const usdFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
 const money = (value) => `${numberFormatter.format(Math.round(Number(value) || 0))} EGP`;
 const usd = (value) => `${usdFormatter.format(Number(value) || 0)} USD`;
+const formatJobCurrency = (value, code) => {
+  const val = Number(value) || 0;
+  const curr = (code || "USD").toUpperCase();
+  const formatted = new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: val % 1 !== 0 ? 2 : 0,
+    maximumFractionDigits: 2
+  }).format(val);
+  switch (curr) {
+    case "USD": return `$${formatted} USD`;
+    case "EUR": return `€${formatted} EUR`;
+    case "GBP": return `£${formatted} GBP`;
+    case "EGP": return `${formatted} EGP`;
+    case "SAR": return `${formatted} SAR (﷼)`;
+    case "AED": return `${formatted} AED (د.إ)`;
+    default: return `${formatted} ${curr}`;
+  }
+};
 
 function escapeHtml(str) {
   if (str === null || str === undefined) return "";
@@ -745,6 +764,53 @@ let accountBalances = loadSetting(keys.accounts, defaultAccountBalances);
 let asfJobs = loadSetting(keys.asf, []);
 let ratesData = loadSetting(keys.rates, defaultRates);
 let irqJobs = loadSetting(keys.irq, []);
+let partTimeJobs = loadSetting(keys.partTimeJobs, null);
+if (!partTimeJobs || !Array.isArray(partTimeJobs)) {
+  partTimeJobs = [];
+  if (Array.isArray(asfJobs) && asfJobs.length > 0) {
+    asfJobs.forEach((item, idx) => {
+      partTimeJobs.push({
+        id: "job-legacy-asf-" + idx,
+        title: "ASF Invoice #" + (idx + 1),
+        client: "ASF",
+        currency: "USD",
+        type: "lumpsum",
+        dailyRate: 0,
+        lumpSumAmount: Number(item.invoice) || 0,
+        daysWorked: [],
+        expenses: [],
+        status: item.actual > 0 ? "paid" : "invoiced",
+        invoiceDate: item.date || "",
+        paidDate: item.actual > 0 ? item.date || "" : null,
+        settlementAccount: "cib",
+        actualPaidAmount: Number(item.actual) || Number(item.invoice) || 0,
+        notes: item.egp ? `Original converted EGP: ${item.egp}` : ""
+      });
+    });
+  }
+  if (Array.isArray(irqJobs) && irqJobs.length > 0) {
+    irqJobs.forEach((item, idx) => {
+      partTimeJobs.push({
+        id: "job-legacy-irq-" + idx,
+        title: item.label || "IRQ Work",
+        client: "IRQ",
+        currency: "EGP",
+        type: "lumpsum",
+        dailyRate: 0,
+        lumpSumAmount: Number(item.value) || 0,
+        daysWorked: [],
+        expenses: [],
+        status: "paid",
+        invoiceDate: "",
+        paidDate: "",
+        settlementAccount: "cib",
+        actualPaidAmount: Number(item.value) || 0,
+        notes: item.note || ""
+      });
+    });
+  }
+  saveSetting(keys.partTimeJobs, partTimeJobs);
+}
 let creditDues = loadSetting(keys.creditDues, {});
 let creditDueMonths = loadSetting(keys.creditDueMonths, {});
 let entryActuals = loadSetting(keys.entryActuals, {});
@@ -4581,36 +4647,311 @@ function renderStorage() {
     .join("");
 }
 
-function renderJobs() {
-  const asfTable = document.getElementById("asfTable");
-  if (asfTable) {
-    asfTable.innerHTML = asfJobs
-      .map((item, index) => `
-        <tr>
-          <td>${escapeHtml(item.date)}</td>
-          <td class="number">${escapeHtml(usd(item.invoice))}</td>
-          <td class="number">${escapeHtml(usd(item.actual))}</td>
-          <td class="number">${escapeHtml(money(item.egp))}</td>
-          <td><button class="delete-button" data-asf-delete="${index}" type="button">Delete</button></td>
-        </tr>
-      `)
-      .join("");
+let activeJobFilter = "all"; // 'all' | 'active' | 'invoiced' | 'paid'
+let activeJobCurrencyFilter = "all";
+const expandedJobIds = new Set();
+
+function calculateJobFinancials(job) {
+  const type = job.type || "daily_rate";
+  const currency = (job.currency || "USD").toUpperCase();
+  const daysWorked = Array.isArray(job.daysWorked) ? job.daysWorked : [];
+  const expenses = Array.isArray(job.expenses) ? job.expenses : [];
+
+  const totalDays = daysWorked.reduce((sum, d) => sum + (Number(d.units) || 1), 0);
+
+  let grossFee = 0;
+  if (type === "daily_rate") {
+    grossFee = (Number(job.dailyRate) || 0) * totalDays;
+  } else {
+    grossFee = Number(job.lumpSumAmount) || 0;
   }
 
-  const irqCards = document.getElementById("irqCards");
-  if (irqCards) {
-    irqCards.innerHTML = irqJobs
-      .map((item, index) => `
-        <div class="list-row">
-          <span>${escapeHtml(item.label)}<br><small>${escapeHtml(item.note || "")}</small></span>
-          <div style="display:flex; align-items:center; gap:10px;">
-            <strong>${escapeHtml(numberFormatter.format(item.value))}</strong>
-            <button class="delete-button" data-irq-delete="${index}" type="button">Delete</button>
-          </div>
-        </div>
-      `)
-      .join("");
+  let billableExpenses = 0;
+  let deductibleExpenses = 0;
+  expenses.forEach((e) => {
+    const amt = Number(e.amount) || 0;
+    if (e.isReimbursable !== false) {
+      billableExpenses += amt;
+    } else {
+      deductibleExpenses += amt;
+    }
+  });
+
+  const totalInvoice = grossFee + billableExpenses;
+  const netEarnings = grossFee - deductibleExpenses;
+
+  const fxRate = getCurrencyRate(currency);
+  const totalInvoiceEgp = Math.round(totalInvoice * fxRate);
+  const netEarningsEgp = Math.round(netEarnings * fxRate);
+  const grossFeeEgp = Math.round(grossFee * fxRate);
+  const billableExpensesEgp = Math.round(billableExpenses * fxRate);
+
+  return {
+    type,
+    currency,
+    totalDays,
+    grossFee,
+    billableExpenses,
+    deductibleExpenses,
+    totalInvoice,
+    netEarnings,
+    fxRate,
+    totalInvoiceEgp,
+    netEarningsEgp,
+    grossFeeEgp,
+    billableExpensesEgp
+  };
+}
+
+function renderJobs() {
+  const jobsListEl = document.getElementById("jobsList");
+  if (!jobsListEl) return;
+
+  // 1. Calculate Aggregated Metrics across all jobs
+  let totalPendingEgp = 0;
+  const pendingByCurrency = {};
+  let totalPaidEgp = 0;
+  let paidJobsCount = 0;
+  let activeJobsCount = 0;
+  let totalReimbursableEgp = 0;
+
+  partTimeJobs.forEach((job) => {
+    const fin = calculateJobFinancials(job);
+    const curr = fin.currency;
+
+    if (job.status === "invoiced") {
+      totalPendingEgp += fin.totalInvoiceEgp;
+      pendingByCurrency[curr] = (pendingByCurrency[curr] || 0) + fin.totalInvoice;
+    } else if (job.status === "paid") {
+      const paidAmt = job.actualPaidAmount !== undefined && job.actualPaidAmount !== null ? Number(job.actualPaidAmount) : fin.totalInvoice;
+      totalPaidEgp += Math.round(paidAmt * fin.fxRate);
+      paidJobsCount++;
+    } else if (job.status === "active") {
+      activeJobsCount++;
+      totalReimbursableEgp += fin.billableExpensesEgp;
+    }
+  });
+
+  // Update Top KPIs
+  const kpiPendingEgp = document.getElementById("jobsKpiPendingEgp");
+  const kpiPendingBreakdown = document.getElementById("jobsKpiPendingBreakdown");
+  const kpiPaidEgp = document.getElementById("jobsKpiPaidEgp");
+  const kpiPaidSub = document.getElementById("jobsKpiPaidSub");
+  const kpiActiveCount = document.getElementById("jobsKpiActiveCount");
+  const kpiActiveSub = document.getElementById("jobsKpiActiveSub");
+  const kpiExpensesEgp = document.getElementById("jobsKpiExpensesEgp");
+
+  if (kpiPendingEgp) kpiPendingEgp.textContent = money(totalPendingEgp);
+  if (kpiPendingBreakdown) {
+    const breakdownEntries = Object.entries(pendingByCurrency);
+    if (breakdownEntries.length === 0) {
+      kpiPendingBreakdown.textContent = "No pending receivables";
+    } else {
+      kpiPendingBreakdown.textContent = breakdownEntries
+        .map(([curr, amt]) => formatJobCurrency(amt, curr))
+        .join(" + ");
+    }
   }
+  if (kpiPaidEgp) kpiPaidEgp.textContent = money(totalPaidEgp);
+  if (kpiPaidSub) kpiPaidSub.textContent = `${paidJobsCount} job${paidJobsCount === 1 ? "" : "s"} collected`;
+  if (kpiActiveCount) kpiActiveCount.textContent = String(activeJobsCount);
+  if (kpiActiveSub) kpiActiveSub.textContent = `${activeJobsCount} job${activeJobsCount === 1 ? "" : "s"} in progress`;
+  if (kpiExpensesEgp) kpiExpensesEgp.textContent = money(totalReimbursableEgp);
+
+  // 2. Filter Jobs for Display
+  const filteredJobs = partTimeJobs.filter((job) => {
+    if (activeJobFilter !== "all" && job.status !== activeJobFilter) return false;
+    if (activeJobCurrencyFilter !== "all" && (job.currency || "USD").toUpperCase() !== activeJobCurrencyFilter.toUpperCase()) return false;
+    return true;
+  });
+
+  if (filteredJobs.length === 0) {
+    jobsListEl.innerHTML = `
+      <div class="glass-panel" style="text-align: center; padding: 48px 20px;">
+        <div style="font-size: 38px; margin-bottom: 12px;">💼</div>
+        <h3 style="font-size: 18px; margin-bottom: 6px; color: var(--ink);">No part-time jobs found</h3>
+        <p style="color: var(--muted); font-size: 13px; max-width: 440px; margin: 0 auto 16px;">
+          ${partTimeJobs.length === 0 ? "You haven't added any part-time jobs yet. Track your daily rates, milestones, client expenses, and multi-currency income." : "No jobs match the current filter selection."}
+        </p>
+        <button class="primary-button" type="button" onclick="document.getElementById('addNewJobBtn').click()">+ Create New Job</button>
+      </div>
+    `;
+    return;
+  }
+
+  // 3. Render Jobs Stream Cards
+  jobsListEl.innerHTML = filteredJobs
+    .map((job) => {
+      const fin = calculateJobFinancials(job);
+      const isExpanded = expandedJobIds.has(job.id);
+      const days = Array.isArray(job.daysWorked) ? job.daysWorked : [];
+      const expenses = Array.isArray(job.expenses) ? job.expenses : [];
+
+      let statusBadge = "";
+      if (job.status === "active") {
+        statusBadge = `<span class="job-badge active">⏳ Active</span>`;
+      } else if (job.status === "invoiced") {
+        statusBadge = `<span class="job-badge invoiced">📄 Invoiced</span>`;
+      } else {
+        statusBadge = `<span class="job-badge paid">✓ Paid</span>`;
+      }
+
+      const rateTypeLabel = fin.type === "daily_rate"
+        ? `${formatJobCurrency(job.dailyRate, fin.currency)}/day`
+        : `Fixed Lump Sum`;
+
+      return `
+        <article class="job-card" data-job-card-id="${job.id}">
+          <header class="job-card-header">
+            <div class="job-card-title-wrap">
+              <h4 class="job-card-title">${escapeHtml(job.title)}</h4>
+              <span class="job-client-pill">🏢 ${escapeHtml(job.client)}</span>
+              <span class="job-currency-badge">${escapeHtml(fin.currency)}</span>
+              ${statusBadge}
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <button class="icon-button" data-job-edit="${job.id}" type="button" title="Edit Job">✏️</button>
+              <button class="delete-button" data-job-delete="${job.id}" type="button" title="Delete Job">Delete</button>
+            </div>
+          </header>
+
+          <!-- Summary Metric Grid -->
+          <div class="job-summary-grid">
+            <div class="job-summary-col">
+              <span class="job-summary-label">Rate Model</span>
+              <span class="job-summary-value">${escapeHtml(rateTypeLabel)}</span>
+              <span class="job-summary-eq">${fin.type === "daily_rate" ? `${fin.totalDays} day${fin.totalDays === 1 ? "" : "s"} logged` : "Fixed project"}</span>
+            </div>
+            <div class="job-summary-col">
+              <span class="job-summary-label">Gross Fee</span>
+              <span class="job-summary-value">${escapeHtml(formatJobCurrency(fin.grossFee, fin.currency))}</span>
+              <span class="job-summary-eq">≈ ${money(fin.grossFeeEgp)}</span>
+            </div>
+            <div class="job-summary-col">
+              <span class="job-summary-label">Expenses</span>
+              <span class="job-summary-value">${escapeHtml(formatJobCurrency(fin.billableExpenses, fin.currency))}</span>
+              <span class="job-summary-eq">${expenses.length} item${expenses.length === 1 ? "" : "s"} (${escapeHtml(formatJobCurrency(fin.deductibleExpenses, fin.currency))} self-paid)</span>
+            </div>
+            <div class="job-summary-col">
+              <span class="job-summary-label">Invoice Total</span>
+              <span class="job-summary-value text-green">${escapeHtml(formatJobCurrency(fin.totalInvoice, fin.currency))}</span>
+              <span class="job-summary-eq" style="font-weight: 700; color: var(--green);">≈ ${money(fin.totalInvoiceEgp)}</span>
+            </div>
+            <div class="job-summary-col">
+              <span class="job-summary-label">Net Profit</span>
+              <span class="job-summary-value">${escapeHtml(formatJobCurrency(fin.netEarnings, fin.currency))}</span>
+              <span class="job-summary-eq">≈ ${money(fin.netEarningsEgp)}</span>
+            </div>
+          </div>
+
+          ${job.notes ? `<p style="font-size: 12px; color: var(--muted); margin: 0 0 12px; line-height: 1.4;">📝 ${escapeHtml(job.notes)}</p>` : ""}
+
+          <!-- Action bar -->
+          <div class="job-card-actions">
+            <div class="job-btn-group">
+              ${fin.type === "daily_rate" ? `<button class="ghost-button" data-job-log-day="${job.id}" type="button" style="font-size: 12px; padding: 0 10px; min-height: 32px;">+ Log Day</button>` : ""}
+              <button class="ghost-button" data-job-add-expense="${job.id}" type="button" style="font-size: 12px; padding: 0 10px; min-height: 32px;">+ Add Expense</button>
+              <button class="job-toggle-btn" data-job-toggle-details="${job.id}" type="button">
+                ${isExpanded ? "▲ Hide Breakdown" : `▼ Breakdown (${days.length} days, ${expenses.length} exp)`}
+              </button>
+            </div>
+            <div class="job-btn-group">
+              ${job.status === "active" ? `<button class="ghost-button" data-job-mark-invoiced="${job.id}" type="button" style="font-size: 12px; padding: 0 12px; min-height: 32px;">Mark Invoiced ➔</button>` : ""}
+              ${job.status === "invoiced" ? `<button class="primary-button" data-job-record-payment="${job.id}" type="button" style="font-size: 12px; padding: 0 14px; min-height: 32px;">Record Payment 💵</button>` : ""}
+              ${job.status === "paid" ? `
+                <span style="font-size: 12px; color: var(--green); font-weight: 600;">Paid ${escapeHtml(job.paidDate || "")}</span>
+                <button class="ghost-button" data-job-reopen="${job.id}" type="button" style="font-size: 11px; padding: 0 8px; min-height: 28px;">Reopen</button>
+              ` : ""}
+            </div>
+          </div>
+
+          <!-- Collapsible Worklog & Expenses Details Drawer -->
+          ${isExpanded ? `
+            <div class="job-drawer">
+              ${fin.type === "daily_rate" ? `
+                <div class="job-subpanel">
+                  <div class="job-subpanel-header">
+                    <h5 class="job-subpanel-title">🗓️ Days / Shifts Worked (${days.length} entries &bull; ${fin.totalDays} total units)</h5>
+                    <button class="ghost-button" data-job-log-day="${job.id}" type="button" style="font-size: 11px; padding: 0 8px; min-height: 26px;">+ Log Day</button>
+                  </div>
+                  ${days.length === 0 ? `<div class="job-empty-hint">No days logged yet. Click '+ Log Day' to record your shifts.</div>` : `
+                    <table class="job-sub-table">
+                      <thead>
+                        <tr>
+                          <th>Date</th>
+                          <th>Units</th>
+                          <th>Note</th>
+                          <th style="text-align: right;">Gross</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${days.map((d, dIdx) => `
+                          <tr>
+                            <td>${escapeHtml(d.date)}</td>
+                            <td><strong>${Number(d.units) || 1}</strong></td>
+                            <td style="color: var(--muted);">${escapeHtml(d.note || "—")}</td>
+                            <td style="text-align: right; font-variant-numeric: tabular-nums;">
+                              ${escapeHtml(formatJobCurrency((Number(job.dailyRate) || 0) * (Number(d.units) || 1), fin.currency))}
+                            </td>
+                            <td style="text-align: right;">
+                              <button class="delete-button" data-job-del-day="${job.id}" data-day-index="${dIdx}" type="button" style="font-size: 11px; padding: 2px 6px;">&times;</button>
+                            </td>
+                          </tr>
+                        `).join("")}
+                      </tbody>
+                    </table>
+                  `}
+                </div>
+              ` : ""}
+
+              <div class="job-subpanel">
+                <div class="job-subpanel-header">
+                  <h5 class="job-subpanel-title">🧾 Job Expenses (${expenses.length} entries)</h5>
+                  <button class="ghost-button" data-job-add-expense="${job.id}" type="button" style="font-size: 11px; padding: 0 8px; min-height: 26px;">+ Add Expense</button>
+                </div>
+                ${expenses.length === 0 ? `<div class="job-empty-hint">No expenses logged for this job.</div>` : `
+                  <table class="job-sub-table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Description</th>
+                        <th>Billing</th>
+                        <th style="text-align: right;">Amount</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${expenses.map((e, eIdx) => `
+                        <tr>
+                          <td>${escapeHtml(e.date)}</td>
+                          <td>
+                            <strong>${escapeHtml(e.title)}</strong>
+                            ${e.receiptNote ? `<br><small style="color: var(--muted);">${escapeHtml(e.receiptNote)}</small>` : ""}
+                          </td>
+                          <td>
+                            ${e.isReimbursable !== false
+                              ? `<span class="badge-billable">Billable</span>`
+                              : `<span class="badge-deductible">Deductible</span>`}
+                          </td>
+                          <td style="text-align: right; font-variant-numeric: tabular-nums; font-weight: 700;">
+                            ${escapeHtml(formatJobCurrency(e.amount, fin.currency))}
+                          </td>
+                          <td style="text-align: right;">
+                            <button class="delete-button" data-job-del-expense="${job.id}" data-expense-index="${eIdx}" type="button" style="font-size: 11px; padding: 2px 6px;">&times;</button>
+                          </td>
+                        </tr>
+                      `).join("")}
+                    </tbody>
+                  </table>
+                `}
+              </div>
+            </div>
+          ` : ""}
+        </article>
+      `;
+    })
+    .join("");
 }
 
 function renderRates() {
@@ -5812,8 +6153,9 @@ function setupEventListeners() {
         storageAssets,
         accountBalances,
         asfJobs,
-        ratesData,
         irqJobs,
+        partTimeJobs,
+        ratesData,
         creditDues,
         creditDueMonths,
         entryActuals,
@@ -5911,6 +6253,7 @@ function setupEventListeners() {
       accountBalances: clone(accountBalances),
       asfJobs: clone(asfJobs),
       irqJobs: clone(irqJobs),
+      partTimeJobs: clone(partTimeJobs),
       ratesData: clone(ratesData),
       creditDues: clone(creditDues),
       creditDueMonths: clone(creditDueMonths),
@@ -5930,6 +6273,7 @@ function setupEventListeners() {
     accountBalances = clone(defaultAccountBalances);
     asfJobs = [];
     irqJobs = [];
+    partTimeJobs = [];
     ratesData = clone(defaultRates);
     categoryCaps = clone(defaultCategoryCaps);
     savingsGoals = clone(defaultSavingsGoals);
@@ -5949,6 +6293,7 @@ function setupEventListeners() {
     saveSetting(keys.accounts, accountBalances);
     saveSetting(keys.asf, asfJobs);
     saveSetting(keys.irq, irqJobs);
+    saveSetting(keys.partTimeJobs, partTimeJobs);
     saveSetting(keys.rates, ratesData);
     saveSetting(keys.categoryCaps, categoryCaps);
     saveSetting(keys.savingsGoals, savingsGoals);
@@ -5975,6 +6320,7 @@ function setupEventListeners() {
     accountBalances = backup.accountBalances || defaultAccountBalances;
     asfJobs = backup.asfJobs || [];
     irqJobs = backup.irqJobs || [];
+    partTimeJobs = backup.partTimeJobs || [];
     ratesData = backup.ratesData || defaultRates;
     categoryCaps = backup.categoryCaps || defaultCategoryCaps;
     savingsGoals = backup.savingsGoals || defaultSavingsGoals;
@@ -5993,6 +6339,7 @@ function setupEventListeners() {
     saveSetting(keys.accounts, accountBalances);
     saveSetting(keys.asf, asfJobs);
     saveSetting(keys.irq, irqJobs);
+    saveSetting(keys.partTimeJobs, partTimeJobs);
     saveSetting(keys.rates, ratesData);
     saveSetting(keys.categoryCaps, categoryCaps);
     saveSetting(keys.savingsGoals, savingsGoals);
@@ -6610,69 +6957,432 @@ function setupEventListeners() {
     renderAll();
   });
 
-  on("addAsf", "click", () => {
-    const form = document.getElementById("asfForm");
-    if (form) form.reset();
-    const dlg = document.getElementById("asfDialog");
-    if (dlg) dlg.showModal();
-  });
-
-  on("asfDialog", "close", () => {
-    const dialog = document.getElementById("asfDialog");
-    if (!dialog || dialog.returnValue !== "save") return;
-    const form = document.getElementById("asfForm");
-    if (!form) return;
-    asfJobs.push({
-      date: form.elements.date.value,
-      invoice: Number(form.elements.invoice.value),
-      actual: Number(form.elements.actual.value),
-      egp: Number(form.elements.egp.value)
+  // --- Part-Time Jobs Event Listeners ---
+  const updateJobFormCurrencyIndicators = () => {
+    const sel = document.getElementById("jobCurrencySelect");
+    if (!sel) return;
+    const curr = sel.value;
+    document.querySelectorAll(".job-currency-indicator").forEach((el) => {
+      el.textContent = curr;
     });
-    saveSetting(keys.asf, asfJobs);
-    renderAll();
-  });
+  };
 
-  on("asfTable", "click", async (event) => {
-    const button = event.target.closest("[data-asf-delete]");
-    if (!button) return;
-    const index = Number(button.dataset.asfDelete);
-    const confirmed = await confirmAction("Delete Invoice", "Delete this ASF invoice entry?");
-    if (!confirmed) return;
-    asfJobs.splice(index, 1);
-    saveSetting(keys.asf, asfJobs);
-    renderAll();
-  });
+  const updateJobFormRateFields = () => {
+    const sel = document.getElementById("jobTypeSelect");
+    const dailyWrap = document.getElementById("jobDailyRateWrap");
+    const lumpWrap = document.getElementById("jobLumpSumWrap");
+    if (!sel || !dailyWrap || !lumpWrap) return;
+    if (sel.value === "daily_rate") {
+      dailyWrap.classList.remove("is-hidden");
+      lumpWrap.classList.add("is-hidden");
+    } else {
+      dailyWrap.classList.add("is-hidden");
+      lumpWrap.classList.remove("is-hidden");
+    }
+  };
 
-  on("addIrq", "click", () => {
-    const form = document.getElementById("irqForm");
-    if (form) form.reset();
-    const dlg = document.getElementById("irqDialog");
-    if (dlg) dlg.showModal();
-  });
+  on("jobCurrencySelect", "change", updateJobFormCurrencyIndicators);
+  on("jobTypeSelect", "change", updateJobFormRateFields);
 
-  on("irqDialog", "close", () => {
-    const dialog = document.getElementById("irqDialog");
-    if (!dialog || dialog.returnValue !== "save") return;
-    const form = document.getElementById("irqForm");
-    if (!form) return;
-    irqJobs.push({
-      label: form.elements.label.value.trim(),
-      value: Number(form.elements.value.value),
-      note: form.elements.note.value.trim()
+  const updateJobDayUnitPreset = () => {
+    const sel = document.getElementById("jobDayUnitPreset");
+    const customWrap = document.getElementById("jobDayUnitsCustomWrap");
+    if (!sel || !customWrap) return;
+    if (sel.value === "custom") {
+      customWrap.classList.remove("is-hidden");
+    } else {
+      customWrap.classList.add("is-hidden");
+    }
+  };
+  on("jobDayUnitPreset", "change", updateJobDayUnitPreset);
+
+  // Filter pills
+  document.querySelectorAll("[data-job-filter]").forEach((pill) => {
+    pill.addEventListener("click", () => {
+      document.querySelectorAll("[data-job-filter]").forEach((p) => p.classList.remove("is-active"));
+      pill.classList.add("is-active");
+      activeJobFilter = pill.dataset.jobFilter;
+      renderJobs();
     });
-    saveSetting(keys.irq, irqJobs);
-    renderAll();
   });
 
-  on("irqCards", "click", async (event) => {
-    const button = event.target.closest("[data-irq-delete]");
-    if (!button) return;
-    const index = Number(button.dataset.irqDelete);
-    const confirmed = await confirmAction("Delete IRQ Work", "Delete this IRQ work item?");
-    if (!confirmed) return;
-    irqJobs.splice(index, 1);
-    saveSetting(keys.irq, irqJobs);
-    renderAll();
+  on("jobCurrencyFilter", "change", (e) => {
+    activeJobCurrencyFilter = e.target.value;
+    renderJobs();
+  });
+
+  // Open New Job Dialog
+  on("addNewJobBtn", "click", () => {
+    const form = document.getElementById("jobForm");
+    const dlg = document.getElementById("jobDialog");
+    if (!form || !dlg) return;
+    form.reset();
+    form.elements.jobId.value = "";
+    document.getElementById("jobDialogTitle").textContent = "Add Part-Time Job";
+    updateJobFormCurrencyIndicators();
+    updateJobFormRateFields();
+    dlg.showModal();
+  });
+
+  // Save Job Dialog
+  on("jobDialog", "close", () => {
+    const dlg = document.getElementById("jobDialog");
+    if (!dlg || dlg.returnValue !== "save") return;
+    const form = document.getElementById("jobForm");
+    if (!form) return;
+
+    const id = form.elements.jobId.value;
+    const title = form.elements.title.value.trim();
+    const client = form.elements.client.value.trim();
+    const currency = form.elements.currency.value;
+    const type = form.elements.type.value;
+    const dailyRate = Number(form.elements.dailyRate.value) || 0;
+    const lumpSumAmount = Number(form.elements.lumpSumAmount.value) || 0;
+    const status = form.elements.status.value;
+    const notes = form.elements.notes.value.trim();
+
+    if (!title || !client) return;
+
+    if (id) {
+      const idx = partTimeJobs.findIndex((j) => j.id === id);
+      if (idx !== -1) {
+        partTimeJobs[idx] = {
+          ...partTimeJobs[idx],
+          title,
+          client,
+          currency,
+          type,
+          dailyRate,
+          lumpSumAmount,
+          status,
+          notes
+        };
+      }
+    } else {
+      const newJobId = generateId();
+      partTimeJobs.unshift({
+        id: newJobId,
+        title,
+        client,
+        currency,
+        type,
+        dailyRate,
+        lumpSumAmount,
+        daysWorked: [],
+        expenses: [],
+        status,
+        invoiceDate: status === "invoiced" ? DateUtils.currentYearMonth() + "-" + new Date().getDate() : "",
+        paidDate: status === "paid" ? DateUtils.currentYearMonth() + "-" + new Date().getDate() : null,
+        settlementAccount: "cib",
+        actualPaidAmount: null,
+        notes
+      });
+      expandedJobIds.add(newJobId);
+    }
+
+    saveSetting(keys.partTimeJobs, partTimeJobs);
+    renderJobs();
+  });
+
+  // Save Day Worked Dialog
+  on("jobLogDayDialog", "close", () => {
+    const dlg = document.getElementById("jobLogDayDialog");
+    if (!dlg || dlg.returnValue !== "save") return;
+    const form = document.getElementById("jobLogDayForm");
+    if (!form) return;
+
+    const jobId = form.elements.jobId.value;
+    const job = partTimeJobs.find((j) => j.id === jobId);
+    if (!job) return;
+
+    const date = form.elements.date.value;
+    const preset = form.elements.unitPreset.value;
+    const units = preset === "custom" ? (Number(form.elements.units.value) || 1) : Number(preset);
+    const note = form.elements.note.value.trim();
+
+    if (!Array.isArray(job.daysWorked)) job.daysWorked = [];
+    job.daysWorked.unshift({ id: generateId(), date, units, note });
+
+    expandedJobIds.add(job.id);
+    saveSetting(keys.partTimeJobs, partTimeJobs);
+    renderJobs();
+  });
+
+  // Save Expense Dialog
+  on("jobExpenseDialog", "close", () => {
+    const dlg = document.getElementById("jobExpenseDialog");
+    if (!dlg || dlg.returnValue !== "save") return;
+    const form = document.getElementById("jobExpenseForm");
+    if (!form) return;
+
+    const jobId = form.elements.jobId.value;
+    const job = partTimeJobs.find((j) => j.id === jobId);
+    if (!job) return;
+
+    const date = form.elements.date.value;
+    const title = form.elements.title.value.trim();
+    const amount = Number(form.elements.amount.value) || 0;
+    const isReimbursable = form.elements.isReimbursable.checked;
+    const receiptNote = form.elements.receiptNote.value.trim();
+
+    if (!Array.isArray(job.expenses)) job.expenses = [];
+    job.expenses.unshift({
+      id: generateId(),
+      date,
+      title,
+      amount,
+      isReimbursable,
+      receiptNote
+    });
+
+    expandedJobIds.add(job.id);
+    saveSetting(keys.partTimeJobs, partTimeJobs);
+    renderJobs();
+  });
+
+  // Save Payment Settlement Dialog
+  on("jobPaymentDialog", "close", () => {
+    const dlg = document.getElementById("jobPaymentDialog");
+    if (!dlg || dlg.returnValue !== "save") return;
+    const form = document.getElementById("jobPaymentForm");
+    if (!form) return;
+
+    const jobId = form.elements.jobId.value;
+    const job = partTimeJobs.find((j) => j.id === jobId);
+    if (!job) return;
+
+    const paidDate = form.elements.paidDate.value;
+    const actualPaidAmount = Number(form.elements.actualPaidAmount.value) || 0;
+    const settlementAccount = form.elements.settlementAccount.value;
+    const syncToBudget = form.elements.syncToBudget.checked;
+    const paymentNote = form.elements.paymentNote.value.trim();
+
+    job.status = "paid";
+    job.paidDate = paidDate;
+    job.actualPaidAmount = actualPaidAmount;
+    job.settlementAccount = settlementAccount;
+    job.paymentNote = paymentNote;
+
+    if (syncToBudget) {
+      const fxRate = getCurrencyRate(job.currency);
+      const egpVal = Math.round(actualPaidAmount * fxRate);
+      const newEntryId = generateId();
+      const newEntry = {
+        id: newEntryId,
+        date: paidDate,
+        category: "Part-Time Job",
+        account: settlementAccount || "cash",
+        type: "income",
+        amount: egpVal,
+        source: "part-time job",
+        creditType: ""
+      };
+      cashEntries.push(newEntry);
+      entryActuals[newEntryId] = egpVal;
+      entryActualDates[newEntryId] = paidDate;
+
+      if (settlementAccount && accountBalances[settlementAccount]) {
+        accountBalances[settlementAccount].balance = (Number(accountBalances[settlementAccount].balance) || 0) + egpVal;
+        saveSetting(keys.accounts, accountBalances);
+      }
+
+      saveSetting(keys.entries, cashEntries);
+      saveSetting(keys.entryActuals, entryActuals);
+      saveSetting(keys.entryActualDates, entryActualDates);
+      renderAll();
+    }
+
+    saveSetting(keys.partTimeJobs, partTimeJobs);
+    renderJobs();
+  });
+
+  // Jobs Stream Delegated Actions
+  on("jobsList", "click", async (event) => {
+    // 1. Toggle Breakdown
+    const toggleBtn = event.target.closest("[data-job-toggle-details]");
+    if (toggleBtn) {
+      const id = toggleBtn.dataset.jobToggleDetails;
+      if (expandedJobIds.has(id)) {
+        expandedJobIds.delete(id);
+      } else {
+        expandedJobIds.add(id);
+      }
+      renderJobs();
+      return;
+    }
+
+    // 2. Quick Log Day
+    const logDayBtn = event.target.closest("[data-job-log-day]");
+    if (logDayBtn) {
+      const id = logDayBtn.dataset.jobLogDay;
+      const job = partTimeJobs.find((j) => j.id === id);
+      if (!job) return;
+      const dlg = document.getElementById("jobLogDayDialog");
+      const form = document.getElementById("jobLogDayForm");
+      if (form && dlg) {
+        form.reset();
+        form.elements.jobId.value = id;
+        form.elements.date.value = new Date().toISOString().slice(0, 10);
+        updateJobDayUnitPreset();
+        dlg.showModal();
+      }
+      return;
+    }
+
+    // 3. Quick Add Expense
+    const addExpBtn = event.target.closest("[data-job-add-expense]");
+    if (addExpBtn) {
+      const id = addExpBtn.dataset.jobAddExpense;
+      const job = partTimeJobs.find((j) => j.id === id);
+      if (!job) return;
+      const dlg = document.getElementById("jobExpenseDialog");
+      const form = document.getElementById("jobExpenseForm");
+      if (form && dlg) {
+        form.reset();
+        form.elements.jobId.value = id;
+        form.elements.date.value = new Date().toISOString().slice(0, 10);
+        document.querySelectorAll(".job-expense-currency-indicator").forEach((el) => {
+          el.textContent = job.currency || "USD";
+        });
+        dlg.showModal();
+      }
+      return;
+    }
+
+    // 4. Mark Invoiced
+    const invoiceBtn = event.target.closest("[data-job-mark-invoiced]");
+    if (invoiceBtn) {
+      const id = invoiceBtn.dataset.jobMarkInvoiced;
+      const job = partTimeJobs.find((j) => j.id === id);
+      if (job) {
+        job.status = "invoiced";
+        job.invoiceDate = new Date().toISOString().slice(0, 10);
+        saveSetting(keys.partTimeJobs, partTimeJobs);
+        renderJobs();
+      }
+      return;
+    }
+
+    // 5. Record Payment
+    const payBtn = event.target.closest("[data-job-record-payment]");
+    if (payBtn) {
+      const id = payBtn.dataset.jobRecordPayment;
+      const job = partTimeJobs.find((j) => j.id === id);
+      if (!job) return;
+      const fin = calculateJobFinancials(job);
+      const dlg = document.getElementById("jobPaymentDialog");
+      const form = document.getElementById("jobPaymentForm");
+      if (dlg && form) {
+        form.reset();
+        form.elements.jobId.value = id;
+        form.elements.paidDate.value = new Date().toISOString().slice(0, 10);
+        form.elements.actualPaidAmount.value = fin.totalInvoice;
+        document.getElementById("jobPayTotalInvoiced").textContent = formatJobCurrency(fin.totalInvoice, fin.currency);
+        document.getElementById("jobPayEgpApprox").textContent = money(fin.totalInvoiceEgp);
+        document.querySelectorAll(".job-pay-currency-indicator").forEach((el) => {
+          el.textContent = fin.currency;
+        });
+
+        const acctSel = document.getElementById("jobPayAccountSelect");
+        if (acctSel) {
+          const acctKeys = Object.keys(accountBalances);
+          acctSel.innerHTML = acctKeys
+            .map((k) => `<option value="${escapeHtml(k)}">${escapeHtml(accountBalances[k].name || k.toUpperCase())}</option>`)
+            .join("");
+          if (!acctKeys.includes("cash")) {
+            acctSel.innerHTML += `<option value="cash">Cash</option>`;
+          }
+        }
+        dlg.showModal();
+      }
+      return;
+    }
+
+    // 6. Reopen Job
+    const reopenBtn = event.target.closest("[data-job-reopen]");
+    if (reopenBtn) {
+      const id = reopenBtn.dataset.jobReopen;
+      const job = partTimeJobs.find((j) => j.id === id);
+      if (job) {
+        job.status = "active";
+        saveSetting(keys.partTimeJobs, partTimeJobs);
+        renderJobs();
+      }
+      return;
+    }
+
+    // 7. Edit Job
+    const editBtn = event.target.closest("[data-job-edit]");
+    if (editBtn) {
+      const id = editBtn.dataset.jobEdit;
+      const job = partTimeJobs.find((j) => j.id === id);
+      if (!job) return;
+      const dlg = document.getElementById("jobDialog");
+      const form = document.getElementById("jobForm");
+      if (dlg && form) {
+        form.reset();
+        form.elements.jobId.value = job.id;
+        form.elements.title.value = job.title;
+        form.elements.client.value = job.client;
+        form.elements.currency.value = job.currency || "USD";
+        form.elements.type.value = job.type || "daily_rate";
+        form.elements.dailyRate.value = job.dailyRate || "";
+        form.elements.lumpSumAmount.value = job.lumpSumAmount || "";
+        form.elements.status.value = job.status || "active";
+        form.elements.notes.value = job.notes || "";
+        document.getElementById("jobDialogTitle").textContent = "Edit Job / Project";
+        updateJobFormCurrencyIndicators();
+        updateJobFormRateFields();
+        dlg.showModal();
+      }
+      return;
+    }
+
+    // 8. Delete Job
+    const delJobBtn = event.target.closest("[data-job-delete]");
+    if (delJobBtn) {
+      const id = delJobBtn.dataset.jobDelete;
+      const idx = partTimeJobs.findIndex((j) => j.id === id);
+      if (idx === -1) return;
+      const confirmed = await confirmAction(
+        "Delete Job",
+        `Are you sure you want to delete "${partTimeJobs[idx].title}"? All logged days and expenses will be removed.`
+      );
+      if (!confirmed) return;
+      partTimeJobs.splice(idx, 1);
+      expandedJobIds.delete(id);
+      saveSetting(keys.partTimeJobs, partTimeJobs);
+      renderJobs();
+      return;
+    }
+
+    // 9. Delete Logged Day
+    const delDayBtn = event.target.closest("[data-job-del-day]");
+    if (delDayBtn) {
+      const jobId = delDayBtn.dataset.jobDelDay;
+      const dayIdx = Number(delDayBtn.dataset.dayIndex);
+      const job = partTimeJobs.find((j) => j.id === jobId);
+      if (job && Array.isArray(job.daysWorked)) {
+        job.daysWorked.splice(dayIdx, 1);
+        saveSetting(keys.partTimeJobs, partTimeJobs);
+        renderJobs();
+      }
+      return;
+    }
+
+    // 10. Delete Logged Expense
+    const delExpBtn = event.target.closest("[data-job-del-expense]");
+    if (delExpBtn) {
+      const jobId = delExpBtn.dataset.jobDelExpense;
+      const expIdx = Number(delExpBtn.dataset.expenseIndex);
+      const job = partTimeJobs.find((j) => j.id === jobId);
+      if (job && Array.isArray(job.expenses)) {
+        job.expenses.splice(expIdx, 1);
+        saveSetting(keys.partTimeJobs, partTimeJobs);
+        renderJobs();
+      }
+      return;
+    }
   });
 
   on("editCurrencies", "click", async () => {
@@ -6955,8 +7665,9 @@ function getFullBudgetPayload() {
       storageAssets,
       accountBalances,
       asfJobs,
-      ratesData,
       irqJobs,
+      partTimeJobs,
+      ratesData,
       creditDues,
       creditDueMonths,
       entryActuals,
