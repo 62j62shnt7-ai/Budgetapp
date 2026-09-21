@@ -811,6 +811,29 @@ if (!partTimeJobs || !Array.isArray(partTimeJobs)) {
   }
   saveSetting(keys.partTimeJobs, partTimeJobs);
 }
+
+// Ensure every job in partTimeJobs has a payments array for partial payments tracking
+if (Array.isArray(partTimeJobs)) {
+  let migratedPayments = false;
+  partTimeJobs.forEach((job) => {
+    if (!Array.isArray(job.payments)) {
+      job.payments = [];
+      migratedPayments = true;
+      if (Number(job.actualPaidAmount) > 0) {
+        job.payments.push({
+          id: generateId(),
+          date: job.paidDate || new Date().toISOString().slice(0, 10),
+          amount: Number(job.actualPaidAmount),
+          account: job.settlementAccount || "cib",
+          paymentNote: job.paymentNote || "Settlement payment"
+        });
+      }
+    }
+  });
+  if (migratedPayments) {
+    saveSetting(keys.partTimeJobs, partTimeJobs);
+  }
+}
 let creditDues = loadSetting(keys.creditDues, {});
 let creditDueMonths = loadSetting(keys.creditDueMonths, {});
 let entryActuals = loadSetting(keys.entryActuals, {});
@@ -4656,6 +4679,7 @@ function calculateJobFinancials(job) {
   const currency = (job.currency || "USD").toUpperCase();
   const daysWorked = Array.isArray(job.daysWorked) ? job.daysWorked : [];
   const expenses = Array.isArray(job.expenses) ? job.expenses : [];
+  const payments = Array.isArray(job.payments) ? job.payments : [];
 
   const totalDays = daysWorked.reduce((sum, d) => sum + (Number(d.units) || 1), 0);
 
@@ -4680,11 +4704,32 @@ function calculateJobFinancials(job) {
   const totalInvoice = grossFee + billableExpenses;
   const netEarnings = grossFee - deductibleExpenses;
 
+  // Payments & Balance Calculations
+  const totalPaid = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+  const remainingBalance = Math.max(0, Math.round((totalInvoice - totalPaid) * 100) / 100);
+  const percentPaid = totalInvoice > 0 ? Math.min(100, Math.round((totalPaid / totalInvoice) * 100)) : (totalPaid > 0 ? 100 : 0);
+
+  // Computed Status
+  let computedStatus = job.status || "active";
+  if (totalPaid >= totalInvoice && totalInvoice > 0) {
+    computedStatus = "paid";
+  } else if (totalPaid > 0 && remainingBalance > 0) {
+    computedStatus = "partial";
+  } else if (job.status === "paid") {
+    computedStatus = "paid";
+  } else if (job.status === "invoiced") {
+    computedStatus = "invoiced";
+  } else {
+    computedStatus = "active";
+  }
+
   const fxRate = getCurrencyRate(currency);
   const totalInvoiceEgp = Math.round(totalInvoice * fxRate);
   const netEarningsEgp = Math.round(netEarnings * fxRate);
   const grossFeeEgp = Math.round(grossFee * fxRate);
   const billableExpensesEgp = Math.round(billableExpenses * fxRate);
+  const totalPaidEgp = Math.round(totalPaid * fxRate);
+  const remainingBalanceEgp = Math.round(remainingBalance * fxRate);
 
   return {
     type,
@@ -4695,11 +4740,18 @@ function calculateJobFinancials(job) {
     deductibleExpenses,
     totalInvoice,
     netEarnings,
+    payments,
+    totalPaid,
+    remainingBalance,
+    percentPaid,
+    computedStatus,
     fxRate,
     totalInvoiceEgp,
     netEarningsEgp,
     grossFeeEgp,
-    billableExpensesEgp
+    billableExpensesEgp,
+    totalPaidEgp,
+    remainingBalanceEgp
   };
 }
 
@@ -4719,15 +4771,23 @@ function renderJobs() {
     const fin = calculateJobFinancials(job);
     const curr = fin.currency;
 
-    if (job.status === "invoiced") {
-      totalPendingEgp += fin.totalInvoiceEgp;
-      pendingByCurrency[curr] = (pendingByCurrency[curr] || 0) + fin.totalInvoice;
-    } else if (job.status === "paid") {
-      const paidAmt = job.actualPaidAmount !== undefined && job.actualPaidAmount !== null ? Number(job.actualPaidAmount) : fin.totalInvoice;
-      totalPaidEgp += Math.round(paidAmt * fin.fxRate);
+    // Track all payments collected
+    totalPaidEgp += fin.totalPaidEgp;
+    if (fin.computedStatus === "paid") {
       paidJobsCount++;
-    } else if (job.status === "active") {
+    }
+
+    // Pending receivables: remaining unpaid balance on invoiced or partial jobs
+    if (fin.remainingBalance > 0 && (fin.computedStatus === "invoiced" || fin.computedStatus === "partial")) {
+      totalPendingEgp += fin.remainingBalanceEgp;
+      pendingByCurrency[curr] = (pendingByCurrency[curr] || 0) + fin.remainingBalance;
+    }
+
+    if (fin.computedStatus === "active") {
       activeJobsCount++;
+    }
+
+    if (fin.computedStatus !== "paid") {
       totalReimbursableEgp += fin.billableExpensesEgp;
     }
   });
@@ -4748,19 +4808,25 @@ function renderJobs() {
       kpiPendingBreakdown.textContent = "No pending receivables";
     } else {
       kpiPendingBreakdown.textContent = breakdownEntries
-        .map(([curr, amt]) => formatJobCurrency(amt, curr))
+        .map(([curr, amt]) => `${formatJobCurrency(amt, curr)} due`)
         .join(" + ");
     }
   }
   if (kpiPaidEgp) kpiPaidEgp.textContent = money(totalPaidEgp);
-  if (kpiPaidSub) kpiPaidSub.textContent = `${paidJobsCount} job${paidJobsCount === 1 ? "" : "s"} collected`;
+  if (kpiPaidSub) kpiPaidSub.textContent = `${paidJobsCount} job${paidJobsCount === 1 ? "" : "s"} settled`;
   if (kpiActiveCount) kpiActiveCount.textContent = String(activeJobsCount);
   if (kpiActiveSub) kpiActiveSub.textContent = `${activeJobsCount} job${activeJobsCount === 1 ? "" : "s"} in progress`;
   if (kpiExpensesEgp) kpiExpensesEgp.textContent = money(totalReimbursableEgp);
 
   // 2. Filter Jobs for Display
   const filteredJobs = partTimeJobs.filter((job) => {
-    if (activeJobFilter !== "all" && job.status !== activeJobFilter) return false;
+    const fin = calculateJobFinancials(job);
+    if (activeJobFilter !== "all") {
+      if (activeJobFilter === "partial" && fin.computedStatus !== "partial") return false;
+      if (activeJobFilter === "active" && fin.computedStatus !== "active") return false;
+      if (activeJobFilter === "invoiced" && fin.computedStatus !== "invoiced") return false;
+      if (activeJobFilter === "paid" && fin.computedStatus !== "paid") return false;
+    }
     if (activeJobCurrencyFilter !== "all" && (job.currency || "USD").toUpperCase() !== activeJobCurrencyFilter.toUpperCase()) return false;
     return true;
   });
@@ -4786,12 +4852,15 @@ function renderJobs() {
       const isExpanded = expandedJobIds.has(job.id);
       const days = Array.isArray(job.daysWorked) ? job.daysWorked : [];
       const expenses = Array.isArray(job.expenses) ? job.expenses : [];
+      const payments = fin.payments;
 
       let statusBadge = "";
-      if (job.status === "active") {
+      if (fin.computedStatus === "active") {
         statusBadge = `<span class="job-badge active">⏳ Active</span>`;
-      } else if (job.status === "invoiced") {
+      } else if (fin.computedStatus === "invoiced") {
         statusBadge = `<span class="job-badge invoiced">📄 Invoiced</span>`;
+      } else if (fin.computedStatus === "partial") {
+        statusBadge = `<span class="job-badge partial">💳 Partial (${fin.percentPaid}%)</span>`;
       } else {
         statusBadge = `<span class="job-badge paid">✓ Paid</span>`;
       }
@@ -4799,6 +4868,18 @@ function renderJobs() {
       const rateTypeLabel = fin.type === "daily_rate"
         ? `${formatJobCurrency(job.dailyRate, fin.currency)}/day`
         : `Fixed Lump Sum`;
+
+      const progressBarHtml = fin.totalInvoice > 0 ? `
+        <div class="job-progress-wrap">
+          <div class="job-progress-info">
+            <span>Payment Progress</span>
+            <span>${fin.percentPaid}% paid (${escapeHtml(formatJobCurrency(fin.totalPaid, fin.currency))} of ${escapeHtml(formatJobCurrency(fin.totalInvoice, fin.currency))})</span>
+          </div>
+          <div class="job-progress-track">
+            <div class="job-progress-fill ${fin.computedStatus === 'paid' ? 'paid' : 'partial'}" style="width: ${fin.percentPaid}%;"></div>
+          </div>
+        </div>
+      ` : "";
 
       return `
         <article class="job-card" data-job-card-id="${job.id}">
@@ -4815,6 +4896,8 @@ function renderJobs() {
             </div>
           </header>
 
+          ${progressBarHtml}
+
           <!-- Summary Metric Grid -->
           <div class="job-summary-grid">
             <div class="job-summary-col">
@@ -4823,19 +4906,23 @@ function renderJobs() {
               <span class="job-summary-eq">${fin.type === "daily_rate" ? `${fin.totalDays} day${fin.totalDays === 1 ? "" : "s"} logged` : "Fixed project"}</span>
             </div>
             <div class="job-summary-col">
-              <span class="job-summary-label">Gross Fee</span>
-              <span class="job-summary-value">${escapeHtml(formatJobCurrency(fin.grossFee, fin.currency))}</span>
-              <span class="job-summary-eq">≈ ${money(fin.grossFeeEgp)}</span>
-            </div>
-            <div class="job-summary-col">
-              <span class="job-summary-label">Expenses</span>
-              <span class="job-summary-value">${escapeHtml(formatJobCurrency(fin.billableExpenses, fin.currency))}</span>
-              <span class="job-summary-eq">${expenses.length} item${expenses.length === 1 ? "" : "s"} (${escapeHtml(formatJobCurrency(fin.deductibleExpenses, fin.currency))} self-paid)</span>
-            </div>
-            <div class="job-summary-col">
               <span class="job-summary-label">Invoice Total</span>
-              <span class="job-summary-value text-green">${escapeHtml(formatJobCurrency(fin.totalInvoice, fin.currency))}</span>
-              <span class="job-summary-eq" style="font-weight: 700; color: var(--green);">≈ ${money(fin.totalInvoiceEgp)}</span>
+              <span class="job-summary-value">${escapeHtml(formatJobCurrency(fin.totalInvoice, fin.currency))}</span>
+              <span class="job-summary-eq">≈ ${money(fin.totalInvoiceEgp)}</span>
+            </div>
+            <div class="job-summary-col">
+              <span class="job-summary-label">Paid So Far</span>
+              <span class="job-summary-value text-green">${escapeHtml(formatJobCurrency(fin.totalPaid, fin.currency))}</span>
+              <span class="job-summary-eq">${payments.length} installment${payments.length === 1 ? "" : "s"}</span>
+            </div>
+            <div class="job-summary-col">
+              <span class="job-summary-label">Remaining Balance</span>
+              <span class="job-summary-value ${fin.remainingBalance > 0 ? 'text-amber' : 'text-green'}">
+                ${escapeHtml(formatJobCurrency(fin.remainingBalance, fin.currency))}
+              </span>
+              <span class="job-summary-eq" style="font-weight: 700; ${fin.remainingBalance > 0 ? 'color: var(--amber);' : 'color: var(--green);'}">
+                ${fin.remainingBalance > 0 ? `≈ ${money(fin.remainingBalanceEgp)}` : '✓ Fully Settled'}
+              </span>
             </div>
             <div class="job-summary-col">
               <span class="job-summary-label">Net Profit</span>
@@ -4852,20 +4939,23 @@ function renderJobs() {
               ${fin.type === "daily_rate" ? `<button class="ghost-button" data-job-log-day="${job.id}" type="button" style="font-size: 12px; padding: 0 10px; min-height: 32px;">+ Log Day</button>` : ""}
               <button class="ghost-button" data-job-add-expense="${job.id}" type="button" style="font-size: 12px; padding: 0 10px; min-height: 32px;">+ Add Expense</button>
               <button class="job-toggle-btn" data-job-toggle-details="${job.id}" type="button">
-                ${isExpanded ? "▲ Hide Breakdown" : `▼ Breakdown (${days.length} days, ${expenses.length} exp)`}
+                ${isExpanded ? "▲ Hide Breakdown" : `▼ Breakdown (${days.length} days, ${expenses.length} exp, ${payments.length} pay)`}
               </button>
             </div>
             <div class="job-btn-group">
-              ${job.status === "active" ? `<button class="ghost-button" data-job-mark-invoiced="${job.id}" type="button" style="font-size: 12px; padding: 0 12px; min-height: 32px;">Mark Invoiced ➔</button>` : ""}
-              ${job.status === "invoiced" ? `<button class="primary-button" data-job-record-payment="${job.id}" type="button" style="font-size: 12px; padding: 0 14px; min-height: 32px;">Record Payment 💵</button>` : ""}
-              ${job.status === "paid" ? `
-                <span style="font-size: 12px; color: var(--green); font-weight: 600;">Paid ${escapeHtml(job.paidDate || "")}</span>
+              ${fin.computedStatus === "active" ? `<button class="ghost-button" data-job-mark-invoiced="${job.id}" type="button" style="font-size: 12px; padding: 0 12px; min-height: 32px;">Mark Invoiced ➔</button>` : ""}
+              ${fin.remainingBalance > 0 ? `
+                <button class="primary-button" data-job-record-payment="${job.id}" type="button" style="font-size: 12px; padding: 0 14px; min-height: 32px;">
+                  ${fin.totalPaid > 0 ? "+ Add Payment 💵" : "Record Payment 💵"}
+                </button>
+              ` : `
+                <span style="font-size: 12px; color: var(--green); font-weight: 600;">✓ Fully Paid</span>
                 <button class="ghost-button" data-job-reopen="${job.id}" type="button" style="font-size: 11px; padding: 0 8px; min-height: 28px;">Reopen</button>
-              ` : ""}
+              `}
             </div>
           </div>
 
-          <!-- Collapsible Worklog & Expenses Details Drawer -->
+          <!-- Collapsible Worklog, Expenses & Payments Details Drawer -->
           ${isExpanded ? `
             <div class="job-drawer">
               ${fin.type === "daily_rate" ? `
@@ -4939,6 +5029,44 @@ function renderJobs() {
                           </td>
                           <td style="text-align: right;">
                             <button class="delete-button" data-job-del-expense="${job.id}" data-expense-index="${eIdx}" type="button" style="font-size: 11px; padding: 2px 6px;">&times;</button>
+                          </td>
+                        </tr>
+                      `).join("")}
+                    </tbody>
+                  </table>
+                `}
+              </div>
+
+              <!-- Payments Received Subpanel -->
+              <div class="job-subpanel">
+                <div class="job-subpanel-header">
+                  <h5 class="job-subpanel-title">💳 Payments Received (${payments.length} installment${payments.length === 1 ? "" : "s"} &bull; Total: ${escapeHtml(formatJobCurrency(fin.totalPaid, fin.currency))})</h5>
+                  ${fin.remainingBalance > 0 ? `
+                    <button class="ghost-button" data-job-record-payment="${job.id}" type="button" style="font-size: 11px; padding: 0 8px; min-height: 26px;">+ Record Payment</button>
+                  ` : ""}
+                </div>
+                ${payments.length === 0 ? `<div class="job-empty-hint">No payments recorded yet.</div>` : `
+                  <table class="job-sub-table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Account</th>
+                        <th>Note</th>
+                        <th style="text-align: right;">Amount</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${payments.map((p, pIdx) => `
+                        <tr>
+                          <td>${escapeHtml(p.date)}</td>
+                          <td><strong>${escapeHtml(p.account ? (accountBalances[p.account]?.name || p.account.toUpperCase()) : "Cash")}</strong></td>
+                          <td style="color: var(--muted);">${escapeHtml(p.paymentNote || p.note || "—")}</td>
+                          <td style="text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; color: var(--green);">
+                            ${escapeHtml(formatJobCurrency(p.amount, fin.currency))}
+                          </td>
+                          <td style="text-align: right;">
+                            <button class="delete-button" data-job-del-payment="${job.id}" data-payment-index="${pIdx}" type="button" style="font-size: 11px; padding: 2px 6px;" title="Delete this payment">&times;</button>
                           </td>
                         </tr>
                       `).join("")}
@@ -7153,15 +7281,28 @@ function setupEventListeners() {
 
     const paidDate = form.elements.paidDate.value;
     const actualPaidAmount = Number(form.elements.actualPaidAmount.value) || 0;
+    if (actualPaidAmount <= 0) return;
     const settlementAccount = form.elements.settlementAccount.value;
     const syncToBudget = form.elements.syncToBudget.checked;
     const paymentNote = form.elements.paymentNote.value.trim();
 
-    job.status = "paid";
+    if (!Array.isArray(job.payments)) job.payments = [];
+    job.payments.push({
+      id: generateId(),
+      date: paidDate,
+      amount: actualPaidAmount,
+      account: settlementAccount,
+      paymentNote
+    });
     job.paidDate = paidDate;
-    job.actualPaidAmount = actualPaidAmount;
-    job.settlementAccount = settlementAccount;
-    job.paymentNote = paymentNote;
+
+    // Recalculate status
+    const updatedFin = calculateJobFinancials(job);
+    if (updatedFin.remainingBalance <= 0) {
+      job.status = "paid";
+    } else {
+      job.status = "partial";
+    }
 
     if (syncToBudget) {
       const fxRate = getCurrencyRate(job.currency);
@@ -7192,6 +7333,7 @@ function setupEventListeners() {
       renderAll();
     }
 
+    expandedJobIds.add(job.id);
     saveSetting(keys.partTimeJobs, partTimeJobs);
     renderJobs();
   });
@@ -7276,9 +7418,17 @@ function setupEventListeners() {
         form.reset();
         form.elements.jobId.value = id;
         form.elements.paidDate.value = new Date().toISOString().slice(0, 10);
-        form.elements.actualPaidAmount.value = fin.totalInvoice;
-        document.getElementById("jobPayTotalInvoiced").textContent = formatJobCurrency(fin.totalInvoice, fin.currency);
-        document.getElementById("jobPayEgpApprox").textContent = money(fin.totalInvoiceEgp);
+        form.elements.actualPaidAmount.value = fin.remainingBalance > 0 ? fin.remainingBalance : fin.totalInvoice;
+
+        const elInvoiced = document.getElementById("jobPayTotalInvoiced");
+        if (elInvoiced) elInvoiced.textContent = formatJobCurrency(fin.totalInvoice, fin.currency);
+        const elAlreadyPaid = document.getElementById("jobPayAlreadyPaid");
+        if (elAlreadyPaid) elAlreadyPaid.textContent = formatJobCurrency(fin.totalPaid, fin.currency);
+        const elRemaining = document.getElementById("jobPayRemainingDue");
+        if (elRemaining) elRemaining.textContent = formatJobCurrency(fin.remainingBalance, fin.currency);
+        const elEgp = document.getElementById("jobPayEgpApprox");
+        if (elEgp) elEgp.textContent = money(fin.remainingBalanceEgp);
+
         document.querySelectorAll(".job-pay-currency-indicator").forEach((el) => {
           el.textContent = fin.currency;
         });
@@ -7378,6 +7528,28 @@ function setupEventListeners() {
       const job = partTimeJobs.find((j) => j.id === jobId);
       if (job && Array.isArray(job.expenses)) {
         job.expenses.splice(expIdx, 1);
+        saveSetting(keys.partTimeJobs, partTimeJobs);
+        renderJobs();
+      }
+      return;
+    }
+
+    // 11. Delete Logged Payment
+    const delPayBtn = event.target.closest("[data-job-del-payment]");
+    if (delPayBtn) {
+      const jobId = delPayBtn.dataset.jobDelPayment;
+      const payIdx = Number(delPayBtn.dataset.paymentIndex);
+      const job = partTimeJobs.find((j) => j.id === jobId);
+      if (job && Array.isArray(job.payments) && job.payments[payIdx]) {
+        const p = job.payments[payIdx];
+        const confirmed = await confirmAction(
+          "Delete Payment",
+          `Remove this payment installment of ${formatJobCurrency(p.amount, job.currency)}?`
+        );
+        if (!confirmed) return;
+        job.payments.splice(payIdx, 1);
+        const updatedFin = calculateJobFinancials(job);
+        job.status = updatedFin.computedStatus;
         saveSetting(keys.partTimeJobs, partTimeJobs);
         renderJobs();
       }
