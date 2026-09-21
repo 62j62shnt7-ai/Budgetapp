@@ -4673,6 +4673,7 @@ function renderStorage() {
 let activeJobFilter = "all"; // 'all' | 'active' | 'invoiced' | 'paid'
 let activeJobCurrencyFilter = "all";
 let activeJobSort = "newest"; // 'newest' | 'oldest'
+let jobDaysSortDirection = "asc"; // 'asc' (oldest first) | 'desc' (newest first)
 const expandedJobIds = new Set();
 
 function getJobEffectiveDate(job) {
@@ -4904,9 +4905,18 @@ function renderJobs() {
     .map((job) => {
       const fin = calculateJobFinancials(job);
       const isExpanded = expandedJobIds.has(job.id);
-      const days = Array.isArray(job.daysWorked) ? job.daysWorked : [];
-      const expenses = Array.isArray(job.expenses) ? job.expenses : [];
-      const payments = fin.payments;
+      const days = (Array.isArray(job.daysWorked) ? [...job.daysWorked] : []).sort((a, b) => {
+        const dateA = a.date || "";
+        const dateB = b.date || "";
+        const cmp = dateA.localeCompare(dateB);
+        return jobDaysSortDirection === "desc" ? -cmp : cmp;
+      });
+      const expenses = (Array.isArray(job.expenses) ? [...job.expenses] : []).sort((a, b) => {
+        return (a.date || "").localeCompare(b.date || "");
+      });
+      const payments = (Array.isArray(fin.payments) ? [...fin.payments] : []).sort((a, b) => {
+        return (a.date || "").localeCompare(b.date || "");
+      });
       const dateBadgeHtml = formatJobDateBadge(job);
 
       const statusOptions = [
@@ -5038,7 +5048,9 @@ function renderJobs() {
                     <table class="job-sub-table">
                       <thead>
                         <tr>
-                          <th>Date</th>
+                          <th style="cursor: pointer; user-select: none;" data-job-sort-days="${job.id}" title="Click to toggle chronological sort">
+                            Date ${jobDaysSortDirection === "desc" ? "▼ (Newest)" : "▲ (Oldest)"}
+                          </th>
                           <th>Units</th>
                           <th>Note</th>
                           <th style="text-align: right;">Gross</th>
@@ -5048,14 +5060,17 @@ function renderJobs() {
                       <tbody>
                         ${days.map((d, dIdx) => `
                           <tr>
-                            <td>${escapeHtml(d.date)}</td>
+                            <td>
+                              <strong>${escapeHtml(DateUtils.formatDisplayDate(d.date) || d.date || "—")}</strong>
+                              ${d.date ? `<small style="color: var(--muted); display: block; font-size: 10px;">${escapeHtml(d.date)}</small>` : ""}
+                            </td>
                             <td><strong>${Number(d.units) || 1}</strong></td>
                             <td style="color: var(--muted);">${escapeHtml(d.note || "—")}</td>
                             <td style="text-align: right; font-variant-numeric: tabular-nums;">
                               ${escapeHtml(formatJobCurrency((Number(job.dailyRate) || 0) * (Number(d.units) || 1), fin.currency))}
                             </td>
                             <td style="text-align: right;">
-                              <button class="delete-button" data-job-del-day="${job.id}" data-day-index="${dIdx}" type="button" style="font-size: 11px; padding: 2px 6px;">&times;</button>
+                              <button class="delete-button" data-job-del-day="${job.id}" data-day-id="${d.id || ""}" data-day-index="${dIdx}" type="button" style="font-size: 11px; padding: 2px 6px;" title="Delete day entry">&times;</button>
                             </td>
                           </tr>
                         `).join("")}
@@ -5084,7 +5099,10 @@ function renderJobs() {
                     <tbody>
                       ${expenses.map((e, eIdx) => `
                         <tr>
-                          <td>${escapeHtml(e.date)}</td>
+                          <td>
+                            <strong>${escapeHtml(DateUtils.formatDisplayDate(e.date) || e.date || "—")}</strong>
+                            ${e.date ? `<small style="color: var(--muted); display: block; font-size: 10px;">${escapeHtml(e.date)}</small>` : ""}
+                          </td>
                           <td>
                             <strong>${escapeHtml(e.title)}</strong>
                             ${e.receiptNote ? `<br><small style="color: var(--muted);">${escapeHtml(e.receiptNote)}</small>` : ""}
@@ -5098,7 +5116,7 @@ function renderJobs() {
                             ${escapeHtml(formatJobCurrency(e.amount, fin.currency))}
                           </td>
                           <td style="text-align: right;">
-                            <button class="delete-button" data-job-del-expense="${job.id}" data-expense-index="${eIdx}" type="button" style="font-size: 11px; padding: 2px 6px;">&times;</button>
+                            <button class="delete-button" data-job-del-expense="${job.id}" data-expense-id="${e.id || ""}" data-expense-index="${eIdx}" type="button" style="font-size: 11px; padding: 2px 6px;" title="Delete expense">&times;</button>
                           </td>
                         </tr>
                       `).join("")}
@@ -5129,14 +5147,17 @@ function renderJobs() {
                     <tbody>
                       ${payments.map((p, pIdx) => `
                         <tr>
-                          <td>${escapeHtml(p.date)}</td>
+                          <td>
+                            <strong>${escapeHtml(DateUtils.formatDisplayDate(p.date) || p.date || "—")}</strong>
+                            ${p.date ? `<small style="color: var(--muted); display: block; font-size: 10px;">${escapeHtml(p.date)}</small>` : ""}
+                          </td>
                           <td><strong>${escapeHtml(p.account ? (accountBalances[p.account]?.name || p.account.toUpperCase()) : "Cash")}</strong></td>
                           <td style="color: var(--muted);">${escapeHtml(p.paymentNote || p.note || "—")}</td>
                           <td style="text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; color: var(--green);">
                             ${escapeHtml(formatJobCurrency(p.amount, fin.currency))}
                           </td>
                           <td style="text-align: right;">
-                            <button class="delete-button" data-job-del-payment="${job.id}" data-payment-index="${pIdx}" type="button" style="font-size: 11px; padding: 2px 6px;" title="Delete this payment">&times;</button>
+                            <button class="delete-button" data-job-del-payment="${job.id}" data-payment-id="${p.id || ""}" data-payment-index="${pIdx}" type="button" style="font-size: 11px; padding: 2px 6px;" title="Delete this payment">&times;</button>
                           </td>
                         </tr>
                       `).join("")}
@@ -7318,7 +7339,8 @@ function setupEventListeners() {
     const note = form.elements.note.value.trim();
 
     if (!Array.isArray(job.daysWorked)) job.daysWorked = [];
-    job.daysWorked.unshift({ id: generateId(), date, units, note });
+    job.daysWorked.push({ id: generateId(), date, units, note });
+    job.daysWorked.sort((a, b) => (a.date || "").localeCompare(b.date || ""));
 
     expandedJobIds.add(job.id);
     saveSetting(keys.partTimeJobs, partTimeJobs);
@@ -7343,7 +7365,7 @@ function setupEventListeners() {
     const receiptNote = form.elements.receiptNote.value.trim();
 
     if (!Array.isArray(job.expenses)) job.expenses = [];
-    job.expenses.unshift({
+    job.expenses.push({
       id: generateId(),
       date,
       title,
@@ -7351,6 +7373,7 @@ function setupEventListeners() {
       isReimbursable,
       receiptNote
     });
+    job.expenses.sort((a, b) => (a.date || "").localeCompare(b.date || ""));
 
     expandedJobIds.add(job.id);
     saveSetting(keys.partTimeJobs, partTimeJobs);
@@ -7439,6 +7462,14 @@ function setupEventListeners() {
       } else {
         expandedJobIds.add(id);
       }
+      renderJobs();
+      return;
+    }
+
+    // 1b. Toggle Days Sort Direction
+    const sortDaysBtn = event.target.closest("[data-job-sort-days]");
+    if (sortDaysBtn) {
+      jobDaysSortDirection = jobDaysSortDirection === "asc" ? "desc" : "asc";
       renderJobs();
       return;
     }
@@ -7658,12 +7689,18 @@ function setupEventListeners() {
     const delDayBtn = event.target.closest("[data-job-del-day]");
     if (delDayBtn) {
       const jobId = delDayBtn.dataset.jobDelDay;
+      const dayId = delDayBtn.dataset.dayId;
       const dayIdx = Number(delDayBtn.dataset.dayIndex);
       const job = partTimeJobs.find((j) => j.id === jobId);
       if (job && Array.isArray(job.daysWorked)) {
-        job.daysWorked.splice(dayIdx, 1);
-        saveSetting(keys.partTimeJobs, partTimeJobs);
-        renderJobs();
+        let idx = -1;
+        if (dayId) idx = job.daysWorked.findIndex((d) => d.id === dayId);
+        if (idx === -1 && !isNaN(dayIdx)) idx = dayIdx;
+        if (idx !== -1 && job.daysWorked[idx]) {
+          job.daysWorked.splice(idx, 1);
+          saveSetting(keys.partTimeJobs, partTimeJobs);
+          renderJobs();
+        }
       }
       return;
     }
@@ -7672,12 +7709,18 @@ function setupEventListeners() {
     const delExpBtn = event.target.closest("[data-job-del-expense]");
     if (delExpBtn) {
       const jobId = delExpBtn.dataset.jobDelExpense;
+      const expId = delExpBtn.dataset.expenseId;
       const expIdx = Number(delExpBtn.dataset.expenseIndex);
       const job = partTimeJobs.find((j) => j.id === jobId);
       if (job && Array.isArray(job.expenses)) {
-        job.expenses.splice(expIdx, 1);
-        saveSetting(keys.partTimeJobs, partTimeJobs);
-        renderJobs();
+        let idx = -1;
+        if (expId) idx = job.expenses.findIndex((e) => e.id === expId);
+        if (idx === -1 && !isNaN(expIdx)) idx = expIdx;
+        if (idx !== -1 && job.expenses[idx]) {
+          job.expenses.splice(idx, 1);
+          saveSetting(keys.partTimeJobs, partTimeJobs);
+          renderJobs();
+        }
       }
       return;
     }
@@ -7686,20 +7729,26 @@ function setupEventListeners() {
     const delPayBtn = event.target.closest("[data-job-del-payment]");
     if (delPayBtn) {
       const jobId = delPayBtn.dataset.jobDelPayment;
+      const payId = delPayBtn.dataset.paymentId;
       const payIdx = Number(delPayBtn.dataset.paymentIndex);
       const job = partTimeJobs.find((j) => j.id === jobId);
-      if (job && Array.isArray(job.payments) && job.payments[payIdx]) {
-        const p = job.payments[payIdx];
-        const confirmed = await confirmAction(
-          "Delete Payment",
-          `Remove this payment installment of ${formatJobCurrency(p.amount, job.currency)}?`
-        );
-        if (!confirmed) return;
-        job.payments.splice(payIdx, 1);
-        const updatedFin = calculateJobFinancials(job);
-        job.status = updatedFin.computedStatus;
-        saveSetting(keys.partTimeJobs, partTimeJobs);
-        renderJobs();
+      if (job && Array.isArray(job.payments)) {
+        let idx = -1;
+        if (payId) idx = job.payments.findIndex((p) => p.id === payId);
+        if (idx === -1 && !isNaN(payIdx)) idx = payIdx;
+        if (idx !== -1 && job.payments[idx]) {
+          const p = job.payments[idx];
+          const confirmed = await confirmAction(
+            "Delete Payment",
+            `Remove this payment installment of ${formatJobCurrency(p.amount, job.currency)}?`
+          );
+          if (!confirmed) return;
+          job.payments.splice(idx, 1);
+          const updatedFin = calculateJobFinancials(job);
+          job.status = updatedFin.computedStatus;
+          saveSetting(keys.partTimeJobs, partTimeJobs);
+          renderJobs();
+        }
       }
       return;
     }
