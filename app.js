@@ -4711,14 +4711,16 @@ function calculateJobFinancials(job) {
 
   // Computed Status
   let computedStatus = job.status || "active";
-  if (totalPaid >= totalInvoice && totalInvoice > 0) {
+  if (totalPaid >= totalInvoice && totalInvoice > 0 && job.status !== "active") {
     computedStatus = "paid";
-  } else if (totalPaid > 0 && remainingBalance > 0) {
+  } else if (totalPaid > 0 && remainingBalance > 0 && job.status !== "active" && job.status !== "invoiced") {
     computedStatus = "partial";
   } else if (job.status === "paid") {
     computedStatus = "paid";
   } else if (job.status === "invoiced") {
     computedStatus = "invoiced";
+  } else if (job.status === "partial") {
+    computedStatus = "partial";
   } else {
     computedStatus = "active";
   }
@@ -4854,16 +4856,23 @@ function renderJobs() {
       const expenses = Array.isArray(job.expenses) ? job.expenses : [];
       const payments = fin.payments;
 
-      let statusBadge = "";
-      if (fin.computedStatus === "active") {
-        statusBadge = `<span class="job-badge active">⏳ Active</span>`;
-      } else if (fin.computedStatus === "invoiced") {
-        statusBadge = `<span class="job-badge invoiced">📄 Invoiced</span>`;
-      } else if (fin.computedStatus === "partial") {
-        statusBadge = `<span class="job-badge partial">💳 Partial (${fin.percentPaid}%)</span>`;
-      } else {
-        statusBadge = `<span class="job-badge paid">✓ Paid</span>`;
-      }
+      const statusOptions = [
+        { value: "active", label: "⏳ Active" },
+        { value: "invoiced", label: "📄 Invoiced" },
+        { value: "partial", label: `💳 Partial (${fin.percentPaid}%)` },
+        { value: "paid", label: "✓ Paid" }
+      ];
+
+      const statusBadge = `
+        <select class="job-badge job-status-select ${fin.computedStatus}" data-job-status-select="${job.id}" title="Click to change job status">
+          ${statusOptions
+            .map(
+              (opt) =>
+                `<option value="${opt.value}" ${fin.computedStatus === opt.value ? "selected" : ""}>${opt.label}</option>`
+            )
+            .join("")}
+        </select>
+      `;
 
       const rateTypeLabel = fin.type === "daily_rate"
         ? `${formatJobCurrency(job.dailyRate, fin.currency)}/day`
@@ -4944,6 +4953,7 @@ function renderJobs() {
             </div>
             <div class="job-btn-group">
               ${fin.computedStatus === "active" ? `<button class="ghost-button" data-job-mark-invoiced="${job.id}" type="button" style="font-size: 12px; padding: 0 12px; min-height: 32px;">Mark Invoiced ➔</button>` : ""}
+              ${fin.computedStatus === "invoiced" ? `<button class="ghost-button" data-job-mark-active="${job.id}" type="button" style="font-size: 12px; padding: 0 12px; min-height: 32px;">↩ Back to Active</button>` : ""}
               ${fin.remainingBalance > 0 ? `
                 <button class="primary-button" data-job-record-payment="${job.id}" type="button" style="font-size: 12px; padding: 0 14px; min-height: 32px;">
                   ${fin.totalPaid > 0 ? "+ Add Payment 💵" : "Record Payment 💵"}
@@ -7152,12 +7162,11 @@ function setupEventListeners() {
     dlg.showModal();
   });
 
-  // Save Job Dialog
-  on("jobDialog", "close", () => {
+  // Save Job Dialog Form Submit
+  on("jobForm", "submit", (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
     const dlg = document.getElementById("jobDialog");
-    if (!dlg || dlg.returnValue !== "save") return;
-    const form = document.getElementById("jobForm");
-    if (!form) return;
 
     const id = form.elements.jobId.value;
     const title = form.elements.title.value.trim();
@@ -7185,6 +7194,12 @@ function setupEventListeners() {
           status,
           notes
         };
+        if (status === "invoiced" && !partTimeJobs[idx].invoiceDate) {
+          partTimeJobs[idx].invoiceDate = new Date().toISOString().slice(0, 10);
+        }
+        if (status === "paid" && !partTimeJobs[idx].paidDate) {
+          partTimeJobs[idx].paidDate = new Date().toISOString().slice(0, 10);
+        }
       }
     } else {
       const newJobId = generateId();
@@ -7198,9 +7213,10 @@ function setupEventListeners() {
         lumpSumAmount,
         daysWorked: [],
         expenses: [],
+        payments: [],
         status,
-        invoiceDate: status === "invoiced" ? DateUtils.currentYearMonth() + "-" + new Date().getDate() : "",
-        paidDate: status === "paid" ? DateUtils.currentYearMonth() + "-" + new Date().getDate() : null,
+        invoiceDate: status === "invoiced" ? new Date().toISOString().slice(0, 10) : "",
+        paidDate: status === "paid" ? new Date().toISOString().slice(0, 10) : null,
         settlementAccount: "cib",
         actualPaidAmount: null,
         notes
@@ -7210,14 +7226,14 @@ function setupEventListeners() {
 
     saveSetting(keys.partTimeJobs, partTimeJobs);
     renderJobs();
+    if (dlg) dlg.close();
   });
 
-  // Save Day Worked Dialog
-  on("jobLogDayDialog", "close", () => {
+  // Save Day Worked Dialog Form Submit
+  on("jobLogDayForm", "submit", (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
     const dlg = document.getElementById("jobLogDayDialog");
-    if (!dlg || dlg.returnValue !== "save") return;
-    const form = document.getElementById("jobLogDayForm");
-    if (!form) return;
 
     const jobId = form.elements.jobId.value;
     const job = partTimeJobs.find((j) => j.id === jobId);
@@ -7234,14 +7250,14 @@ function setupEventListeners() {
     expandedJobIds.add(job.id);
     saveSetting(keys.partTimeJobs, partTimeJobs);
     renderJobs();
+    if (dlg) dlg.close();
   });
 
-  // Save Expense Dialog
-  on("jobExpenseDialog", "close", () => {
+  // Save Expense Dialog Form Submit
+  on("jobExpenseForm", "submit", (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
     const dlg = document.getElementById("jobExpenseDialog");
-    if (!dlg || dlg.returnValue !== "save") return;
-    const form = document.getElementById("jobExpenseForm");
-    if (!form) return;
 
     const jobId = form.elements.jobId.value;
     const job = partTimeJobs.find((j) => j.id === jobId);
@@ -7266,14 +7282,14 @@ function setupEventListeners() {
     expandedJobIds.add(job.id);
     saveSetting(keys.partTimeJobs, partTimeJobs);
     renderJobs();
+    if (dlg) dlg.close();
   });
 
-  // Save Payment Settlement Dialog
-  on("jobPaymentDialog", "close", () => {
+  // Save Payment Settlement Dialog Form Submit
+  on("jobPaymentForm", "submit", (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
     const dlg = document.getElementById("jobPaymentDialog");
-    if (!dlg || dlg.returnValue !== "save") return;
-    const form = document.getElementById("jobPaymentForm");
-    if (!form) return;
 
     const jobId = form.elements.jobId.value;
     const job = partTimeJobs.find((j) => j.id === jobId);
@@ -7336,6 +7352,7 @@ function setupEventListeners() {
     expandedJobIds.add(job.id);
     saveSetting(keys.partTimeJobs, partTimeJobs);
     renderJobs();
+    if (dlg) dlg.close();
   });
 
   // Jobs Stream Delegated Actions
@@ -7399,6 +7416,19 @@ function setupEventListeners() {
       if (job) {
         job.status = "invoiced";
         job.invoiceDate = new Date().toISOString().slice(0, 10);
+        saveSetting(keys.partTimeJobs, partTimeJobs);
+        renderJobs();
+      }
+      return;
+    }
+
+    // 4b. Revert to Active
+    const markActiveBtn = event.target.closest("[data-job-mark-active]");
+    if (markActiveBtn) {
+      const id = markActiveBtn.dataset.jobMarkActive;
+      const job = partTimeJobs.find((j) => j.id === id);
+      if (job) {
+        job.status = "active";
         saveSetting(keys.partTimeJobs, partTimeJobs);
         renderJobs();
       }
@@ -7554,6 +7584,27 @@ function setupEventListeners() {
         renderJobs();
       }
       return;
+    }
+  });
+
+  // Change Job Status directly from card dropdown selector
+  on("jobsList", "change", (event) => {
+    const statusSelect = event.target.closest("[data-job-status-select]");
+    if (statusSelect) {
+      const id = statusSelect.dataset.jobStatusSelect;
+      const job = partTimeJobs.find((j) => j.id === id);
+      if (job) {
+        const nextStatus = statusSelect.value;
+        job.status = nextStatus;
+        if (nextStatus === "invoiced" && !job.invoiceDate) {
+          job.invoiceDate = new Date().toISOString().slice(0, 10);
+        }
+        if (nextStatus === "paid" && !job.paidDate) {
+          job.paidDate = new Date().toISOString().slice(0, 10);
+        }
+        saveSetting(keys.partTimeJobs, partTimeJobs);
+        renderJobs();
+      }
     }
   });
 
