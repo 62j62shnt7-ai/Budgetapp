@@ -7038,7 +7038,34 @@ function setupEventListeners() {
     reader.readAsText(file);
   });
 
-  setupGistSyncEventListeners();
+  on("refreshAppBtn", "click", async () => {
+    const btn = document.getElementById("refreshAppBtn");
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Updating… 🔄";
+    }
+
+    try {
+      // 1. Purge all Service Worker CacheStorage
+      if ("caches" in window) {
+        const cacheNames = await caches.keys();
+        await Promise.all(cacheNames.map((name) => caches.delete(name)));
+      }
+
+      // 2. Trigger active Service Worker update
+      if ("serviceWorker" in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registrations.map((reg) => reg.update()));
+      }
+    } catch (err) {
+      console.warn("Cache purge error during Refresh App:", err);
+    }
+
+    // 3. Force hard reload bypassing cache with cache-busting timestamp
+    const targetUrl = new URL(window.location.href);
+    targetUrl.searchParams.set("reload", Date.now().toString());
+    window.location.replace(targetUrl.toString());
+  });
 
   on("resetData", "click", async () => {
     const confirmed = await confirmAction(
