@@ -12,7 +12,7 @@
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="apple-touch-icon" href="icon.svg">
     <link rel="icon" type="image/svg+xml" href="icon.svg">
-    <link rel="stylesheet" href="styles.css?v=37">
+    <link rel="stylesheet" href="styles.css?v=38">
   </head>
   <body>
     <aside class="sidebar">
@@ -831,6 +831,22 @@
           <option value="Bills"></option>
           <option value="Other"></option>
         </datalist>
+        <label id="tagField" class="entry-field">
+          Subcategory / Tag
+          <input name="tag" id="entryTagInput" type="text" list="subcatSuggestions" placeholder="e.g. Food, Bills, Groceries (optional)">
+        </label>
+        <datalist id="subcatSuggestions">
+          <option value="Food"></option>
+          <option value="Groceries"></option>
+          <option value="Bills"></option>
+          <option value="Electricity"></option>
+          <option value="Internet"></option>
+          <option value="Water"></option>
+          <option value="Maintenance"></option>
+          <option value="Fuel"></option>
+          <option value="Dining Out"></option>
+          <option value="Shopping"></option>
+        </datalist>
         <label>
           Account
           <input name="account" type="text" placeholder="cib, hsbc, cash">
@@ -1410,6 +1426,10 @@
           <span id="deductAccountSelectLabel">Select account</span>
           <select id="deductAccountSelect" name="accountId"></select>
         </label>
+        <label id="deductAccountTagField" style="margin-top: 10px;">
+          <span id="deductAccountTagLabel">Subcategory / Tag <small style="color:var(--muted); font-size:12px;">(Optional)</small></span>
+          <input type="text" id="deductAccountTagInput" name="subcatTag" list="subcatSuggestions" placeholder="e.g. Food, Bills, Utilities">
+        </label>
         <div class="dialog-actions" style="margin-top: 18px;">
           <button class="ghost-button" id="deductAccountSkipBtn" value="skip" formnovalidate type="button" onclick="document.getElementById('deductAccountDialog').close('skip')">Don't deduct</button>
           <button class="primary-button" id="deductAccountSubmitBtn" value="confirm" type="submit">Deduct & Save</button>
@@ -1500,6 +1520,6 @@
       </div>
     </dialog>
 
-    <script src="app.js?v=42"></script>
+    <script src="app.js?v=43"></script>
   </body>
 </html>

@@ -1204,6 +1204,49 @@ input:focus {
   background: #082f49;
 }
 
+.subcat-tag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 7px;
+  border-radius: 6px;
+  color: var(--ink);
+  background: var(--surface-subtle, rgba(0, 0, 0, 0.05));
+  border: 1px solid var(--border);
+  vertical-align: middle;
+  margin-left: 5px;
+}
+
+[data-theme="dark"] .subcat-tag-pill {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.subcat-tag-pill.subcat-food {
+  color: #047857;
+  background: #d1fae5;
+  border-color: #a7f3d0;
+}
+[data-theme="dark"] .subcat-tag-pill.subcat-food {
+  color: #6ee7b7;
+  background: #064e3b;
+  border-color: #065f46;
+}
+
+.subcat-tag-pill.subcat-bills {
+  color: #b45309;
+  background: #fef3c7;
+  border-color: #fde68a;
+}
+[data-theme="dark"] .subcat-tag-pill.subcat-bills {
+  color: #fcd34d;
+  background: #78350f;
+  border-color: #92400e;
+}
+
 .radio-pill-label {
   transition: all 0.2s ease;
   background: var(--surface);

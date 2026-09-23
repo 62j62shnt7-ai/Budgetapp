@@ -574,7 +574,59 @@ function confirmAction(title, message, confirmButtonText = "Delete") {
   });
 }
 
-function promptAccountAdjustment(type, amount, defaultAccountKey = "cash", description = "") {
+// --- Subcategory & Tag Helpers ---
+const defaultCategorySubcats = {
+  Home: ["Food", "Groceries", "Bills", "Electricity", "Internet", "Water", "Maintenance", "Cleaning", "Furniture", "Household"],
+  Bills: ["Electricity", "Internet", "Water", "Mobile Phone", "Gas", "Subscriptions", "Insurance"],
+  Training: ["Courses", "Gym", "Books", "Certifications", "Coaching"],
+  Kids: ["School", "Clothes", "Toys", "Activities", "Medical", "Supplies"],
+  Transportation: ["Fuel", "Uber / Careem", "Maintenance", "Parking", "Tolls", "License"],
+  Garage: ["Rent", "Maintenance", "Tools"],
+  Other: ["Gifts", "Personal", "Dining Out", "Shopping", "Charity", "Healthcare"]
+};
+
+function updateSubcategorySuggestions(categoryName, datalistId = "subcatSuggestions") {
+  const datalist = document.getElementById(datalistId);
+  if (!datalist) return;
+  const key = Object.keys(defaultCategorySubcats).find(
+    (k) => k.toLowerCase() === (categoryName || "").toLowerCase().trim()
+  );
+  const suggestions = key ? defaultCategorySubcats[key] : [
+    "Food", "Groceries", "Bills", "Electricity", "Internet", "Water", "Maintenance", "Fuel", "Dining Out", "Shopping"
+  ];
+  datalist.innerHTML = suggestions.map((s) => `<option value="${escapeHtml(s)}"></option>`).join("");
+}
+
+function getEntryTags(entry) {
+  if (!entry) return [];
+  const tags = new Set();
+  if (entry.tag && typeof entry.tag === "string" && entry.tag.trim()) {
+    tags.add(entry.tag.trim());
+  }
+  if (Array.isArray(entry.draws)) {
+    entry.draws.forEach((d) => {
+      if (d && d.tag && typeof d.tag === "string" && d.tag.trim()) {
+        tags.add(d.tag.trim());
+      }
+    });
+  }
+  return [...tags];
+}
+
+function renderSubcatTagPills(entry) {
+  const tags = getEntryTags(entry);
+  if (!tags.length) return "";
+  return tags.map((t) => {
+    const safeTag = escapeHtml(t);
+    const lower = t.toLowerCase();
+    let modifier = "";
+    if (lower === "food" || lower === "groceries") modifier = " subcat-food";
+    else if (lower === "bills" || lower === "utilities" || lower === "electricity" || lower === "water" || lower === "internet") modifier = " subcat-bills";
+    return `<span class="subcat-tag-pill${modifier}" title="Subcategory: ${safeTag}">🏷️ ${safeTag}</span>`;
+  }).join(" ");
+}
+
+function promptAccountAdjustment(type, amount, defaultAccountKey = "cash", description = "", initialTag = "") {
   return new Promise((resolve) => {
     const dialog = document.getElementById("deductAccountDialog");
     if (!dialog) {
@@ -589,6 +641,17 @@ function promptAccountAdjustment(type, amount, defaultAccountKey = "cash", descr
     const selectLabelEl = document.getElementById("deductAccountSelectLabel");
     const skipBtn = document.getElementById("deductAccountSkipBtn");
     const submitBtn = document.getElementById("deductAccountSubmitBtn");
+    const tagField = document.getElementById("deductAccountTagField");
+    const tagInput = document.getElementById("deductAccountTagInput");
+
+    updateSubcategorySuggestions(description || "");
+
+    if (tagField) {
+      tagField.style.display = isIncome ? "none" : "block";
+    }
+    if (tagInput) {
+      tagInput.value = initialTag || "";
+    }
 
     if (titleEl) {
       titleEl.textContent = isIncome ? "Deposit Income to Account?" : "Deduct Spend from Account?";
@@ -634,12 +697,17 @@ function promptAccountAdjustment(type, amount, defaultAccountKey = "cash", descr
       const submitter = event.submitter;
       const val = submitter ? submitter.value : "confirm";
       const selectedAccId = selectEl ? selectEl.value : null;
+      const chosenTag = (tagInput ? tagInput.value : "").trim();
       cleanup();
       dialog.close(val);
       if (val === "confirm" && selectedAccId) {
-        resolve(selectedAccId);
+        resolve({
+          accountId: selectedAccId,
+          tag: chosenTag,
+          toString() { return this.accountId; }
+        });
       } else {
-        resolve(null);
+        resolve(chosenTag ? { accountId: null, tag: chosenTag, toString() { return ""; } } : null);
       }
     };
 
@@ -665,13 +733,14 @@ function promptAccountAdjustment(type, amount, defaultAccountKey = "cash", descr
 }
 
 function adjustAccountBalance(accountId, amount, type = "expense") {
-  if (!accountId || !accountBalances[accountId] || !amount || amount <= 0) return;
-  const current = Number(accountBalances[accountId].balance || 0);
+  const accKey = typeof accountId === "object" && accountId !== null ? accountId.accountId : accountId;
+  if (!accKey || !accountBalances[accKey] || !amount || amount <= 0) return;
+  const current = Number(accountBalances[accKey].balance || 0);
   const roundedAmount = Math.round(Number(amount) || 0);
   if ((type || "").toLowerCase() === "income") {
-    accountBalances[accountId].balance = Math.round(current + roundedAmount);
+    accountBalances[accKey].balance = Math.round(current + roundedAmount);
   } else {
-    accountBalances[accountId].balance = Math.round(current - roundedAmount);
+    accountBalances[accKey].balance = Math.round(current - roundedAmount);
   }
   saveSetting(keys.accounts, accountBalances);
 }
@@ -1430,7 +1499,7 @@ function getEntryDrawsSummary(entry) {
   const isIncome = entry.type === "income";
   const verb = isIncome ? "draws" : "payments";
   const parts = entry.draws.map(
-    (d) => `${money(d.amount)} (${DateUtils.formatDisplayDate(d.date)})`
+    (d) => `${money(d.amount)}${d.tag ? ` [${d.tag}]` : ""} (${DateUtils.formatDisplayDate(d.date)})`
   );
   return `${entry.draws.length} ${verb}: ${parts.join(" · ")}`;
 }
@@ -3518,11 +3587,12 @@ function exportToCSV() {
     return `"${String(val).replace(/"/g, '""')}"`;
   };
 
-  const headers = ["Date", "Actual Date", "Category", "Account", "Type", "Source", "Planned Amount (EGP)", "Actual Amount (EGP)"];
+  const headers = ["Date", "Actual Date", "Category", "Subcategory / Tags", "Account", "Type", "Source", "Planned Amount (EGP)", "Actual Amount (EGP)"];
   const rows = allEntries.map((e) => [
     escapeCsv(e.date || ""),
     escapeCsv(getEntryActualDate(e) || ""),
     escapeCsv(e.category || ""),
+    escapeCsv(getEntryTags(e).join(", ") || ""),
     escapeCsv(e.account || ""),
     escapeCsv(e.type || ""),
     escapeCsv(e.source || ""),
@@ -3615,10 +3685,16 @@ function renderEntries() {
   const searchEl = document.getElementById("searchEntries");
   const search = searchEl ? searchEl.value.trim().toLowerCase() : "";
 
-  const matchesFilters = (entry) =>
-    (typeFilter === "all" || entry.type === typeFilter) &&
-    (categoryFilter === "all" || entry.category === categoryFilter) &&
-    (!search || (entry.category || "").toLowerCase().includes(search));
+  const matchesFilters = (entry) => {
+    if (typeFilter !== "all" && entry.type !== typeFilter) return false;
+    if (categoryFilter !== "all" && entry.category !== categoryFilter) return false;
+    if (search) {
+      const cat = (entry.category || "").toLowerCase();
+      const tags = getEntryTags(entry).map((t) => t.toLowerCase()).join(" ");
+      if (!cat.includes(search) && !tags.includes(search)) return false;
+    }
+    return true;
+  };
 
   const openingRows = openingBalanceEntries().filter(matchesFilters);
   const forecastRows = getForecastCandidateEntries()
@@ -3757,6 +3833,10 @@ function renderEntries() {
       }
 
       let categoryDisplayHtml = escapeHtml(entry.category || "—");
+      const tagPills = renderSubcatTagPills(entry);
+      if (tagPills) {
+        categoryDisplayHtml += ` ${tagPills}`;
+      }
       if (entry.cardSpendTotal > 0) {
         categoryDisplayHtml += `<small style="display:block; color:var(--muted); font-size:11px; margin-top:2px;">💳 Covers ${money(entry.cardSpendTotal)} card spend${entry.baseDue > 0 ? ` + ${money(entry.baseDue)} base due` : ""}</small>`;
       }
@@ -3904,24 +3984,34 @@ async function commitEntryActualInput(input) {
     setEntryActualAmount(entry, newActual);
 
     // Record dated transaction tranche (spend or draw)
+    const adjustmentResult = await promptAccountAdjustment(
+      entry.type || "expense",
+      typedAmount,
+      entry.account || "cash",
+      entry.category || "",
+      entry.tag || ""
+    );
+
+    const trancheTag = (adjustmentResult && adjustmentResult.tag) ? adjustmentResult.tag : (entry.tag || "");
+    const trancheAccount = (adjustmentResult && adjustmentResult.accountId) ? adjustmentResult.accountId : (entry.account || "cash");
+
     if (!Array.isArray(entry.draws)) {
       entry.draws = previousActual > 0
-        ? [{ date: entry.actualDate || entry.date || DateUtils.todayString(), amount: previousActual }]
+        ? [{ date: entry.actualDate || entry.date || DateUtils.todayString(), amount: previousActual, tag: entry.tag || "" }]
         : [];
     }
     entry.draws.push({
       date: DateUtils.todayString(),
-      amount: typedAmount
+      amount: typedAmount,
+      tag: trancheTag,
+      account: trancheAccount
     });
     saveSetting(keys.entries, cashEntries);
 
-    renderAll();
-
-    const selectedAcc = await promptAccountAdjustment(entry.type || "expense", typedAmount, entry.account || "cash", entry.category || "");
-    if (selectedAcc) {
-      adjustAccountBalance(selectedAcc, typedAmount, entry.type || "expense");
-      renderAll();
+    if (adjustmentResult && adjustmentResult.accountId) {
+      adjustAccountBalance(adjustmentResult.accountId, typedAmount, entry.type || "expense");
     }
+    renderAll();
 
     if (isLoanInflow(entry)) {
       await handleLoanRepaymentAdjustmentPrompt(entry, newActual);
@@ -4100,7 +4190,8 @@ function renderHistory() {
       const cat = (entry.category || "").toLowerCase();
       const acc = (entry.account || "").toLowerCase();
       const src = (entry.source || "").toLowerCase();
-      if (!cat.includes(searchTerm) && !acc.includes(searchTerm) && !src.includes(searchTerm)) return false;
+      const tags = getEntryTags(entry).map((t) => t.toLowerCase()).join(" ");
+      if (!cat.includes(searchTerm) && !acc.includes(searchTerm) && !src.includes(searchTerm) && !tags.includes(searchTerm)) return false;
     }
     return true;
   });
@@ -4178,6 +4269,10 @@ function renderHistory() {
       }
 
       let categoryCellHtml = escapeHtml(entry.category || "—");
+      const tagPills = renderSubcatTagPills(entry);
+      if (tagPills) {
+        categoryCellHtml += ` ${tagPills}`;
+      }
       if (entry.source === "recurring credit" || isCreditDueLumpSum(entry)) {
         const acc = (entry.account || entry.creditType || "").toLowerCase().includes("hsbc") ? "hsbc" : "cib";
         const entryMonth = DateUtils.getMonthKey(getEntryActualDate(entry));
@@ -5516,6 +5611,7 @@ function openEntryDialog(type, entry = null) {
     const actDate = getEntryActualDate(entry);
     form.elements.date.value = actDate || entry.date || form.elements.date.value;
     form.elements.category.value = entry.category || "";
+    if (form.elements.tag) form.elements.tag.value = entry.tag || "";
     form.elements.account.value = entry.account || "";
     form.elements.type.value = entry.type || type;
     form.elements.amount.value = entry.amount || "";
@@ -5527,11 +5623,14 @@ function openEntryDialog(type, entry = null) {
     form.elements.actualAmount.value = getEntryActualAmount(entry) || "";
     if (form.elements.recurring) form.elements.recurring.checked = false;
     form.elements.months.value = entry.months || 12;
+    updateSubcategorySuggestions(entry.category || "");
   } else {
+    if (form.elements.tag) form.elements.tag.value = "";
     if (form.elements.creditSettlementDate) {
       form.elements.creditSettlementDate.value = "";
       form.elements.creditSettlementDate.dataset.autoGenerated = "true";
     }
+    updateSubcategorySuggestions(type === "expense" ? "Home" : "");
   }
 
   syncEntryFormMode();
@@ -5610,6 +5709,7 @@ async function persistEntryForm(event) {
       id: idx !== -1 ? (cashEntries[idx].id || generateId()) : (editingEntry.id || generateId()),
       date: form.elements.date.value,
       category: form.elements.category.value.trim(),
+      tag: (form.elements.tag?.value || "").trim(),
       account: chosenAccount,
       type: form.elements.type.value,
       amount: plannedAmountInEgp,
@@ -5696,6 +5796,7 @@ async function persistEntryForm(event) {
       id: generateId(),
       date: form.elements.date.value,
       category: form.elements.category.value.trim(),
+      tag: (form.elements.tag?.value || "").trim(),
       account: chosenAccount,
       type: form.elements.type.value,
       amount: plannedAmountInEgp,
@@ -6619,6 +6720,14 @@ function setupEventListeners() {
 
   const entryForm = document.getElementById("entryForm");
   if (entryForm) {
+    if (entryForm.elements && entryForm.elements.category) {
+      entryForm.elements.category.addEventListener("input", (e) => {
+        updateSubcategorySuggestions(e.target.value);
+      });
+      entryForm.elements.category.addEventListener("change", (e) => {
+        updateSubcategorySuggestions(e.target.value);
+      });
+    }
     if (entryForm.elements && entryForm.elements.creditType) {
       entryForm.elements.creditType.addEventListener("change", syncEntryFormMode);
     }
@@ -6749,24 +6858,34 @@ function setupEventListeners() {
     setEntryActualAmount(entry, newActual);
 
     // Record dated transaction tranche (spend or draw)
+    const adjustmentResult = await promptAccountAdjustment(
+      entry.type || "expense",
+      amount,
+      entry.account || "cash",
+      entry.category || "",
+      entry.tag || ""
+    );
+
+    const trancheTag = (adjustmentResult && adjustmentResult.tag) ? adjustmentResult.tag : (entry.tag || "");
+    const trancheAccount = (adjustmentResult && adjustmentResult.accountId) ? adjustmentResult.accountId : (entry.account || "cash");
+
     if (!Array.isArray(entry.draws)) {
       entry.draws = previousActual > 0
-        ? [{ date: entry.actualDate || entry.date || DateUtils.todayString(), amount: previousActual }]
+        ? [{ date: entry.actualDate || entry.date || DateUtils.todayString(), amount: previousActual, tag: entry.tag || "" }]
         : [];
     }
     entry.draws.push({
       date: DateUtils.todayString(),
-      amount: amount
+      amount: amount,
+      tag: trancheTag,
+      account: trancheAccount
     });
     saveSetting(keys.entries, cashEntries);
 
-    renderAll();
-
-    const selectedAcc = await promptAccountAdjustment(entry.type || "expense", amount, entry.account || "cash", entry.category || "");
-    if (selectedAcc) {
-      adjustAccountBalance(selectedAcc, amount, entry.type || "expense");
-      renderAll();
+    if (adjustmentResult && adjustmentResult.accountId) {
+      adjustAccountBalance(adjustmentResult.accountId, amount, entry.type || "expense");
     }
+    renderAll();
 
     if (isLoanInflow(entry)) {
       await handleLoanRepaymentAdjustmentPrompt(entry, newActual);
