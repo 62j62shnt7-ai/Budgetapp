@@ -1245,6 +1245,8 @@ input:focus {
   color: #fcd34d;
   background: #78350f;
   border-color: #92400e;
+}
+
 .subcat-tag-pill[data-tag-filter-click] {
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
