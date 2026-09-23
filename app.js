@@ -4290,6 +4290,11 @@ function renderHistory() {
       if (tagPills) {
         categoryCellHtml += ` ${tagPills}`;
       }
+      if (historyAdminUnlocked) {
+        categoryCellHtml += `
+          <input class="inline-subcat-input" data-history-tag-input="${escapeHtml(entryId)}" type="text" list="subcatSuggestions" value="${escapeHtml(entry.tag || "")}" placeholder="+ Tag" style="width: 84px; font-size: 11px; padding: 2px 6px; margin-left: 6px; vertical-align: middle; border-radius: 4px; border: 1px dashed var(--blue); background: var(--surface);" title="Edit or add subcategory tag in Admin Mode" onclick="event.stopPropagation()">
+        `;
+      }
       if (entry.source === "recurring credit" || isCreditDueLumpSum(entry)) {
         const acc = (entry.account || entry.creditType || "").toLowerCase().includes("hsbc") ? "hsbc" : "cib";
         const entryMonth = DateUtils.getMonthKey(getEntryActualDate(entry));
@@ -4382,10 +4387,11 @@ function renderHistory() {
                       <th>Subcategory Tag</th>
                       <th>Account</th>
                       <th style="text-align: right; width: 140px;">Tranche Amount</th>
+                      ${historyAdminUnlocked ? `<th style="width: 40px; text-align: center;"></th>` : ""}
                     </tr>
                   </thead>
                   <tbody>
-                    ${entry.draws.map((d) => {
+                    ${entry.draws.map((d, dIdx) => {
                       const tagLower = (d.tag || "").toLowerCase();
                       let mod = "";
                       if (tagLower === "food" || tagLower === "groceries") mod = " subcat-food";
@@ -4393,12 +4399,24 @@ function renderHistory() {
                       const tagBadge = d.tag
                         ? `<span class="subcat-tag-pill${mod}">🏷️ ${escapeHtml(d.tag)}</span>`
                         : `<span style="color:var(--muted); font-size:12px;">—</span>`;
+                      const tagCellHtml = historyAdminUnlocked
+                        ? `<div style="display:inline-flex; align-items:center; gap:6px;">
+                            ${d.tag ? tagBadge : ""}
+                            <input class="inline-subcat-input" data-draw-tag-input="${escapeHtml(entryId)}" data-draw-index="${dIdx}" type="text" list="subcatSuggestions" value="${escapeHtml(d.tag || "")}" placeholder="+ Tag" style="width: 100px; font-size: 11px; padding: 2px 6px; border-radius: 4px; border: 1px dashed var(--blue); background: var(--surface);" onclick="event.stopPropagation()" title="Edit subcategory tag for this payment">
+                          </div>`
+                        : tagBadge;
+                      const adminActionCell = historyAdminUnlocked
+                        ? `<td style="text-align: center; width: 40px;">
+                            <button class="delete-button" data-draw-delete-entry="${escapeHtml(entryId)}" data-draw-delete-index="${dIdx}" type="button" style="font-size: 10px; padding: 2px 6px;" title="Delete this payment tranche" onclick="event.stopPropagation()">✕</button>
+                          </td>`
+                        : "";
                       return `
                         <tr>
                           <td><strong>${escapeHtml(DateUtils.formatDisplayDate(d.date))}</strong></td>
-                          <td>${tagBadge}</td>
+                          <td>${tagCellHtml}</td>
                           <td><span style="font-size:11px; font-weight:700; text-transform:uppercase;">${escapeHtml(d.account || entry.account || "cash")}</span></td>
                           <td style="text-align: right; font-weight:700;">${escapeHtml(money(d.amount))}</td>
+                          ${adminActionCell}
                         </tr>
                       `;
                     }).join("")}
@@ -4686,6 +4704,69 @@ function clearHistoryActualEntry(entry) {
   }
   saveSetting(keys.entryActuals, entryActuals);
   saveSetting(keys.entryActualDates, entryActualDates);
+}
+
+async function commitHistoryEntryTag(input) {
+  if (!input) return;
+  const entryId = input.dataset.historyTagInput;
+  const { entry, isArchived, archivedIndex } = findHistoryEntry(entryId);
+  if (!entry) return;
+
+  const newTag = (input.value || "").trim();
+  entry.tag = newTag;
+
+  if (Array.isArray(entry.draws) && entry.draws.length === 1) {
+    entry.draws[0].tag = newTag;
+  }
+
+  saveSetting(keys.entries, cashEntries);
+  if (isArchived && archivedIndex !== -1) {
+    saveSetting(keys.archivedEntries, archivedEntries);
+  }
+  renderHistory();
+}
+
+async function commitHistoryDrawTag(input) {
+  if (!input) return;
+  const entryId = input.dataset.drawTagInput;
+  const drawIndex = Number(input.dataset.drawIndex);
+  const { entry, isArchived, archivedIndex } = findHistoryEntry(entryId);
+  if (!entry || !Array.isArray(entry.draws) || !entry.draws[drawIndex]) return;
+
+  const newTag = (input.value || "").trim();
+  entry.draws[drawIndex].tag = newTag;
+
+  if (!entry.tag || entry.draws.length === 1) {
+    entry.tag = newTag;
+  }
+
+  saveSetting(keys.entries, cashEntries);
+  if (isArchived && archivedIndex !== -1) {
+    saveSetting(keys.archivedEntries, archivedEntries);
+  }
+  renderHistory();
+}
+
+async function deleteHistoryEntryDraw(entryId, drawIndex) {
+  const { entry, isArchived, archivedIndex } = findHistoryEntry(entryId);
+  if (!entry || !Array.isArray(entry.draws) || !entry.draws[drawIndex]) return;
+
+  const targetDraw = entry.draws[drawIndex];
+  const confirmed = await confirmAction(
+    "Delete Subspend Tranche",
+    `Delete ${money(targetDraw.amount)}${targetDraw.tag ? ` (${targetDraw.tag})` : ""} from ${DateUtils.formatDisplayDate(targetDraw.date)}? This will reduce recorded actuals.`
+  );
+  if (!confirmed) return;
+
+  entry.draws.splice(drawIndex, 1);
+  const newActual = entry.draws.reduce((sum, d) => sum + Number(d.amount || 0), 0);
+  setEntryActualAmount(entry, newActual);
+
+  saveSetting(keys.entries, cashEntries);
+  if (isArchived && archivedIndex !== -1) {
+    saveSetting(keys.archivedEntries, archivedEntries);
+  }
+  renderAll();
 }
 
 async function deleteHistoryEntryCompletely(entryId) {
@@ -5835,9 +5916,15 @@ async function persistEntryForm(event) {
       } else {
         const archIdx = archivedEntries.findIndex((e) => getEntryId(e) === originalId);
         if (archIdx !== -1) {
+          if (Array.isArray(updatedEntry.draws) && updatedEntry.draws.length === 1) {
+            updatedEntry.draws[0].tag = updatedEntry.tag;
+          }
           archivedEntries[archIdx] = updatedEntry;
           saveSetting(keys.archivedEntries, archivedEntries);
         } else {
+          if (Array.isArray(updatedEntry.draws) && updatedEntry.draws.length === 1) {
+            updatedEntry.draws[0].tag = updatedEntry.tag;
+          }
           cashEntries.push(updatedEntry);
           saveSetting(keys.entries, cashEntries);
         }
@@ -8150,18 +8237,44 @@ function setupEventListeners() {
     setHistoryAnalyticsView("both");
   });
 
-  // History inline actual input
+  // History inline inputs (actual amount & subcategory tags)
   document.addEventListener("keydown", async (event) => {
     const input = event.target.closest("[data-history-entry-input]");
-    if (!input || event.key !== "Enter") return;
-    event.preventDefault();
-    await commitHistoryEntryActual(input);
+    if (input && event.key === "Enter") {
+      event.preventDefault();
+      await commitHistoryEntryActual(input);
+      return;
+    }
+    const tagInput = event.target.closest("[data-history-tag-input]");
+    if (tagInput && event.key === "Enter") {
+      event.preventDefault();
+      await commitHistoryEntryTag(tagInput);
+      return;
+    }
+    const drawTagInput = event.target.closest("[data-draw-tag-input]");
+    if (drawTagInput && event.key === "Enter") {
+      event.preventDefault();
+      await commitHistoryDrawTag(drawTagInput);
+      return;
+    }
   });
 
   document.addEventListener("change", async (event) => {
     const input = event.target.closest("[data-history-entry-input]");
-    if (!input) return;
-    await commitHistoryEntryActual(input);
+    if (input) {
+      await commitHistoryEntryActual(input);
+      return;
+    }
+    const tagInput = event.target.closest("[data-history-tag-input]");
+    if (tagInput) {
+      await commitHistoryEntryTag(tagInput);
+      return;
+    }
+    const drawTagInput = event.target.closest("[data-draw-tag-input]");
+    if (drawTagInput) {
+      await commitHistoryDrawTag(drawTagInput);
+      return;
+    }
   });
 
   // History action buttons & row click
@@ -8208,6 +8321,15 @@ function setupEventListeners() {
         expandBtn.innerHTML = isHidden ? `▾ ${count} subspends` : `▴ Hide subspends`;
         expandBtn.classList.toggle("active", !isHidden);
       }
+      return;
+    }
+
+    const drawDelBtn = event.target.closest("[data-draw-delete-entry]");
+    if (drawDelBtn) {
+      event.stopPropagation();
+      const entryId = drawDelBtn.dataset.drawDeleteEntry;
+      const drawIndex = Number(drawDelBtn.dataset.drawDeleteIndex);
+      await deleteHistoryEntryDraw(entryId, drawIndex);
       return;
     }
 

@@ -2,7 +2,7 @@
    Budget Control — Service Worker (Offline & PWA Support)
    ========================================================================== */
 
-const CACHE_NAME = "budget-control-v28";
+const CACHE_NAME = "budget-control-v29";
 const ASSETS = [
   "./",
   "./index.html",
