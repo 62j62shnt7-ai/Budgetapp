@@ -4271,41 +4271,59 @@ function renderHistory() {
   const searchEl = document.getElementById("historySearch");
   const searchTerm = searchEl ? searchEl.value.trim().toLowerCase() : "";
 
-  // Helper to compute actual amount attributed to this entry under the active tag filter
+  // Helper to compute actual amount attributed to this entry under the active month & tag filter
   function getFilteredEntryAmount(entry) {
     const totalActual = getEntryActualAmount(entry);
-    if (selectedTag === "all") return totalActual;
 
     if (Array.isArray(entry.draws) && entry.draws.length > 0) {
       let trancheSum = 0;
       let matchedAny = false;
       entry.draws.forEach((d) => {
         const dAmt = Number(d.amount) || 0;
+        const dMonth = DateUtils.getMonthKey(d.date);
         const dTag = (d.tag || entry.tag || "").trim();
-        if (selectedTag === "__untagged__") {
-          if (!dTag) {
-            trancheSum += dAmt;
-            matchedAny = true;
+
+        if (selectedMonth !== "all" && dMonth !== selectedMonth) return;
+
+        if (selectedTag !== "all") {
+          if (selectedTag === "__untagged__") {
+            if (dTag) return;
+          } else if (dTag.toLowerCase() !== selectedTag.toLowerCase()) {
+            return;
           }
-        } else if (dTag.toLowerCase() === selectedTag.toLowerCase()) {
-          trancheSum += dAmt;
-          matchedAny = true;
         }
+
+        trancheSum += dAmt;
+        matchedAny = true;
       });
       if (matchedAny) return trancheSum;
+      if (selectedMonth !== "all" || selectedTag !== "all") return 0;
     }
+
+    const actDate = getEntryActualDate(entry);
+    if (selectedMonth !== "all" && DateUtils.getMonthKey(actDate) !== selectedMonth) return 0;
 
     const eTag = (entry.tag || "").trim();
     if (selectedTag === "__untagged__") {
       return !eTag ? totalActual : 0;
     }
-    return eTag.toLowerCase() === selectedTag.toLowerCase() ? totalActual : 0;
+    if (selectedTag !== "all") {
+      return eTag.toLowerCase() === selectedTag.toLowerCase() ? totalActual : 0;
+    }
+    return totalActual;
   }
 
   const filteredEntries = actualEntries.filter((entry) => {
-    const actDate = getEntryActualDate(entry);
-    const entryMonth = DateUtils.getMonthKey(actDate);
-    if (selectedMonth !== "all" && entryMonth !== selectedMonth) return false;
+    if (selectedMonth !== "all") {
+      if (Array.isArray(entry.draws) && entry.draws.length > 0) {
+        const hasDrawInMonth = entry.draws.some((d) => DateUtils.getMonthKey(d.date) === selectedMonth);
+        if (!hasDrawInMonth) return false;
+      } else {
+        const actDate = getEntryActualDate(entry);
+        const entryMonth = DateUtils.getMonthKey(actDate);
+        if (entryMonth !== selectedMonth) return false;
+      }
+    }
     if (selectedType !== "all" && entry.type !== selectedType) return false;
     if (selectedAccount !== "all" && (entry.account || "cash").toLowerCase() !== selectedAccount.toLowerCase()) return false;
     if (selectedTag !== "all") {
@@ -4391,9 +4409,9 @@ function renderHistory() {
       const actualDate = getEntryActualDate(entry);
       const hasMultipleDraws = Array.isArray(entry.draws) && entry.draws.length > 1;
       const filteredVal = getFilteredEntryAmount(entry);
-      const isFilteredDiff = selectedTag !== "all" && filteredVal !== actualVal;
+      const isFilteredDiff = (selectedMonth !== "all" || selectedTag !== "all") && filteredVal !== actualVal;
       const expandBtnHtml = hasMultipleDraws
-        ? `<div style="margin-top:4px;"><button type="button" class="history-expand-draws-btn" data-expand-draws="${escapeHtml(entryId)}" data-count="${entry.draws.length}">▾ ${entry.draws.length} subspends${isFilteredDiff ? ` (${escapeHtml(money(filteredVal))} matches tag)` : ""}</button></div>`
+        ? `<div style="margin-top:4px;"><button type="button" class="history-expand-draws-btn" data-expand-draws="${escapeHtml(entryId)}" data-count="${entry.draws.length}">▾ ${entry.draws.length} subspends${isFilteredDiff ? ` (${escapeHtml(money(filteredVal))} filtered)` : ""}</button></div>`
         : "";
 
       let dateCellHtml = "";
@@ -4541,11 +4559,14 @@ function renderHistory() {
                       const dateCellContent = historyAdminUnlocked
                         ? `<input class="inline-subcat-input" data-draw-date-input="${escapeHtml(entryId)}" data-draw-index="${dIdx}" type="date" value="${escapeHtml(d.date || "")}" style="font-size: 11px; padding: 2px 4px; border-radius: 4px; border: 1px dashed var(--blue); background: var(--surface); color: var(--ink);" onclick="event.stopPropagation()" title="Edit payment date for this tranche">`
                         : `<strong>${escapeHtml(DateUtils.formatDisplayDate(d.date))}</strong>`;
-                      const isTrancheMatch = selectedTag !== "all" && (
+                      const isFilterActive = (selectedMonth !== "all" || selectedTag !== "all");
+                      const matchesMonth = selectedMonth === "all" || DateUtils.getMonthKey(d.date) === selectedMonth;
+                      const matchesTag = selectedTag === "all" || (
                         selectedTag === "__untagged__"
                           ? (!d.tag || !d.tag.trim())
                           : (d.tag || "").toLowerCase() === selectedTag.toLowerCase()
                       );
+                      const isTrancheMatch = isFilterActive && matchesMonth && matchesTag;
                       const trancheStyle = isTrancheMatch ? ` style="background: rgba(37,99,235,0.08);"` : "";
                       return `
                         <tr${trancheStyle}>
@@ -4621,6 +4642,7 @@ function renderHistory() {
         entry.draws.forEach((d) => {
           const dAmt = Number(d.amount) || 0;
           if (dAmt <= 0) return;
+          if (selectedMonth !== "all" && DateUtils.getMonthKey(d.date) !== selectedMonth) return;
           const rawTag = (d.tag || entry.tag || "").trim();
           if (selectedTag !== "all") {
             if (selectedTag === "__untagged__" && rawTag) return;
