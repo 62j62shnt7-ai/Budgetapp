@@ -4266,7 +4266,6 @@ function renderHistory() {
       const plannedVal = Number(entry.amount) || 0;
       const isEditable = isEditableEntry(entry);
       const span = getEntryDateSpan(entry);
-      const drawsSummary = getEntryDrawsSummary(entry);
       const actualDate = getEntryActualDate(entry);
       const hasMultipleDraws = Array.isArray(entry.draws) && entry.draws.length > 1;
       const expandBtnHtml = hasMultipleDraws
@@ -4275,10 +4274,10 @@ function renderHistory() {
 
       let dateCellHtml = "";
       if (span.isSpan) {
-        dateCellHtml = `<strong style="white-space:nowrap;">${escapeHtml(span.display)}</strong>${drawsSummary ? `<small style="display:block;color:var(--muted);font-size:11px;margin-top:2px;" title="${escapeHtml(drawsSummary)}">${escapeHtml(drawsSummary)}</small>` : ""}${expandBtnHtml}`;
+        dateCellHtml = `<strong style="white-space:nowrap;">${escapeHtml(span.display)}</strong>${expandBtnHtml}`;
       } else if (isLoanInflow(entry) && actualVal > 0) {
         const startFormatted = DateUtils.formatDisplayDate(actualDate);
-        dateCellHtml = `<strong style="white-space:nowrap;">From ${escapeHtml(startFormatted)}</strong>${drawsSummary ? `<small style="display:block;color:var(--muted);font-size:11px;margin-top:2px;" title="${escapeHtml(drawsSummary)}">${escapeHtml(drawsSummary)}</small>` : ""}${expandBtnHtml}`;
+        dateCellHtml = `<strong style="white-space:nowrap;">From ${escapeHtml(startFormatted)}</strong>${expandBtnHtml}`;
       } else {
         const displayActualDate = DateUtils.formatDisplayDate(actualDate);
         const isDiffFromForecast = entry.date && entry.date !== actualDate;
