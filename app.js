@@ -1441,6 +1441,51 @@ function isLoanInflow(entry) {
   return Boolean(isLoan && entry.type === "income");
 }
 
+function healSingleDrawMismatches() {
+  let changed = false;
+  const syncEntry = (entry) => {
+    if (!entry) return;
+    const actual = getEntryActualAmount(entry);
+    if (actual > 0) {
+      if (!Array.isArray(entry.draws) || entry.draws.length === 0) {
+        if (isPartialTracked(entry)) {
+          entry.draws = [{
+            date: getEntryActualDate(entry),
+            amount: actual,
+            tag: entry.tag || "",
+            account: entry.account || "cash"
+          }];
+          changed = true;
+        }
+      } else if (entry.draws.length === 1) {
+        if (Math.round(entry.draws[0].amount || 0) !== actual) {
+          entry.draws[0].amount = actual;
+          changed = true;
+        }
+        if (entry.tag && !entry.draws[0].tag) {
+          entry.draws[0].tag = entry.tag;
+          changed = true;
+        }
+        if (entry.account && !entry.draws[0].account) {
+          entry.draws[0].account = entry.account;
+          changed = true;
+        }
+      }
+    } else if (actual <= 0 && Array.isArray(entry.draws) && entry.draws.length > 0) {
+      entry.draws = [];
+      changed = true;
+    }
+  };
+
+  cashEntries.forEach(syncEntry);
+  archivedEntries.forEach(syncEntry);
+
+  if (changed) {
+    saveSetting(keys.entries, cashEntries);
+    saveSetting(keys.archivedEntries, archivedEntries);
+  }
+}
+
 function isOngoingEntry(entry) {
   if (!entry) return false;
   if (entry.isClosed) return false;
@@ -4009,8 +4054,10 @@ async function commitEntryActualInput(input) {
 
     if (!Array.isArray(entry.draws)) {
       entry.draws = previousActual > 0
-        ? [{ date: entry.actualDate || entry.date || DateUtils.todayString(), amount: previousActual, tag: entry.tag || "" }]
+        ? [{ date: entry.actualDate || entry.date || DateUtils.todayString(), amount: previousActual, tag: entry.tag || "", account: entry.account || "cash" }]
         : [];
+    } else if (entry.draws.length === 1 && previousActual > 0 && Math.round(entry.draws[0].amount || 0) !== previousActual) {
+      entry.draws[0].amount = previousActual;
     }
     entry.draws.push({
       date: DateUtils.todayString(),
@@ -4018,6 +4065,7 @@ async function commitEntryActualInput(input) {
       tag: trancheTag,
       account: trancheAccount
     });
+    setEntryActualDate(entry, DateUtils.todayString());
     saveSetting(keys.entries, cashEntries);
 
     if (adjustmentResult && adjustmentResult.accountId) {
@@ -4663,6 +4711,18 @@ async function commitHistoryEntryActual(input) {
     }
   } else {
     setEntryActualAmount(entry, newActual);
+    if (!Array.isArray(entry.draws) || entry.draws.length <= 1) {
+      entry.draws = [{
+        date: getEntryActualDate(entry),
+        amount: newActual,
+        tag: entry.tag || "",
+        account: entry.account || "cash"
+      }];
+    }
+    saveSetting(keys.entries, cashEntries);
+    if (isArchived && archivedIndex !== -1) {
+      saveSetting(keys.archivedEntries, archivedEntries);
+    }
   }
 
   if (delta > 0) {
@@ -4701,11 +4761,18 @@ function clearHistoryActualEntry(entry) {
   const deleteKey = getEntryId(entry);
   delete entryActuals[deleteKey];
   delete entryActualDates[deleteKey];
-  if (entry && entry.actualAmount !== undefined) {
-    entry.actualAmount = 0;
+  if (entry) {
+    if (entry.actualAmount !== undefined) {
+      entry.actualAmount = 0;
+    }
+    if (Array.isArray(entry.draws)) {
+      entry.draws = [];
+    }
+    delete entry.actualDate;
   }
   saveSetting(keys.entryActuals, entryActuals);
   saveSetting(keys.entryActualDates, entryActualDates);
+  saveSetting(keys.entries, cashEntries);
 }
 
 async function commitHistoryEntryTag(input) {
@@ -4788,6 +4855,15 @@ async function deleteHistoryEntryDraw(entryId, drawIndex) {
   entry.draws.splice(drawIndex, 1);
   const newActual = entry.draws.reduce((sum, d) => sum + Number(d.amount || 0), 0);
   setEntryActualAmount(entry, newActual);
+
+  if (entry.draws.length > 0) {
+    const latestDate = entry.draws[entry.draws.length - 1].date;
+    setEntryActualDate(entry, latestDate);
+  } else {
+    delete entry.actualDate;
+    delete entryActualDates[entryId];
+    saveSetting(keys.entryActualDates, entryActualDates);
+  }
 
   saveSetting(keys.entries, cashEntries);
   if (isArchived && archivedIndex !== -1) {
@@ -5900,6 +5976,15 @@ async function persistEntryForm(event) {
           } else if (deltaActualAmount > 0) {
             updatedEntry.draws.push({ date: form.elements.date.value || DateUtils.todayString(), amount: deltaActualAmount });
           }
+        } else {
+          if (!Array.isArray(updatedEntry.draws) || updatedEntry.draws.length <= 1) {
+            updatedEntry.draws = [{
+              date: form.elements.date.value || DateUtils.todayString(),
+              amount: actualAmountInEgp,
+              tag: updatedEntry.tag || "",
+              account: chosenAccount
+            }];
+          }
         }
       } else {
         delete entryActuals[getEntryId(editingEntry)];
@@ -5943,14 +6028,24 @@ async function persistEntryForm(event) {
       } else {
         const archIdx = archivedEntries.findIndex((e) => getEntryId(e) === originalId);
         if (archIdx !== -1) {
-          if (Array.isArray(updatedEntry.draws) && updatedEntry.draws.length === 1) {
-            updatedEntry.draws[0].tag = updatedEntry.tag;
+          if (Array.isArray(updatedEntry.draws) && updatedEntry.draws.length <= 1 && actualAmountInEgp > 0) {
+            updatedEntry.draws = [{
+              date: form.elements.date.value || DateUtils.todayString(),
+              amount: actualAmountInEgp,
+              tag: updatedEntry.tag || "",
+              account: chosenAccount
+            }];
           }
           archivedEntries[archIdx] = updatedEntry;
           saveSetting(keys.archivedEntries, archivedEntries);
         } else {
-          if (Array.isArray(updatedEntry.draws) && updatedEntry.draws.length === 1) {
-            updatedEntry.draws[0].tag = updatedEntry.tag;
+          if (Array.isArray(updatedEntry.draws) && updatedEntry.draws.length <= 1 && actualAmountInEgp > 0) {
+            updatedEntry.draws = [{
+              date: form.elements.date.value || DateUtils.todayString(),
+              amount: actualAmountInEgp,
+              tag: updatedEntry.tag || "",
+              account: chosenAccount
+            }];
           }
           cashEntries.push(updatedEntry);
           saveSetting(keys.entries, cashEntries);
@@ -7052,8 +7147,10 @@ function setupEventListeners() {
 
     if (!Array.isArray(entry.draws)) {
       entry.draws = previousActual > 0
-        ? [{ date: entry.actualDate || entry.date || DateUtils.todayString(), amount: previousActual, tag: entry.tag || "" }]
+        ? [{ date: entry.actualDate || entry.date || DateUtils.todayString(), amount: previousActual, tag: entry.tag || "", account: entry.account || "cash" }]
         : [];
+    } else if (entry.draws.length === 1 && previousActual > 0 && Math.round(entry.draws[0].amount || 0) !== previousActual) {
+      entry.draws[0].amount = previousActual;
     }
     entry.draws.push({
       date: DateUtils.todayString(),
@@ -7061,6 +7158,7 @@ function setupEventListeners() {
       tag: trancheTag,
       account: trancheAccount
     });
+    setEntryActualDate(entry, DateUtils.todayString());
     saveSetting(keys.entries, cashEntries);
 
     if (adjustmentResult && adjustmentResult.accountId) {
@@ -9051,6 +9149,7 @@ function initApp() {
     initTheme();
     applySidebarState(sidebarCollapsed);
     materializeLegacySalaryEntries();
+    healSingleDrawMismatches();
     updateUndoResetVisibility();
     setupEventListeners();
     renderAll();
