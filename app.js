@@ -4256,16 +4256,21 @@ function renderHistory() {
       const span = getEntryDateSpan(entry);
       const drawsSummary = getEntryDrawsSummary(entry);
       const actualDate = getEntryActualDate(entry);
+      const hasMultipleDraws = Array.isArray(entry.draws) && entry.draws.length > 1;
+      const expandBtnHtml = hasMultipleDraws
+        ? `<div style="margin-top:4px;"><button type="button" class="history-expand-draws-btn" data-expand-draws="${escapeHtml(entryId)}" data-count="${entry.draws.length}">▾ ${entry.draws.length} subspends</button></div>`
+        : "";
+
       let dateCellHtml = "";
       if (span.isSpan) {
-        dateCellHtml = `<strong style="white-space:nowrap;">${escapeHtml(span.display)}</strong>${drawsSummary ? `<small style="display:block;color:var(--muted);font-size:11px;margin-top:2px;" title="${escapeHtml(drawsSummary)}">${escapeHtml(drawsSummary)}</small>` : ""}`;
+        dateCellHtml = `<strong style="white-space:nowrap;">${escapeHtml(span.display)}</strong>${drawsSummary ? `<small style="display:block;color:var(--muted);font-size:11px;margin-top:2px;" title="${escapeHtml(drawsSummary)}">${escapeHtml(drawsSummary)}</small>` : ""}${expandBtnHtml}`;
       } else if (isLoanInflow(entry) && actualVal > 0) {
         const startFormatted = DateUtils.formatDisplayDate(actualDate);
-        dateCellHtml = `<strong style="white-space:nowrap;">From ${escapeHtml(startFormatted)}</strong>${drawsSummary ? `<small style="display:block;color:var(--muted);font-size:11px;margin-top:2px;" title="${escapeHtml(drawsSummary)}">${escapeHtml(drawsSummary)}</small>` : ""}`;
+        dateCellHtml = `<strong style="white-space:nowrap;">From ${escapeHtml(startFormatted)}</strong>${drawsSummary ? `<small style="display:block;color:var(--muted);font-size:11px;margin-top:2px;" title="${escapeHtml(drawsSummary)}">${escapeHtml(drawsSummary)}</small>` : ""}${expandBtnHtml}`;
       } else {
         const displayActualDate = DateUtils.formatDisplayDate(actualDate);
         const isDiffFromForecast = entry.date && entry.date !== actualDate;
-        dateCellHtml = `<strong>${escapeHtml(displayActualDate || "—")}</strong>${isDiffFromForecast ? `<small style="display:block;color:var(--muted);font-size:11px;margin-top:2px;" title="Originally forecasted for ${escapeHtml(DateUtils.formatDisplayDate(entry.date))}">Forecasted: ${escapeHtml(DateUtils.formatDisplayDate(entry.date))}</small>` : ""}`;
+        dateCellHtml = `<strong>${escapeHtml(displayActualDate || "—")}</strong>${isDiffFromForecast ? `<small style="display:block;color:var(--muted);font-size:11px;margin-top:2px;" title="Originally forecasted for ${escapeHtml(DateUtils.formatDisplayDate(entry.date))}">Forecasted: ${escapeHtml(DateUtils.formatDisplayDate(entry.date))}</small>` : ""}${expandBtnHtml}`;
       }
 
       let categoryCellHtml = escapeHtml(entry.category || "—");
@@ -4335,7 +4340,7 @@ function renderHistory() {
         historySourceLabel = `<span style="color:var(--blue); font-weight:600;" title="Paid via credit card · Settles ${sDate}">💳 Settles ${sDate}</span>`;
       }
 
-      return `
+      const mainRowHtml = `
         <tr class="${rowClass}" data-history-row-id="${escapeHtml(entryId)}" title="${escapeHtml(rowTitle)}">
           <td class="cell-date history-date-cell">${dateCellHtml}</td>
           <td class="cell-category">${categoryCellHtml}</td>
@@ -4348,6 +4353,52 @@ function renderHistory() {
           <td class="cell-actions number">${action}</td>
         </tr>
       `;
+
+      const subRowHtml = hasMultipleDraws
+        ? `
+          <tr class="history-subspends-row is-hidden" id="subspends-${escapeHtml(entryId)}">
+            <td colspan="9" style="padding: 0 16px 12px 36px; background: var(--surface-subtle, rgba(0,0,0,0.02));">
+              <div class="history-subspends-container">
+                <div class="history-subspends-header">
+                  <span>Breakdown of ${entry.draws.length} payment tranches for ${escapeHtml(entry.category || "Expense")}</span>
+                  <span style="font-weight:600; color:var(--text); text-transform:none;">Total spent: ${escapeHtml(money(actualVal))}</span>
+                </div>
+                <table class="history-subspends-table">
+                  <thead>
+                    <tr>
+                      <th style="width: 140px;">Payment Date</th>
+                      <th>Subcategory Tag</th>
+                      <th>Account</th>
+                      <th style="text-align: right; width: 140px;">Tranche Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${entry.draws.map((d) => {
+                      const tagLower = (d.tag || "").toLowerCase();
+                      let mod = "";
+                      if (tagLower === "food" || tagLower === "groceries") mod = " subcat-food";
+                      else if (tagLower === "bills" || tagLower === "utilities" || tagLower === "electricity" || tagLower === "water" || tagLower === "internet") mod = " subcat-bills";
+                      const tagBadge = d.tag
+                        ? `<span class="subcat-tag-pill${mod}">🏷️ ${escapeHtml(d.tag)}</span>`
+                        : `<span style="color:var(--muted); font-size:12px;">—</span>`;
+                      return `
+                        <tr>
+                          <td><strong>${escapeHtml(DateUtils.formatDisplayDate(d.date))}</strong></td>
+                          <td>${tagBadge}</td>
+                          <td><span style="font-size:11px; font-weight:700; text-transform:uppercase;">${escapeHtml(d.account || entry.account || "cash")}</span></td>
+                          <td style="text-align: right; font-weight:700;">${escapeHtml(money(d.amount))}</td>
+                        </tr>
+                      `;
+                    }).join("")}
+                  </tbody>
+                </table>
+              </div>
+            </td>
+          </tr>
+        `
+        : "";
+
+      return `${mainRowHtml}${subRowHtml}`;
     })
     .join("");
 
@@ -8126,6 +8177,20 @@ function setupEventListeners() {
       const entryId = clearBtn.dataset.historyEntryClear;
       if (entryId) {
         await clearHistoryEntryActual(entryId);
+      }
+      return;
+    }
+
+    const expandBtn = event.target.closest("[data-expand-draws]");
+    if (expandBtn) {
+      event.stopPropagation();
+      const entryId = expandBtn.dataset.expandDraws;
+      const subRow = document.getElementById(`subspends-${entryId}`);
+      if (subRow) {
+        const isHidden = subRow.classList.toggle("is-hidden");
+        const count = expandBtn.dataset.count || "";
+        expandBtn.innerHTML = isHidden ? `▾ ${count} subspends` : `▴ Hide subspends`;
+        expandBtn.classList.toggle("active", !isHidden);
       }
       return;
     }
