@@ -1323,6 +1323,11 @@ input:focus {
   border-bottom: none;
 }
 
+.inline-subcat-input {
+  color: var(--ink);
+  font-family: inherit;
+}
+
 .radio-pill-label {
   transition: all 0.2s ease;
   background: var(--surface);

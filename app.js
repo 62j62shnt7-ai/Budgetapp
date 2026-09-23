@@ -4410,9 +4410,12 @@ function renderHistory() {
                             <button class="delete-button" data-draw-delete-entry="${escapeHtml(entryId)}" data-draw-delete-index="${dIdx}" type="button" style="font-size: 10px; padding: 2px 6px;" title="Delete this payment tranche" onclick="event.stopPropagation()">✕</button>
                           </td>`
                         : "";
+                      const dateCellContent = historyAdminUnlocked
+                        ? `<input class="inline-subcat-input" data-draw-date-input="${escapeHtml(entryId)}" data-draw-index="${dIdx}" type="date" value="${escapeHtml(d.date || "")}" style="font-size: 11px; padding: 2px 4px; border-radius: 4px; border: 1px dashed var(--blue); background: var(--surface); color: var(--ink);" onclick="event.stopPropagation()" title="Edit payment date for this tranche">`
+                        : `<strong>${escapeHtml(DateUtils.formatDisplayDate(d.date))}</strong>`;
                       return `
                         <tr>
-                          <td><strong>${escapeHtml(DateUtils.formatDisplayDate(d.date))}</strong></td>
+                          <td>${dateCellContent}</td>
                           <td>${tagCellHtml}</td>
                           <td><span style="font-size:11px; font-weight:700; text-transform:uppercase;">${escapeHtml(d.account || entry.account || "cash")}</span></td>
                           <td style="text-align: right; font-weight:700;">${escapeHtml(money(d.amount))}</td>
@@ -4738,6 +4741,31 @@ async function commitHistoryDrawTag(input) {
 
   if (!entry.tag || entry.draws.length === 1) {
     entry.tag = newTag;
+  }
+
+  saveSetting(keys.entries, cashEntries);
+  if (isArchived && archivedIndex !== -1) {
+    saveSetting(keys.archivedEntries, archivedEntries);
+  }
+  renderHistory();
+}
+
+async function commitHistoryDrawDate(input) {
+  if (!input) return;
+  const entryId = input.dataset.drawDateInput;
+  const drawIndex = Number(input.dataset.drawIndex);
+  const { entry, isArchived, archivedIndex } = findHistoryEntry(entryId);
+  if (!entry || !Array.isArray(entry.draws) || !entry.draws[drawIndex]) return;
+
+  const newDate = (input.value || "").trim();
+  if (!newDate) return;
+
+  entry.draws[drawIndex].date = newDate;
+  entry.draws.sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+
+  if (entry.draws.length > 0) {
+    const latestDate = entry.draws[entry.draws.length - 1].date;
+    setEntryActualDate(entry, latestDate);
   }
 
   saveSetting(keys.entries, cashEntries);
@@ -8257,6 +8285,12 @@ function setupEventListeners() {
       await commitHistoryDrawTag(drawTagInput);
       return;
     }
+    const drawDateInput = event.target.closest("[data-draw-date-input]");
+    if (drawDateInput && event.key === "Enter") {
+      event.preventDefault();
+      await commitHistoryDrawDate(drawDateInput);
+      return;
+    }
   });
 
   document.addEventListener("change", async (event) => {
@@ -8273,6 +8307,11 @@ function setupEventListeners() {
     const drawTagInput = event.target.closest("[data-draw-tag-input]");
     if (drawTagInput) {
       await commitHistoryDrawTag(drawTagInput);
+      return;
+    }
+    const drawDateInput = event.target.closest("[data-draw-date-input]");
+    if (drawDateInput) {
+      await commitHistoryDrawDate(drawDateInput);
       return;
     }
   });
