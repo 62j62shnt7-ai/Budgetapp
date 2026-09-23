@@ -555,6 +555,12 @@
                   <option value="all">All accounts</option>
                 </select>
               </label>
+              <label>
+                Tag / Subcategory
+                <select id="historyTagFilter" aria-label="Filter by subcategory tag">
+                  <option value="all">All tags</option>
+                </select>
+              </label>
               <label style="flex: 1 1 180px;">
                 Search
                 <input id="historySearch" type="search" placeholder="Search category...">
@@ -587,7 +593,11 @@
                 <h3 style="margin: 0;">Spending Analytics &amp; Grouped Sources</h3>
                 <span id="historyAnalyticsSummaryNote" style="font-size: 11.5px; color: var(--muted);">Filtered actuals · <span id="historyGroupedCount">0 groups</span></span>
               </div>
-              <div class="history-analytics-actions" style="display: flex; align-items: center; gap: 8px;">
+              <div class="history-analytics-actions" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <div class="subnav-tabs history-groupby-tabs" style="padding: 2px;">
+                  <button type="button" class="subnav-tab active" id="historyGroupByCategory" style="padding: 4px 9px; font-size: 11.5px;" title="Group by High-Level Category">📁 Category</button>
+                  <button type="button" class="subnav-tab" id="historyGroupByTag" style="padding: 4px 9px; font-size: 11.5px;" title="Group by Subcategory / Tag">🏷️ Tag</button>
+                </div>
                 <div class="subnav-tabs history-view-tabs" style="padding: 2px;">
                   <button type="button" class="subnav-tab active" id="historyViewModeChart" style="padding: 4px 10px; font-size: 12px;" title="Chart & Categories">📊 Breakdown</button>
                   <button type="button" class="subnav-tab" id="historyViewModeTable" style="padding: 4px 10px; font-size: 12px;" title="Grouped Table">📋 Table</button>
@@ -1520,6 +1530,6 @@
       </div>
     </dialog>
 
-    <script src="app.js?v=49"></script>
+    <script src="app.js?v=50"></script>
   </body>
 </html>

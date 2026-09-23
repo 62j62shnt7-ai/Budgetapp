@@ -39,6 +39,7 @@ const keys = {
   expenseMixCollapsed: "budget-control-expense-mix-collapsed",
   historyAnalyticsCollapsed: "budget-control-history-analytics-collapsed",
   historyAnalyticsView: "budget-control-history-analytics-view",
+  historyAnalyticsGrouping: "budget-control-history-analytics-grouping",
   historyDistributionCollapsed: "budget-control-history-dist-collapsed",
   historyGroupedSummaryCollapsed: "budget-control-history-grouped-collapsed"
 };
@@ -622,7 +623,7 @@ function renderSubcatTagPills(entry) {
     let modifier = "";
     if (lower === "food" || lower === "groceries") modifier = " subcat-food";
     else if (lower === "bills" || lower === "utilities" || lower === "electricity" || lower === "water" || lower === "internet") modifier = " subcat-bills";
-    return `<span class="subcat-tag-pill${modifier}" title="Subcategory: ${safeTag}">🏷️ ${safeTag}</span>`;
+    return `<span class="subcat-tag-pill${modifier}" data-tag-filter-click="${safeTag}" title="Filter history by tag: ${safeTag}">🏷️ ${safeTag}</span>`;
   }).join(" ");
 }
 
@@ -929,6 +930,7 @@ let historyAnalyticsCollapsed = loadSetting(
   loadSetting(keys.historyDistributionCollapsed, false)
 );
 let historyAnalyticsView = loadSetting(keys.historyAnalyticsView, "chart");
+let historyAnalyticsGrouping = loadSetting(keys.historyAnalyticsGrouping, "category");
 let historyDistributionCollapsed = historyAnalyticsCollapsed;
 let historyGroupedSummaryCollapsed = historyAnalyticsCollapsed;
 let forecastLineRangeMonths = loadSetting(keys.forecastLineMonths, 12);
@@ -4232,13 +4234,73 @@ function renderHistory() {
       .join("")}`;
   }
 
+  const tagFilterEl = document.getElementById("historyTagFilter");
+  if (tagFilterEl) {
+    const prevTagVal = tagFilterEl.value || "all";
+    const tagSet = new Set();
+    let hasUntagged = false;
+    actualEntries.forEach((e) => {
+      const tags = getEntryTags(e);
+      if (tags.length === 0) {
+        hasUntagged = true;
+      } else {
+        tags.forEach((t) => tagSet.add(t));
+      }
+      if (Array.isArray(e.draws) && e.draws.length > 0) {
+        e.draws.forEach((d) => {
+          if (!d.tag || !d.tag.trim()) {
+            hasUntagged = true;
+          }
+        });
+      }
+    });
+    const sortedTags = [...tagSet].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+    tagFilterEl.innerHTML = `
+      <option value="all"${prevTagVal === "all" ? " selected" : ""}>All tags</option>
+      ${hasUntagged ? `<option value="__untagged__"${prevTagVal === "__untagged__" ? " selected" : ""}>📁 Untagged</option>` : ""}
+      ${sortedTags.map((t) => `<option value="${escapeHtml(t)}"${t === prevTagVal ? " selected" : ""}>🏷️ ${escapeHtml(t)}</option>`).join("")}
+    `;
+  }
+
   // Filter criteria
   const selectedMonth = monthFilterEl ? monthFilterEl.value : "all";
   const typeFilterEl = document.getElementById("historyTypeFilter");
   const selectedType = typeFilterEl ? typeFilterEl.value : "all";
   const selectedAccount = accountFilterEl ? accountFilterEl.value : "all";
+  const selectedTag = tagFilterEl ? tagFilterEl.value : "all";
   const searchEl = document.getElementById("historySearch");
   const searchTerm = searchEl ? searchEl.value.trim().toLowerCase() : "";
+
+  // Helper to compute actual amount attributed to this entry under the active tag filter
+  function getFilteredEntryAmount(entry) {
+    const totalActual = getEntryActualAmount(entry);
+    if (selectedTag === "all") return totalActual;
+
+    if (Array.isArray(entry.draws) && entry.draws.length > 0) {
+      let trancheSum = 0;
+      let matchedAny = false;
+      entry.draws.forEach((d) => {
+        const dAmt = Number(d.amount) || 0;
+        const dTag = (d.tag || entry.tag || "").trim();
+        if (selectedTag === "__untagged__") {
+          if (!dTag) {
+            trancheSum += dAmt;
+            matchedAny = true;
+          }
+        } else if (dTag.toLowerCase() === selectedTag.toLowerCase()) {
+          trancheSum += dAmt;
+          matchedAny = true;
+        }
+      });
+      if (matchedAny) return trancheSum;
+    }
+
+    const eTag = (entry.tag || "").trim();
+    if (selectedTag === "__untagged__") {
+      return !eTag ? totalActual : 0;
+    }
+    return eTag.toLowerCase() === selectedTag.toLowerCase() ? totalActual : 0;
+  }
 
   const filteredEntries = actualEntries.filter((entry) => {
     const actDate = getEntryActualDate(entry);
@@ -4246,6 +4308,18 @@ function renderHistory() {
     if (selectedMonth !== "all" && entryMonth !== selectedMonth) return false;
     if (selectedType !== "all" && entry.type !== selectedType) return false;
     if (selectedAccount !== "all" && (entry.account || "cash").toLowerCase() !== selectedAccount.toLowerCase()) return false;
+    if (selectedTag !== "all") {
+      const entryTags = getEntryTags(entry);
+      if (selectedTag === "__untagged__") {
+        const hasUntaggedDraw = Array.isArray(entry.draws) && entry.draws.some((d) => !d.tag || !d.tag.trim());
+        if (entryTags.length > 0 && !hasUntaggedDraw) return false;
+      } else {
+        const tagLower = selectedTag.toLowerCase();
+        const matchesEntryTag = (entry.tag || "").toLowerCase() === tagLower;
+        const matchesDrawTag = Array.isArray(entry.draws) && entry.draws.some((d) => (d.tag || "").toLowerCase() === tagLower);
+        if (!matchesEntryTag && !matchesDrawTag) return false;
+      }
+    }
     if (searchTerm) {
       const cat = (entry.category || "").toLowerCase();
       const acc = (entry.account || "").toLowerCase();
@@ -4262,11 +4336,11 @@ function renderHistory() {
   // Calculate filtered summary
   const filteredIncome = filteredEntries
     .filter((e) => e.type === "income")
-    .reduce((sum, e) => sum + getEntryActualAmount(e), 0);
+    .reduce((sum, e) => sum + getFilteredEntryAmount(e), 0);
   const filteredExpenses = filteredEntries
     .filter((e) => e.type === "expense")
     .reduce((sum, e) => {
-      const amt = getEntryActualAmount(e);
+      const amt = getFilteredEntryAmount(e);
       if (e.source === "recurring credit" || isCreditDueLumpSum(e)) {
         const acc = (e.account || e.creditType || "").toLowerCase().includes("hsbc") ? "hsbc" : "cib";
         const entryMonth = DateUtils.getMonthKey(getEntryActualDate(e));
@@ -4316,8 +4390,10 @@ function renderHistory() {
       const span = getEntryDateSpan(entry);
       const actualDate = getEntryActualDate(entry);
       const hasMultipleDraws = Array.isArray(entry.draws) && entry.draws.length > 1;
+      const filteredVal = getFilteredEntryAmount(entry);
+      const isFilteredDiff = selectedTag !== "all" && filteredVal !== actualVal;
       const expandBtnHtml = hasMultipleDraws
-        ? `<div style="margin-top:4px;"><button type="button" class="history-expand-draws-btn" data-expand-draws="${escapeHtml(entryId)}" data-count="${entry.draws.length}">▾ ${entry.draws.length} subspends</button></div>`
+        ? `<div style="margin-top:4px;"><button type="button" class="history-expand-draws-btn" data-expand-draws="${escapeHtml(entryId)}" data-count="${entry.draws.length}">▾ ${entry.draws.length} subspends${isFilteredDiff ? ` (${escapeHtml(money(filteredVal))} matches tag)` : ""}</button></div>`
         : "";
 
       let dateCellHtml = "";
@@ -4378,9 +4454,14 @@ function renderHistory() {
         }
       }
 
+      let actualDisplayHtml = actualVal > 0 ? escapeHtml(money(actualVal)) : "—";
+      if (isFilteredDiff && actualVal > 0) {
+        actualDisplayHtml = `${escapeHtml(money(filteredVal))} <small style="display:block;color:var(--muted);font-size:11px;" title="Full entry total is ${escapeHtml(money(actualVal))}">(${escapeHtml(money(actualVal))} total)</small>`;
+      }
+
       const actualCell = isEditable || historyAdminUnlocked
         ? `<input class="inline-actual-input" data-history-entry-input="${escapeHtml(entryId)}" type="number" min="0" step="1" value="${actualVal > 0 ? actualVal : ""}" placeholder="0" style="width: 100px; text-align: right;">`
-        : `<span>${actualVal > 0 ? escapeHtml(money(actualVal)) : "—"}</span>`;
+        : `<span>${actualDisplayHtml}</span>`;
 
       let action = "";
       if (historyAdminUnlocked) {
@@ -4444,7 +4525,7 @@ function renderHistory() {
                       if (tagLower === "food" || tagLower === "groceries") mod = " subcat-food";
                       else if (tagLower === "bills" || tagLower === "utilities" || tagLower === "electricity" || tagLower === "water" || tagLower === "internet") mod = " subcat-bills";
                       const tagBadge = d.tag
-                        ? `<span class="subcat-tag-pill${mod}">🏷️ ${escapeHtml(d.tag)}</span>`
+                        ? `<span class="subcat-tag-pill${mod}" data-tag-filter-click="${escapeHtml(d.tag)}" title="Filter history by tag: ${escapeHtml(d.tag)}" style="cursor: pointer;">🏷️ ${escapeHtml(d.tag)}</span>`
                         : `<span style="color:var(--muted); font-size:12px;">—</span>`;
                       const tagCellHtml = historyAdminUnlocked
                         ? `<div style="display:inline-flex; align-items:center; gap:6px;">
@@ -4460,12 +4541,18 @@ function renderHistory() {
                       const dateCellContent = historyAdminUnlocked
                         ? `<input class="inline-subcat-input" data-draw-date-input="${escapeHtml(entryId)}" data-draw-index="${dIdx}" type="date" value="${escapeHtml(d.date || "")}" style="font-size: 11px; padding: 2px 4px; border-radius: 4px; border: 1px dashed var(--blue); background: var(--surface); color: var(--ink);" onclick="event.stopPropagation()" title="Edit payment date for this tranche">`
                         : `<strong>${escapeHtml(DateUtils.formatDisplayDate(d.date))}</strong>`;
+                      const isTrancheMatch = selectedTag !== "all" && (
+                        selectedTag === "__untagged__"
+                          ? (!d.tag || !d.tag.trim())
+                          : (d.tag || "").toLowerCase() === selectedTag.toLowerCase()
+                      );
+                      const trancheStyle = isTrancheMatch ? ` style="background: rgba(37,99,235,0.08);"` : "";
                       return `
-                        <tr>
+                        <tr${trancheStyle}>
                           <td>${dateCellContent}</td>
                           <td>${tagCellHtml}</td>
                           <td><span style="font-size:11px; font-weight:700; text-transform:uppercase;">${escapeHtml(d.account || entry.account || "cash")}</span></td>
-                          <td style="text-align: right; font-weight:700;">${escapeHtml(money(d.amount))}</td>
+                          <td style="text-align: right; font-weight:700;">${escapeHtml(money(d.amount))}${isTrancheMatch ? ` <small style="color:var(--blue); font-size:10.5px; font-weight:600; display:inline-block; margin-left:4px;">(match)</small>` : ""}</td>
                           ${adminActionCell}
                         </tr>
                       `;
@@ -4513,37 +4600,113 @@ function renderHistory() {
     return category || "General Expenses";
   }
 
-  const categoryGroups = new Map();
-  filteredEntries.forEach((entry) => {
-    const smartBucket = getSmartGroupBucket(entry.category, entry.type || "expense", entry.source);
-    const key = `${smartBucket}|${entry.type || "expense"}`;
-    if (!categoryGroups.has(key)) {
-      categoryGroups.set(key, {
-        category: smartBucket,
-        type: entry.type || "expense",
-        count: 0,
-        totalActual: 0,
-        totalForecast: 0,
-        subCategories: new Map()
-      });
-    }
-    const group = categoryGroups.get(key);
-    group.count += 1;
-    let actualForGroup = getEntryActualAmount(entry);
-    if (entry.source === "recurring credit" || isCreditDueLumpSum(entry)) {
-      const acc = (entry.account || entry.creditType || "").toLowerCase().includes("hsbc") ? "hsbc" : "cib";
-      const entryMonth = DateUtils.getMonthKey(getEntryActualDate(entry));
-      const matchingCardActuals = actualEntries
-        .filter((card) => isCreditCardExpense(card) && (card.creditType || "").toLowerCase().startsWith(acc) && getCreditSettlementMonth(card) === entryMonth)
-        .reduce((s, card) => s + getEntryActualAmount(card), 0);
-      actualForGroup = Math.max(0, actualForGroup - matchingCardActuals);
-    }
-    group.totalActual += actualForGroup;
-    group.totalForecast += Number(entry.amount || 0);
+  // Update Grouping Tabs UI
+  const groupByCategoryBtn = document.getElementById("historyGroupByCategory");
+  const groupByTagBtn = document.getElementById("historyGroupByTag");
+  if (groupByCategoryBtn) groupByCategoryBtn.classList.toggle("active", historyAnalyticsGrouping === "category");
+  if (groupByTagBtn) groupByTagBtn.classList.toggle("active", historyAnalyticsGrouping === "tag");
 
-    const subCatName = entry.category || "General";
-    group.subCategories.set(subCatName, (group.subCategories.get(subCatName) || 0) + actualForGroup);
-  });
+  const groupTableHeaderEl = document.querySelector("#historyAnalyticsTableView thead th:first-child");
+  if (groupTableHeaderEl) {
+    groupTableHeaderEl.textContent = historyAnalyticsGrouping === "tag" ? "Subcategory / Tag" : "Group / Category";
+  }
+
+  const categoryGroups = new Map();
+
+  if (historyAnalyticsGrouping === "tag") {
+    // --- MODE: GROUP BY SUBCATEGORY / TAG ---
+    filteredEntries.forEach((entry) => {
+      const entryType = entry.type || "expense";
+      if (Array.isArray(entry.draws) && entry.draws.length > 0) {
+        entry.draws.forEach((d) => {
+          const dAmt = Number(d.amount) || 0;
+          if (dAmt <= 0) return;
+          const rawTag = (d.tag || entry.tag || "").trim();
+          if (selectedTag !== "all") {
+            if (selectedTag === "__untagged__" && rawTag) return;
+            if (selectedTag !== "__untagged__" && rawTag.toLowerCase() !== selectedTag.toLowerCase()) return;
+          }
+          const tagName = rawTag || "Untagged";
+          const groupKey = `${tagName}|${entryType}`;
+          if (!categoryGroups.has(groupKey)) {
+            categoryGroups.set(groupKey, {
+              category: tagName === "Untagged" ? "📁 Untagged" : `🏷️ ${tagName}`,
+              rawName: tagName,
+              isTag: true,
+              type: entryType,
+              count: 0,
+              totalActual: 0,
+              totalForecast: 0,
+              subCategories: new Map()
+            });
+          }
+          const g = categoryGroups.get(groupKey);
+          g.count += 1;
+          g.totalActual += dAmt;
+          const parentCat = entry.category || "General";
+          g.subCategories.set(parentCat, (g.subCategories.get(parentCat) || 0) + dAmt);
+        });
+      } else {
+        const actualAmt = getFilteredEntryAmount(entry);
+        if (actualAmt <= 0) return;
+        const rawTag = (entry.tag || "").trim();
+        const tagName = rawTag || "Untagged";
+        const groupKey = `${tagName}|${entryType}`;
+        if (!categoryGroups.has(groupKey)) {
+          categoryGroups.set(groupKey, {
+            category: tagName === "Untagged" ? "📁 Untagged" : `🏷️ ${tagName}`,
+            rawName: tagName,
+            isTag: true,
+            type: entryType,
+            count: 0,
+            totalActual: 0,
+            totalForecast: 0,
+            subCategories: new Map()
+          });
+        }
+        const g = categoryGroups.get(groupKey);
+        g.count += 1;
+        g.totalActual += actualAmt;
+        g.totalForecast += Number(entry.amount || 0);
+        const parentCat = entry.category || "General";
+        g.subCategories.set(parentCat, (g.subCategories.get(parentCat) || 0) + actualAmt);
+      }
+    });
+  } else {
+    // --- MODE: GROUP BY HIGH-LEVEL CATEGORY ---
+    filteredEntries.forEach((entry) => {
+      const smartBucket = getSmartGroupBucket(entry.category, entry.type || "expense", entry.source);
+      const key = `${smartBucket}|${entry.type || "expense"}`;
+      if (!categoryGroups.has(key)) {
+        categoryGroups.set(key, {
+          category: smartBucket,
+          rawName: smartBucket,
+          isTag: false,
+          type: entry.type || "expense",
+          count: 0,
+          totalActual: 0,
+          totalForecast: 0,
+          subCategories: new Map()
+        });
+      }
+      const group = categoryGroups.get(key);
+      group.count += 1;
+      let actualForGroup = getFilteredEntryAmount(entry);
+      if (entry.source === "recurring credit" || isCreditDueLumpSum(entry)) {
+        const acc = (entry.account || entry.creditType || "").toLowerCase().includes("hsbc") ? "hsbc" : "cib";
+        const entryMonth = DateUtils.getMonthKey(getEntryActualDate(entry));
+        const matchingCardActuals = actualEntries
+          .filter((card) => isCreditCardExpense(card) && (card.creditType || "").toLowerCase().startsWith(acc) && getCreditSettlementMonth(card) === entryMonth)
+          .reduce((s, card) => s + getEntryActualAmount(card), 0);
+        actualForGroup = Math.max(0, actualForGroup - matchingCardActuals);
+      }
+      group.totalActual += actualForGroup;
+      group.totalForecast += Number(entry.amount || 0);
+
+      const subCatName = entry.category || "General";
+      group.subCategories.set(subCatName, (group.subCategories.get(subCatName) || 0) + actualForGroup);
+    });
+  }
 
   const sortedGroups = [...categoryGroups.values()].sort((a, b) => b.totalActual - a.totalActual);
   const totalFilteredActual = sortedGroups.reduce((sum, g) => sum + g.totalActual, 0);
@@ -4553,6 +4716,7 @@ function renderHistory() {
   const pieChart = document.getElementById("historyPieChart");
   const pieCenterVal = document.getElementById("historyPieCenterValue");
   const groupedCountEl = document.getElementById("historyGroupedCount");
+  const summaryNoteEl = document.getElementById("historyAnalyticsSummaryNote");
 
   // Apply collapsible panel state and view mode
   const analyticsPanel = document.getElementById("historyAnalyticsPanel");
@@ -4561,8 +4725,17 @@ function renderHistory() {
   }
   applyHistoryAnalyticsView(historyAnalyticsView);
 
-  if (groupedCountEl) {
-    groupedCountEl.textContent = `${sortedGroups.length} ${sortedGroups.length === 1 ? "group" : "groups"}`;
+  if (summaryNoteEl) {
+    const groupUnit = historyAnalyticsGrouping === "tag"
+      ? (sortedGroups.length === 1 ? "tag" : "tags")
+      : (sortedGroups.length === 1 ? "group" : "groups");
+    const groupModeLabel = historyAnalyticsGrouping === "tag" ? "by Subcategory / Tag" : "by Category";
+    summaryNoteEl.innerHTML = `Filtered actuals ${groupModeLabel} · <span id="historyGroupedCount">${sortedGroups.length} ${groupUnit}</span>`;
+  } else if (groupedCountEl) {
+    const groupUnit = historyAnalyticsGrouping === "tag"
+      ? (sortedGroups.length === 1 ? "tag" : "tags")
+      : (sortedGroups.length === 1 ? "group" : "groups");
+    groupedCountEl.textContent = `${sortedGroups.length} ${groupUnit}`;
   }
 
   const palette = [
@@ -4571,7 +4744,7 @@ function renderHistory() {
 
   if (totalFilteredActual <= 0 || sortedGroups.length === 0) {
     if (groupTable) groupTable.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--muted);">No actualized data for current filter</td></tr>`;
-    if (categoryList) categoryList.innerHTML = `<div style="color:var(--muted);font-size:13px;text-align:center;padding:12px 0;">No category data for selection</div>`;
+    if (categoryList) categoryList.innerHTML = `<div style="color:var(--muted);font-size:13px;text-align:center;padding:12px 0;">No actualized data for selection</div>`;
     if (pieChart) pieChart.style.background = "var(--line)";
     if (pieCenterVal) pieCenterVal.textContent = "0 EGP";
   } else {
@@ -4601,15 +4774,20 @@ function renderHistory() {
           const color = palette[idx % palette.length];
           const pct = Math.round((group.totalActual / totalFilteredActual) * 100) || 0;
           const subItemsText = [...group.subCategories.entries()]
+            .sort((a, b) => b[1] - a[1])
             .map(([subName, subAmt]) => `${subName} (${money(subAmt)})`)
             .join(" · ");
+
+          const tagClickAttr = group.isTag && group.rawName && group.rawName !== "Untagged"
+            ? ` data-tag-filter-click="${escapeHtml(group.rawName)}" style="cursor:pointer;" title="Filter history by tag: ${escapeHtml(group.rawName)}"`
+            : "";
 
           return `
             <div class="list-row" style="flex-direction:column; align-items:stretch; gap:4px; padding:8px 10px;">
               <div style="display:flex; justify-content:space-between; font-size:12.5px; font-weight:700;">
                 <span style="display:flex; align-items:center; gap:6px;">
                   <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:${color}; flex-shrink:0;"></span>
-                  ${escapeHtml(group.category)}
+                  <span${tagClickAttr}>${escapeHtml(group.category)}</span>
                   <span class="pill ${escapeHtml(group.type)}" style="font-size:10px; min-height:18px; padding:0 6px;">${escapeHtml(group.type)}</span>
                 </span>
                 <span>${escapeHtml(money(group.totalActual))} <small style="font-weight:normal; color:var(--muted)">(${pct}%)</small></span>
@@ -4631,15 +4809,20 @@ function renderHistory() {
           const color = palette[idx % palette.length];
           const pct = Math.round((group.totalActual / totalFilteredActual) * 100) || 0;
           const subItemsText = [...group.subCategories.entries()]
+            .sort((a, b) => b[1] - a[1])
             .map(([subName, subAmt]) => `${subName}: ${money(subAmt)}`)
             .join(", ");
+
+          const tagClickAttr = group.isTag && group.rawName && group.rawName !== "Untagged"
+            ? ` data-tag-filter-click="${escapeHtml(group.rawName)}" style="cursor:pointer;" title="Filter history by tag: ${escapeHtml(group.rawName)}"`
+            : "";
 
           return `
             <tr>
               <td>
                 <span style="display:inline-flex; align-items:center; gap:6px;">
                   <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${color}; flex-shrink:0;"></span>
-                  <strong>${escapeHtml(group.category)}</strong>
+                  <strong${tagClickAttr}>${escapeHtml(group.category)}</strong>
                 </span>
                 ${subItemsText ? `<small style="display:block; color:var(--muted); font-size:11px; margin-top:2px;" title="${escapeHtml(subItemsText)}">${escapeHtml(subItemsText)}</small>` : ""}
               </td>
@@ -4653,6 +4836,13 @@ function renderHistory() {
         .join("");
     }
   }
+}
+
+function setHistoryAnalyticsGrouping(mode) {
+  if (mode !== "category" && mode !== "tag") mode = "category";
+  historyAnalyticsGrouping = mode;
+  saveSetting(keys.historyAnalyticsGrouping, historyAnalyticsGrouping);
+  renderHistory();
 }
 
 function applyHistoryAnalyticsView(mode = historyAnalyticsView) {
@@ -8318,6 +8508,7 @@ function setupEventListeners() {
   on("historyMonthFilter", "change", () => renderHistory());
   on("historyTypeFilter", "change", () => renderHistory());
   on("historyAccountFilter", "change", () => renderHistory());
+  on("historyTagFilter", "change", () => renderHistory());
   on("historySearch", "input", debounce(renderHistory, 180));
   on("historyFiltersReset", "click", () => {
     const monthEl = document.getElementById("historyMonthFilter");
@@ -8326,9 +8517,27 @@ function setupEventListeners() {
     if (typeEl) typeEl.value = "all";
     const accEl = document.getElementById("historyAccountFilter");
     if (accEl) accEl.value = "all";
+    const tagEl = document.getElementById("historyTagFilter");
+    if (tagEl) tagEl.value = "all";
     const searchEl = document.getElementById("historySearch");
     if (searchEl) searchEl.value = "";
     renderHistory();
+  });
+
+  // Click on any subcategory tag pill to instantly filter history by that tag
+  document.addEventListener("click", (event) => {
+    const pill = event.target.closest("[data-tag-filter-click]");
+    if (pill) {
+      const tag = pill.getAttribute("data-tag-filter-click");
+      const tagFilter = document.getElementById("historyTagFilter");
+      if (tagFilter && tag) {
+        event.preventDefault();
+        event.stopPropagation();
+        tagFilter.value = tag;
+        renderHistory();
+        tagFilter.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+    }
   });
 
   // History admin lock toggle
@@ -8340,11 +8549,21 @@ function setupEventListeners() {
 
   // History collapsible analytics panel & view toggles
   on("historyAnalyticsToggle", "click", (e) => {
-    if (e.target.closest(".history-view-tabs")) return;
+    if (e.target.closest(".history-view-tabs") || e.target.closest(".history-groupby-tabs")) return;
     historyAnalyticsCollapsed = !historyAnalyticsCollapsed;
     saveSetting(keys.historyAnalyticsCollapsed, historyAnalyticsCollapsed);
     const panel = document.getElementById("historyAnalyticsPanel");
     if (panel) panel.classList.toggle("is-collapsed", historyAnalyticsCollapsed);
+  });
+
+  on("historyGroupByCategory", "click", (e) => {
+    e.stopPropagation();
+    setHistoryAnalyticsGrouping("category");
+  });
+
+  on("historyGroupByTag", "click", (e) => {
+    e.stopPropagation();
+    setHistoryAnalyticsGrouping("tag");
   });
 
   on("historyViewModeChart", "click", (e) => {
