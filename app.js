@@ -696,33 +696,41 @@ function promptAccountAdjustment(type, amount, defaultAccountKey = "cash", descr
       settled = true;
       const submitter = event.submitter;
       const val = submitter ? submitter.value : "confirm";
-      const selectedAccId = selectEl ? selectEl.value : null;
+      const selectedAccId = val === "confirm" ? (selectEl ? selectEl.value : null) : null;
       const chosenTag = (tagInput ? tagInput.value : "").trim();
       cleanup();
       dialog.close(val);
-      if (val === "confirm" && selectedAccId) {
-        resolve({
-          accountId: selectedAccId,
-          tag: chosenTag,
-          toString() { return this.accountId; }
-        });
-      } else {
-        resolve(chosenTag ? { accountId: null, tag: chosenTag, toString() { return ""; } } : null);
-      }
+      resolve({
+        accountId: selectedAccId,
+        tag: chosenTag,
+        toString() { return this.accountId || ""; }
+      });
     };
 
     const handleCancel = () => {
       if (settled) return;
       settled = true;
+      const chosenTag = (tagInput ? tagInput.value : "").trim();
       cleanup();
-      resolve(null);
+      resolve({
+        accountId: null,
+        tag: chosenTag,
+        toString() { return ""; }
+      });
     };
 
     const handleClose = () => {
       if (settled) return;
       settled = true;
+      const chosenTag = (tagInput ? tagInput.value : "").trim();
+      const returnVal = dialog.returnValue;
+      const selectedAccId = returnVal === "confirm" ? (selectEl ? selectEl.value : null) : null;
       cleanup();
-      resolve(null);
+      resolve({
+        accountId: selectedAccId,
+        tag: chosenTag,
+        toString() { return this.accountId || ""; }
+      });
     };
 
     if (form) form.addEventListener("submit", handleSubmit);
@@ -3995,6 +4003,10 @@ async function commitEntryActualInput(input) {
     const trancheTag = (adjustmentResult && adjustmentResult.tag) ? adjustmentResult.tag : (entry.tag || "");
     const trancheAccount = (adjustmentResult && adjustmentResult.accountId) ? adjustmentResult.accountId : (entry.account || "cash");
 
+    if (trancheTag && !entry.tag) {
+      entry.tag = trancheTag;
+    }
+
     if (!Array.isArray(entry.draws)) {
       entry.draws = previousActual > 0
         ? [{ date: entry.actualDate || entry.date || DateUtils.todayString(), amount: previousActual, tag: entry.tag || "" }]
@@ -6919,6 +6931,10 @@ function setupEventListeners() {
 
     const trancheTag = (adjustmentResult && adjustmentResult.tag) ? adjustmentResult.tag : (entry.tag || "");
     const trancheAccount = (adjustmentResult && adjustmentResult.accountId) ? adjustmentResult.accountId : (entry.account || "cash");
+
+    if (trancheTag && !entry.tag) {
+      entry.tag = trancheTag;
+    }
 
     if (!Array.isArray(entry.draws)) {
       entry.draws = previousActual > 0
