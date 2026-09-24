@@ -1226,14 +1226,23 @@ function getCreditCycleHint(dateStr, creditType) {
 
 function getCreditSettlementDate(entry) {
   if (!entry) return "";
-  if (entry.creditSettlementDate) return entry.creditSettlementDate;
   if (isCreditCardExpense(entry)) {
     const t = (entry.creditType || "").toLowerCase();
     const acc = (entry.account || "").toLowerCase();
     const type = (t.includes("hsbc") || acc.includes("hsbc")) ? "hsbc_card" : "cib_card";
+    const accKey = type === "hsbc_card" ? "hsbc" : "cib";
     const d = getEntryActualDate(entry) || entry.date;
-    return calculateCreditSettlementDate(d, type);
+    const defaultDate = entry.creditSettlementDate || calculateCreditSettlementDate(d, type);
+    const sMonth = defaultDate ? DateUtils.getMonthKey(defaultDate) : "";
+    if (sMonth && creditSettlementOverrides) {
+      const override = creditSettlementOverrides[`credit-settlement-${accKey}-${sMonth}`];
+      if (override && override.date) {
+        return override.date;
+      }
+    }
+    return defaultDate;
   }
+  if (entry.creditSettlementDate) return entry.creditSettlementDate;
   return entry.date || "";
 }
 
@@ -1332,6 +1341,14 @@ function creditDueEntries() {
       // Keep entry if there is a planned due OR if an actual payment was recorded (for past settled history) OR if overridden
       if (totalPlannedDue <= 0 && actualPaid <= 0 && calculatedPlannedDue <= 0) return;
 
+      // Auto-heal: If this cycle has card spend, manual lump amounts, an override, or payment, un-suppress it from deletedForecasts
+      if (deletedForecasts && deletedForecasts.includes(settlementId)) {
+        if (cardSpendTotal > 0 || lumpAmount > 0 || hasPlannedOverride || (override && override.date) || actualPaid > 0) {
+          deletedForecasts = deletedForecasts.filter((id) => id !== settlementId);
+          saveSetting(keys.deletedForecasts, deletedForecasts);
+        }
+      }
+
       const [year, month] = DateUtils.parseYearMonth(monthKey);
       const lastDay = DateUtils.getLastDayOfMonth(year, month);
       const maturityDay = Number(acc.maturityDay) || (accountKey === "cib" ? 15 : lastDay);
@@ -1379,6 +1396,13 @@ function creditDueEntries() {
       const settlementId = `credit-settlement-${accountKey}-${monthKey}`;
       const override = creditSettlementOverrides && creditSettlementOverrides[settlementId];
       const hasPlannedOverride = override && override.amount !== undefined && override.amount !== null && !isNaN(Number(override.amount));
+
+      if (deletedForecasts && deletedForecasts.includes(settlementId)) {
+        if (num > 0 || hasPlannedOverride || (override && override.date)) {
+          deletedForecasts = deletedForecasts.filter((id) => id !== settlementId);
+          saveSetting(keys.deletedForecasts, deletedForecasts);
+        }
+      }
       entries.push({
         id: settlementId,
         date: (override && override.date) || DateUtils.formatDate(year, month, day),
@@ -1982,12 +2006,16 @@ function renderDashboard() {
   if (actualCashEl) actualCashEl.textContent = money(actualCashNow);
 
   // Render CIB Dual-Cycle Card
+  const allCreditDueEntries = creditDueEntries();
   const cibCreditEl = document.getElementById("cibCreditDue");
   if (cibCreditEl) cibCreditEl.textContent = money(cibMainDisplay);
 
+  const cibActiveMonthKey = cibCurrent > 0 ? currentMonthKey : nextMonthKey;
+  const cibActiveEntry = allCreditDueEntries.find((e) => e.creditType === "cib" && DateUtils.getMonthKey(e.date) === cibActiveMonthKey);
+  const cibDueDateStr = cibActiveEntry && cibActiveEntry.date ? DateUtils.formatDisplayDate(cibActiveEntry.date) : (cibCurrent > 0 ? `${currentMonthName} 15` : `${nextMonthName} 15`);
   const cibBadgeEl = document.getElementById("cibCreditBadge");
   if (cibBadgeEl) {
-    cibBadgeEl.textContent = cibCurrent > 0 ? `Due ${currentMonthName} 15` : `Due ${nextMonthName} 15`;
+    cibBadgeEl.textContent = `Due ${cibDueDateStr}`;
   }
 
   const cibCurLabelEl = document.getElementById("cibCurrentMonthLabel");
@@ -2010,11 +2038,15 @@ function renderDashboard() {
   const hsbcCreditEl = document.getElementById("hsbcCreditDue");
   if (hsbcCreditEl) hsbcCreditEl.textContent = money(hsbcMainDisplay);
 
+  const hsbcActiveMonthKey = hsbcCurrent > 0 ? currentMonthKey : nextMonthKey;
+  const hsbcActiveEntry = allCreditDueEntries.find((e) => e.creditType === "hsbc" && DateUtils.getMonthKey(e.date) === hsbcActiveMonthKey);
+  const hsbcCurLastDay = DateUtils.getLastDayOfMonth(cmYear, cmMonth);
+  const hsbcNextLastDay = DateUtils.getLastDayOfMonth(cmMonth === 12 ? cmYear + 1 : cmYear, cmMonth === 12 ? 1 : cmMonth + 1);
+  const hsbcDefaultDueStr = hsbcCurrent > 0 ? `${currentMonthName} ${hsbcCurLastDay}` : `${nextMonthName} ${hsbcNextLastDay}`;
+  const hsbcDueDateStr = hsbcActiveEntry && hsbcActiveEntry.date ? DateUtils.formatDisplayDate(hsbcActiveEntry.date) : hsbcDefaultDueStr;
   const hsbcBadgeEl = document.getElementById("hsbcCreditBadge");
   if (hsbcBadgeEl) {
-    const hsbcCurLastDay = DateUtils.getLastDayOfMonth(cmYear, cmMonth);
-    const hsbcNextLastDay = DateUtils.getLastDayOfMonth(cmMonth === 12 ? cmYear + 1 : cmYear, cmMonth === 12 ? 1 : cmMonth + 1);
-    hsbcBadgeEl.textContent = hsbcCurrent > 0 ? `Due ${currentMonthName} ${hsbcCurLastDay}` : `Due ${nextMonthName} ${hsbcNextLastDay}`;
+    hsbcBadgeEl.textContent = `Due ${hsbcDueDateStr}`;
   }
 
   const hsbcCurLabelEl = document.getElementById("hsbcCurrentMonthLabel");
@@ -3915,12 +3947,14 @@ function renderEntries() {
         }
       }
 
-      let sourceLabel = escapeHtml(entry.source || "manual");
+      let sourceCellHtml = "";
       if (isCreditCardExpense(entry)) {
         const setDateStr = DateUtils.formatDisplayDate(getCreditSettlementDate(entry));
-        sourceLabel = `<span style="display:inline-flex; align-items:center; gap:3px; color:var(--blue); font-weight:600;" title="Paid via credit card · Cash settles ${setDateStr}">💳 Settles ${setDateStr}</span>`;
+        sourceCellHtml = `<span class="source-pill" style="display:inline-flex; align-items:center; gap:3px; color:var(--blue); font-weight:600;" title="Paid via credit card · Cash settles ${setDateStr}">💳 Settles ${setDateStr}</span>`;
       } else if (entry.source === "recurring credit" || (entry.id && entry.id.startsWith("credit-settlement-")) || isCreditDueLumpSum(entry)) {
-        sourceLabel = `<span class="source-pill credit-due-pill" title="Credit settlement due">🏛️ Credit Due</span>`;
+        sourceCellHtml = `<span class="source-pill credit-due-pill" title="Credit settlement due">🏛️ Credit Due</span>`;
+      } else {
+        sourceCellHtml = `<span class="source-pill ${entry.source === "loan" ? "loan" : ""}">${escapeHtml(entry.source || "manual")}</span>`;
       }
 
       let categoryDisplayHtml = escapeHtml(entry.category || "—");
@@ -3939,7 +3973,7 @@ function renderEntries() {
           <td class="cell-category">${categoryDisplayHtml}${statusBadge}</td>
           <td class="cell-account">${escapeHtml(entry.account || "cash")}</td>
           <td class="cell-type"><span class="pill ${escapeHtml(entry.type)}">${escapeHtml(entry.type)}</span></td>
-          <td class="cell-source"><span class="source-pill ${entry.source === "loan" ? "loan" : ""}">${sourceLabel}</span></td>
+          <td class="cell-source">${sourceCellHtml}</td>
           <td class="cell-amount number">${escapeHtml(money(entry.amount))}</td>
           <td class="cell-actual number">${actualCell}</td>
           <td class="cell-actions number">${action}</td>
@@ -4534,12 +4568,14 @@ function renderHistory() {
       const rowClass = historyAdminUnlocked ? "history-admin-row" : "";
       const rowTitle = historyAdminUnlocked ? "Click to edit full entry details" : "";
 
-      let historySourceLabel = escapeHtml(entry.source || "manual");
+      let historySourceCellHtml = "";
       if (isCreditCardExpense(entry)) {
         const sDate = DateUtils.formatDisplayDate(getCreditSettlementDate(entry));
-        historySourceLabel = `<span style="color:var(--blue); font-weight:600;" title="Paid via credit card · Settles ${sDate}">💳 Settles ${sDate}</span>`;
+        historySourceCellHtml = `<span class="source-pill" style="display:inline-flex; align-items:center; gap:3px; color:var(--blue); font-weight:600;" title="Paid via credit card · Settles ${sDate}">💳 Settles ${sDate}</span>`;
       } else if (entry.source === "recurring credit" || (entry.id && entry.id.startsWith("credit-settlement-")) || isCreditDueLumpSum(entry)) {
-        historySourceLabel = `<span class="source-pill credit-due-pill" title="Credit settlement paid">🏛️ Credit Due</span>`;
+        historySourceCellHtml = `<span class="source-pill credit-due-pill" title="Credit settlement paid">🏛️ Credit Due</span>`;
+      } else {
+        historySourceCellHtml = `<span class="source-pill ${entry.source === "loan" ? "loan" : ""}">${escapeHtml(entry.source || "manual")}</span>`;
       }
 
       const mainRowHtml = `
@@ -4548,7 +4584,7 @@ function renderHistory() {
           <td class="cell-category">${categoryCellHtml}</td>
           <td class="cell-account">${escapeHtml((entry.account || "cash").toUpperCase())}</td>
           <td class="cell-type"><span class="pill ${escapeHtml(entry.type)}">${escapeHtml(entry.type)}</span></td>
-          <td class="cell-source"><span class="source-pill ${entry.source === "loan" ? "loan" : ""}">${historySourceLabel}</span></td>
+          <td class="cell-source">${historySourceCellHtml}</td>
           <td class="cell-amount cell-planned number">${plannedVal > 0 ? escapeHtml(money(plannedVal)) : "—"}</td>
           <td class="cell-actual number">${actualCell}</td>
           <td class="cell-variance number">${varianceHtml}</td>
@@ -5142,6 +5178,21 @@ async function deleteHistoryEntryCompletely(entryId) {
   if (isArchived && archivedIndex !== -1) {
     archivedEntries.splice(archivedIndex, 1);
     saveSetting(keys.archivedEntries, archivedEntries);
+  }
+
+  if (entryId.startsWith("credit-settlement-")) {
+    const parts = entryId.split("-");
+    const accountKey = parts[2];
+    const monthKey = `${parts[3]}-${parts[4]}`;
+    const prevLen = cashEntries.length;
+    cashEntries = cashEntries.filter((e) => !(isLumpCreditDueForAccount(e, accountKey) && DateUtils.getMonthKey(e.date) === monthKey));
+    if (cashEntries.length !== prevLen) {
+      saveSetting(keys.entries, cashEntries);
+    }
+    if (creditSettlementOverrides && creditSettlementOverrides[entryId]) {
+      delete creditSettlementOverrides[entryId];
+      saveSetting(keys.creditSettlementOverrides, creditSettlementOverrides);
+    }
   }
 
   delete entryActuals[entryId];
@@ -6292,6 +6343,11 @@ async function persistEntryForm(event) {
         }
         saveSetting(keys.creditSettlementOverrides, creditSettlementOverrides);
 
+        if (deletedForecasts && deletedForecasts.includes(originalId)) {
+          deletedForecasts = deletedForecasts.filter((id) => id !== originalId);
+          saveSetting(keys.deletedForecasts, deletedForecasts);
+        }
+
         // Clean up any legacy manual lump entries for this month/account if present so they don't double count
         const lumpIdx = cashEntries.findIndex((e) => isLumpCreditDueForAccount(e, accountKey) && DateUtils.getMonthKey(e.date) === monthKey && !getEntryId(e).startsWith("credit-settlement-"));
         if (lumpIdx !== -1) {
@@ -6462,7 +6518,7 @@ function handleRecalculateCreditDueFromHistory() {
 
   form.elements.amount.value = calculatedTotal;
   form.elements.date.value = defaultDate;
-  form.elements.actualAmount.value = cardSpendTotal > 0 ? cardSpendTotal : calculatedTotal;
+  form.elements.actualAmount.value = "";
   form.dataset.clearedOverride = "true";
 
   const statusEl = document.getElementById("recalcCreditDueStatus");
@@ -7104,6 +7160,7 @@ function setupEventListeners() {
         entryActuals,
         entryActualDates,
         deletedForecasts,
+        creditSettlementOverrides,
         archivedEntries,
         categoryCaps,
         savingsGoals
@@ -7230,6 +7287,7 @@ function setupEventListeners() {
       entryActuals: clone(entryActuals),
       entryActualDates: clone(entryActualDates),
       deletedForecasts: clone(deletedForecasts),
+      creditSettlementOverrides: clone(creditSettlementOverrides),
       archivedEntries: clone(archivedEntries),
       categoryCaps: clone(categoryCaps),
       savingsGoals: clone(savingsGoals)
@@ -7249,6 +7307,7 @@ function setupEventListeners() {
     savingsGoals = clone(defaultSavingsGoals);
     creditDues = {};
     creditDueMonths = {};
+    creditSettlementOverrides = {};
     entryActuals = {};
     entryActualDates = {};
     deletedForecasts = [];
@@ -7269,6 +7328,7 @@ function setupEventListeners() {
     saveSetting(keys.savingsGoals, savingsGoals);
     saveSetting(keys.creditDues, creditDues);
     saveSetting(keys.creditDueMonths, creditDueMonths);
+    saveSetting(keys.creditSettlementOverrides, creditSettlementOverrides);
     saveSetting(keys.entryActuals, entryActuals);
     saveSetting(keys.entryActualDates, entryActualDates);
     saveSetting(keys.deletedForecasts, deletedForecasts);
@@ -7296,6 +7356,7 @@ function setupEventListeners() {
     savingsGoals = backup.savingsGoals || defaultSavingsGoals;
     creditDues = backup.creditDues || {};
     creditDueMonths = backup.creditDueMonths || {};
+    creditSettlementOverrides = backup.creditSettlementOverrides || {};
     entryActuals = backup.entryActuals || {};
     entryActualDates = backup.entryActualDates || {};
     deletedForecasts = backup.deletedForecasts || [];
@@ -7315,6 +7376,7 @@ function setupEventListeners() {
     saveSetting(keys.savingsGoals, savingsGoals);
     saveSetting(keys.creditDues, creditDues);
     saveSetting(keys.creditDueMonths, creditDueMonths);
+    saveSetting(keys.creditSettlementOverrides, creditSettlementOverrides);
     saveSetting(keys.entryActuals, entryActuals);
     saveSetting(keys.entryActualDates, entryActualDates);
     saveSetting(keys.deletedForecasts, deletedForecasts);
@@ -7681,6 +7743,10 @@ function setupEventListeners() {
         cashEntries = cashEntries.filter((e) => !(isLumpCreditDueForAccount(e, accountKey) && DateUtils.getMonthKey(e.date) === monthKey));
         if (cashEntries.length !== prevLen) {
           saveSetting(keys.entries, cashEntries);
+        }
+        if (creditSettlementOverrides && creditSettlementOverrides[deleteKey]) {
+          delete creditSettlementOverrides[deleteKey];
+          saveSetting(keys.creditSettlementOverrides, creditSettlementOverrides);
         }
       }
 
@@ -8932,6 +8998,7 @@ function getFullBudgetPayload() {
       entryActuals,
       entryActualDates,
       deletedForecasts,
+      creditSettlementOverrides,
       archivedEntries,
       categoryCaps,
       savingsGoals
