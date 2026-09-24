@@ -1,6 +1,13 @@
 import React, { useState } from 'react';
 import { useBudgetStore } from '../../store/useBudgetStore';
-import { computeSpreadPct } from '../../engine/currency';
+import {
+  computeSpreadPct,
+  applySpread,
+  fetchLiveCurrencyRates,
+  fetchLiveGoldSpotUsd,
+  egpPerUnit,
+  TROY_OUNCE_GRAMS,
+} from '../../engine/currency';
 import type { RatesData } from '../../types';
 import { Edit2, Check, X } from 'lucide-react';
 
@@ -12,6 +19,8 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
   const { rates, updateRates } = useBudgetStore();
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [draftRates, setDraftRates] = useState<RatesData | null>(null);
+  const [isFetchingCurrencies, setIsFetchingCurrencies] = useState<boolean>(false);
+  const [isFetchingGold, setIsFetchingGold] = useState<boolean>(false);
 
   const handleStartEdit = () => {
     setDraftRates(JSON.parse(JSON.stringify(rates)));
@@ -29,6 +38,84 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
   const handleCancel = () => {
     setIsEditing(false);
     setDraftRates(null);
+  };
+
+  const handleFetchLiveCurrencies = async () => {
+    setIsFetchingCurrencies(true);
+    try {
+      const liveRates = await fetchLiveCurrencyRates();
+      const changes: string[] = [];
+      const updated = rates.currencies.map((currency) => {
+        const mid = egpPerUnit(liveRates, currency.name.toUpperCase());
+        if (mid === null) return currency;
+        const spreadPct = computeSpreadPct(currency.sell, currency.buy);
+        const next = applySpread(mid, spreadPct);
+        changes.push(`${currency.name}: ${currency.sell.toFixed(2)}/${currency.buy.toFixed(2)} → ${next.sell.toFixed(2)}/${next.buy.toFixed(2)}`);
+        return { ...currency, ...next };
+      });
+
+      if (!changes.length) {
+        alert("None of the saved currencies matched the live market feed.");
+        return;
+      }
+
+      const confirmed = window.confirm(
+        `Update Currency Rates from live market data?\n\n${changes.join("\n")}`
+      );
+      if (!confirmed) return;
+
+      updateRates({ ...rates, currencies: updated });
+    } catch (err: any) {
+      console.error("Live currency rate fetch failed:", err);
+      const manual = window.confirm("Couldn't fetch live rates (offline or rate service unavailable). Enter rates manually?");
+      if (manual) handleStartEdit();
+    } finally {
+      setIsFetchingCurrencies(false);
+    }
+  };
+
+  const handleFetchLiveGold = async () => {
+    setIsFetchingGold(true);
+    try {
+      const [liveRates, xauUsd] = await Promise.all([fetchLiveCurrencyRates(), fetchLiveGoldSpotUsd()]);
+      const egpPerOz = xauUsd * liveRates.EGP;
+      const egpPerGram24k = egpPerOz / TROY_OUNCE_GRAMS;
+
+      const changes: string[] = [];
+      const skipped: string[] = [];
+      const updated = rates.gold.map((item) => {
+        const match = item.name.match(/(\d+)/);
+        if (!match) {
+          skipped.push(item.name);
+          return item;
+        }
+        const karat = Number(match[1]);
+        const mid = egpPerGram24k * (karat / 24);
+        const spreadPct = computeSpreadPct(item.sell, item.buy);
+        const next = applySpread(mid, spreadPct);
+        changes.push(`${item.name}: ${item.sell.toFixed(0)}/${item.buy.toFixed(0)} → ${next.sell.toFixed(0)}/${next.buy.toFixed(0)}`);
+        return { ...item, ...next };
+      });
+
+      if (!changes.length) {
+        alert('None of the saved gold entries could be matched to a karat (e.g. "Gold 21").');
+        return;
+      }
+
+      let message = `Update Gold Rates from live spot price ($${xauUsd.toFixed(2)}/oz)?\n\n${changes.join("\n")}`;
+      if (skipped.length) message += `\n\nSkipped (no karat in name): ${skipped.join(", ")}`;
+
+      const confirmed = window.confirm(message);
+      if (!confirmed) return;
+
+      updateRates({ ...rates, gold: updated });
+    } catch (err: any) {
+      console.error("Live gold rate fetch failed:", err);
+      const manual = window.confirm("Couldn't fetch live gold price. Enter rates manually?");
+      if (manual) handleStartEdit();
+    } finally {
+      setIsFetchingGold(false);
+    }
   };
 
   const current = isEditing && draftRates ? draftRates : rates;
@@ -51,14 +138,24 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
                   </button>
                 </>
               ) : (
-                <button
-                  className="ghost-button"
-                  id="editCurrencies"
-                  type="button"
-                  onClick={onOpenRateModal ? () => onOpenRateModal('currency') : handleStartEdit}
-                >
-                  <Edit2 size={14} style={{ marginRight: '4px' }} /> Update Rates
-                </button>
+                <>
+                  <button
+                    className="primary-button"
+                    id="editCurrencies"
+                    type="button"
+                    disabled={isFetchingCurrencies}
+                    onClick={handleFetchLiveCurrencies}
+                  >
+                    {isFetchingCurrencies ? 'Fetching…' : 'Update from Live'}
+                  </button>
+                  <button
+                    className="ghost-button"
+                    type="button"
+                    onClick={onOpenRateModal ? () => onOpenRateModal('currency') : handleStartEdit}
+                  >
+                    <Edit2 size={14} style={{ marginRight: '4px' }} /> Edit
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -124,14 +221,24 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
                   </button>
                 </>
               ) : (
-                <button
-                  className="ghost-button"
-                  id="editGold"
-                  type="button"
-                  onClick={onOpenRateModal ? () => onOpenRateModal('gold') : handleStartEdit}
-                >
-                  <Edit2 size={14} style={{ marginRight: '4px' }} /> Update Rates
-                </button>
+                <>
+                  <button
+                    className="primary-button"
+                    id="editGold"
+                    type="button"
+                    disabled={isFetchingGold}
+                    onClick={handleFetchLiveGold}
+                  >
+                    {isFetchingGold ? 'Fetching…' : 'Update from Live'}
+                  </button>
+                  <button
+                    className="ghost-button"
+                    type="button"
+                    onClick={onOpenRateModal ? () => onOpenRateModal('gold') : handleStartEdit}
+                  >
+                    <Edit2 size={14} style={{ marginRight: '4px' }} /> Edit
+                  </button>
+                </>
               )}
             </div>
           </div>

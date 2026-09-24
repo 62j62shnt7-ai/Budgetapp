@@ -4,20 +4,27 @@ import { buildSalaryEntries, buildInstallmentEntries } from '../../engine/salary
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { Plus, Trash2, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
 
+import type { CashEntry } from '../../types';
+
 interface CashflowViewProps {
   onOpenEntryModal: (type: 'expense' | 'income') => void;
+  onEditEntry?: (entry: CashEntry) => void;
+  onDeductPrompt?: (entry: CashEntry, actualAmount: number) => void;
   onOpenCapModal: () => void;
   onOpenGoalModal: () => void;
   onOpenInstallmentModal: () => void;
 }
 
 export const CashflowView: React.FC<CashflowViewProps> = ({
+  onEditEntry,
+  onDeductPrompt,
   onOpenCapModal,
   onOpenGoalModal,
   onOpenInstallmentModal,
 }) => {
   const {
     entries,
+    updateEntry,
     deleteEntry,
     salaryPattern,
     updateSalaryPattern,
@@ -476,44 +483,136 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                 <th>Account</th>
                 <th>Tag</th>
                 <th>Amount</th>
-                <th style={{ width: '80px' }}>Actions</th>
+                <th style={{ minWidth: '170px' }}>Actual</th>
+                <th style={{ width: '100px' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filteredCandidates.slice(0, 50).map((e) => (
-                <tr key={e.id}>
-                  <td>{DateUtils.formatDisplayDate(e.date)}</td>
-                  <td>
-                    <strong>{e.category}</strong>
-                    {e.subcategory && <span style={{ fontSize: '11px', color: 'var(--muted)', display: 'block' }}>{e.subcategory}</span>}
-                  </td>
-                  <td>{e.account.toUpperCase()}</td>
-                  <td>{e.tag ? `#${e.tag}` : '—'}</td>
-                  <td style={{ color: e.type === 'income' ? 'var(--green)' : 'var(--red)', fontWeight: 700 }}>
-                    {e.type === 'income' ? '+' : '-'}{formatMoney(e.amount)}
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', gap: '4px' }}>
-                      <button
-                        className="ghost-button"
-                        style={{ padding: '2px 6px', fontSize: '11px' }}
-                        title="Record as actual payment/income"
-                        onClick={() => recordActual(e.id, e.amount, e.date)}
-                      >
-                        <CheckCircle2 size={13} color="var(--green)" />
-                      </button>
-                      <button
-                        className="ghost-button"
-                        style={{ padding: '2px 6px', fontSize: '11px' }}
-                        title="Delete entry"
-                        onClick={() => deleteEntry(e.id)}
-                      >
-                        <Trash2 size={13} color="var(--red)" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {filteredCandidates.map((e) => {
+                const isLoan = (e.source || '').toLowerCase().includes('loan') || (e.category || '').toLowerCase().includes('loan');
+                const isCreditSettlement = (e.source || '').toLowerCase().includes('credit') || (e.id && e.id.startsWith('credit-settlement-'));
+                const placeholder = isLoan ? 'Add draw' : isCreditSettlement ? 'Add payment' : e.type === 'income' ? 'Add actual' : 'Add spend';
+                const actualValue = Number(e.actualAmount || 0);
+                const plannedAmt = Number(e.amount || 0);
+                const remainingAmt = Math.max(0, plannedAmt - actualValue);
+                const isFull = plannedAmt > 0 && actualValue >= plannedAmt;
+                const canFinish = actualValue > 0 && !e.isClosed;
+
+                return (
+                  <tr
+                    key={e.id}
+                    style={{ cursor: 'pointer' }}
+                    onClick={(ev) => {
+                      if ((ev.target as HTMLElement).closest('input, button, select, a')) return;
+                      if (onEditEntry) onEditEntry(e);
+                    }}
+                  >
+                    <td>{DateUtils.formatDisplayDate(e.date)}</td>
+                    <td>
+                      <strong>{e.category}</strong>
+                      {e.subcategory && <span style={{ fontSize: '11px', color: 'var(--muted)', display: 'block' }}>{e.subcategory}</span>}
+                      {e.creditType && (
+                        <span className="source-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', color: 'var(--blue)', fontWeight: 600, fontSize: '10px', marginTop: '2px' }}>
+                          💳 {e.creditType.toUpperCase()}
+                        </span>
+                      )}
+                    </td>
+                    <td>{e.account.toUpperCase()}</td>
+                    <td>{e.tag ? `#${e.tag}` : '—'}</td>
+                    <td style={{ color: e.type === 'income' ? 'var(--green)' : 'var(--red)', fontWeight: 700 }}>
+                      {e.type === 'income' ? '+' : '-'}{formatMoney(e.amount)}
+                    </td>
+                    <td>
+                      <div>
+                        <input
+                          className="inline-actual-input form-input"
+                          style={{ width: '110px', padding: '3px 6px', fontSize: '12px' }}
+                          placeholder={placeholder}
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          onKeyDown={(ev) => {
+                            if (ev.key === 'Enter') {
+                              ev.preventDefault();
+                              const input = ev.currentTarget;
+                              const val = Math.round(Number(input.value) || 0);
+                              if (val > 0) {
+                                const newActual = actualValue + val;
+                                recordActual(e.id, newActual, DateUtils.todayString());
+                                if (onDeductPrompt) onDeductPrompt(e, val);
+                              }
+                              input.value = '';
+                            }
+                          }}
+                          onBlur={(ev) => {
+                            const input = ev.currentTarget;
+                            const val = Math.round(Number(input.value) || 0);
+                            if (val > 0) {
+                              const newActual = actualValue + val;
+                              recordActual(e.id, newActual, DateUtils.todayString());
+                              if (onDeductPrompt) onDeductPrompt(e, val);
+                            }
+                            input.value = '';
+                          }}
+                        />
+                        {actualValue > 0 && (
+                          <small style={{ display: 'block', color: 'var(--muted)', marginTop: '4px', whiteSpace: 'nowrap', fontSize: '11px' }}>
+                            {isLoan
+                              ? `Drawn so far: ${formatMoney(actualValue)} ${isFull ? '(Full amount reached)' : `(Remaining: ${formatMoney(remainingAmt)})`}`
+                              : isCreditSettlement
+                              ? `Paid so far: ${formatMoney(actualValue)} ${isFull ? '(Settled in full)' : `(Remaining: ${formatMoney(remainingAmt)})`}`
+                              : `Spent so far: ${formatMoney(actualValue)} ${isFull ? '(Full budget reached)' : `(Remaining: ${formatMoney(remainingAmt)})`}`}
+                          </small>
+                        )}
+                      </div>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                        {canFinish && (
+                          <button
+                            className="ghost-button finish-loan-btn"
+                            type="button"
+                            style={{ fontSize: '11px', padding: '2px 6px', color: 'var(--green)', borderColor: 'var(--green)' }}
+                            title="Finish and close entry at current actual amount"
+                            onClick={(ev) => {
+                              ev.stopPropagation();
+                              if (window.confirm(`Finish and close "${e.category}" at current actual amount (${formatMoney(actualValue)})?\n\nRemaining budget will be closed and removed from future forecast.`)) {
+                                updateEntry(e.id, { isClosed: true, amount: actualValue });
+                              }
+                            }}
+                          >
+                            ✓ Finish
+                          </button>
+                        )}
+                        <button
+                          className="ghost-button"
+                          style={{ padding: '2px 6px', fontSize: '11px' }}
+                          title="Record full amount as actual"
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            recordActual(e.id, e.amount, e.date);
+                          }}
+                        >
+                          <CheckCircle2 size={13} color="var(--green)" />
+                        </button>
+                        <button
+                          className="ghost-button"
+                          style={{ padding: '2px 6px', fontSize: '11px' }}
+                          title="Delete entry"
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            if (window.confirm(`Delete entry "${e.category}" (${formatMoney(e.amount)})?`)) {
+                              deleteEntry(e.id);
+                            }
+                          }}
+                        >
+                          <Trash2 size={13} color="var(--red)" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

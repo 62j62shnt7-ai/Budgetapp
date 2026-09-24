@@ -160,6 +160,12 @@ export const App: React.FC = () => {
         return (
           <CashflowView
             onOpenEntryModal={handleOpenEntryModal}
+            onEditEntry={(entry) => {
+              setEntryToEdit(entry);
+              setEntryModalType(entry.type);
+              setEntryModalOpen(true);
+            }}
+            onDeductPrompt={handleDeductPrompt}
             onOpenCapModal={() => setCapModalOpen(true)}
             onOpenGoalModal={() => setGoalModalOpen(true)}
             onOpenInstallmentModal={() => setInstallmentModalOpen(true)}

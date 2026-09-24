@@ -451,7 +451,19 @@ export const DashboardView: React.FC = () => {
 
           {/* Interactive SVG Line Chart */}
           <div className="forecast-chart-container" id="forecastLineChartContainer">
-            <ForecastChart data={forecast} />
+            <ForecastChart
+              entries={allCandidateEntries}
+              totalCash={totalCash}
+              rangeMonths={forecastRangeMonths}
+              mode={forecastMode}
+              simAmount={Number(simAmount) || 0}
+              simDate={simDate}
+              onSelectDate={(date) => {
+                setSimDate(date);
+                const amtInput = document.getElementById('forecastSimAmount');
+                if (amtInput) amtInput.focus();
+              }}
+            />
           </div>
         </section>
       </div>

@@ -32,7 +32,12 @@ export const ForecastView: React.FC = () => {
           </span>
         </div>
 
-        <ForecastChart data={forecast} />
+        <ForecastChart
+          entries={allCandidateEntries}
+          totalCash={totalCash}
+          rangeMonths={12}
+          mode="monthly"
+        />
       </div>
 
       {/* Simulator Section */}
