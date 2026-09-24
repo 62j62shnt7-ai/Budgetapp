@@ -41,7 +41,8 @@ const keys = {
   historyAnalyticsView: "budget-control-history-analytics-view",
   historyAnalyticsGrouping: "budget-control-history-analytics-grouping",
   historyDistributionCollapsed: "budget-control-history-dist-collapsed",
-  historyGroupedSummaryCollapsed: "budget-control-history-grouped-collapsed"
+  historyGroupedSummaryCollapsed: "budget-control-history-grouped-collapsed",
+  creditSettlementOverrides: "budget-control-credit-settlement-overrides"
 };
 
 const seedVersion = "blank-template-v2";
@@ -104,7 +105,8 @@ const exportableDataKeys = {
   deletedForecasts: keys.deletedForecasts,
   archivedEntries: keys.archivedEntries,
   categoryCaps: keys.categoryCaps,
-  savingsGoals: keys.savingsGoals
+  savingsGoals: keys.savingsGoals,
+  creditSettlementOverrides: keys.creditSettlementOverrides
 };
 
 // --- Date Utilities ---
@@ -914,6 +916,7 @@ if (Array.isArray(partTimeJobs)) {
 }
 let creditDues = loadSetting(keys.creditDues, {});
 let creditDueMonths = loadSetting(keys.creditDueMonths, {});
+let creditSettlementOverrides = loadSetting(keys.creditSettlementOverrides, {});
 let entryActuals = loadSetting(keys.entryActuals, {});
 let entryActualDates = loadSetting(keys.entryActualDates, {});
 let deletedForecasts = loadSetting(keys.deletedForecasts, []);
@@ -1113,11 +1116,15 @@ function buildRecurringEntries(baseEntry, optionsOrMonths) {
 // --- Credit Card Cycle & Settlement Calculations ---
 function isCreditCardExpense(entry) {
   if (!entry || entry.type !== "expense") return false;
+  const id = getEntryId(entry);
+  if (id.startsWith("credit-settlement-")) return false;
+  if (entry.source === "recurring credit" || entry.isCreditSettlement) return false;
+  const cat = (entry.category || "").toLowerCase();
+  if (cat.includes("credit due")) return false;
   const t = (entry.creditType || "").toLowerCase();
   const acc = (entry.account || "").toLowerCase();
-  const cat = (entry.category || "").toLowerCase();
   if (t === "cib_card" || t === "hsbc_card" || t === "cib-card" || t === "hsbc-card") return true;
-  if ((t === "cib" || t === "hsbc") && cat !== "credit due") return true;
+  if ((t === "cib" || t === "hsbc") && !cat.includes("credit due")) return true;
   if (acc === "cib credit" || acc === "cib_credit" || acc === "cib-credit" || acc === "hsbc credit" || acc === "hsbc_credit" || acc === "hsbc-credit") return true;
   return false;
 }
@@ -1145,7 +1152,7 @@ function isCreditDueLumpSum(entry) {
   const cat = (entry.category || "").toLowerCase();
   const acc = (entry.account || "").toLowerCase();
   if (t === "cib" || t === "hsbc") return true;
-  if (cat === "credit due") return true;
+  if (cat.includes("credit due")) return true;
   if ((acc.includes("cib") || acc.includes("hsbc")) && cat.includes("credit")) return true;
   return false;
 }
@@ -1163,7 +1170,7 @@ function isLumpCreditDueForAccount(entry, accountKey) {
   const cat = (entry.category || "").toLowerCase();
   const acc = (entry.account || "").toLowerCase();
   if (t === target) return true;
-  if (cat === "credit due" && (acc === target || acc.includes(target))) return true;
+  if (cat.includes("credit due") && (acc === target || acc.includes(target) || cat.includes(target))) return true;
   if (acc.includes(target) && cat.includes("credit")) return true;
   return false;
 }
@@ -1285,6 +1292,14 @@ function creditDueEntries() {
       }
     });
 
+    // Also include any overridden settlement months
+    Object.keys(creditSettlementOverrides || {}).forEach((k) => {
+      const prefix = `credit-settlement-${accountKey}-`;
+      if (k.startsWith(prefix)) {
+        settlementMonths.add(k.slice(prefix.length));
+      }
+    });
+
     const orderedSettlementMonths = [...settlementMonths].sort();
 
     orderedSettlementMonths.forEach((monthKey) => {
@@ -1308,10 +1323,14 @@ function creditDueEntries() {
 
       const settlementId = `credit-settlement-${accountKey}-${monthKey}`;
       const actualPaid = Number(entryActuals[settlementId] || 0);
-      const totalPlannedDue = baseDue + lumpAmount + cardSpendTotal;
+      const calculatedPlannedDue = baseDue + lumpAmount + cardSpendTotal;
 
-      // Keep entry if there is a planned due OR if an actual payment was recorded (for past settled history)
-      if (totalPlannedDue <= 0 && actualPaid <= 0) return;
+      const override = creditSettlementOverrides && creditSettlementOverrides[settlementId];
+      const hasPlannedOverride = override && override.amount !== undefined && override.amount !== null && !isNaN(Number(override.amount));
+      const totalPlannedDue = hasPlannedOverride ? Number(override.amount) : calculatedPlannedDue;
+
+      // Keep entry if there is a planned due OR if an actual payment was recorded (for past settled history) OR if overridden
+      if (totalPlannedDue <= 0 && actualPaid <= 0 && calculatedPlannedDue <= 0) return;
 
       const [year, month] = DateUtils.parseYearMonth(monthKey);
       const lastDay = DateUtils.getLastDayOfMonth(year, month);
@@ -1320,18 +1339,25 @@ function creditDueEntries() {
       const defaultSettlementDate = DateUtils.formatDate(year, month, day);
 
       const explicitDateEntry = cardExpenses.find((e) => e.creditSettlementDate);
-      const settlementDate = explicitDateEntry && explicitDateEntry.creditSettlementDate ? explicitDateEntry.creditSettlementDate : defaultSettlementDate;
+      let settlementDate = explicitDateEntry && explicitDateEntry.creditSettlementDate ? explicitDateEntry.creditSettlementDate : defaultSettlementDate;
+      if (override && override.date) {
+        settlementDate = override.date;
+      }
 
       entries.push({
         id: settlementId,
         date: settlementDate,
-        category: `${acc.name} Credit`,
+        category: `${acc.name} Credit Due`,
         account: matchingBalanceKey,
         type: "expense",
-        amount: totalPlannedDue > 0 ? totalPlannedDue : actualPaid,
+        amount: totalPlannedDue > 0 ? totalPlannedDue : (calculatedPlannedDue > 0 ? calculatedPlannedDue : actualPaid),
+        calculatedAmount: calculatedPlannedDue,
         baseDue,
         cardSpendTotal,
         cardExpenseCount: cardExpenses.length,
+        creditType: accountKey,
+        isCreditSettlement: true,
+        isCustomized: Boolean(override && (override.date || hasPlannedOverride)),
         source: "recurring credit"
       });
     });
@@ -1350,16 +1376,23 @@ function creditDueEntries() {
       const [year, month] = DateUtils.parseYearMonth(monthKey);
       const lastDay = DateUtils.getLastDayOfMonth(year, month);
       const day = Math.min(Number(acc.maturityDay) || lastDay, lastDay);
+      const settlementId = `credit-settlement-${accountKey}-${monthKey}`;
+      const override = creditSettlementOverrides && creditSettlementOverrides[settlementId];
+      const hasPlannedOverride = override && override.amount !== undefined && override.amount !== null && !isNaN(Number(override.amount));
       entries.push({
-        id: `credit-settlement-${accountKey}-${monthKey}`,
-        date: DateUtils.formatDate(year, month, day),
-        category: `${acc.name} Credit`,
+        id: settlementId,
+        date: (override && override.date) || DateUtils.formatDate(year, month, day),
+        category: `${acc.name} Credit Due`,
         account: id,
         type: "expense",
-        amount: num,
+        amount: hasPlannedOverride ? Number(override.amount) : num,
+        calculatedAmount: num,
         baseDue: num,
         cardSpendTotal: 0,
         cardExpenseCount: 0,
+        creditType: accountKey,
+        isCreditSettlement: true,
+        isCustomized: Boolean(override && (override.date || hasPlannedOverride)),
         source: "recurring credit"
       });
     });
@@ -1764,7 +1797,10 @@ function getRemainingCreditDueAmount(id, targetMonth) {
     return sum + (act > 0 ? act : Number(entry.amount || 0));
   }, 0);
 
-  const totalPlannedDue = baseDue + lumpAmount + cardSpendTotal;
+  const settlementId = `credit-settlement-${accountKey}-${selectedMonth}`;
+  const override = creditSettlementOverrides && creditSettlementOverrides[settlementId];
+  const hasPlannedOverride = override && override.amount !== undefined && override.amount !== null && !isNaN(Number(override.amount));
+  const totalPlannedDue = hasPlannedOverride ? Number(override.amount) : (baseDue + lumpAmount + cardSpendTotal);
 
   // 4. Actual payments made on recurring credit due
   const creditEntries = creditDueEntries();
@@ -3883,8 +3919,8 @@ function renderEntries() {
       if (isCreditCardExpense(entry)) {
         const setDateStr = DateUtils.formatDisplayDate(getCreditSettlementDate(entry));
         sourceLabel = `<span style="display:inline-flex; align-items:center; gap:3px; color:var(--blue); font-weight:600;" title="Paid via credit card · Cash settles ${setDateStr}">💳 Settles ${setDateStr}</span>`;
-      } else if (entry.source === "recurring credit" || (entry.id && entry.id.startsWith("credit-settlement-"))) {
-        sourceLabel = `<span class="source-pill" style="color:var(--blue); font-weight:600;" title="Credit card settlement">Settlement</span>`;
+      } else if (entry.source === "recurring credit" || (entry.id && entry.id.startsWith("credit-settlement-")) || isCreditDueLumpSum(entry)) {
+        sourceLabel = `<span class="source-pill credit-due-pill" title="Credit settlement due">🏛️ Credit Due</span>`;
       }
 
       let categoryDisplayHtml = escapeHtml(entry.category || "—");
@@ -3892,8 +3928,9 @@ function renderEntries() {
       if (tagPills) {
         categoryDisplayHtml += ` ${tagPills}`;
       }
-      if (entry.cardSpendTotal > 0) {
-        categoryDisplayHtml += `<small style="display:block; color:var(--muted); font-size:11px; margin-top:2px;">💳 Covers ${money(entry.cardSpendTotal)} card spend${entry.baseDue > 0 ? ` + ${money(entry.baseDue)} base due` : ""}</small>`;
+      if (entry.cardSpendTotal > 0 || (entry.isCreditSettlement && entry.cardExpenseCount > 0)) {
+        const customNote = entry.isCustomized ? ` <span style="font-size:10px; color:var(--accent, #eab308); font-weight:600;">(Edited)</span>` : "";
+        categoryDisplayHtml += `<small style="display:block; color:var(--muted); font-size:11px; margin-top:2px;">Covers ${money(entry.cardSpendTotal)} card spend${entry.baseDue > 0 ? ` + ${money(entry.baseDue)} base due` : ""}${customNote}</small>`;
       }
 
       return `
@@ -4501,6 +4538,8 @@ function renderHistory() {
       if (isCreditCardExpense(entry)) {
         const sDate = DateUtils.formatDisplayDate(getCreditSettlementDate(entry));
         historySourceLabel = `<span style="color:var(--blue); font-weight:600;" title="Paid via credit card · Settles ${sDate}">💳 Settles ${sDate}</span>`;
+      } else if (entry.source === "recurring credit" || (entry.id && entry.id.startsWith("credit-settlement-")) || isCreditDueLumpSum(entry)) {
+        historySourceLabel = `<span class="source-pill credit-due-pill" title="Credit settlement paid">🏛️ Credit Due</span>`;
       }
 
       const mainRowHtml = `
@@ -5978,7 +6017,7 @@ function syncEntryFormMode() {
   const creditType = (form.elements.creditType.value || "").trim().toLowerCase();
   const catVal = (form.elements.category.value || "").trim().toLowerCase();
   const isCardExpense = creditType === "cib_card" || creditType === "hsbc_card" ||
-    ((creditType === "cib" || creditType === "hsbc") && catVal !== "credit due" && catVal !== "");
+    ((creditType === "cib" || creditType === "hsbc") && !catVal.includes("credit due") && catVal !== "");
   const isCreditDue = (creditType === "cib" || creditType === "hsbc") && !isCardExpense;
 
   const catField = document.getElementById("categoryField");
@@ -6019,12 +6058,21 @@ function syncEntryFormMode() {
 
   if (isCreditDue) {
     form.elements.type.value = "expense";
-    form.elements.category.value = "Credit Due";
+    if (!form.elements.category.value || !form.elements.category.value.toLowerCase().includes("credit due")) {
+      form.elements.category.value = `${creditType === "cib" ? "CIB" : "HSBC"} Credit Due`;
+    }
     if (form.elements.recurring) form.elements.recurring.checked = false;
     if (form.elements.account && (!form.elements.account.value || form.elements.account.value.toLowerCase() === "cash")) {
       form.elements.account.value = creditType === "cib" ? "cib" : "hsbc";
     }
   }
+
+  const recalcContainer = document.getElementById("recalcCreditDueContainer");
+  if (recalcContainer) {
+    const isSettlement = editingEntry && ((editingEntry.id && editingEntry.id.startsWith("credit-settlement-")) || editingEntry.isCreditSettlement || isCreditDue);
+    recalcContainer.style.display = isSettlement ? "block" : "none";
+  }
+
   syncRecurringFields();
 }
 
@@ -6074,7 +6122,15 @@ function openEntryDialog(type, entry = null) {
     form.elements.account.value = entry.account || "";
     form.elements.type.value = entry.type || type;
     form.elements.amount.value = entry.amount || "";
-    form.elements.creditType.value = entry.creditType || "";
+    const isSettlement = (entry.id && entry.id.startsWith("credit-settlement-")) || entry.isCreditSettlement;
+    if (isSettlement) {
+      const parts = (entry.id || "").split("-");
+      const accKey = entry.creditType || parts[2] || (entry.account || "").toLowerCase();
+      form.elements.creditType.value = accKey.includes("hsbc") ? "hsbc" : "cib";
+      form.elements.category.value = entry.category || `${form.elements.creditType.value.toUpperCase()} Credit Due`;
+    } else {
+      form.elements.creditType.value = entry.creditType || "";
+    }
     if (form.elements.creditSettlementDate) {
       form.elements.creditSettlementDate.value = entry.creditSettlementDate || "";
       form.elements.creditSettlementDate.dataset.autoGenerated = entry.creditSettlementDate ? "false" : "true";
@@ -6083,7 +6139,19 @@ function openEntryDialog(type, entry = null) {
     if (form.elements.recurring) form.elements.recurring.checked = false;
     form.elements.months.value = entry.months || 12;
     updateSubcategorySuggestions(entry.category || "");
+
+    const recalcStatus = document.getElementById("recalcCreditDueStatus");
+    if (recalcStatus) {
+      recalcStatus.textContent = "";
+      recalcStatus.className = "recalc-credit-status";
+    }
   } else {
+    delete form.dataset.clearedOverride;
+    const recalcStatus = document.getElementById("recalcCreditDueStatus");
+    if (recalcStatus) {
+      recalcStatus.textContent = "";
+      recalcStatus.className = "recalc-credit-status";
+    }
     if (form.elements.tag) form.elements.tag.value = "";
     if (form.elements.creditSettlementDate) {
       form.elements.creditSettlementDate.value = "";
@@ -6114,7 +6182,7 @@ async function persistEntryForm(event) {
   const creditType = (form.elements.creditType.value || "").trim().toLowerCase();
   const catVal = (form.elements.category.value || "").trim().toLowerCase();
   const isCardExpense = creditType === "cib_card" || creditType === "hsbc_card" ||
-    ((creditType === "cib" || creditType === "hsbc") && catVal !== "credit due" && catVal !== "");
+    ((creditType === "cib" || creditType === "hsbc") && !catVal.includes("credit due") && catVal !== "");
   const isCreditDue = (creditType === "cib" || creditType === "hsbc") && !isCardExpense;
   const isExpense = form.elements.type.value === "expense";
 
@@ -6127,7 +6195,9 @@ async function persistEntryForm(event) {
   }
 
   if (isCreditDue) {
-    form.elements.category.value = "Credit Due";
+    if (!form.elements.category.value || !form.elements.category.value.toLowerCase().includes("credit due")) {
+      form.elements.category.value = `${creditType === "cib" ? "CIB" : "HSBC"} Credit Due`;
+    }
   }
 
   if (isExpense && !isCreditDue && !form.elements.category.value.trim()) {
@@ -6209,24 +6279,25 @@ async function persistEntryForm(event) {
         const parts = originalId.split("-");
         const accountKey = parts[2];
         const monthKey = `${parts[3]}-${parts[4]}`;
-        const manualPortion = Math.max(0, plannedAmountInEgp - (editingEntry.cardSpendTotal || 0));
+
+        if (form.dataset.clearedOverride === "true") {
+          delete creditSettlementOverrides[originalId];
+          delete form.dataset.clearedOverride;
+        } else {
+          if (!creditSettlementOverrides[originalId]) {
+            creditSettlementOverrides[originalId] = {};
+          }
+          creditSettlementOverrides[originalId].date = form.elements.date.value;
+          creditSettlementOverrides[originalId].amount = plannedAmountInEgp;
+        }
+        saveSetting(keys.creditSettlementOverrides, creditSettlementOverrides);
+
+        // Clean up any legacy manual lump entries for this month/account if present so they don't double count
         const lumpIdx = cashEntries.findIndex((e) => isLumpCreditDueForAccount(e, accountKey) && DateUtils.getMonthKey(e.date) === monthKey && !getEntryId(e).startsWith("credit-settlement-"));
         if (lumpIdx !== -1) {
-          cashEntries[lumpIdx].amount = manualPortion;
-          cashEntries[lumpIdx].date = form.elements.date.value;
-        } else if (manualPortion > 0) {
-          cashEntries.push({
-            id: generateId(),
-            date: form.elements.date.value,
-            category: "Credit Due",
-            account: accountKey,
-            type: "expense",
-            amount: manualPortion,
-            creditType: accountKey,
-            source: "expense"
-          });
+          cashEntries.splice(lumpIdx, 1);
+          saveSetting(keys.entries, cashEntries);
         }
-        saveSetting(keys.entries, cashEntries);
 
         if (actualAmountInEgp > 0) {
           setEntryActualAmount(editingEntry, actualAmountInEgp);
@@ -6329,6 +6400,74 @@ async function persistEntryForm(event) {
         await handleLoanRepaymentAdjustmentPrompt(entryRef, actualAmountInEgp);
       }
     }
+  }
+}
+
+function handleRecalculateCreditDueFromHistory() {
+  if (!editingEntry) return;
+  const form = document.getElementById("entryForm");
+  if (!form) return;
+
+  const id = getEntryId(editingEntry);
+  let accountKey = "cib";
+  let monthKey = DateUtils.currentYearMonth();
+
+  if (id.startsWith("credit-settlement-")) {
+    const parts = id.split("-");
+    accountKey = parts[2] || "cib";
+    monthKey = `${parts[3]}-${parts[4]}`;
+  } else {
+    accountKey = (form.elements.creditType.value || editingEntry.creditType || editingEntry.account || "cib").toLowerCase();
+    accountKey = accountKey.includes("hsbc") ? "hsbc" : "cib";
+    const curDate = form.elements.date.value || editingEntry.date || DateUtils.todayString();
+    monthKey = DateUtils.getMonthKey(curDate);
+  }
+
+  const allExpenses = [
+    ...(cashEntries || []),
+    ...(archivedEntries || [])
+  ].filter((entry) => entry && entry.type === "expense");
+
+  const matchingCardExpenses = allExpenses.filter(
+    (e) => isCardExpenseForAccount(e, accountKey) && getCreditSettlementMonth(e) === monthKey
+  );
+
+  const cardSpendTotal = matchingCardExpenses.reduce((sum, e) => {
+    const act = getEntryActualAmount(e);
+    return sum + (act > 0 ? act : Number(e.amount || 0));
+  }, 0);
+
+  const monthData = (creditDues && (creditDues[accountKey] || creditDues[accountKey.toUpperCase()])) || {};
+  const baseDue = Number(monthData[monthKey] || 0);
+
+  const manualLumpEntries = allExpenses.filter(
+    (entry) => isLumpCreditDueForAccount(entry, accountKey) && DateUtils.getMonthKey(entry.date) === monthKey && !getEntryId(entry).startsWith("credit-settlement-")
+  );
+  const lumpAmount = manualLumpEntries.reduce((sum, e) => {
+    const act = getEntryActualAmount(e);
+    return sum + (act > 0 ? act : Number(e.amount || 0));
+  }, 0);
+
+  const calculatedTotal = baseDue + lumpAmount + cardSpendTotal;
+
+  // Calculate default maturity date for this month
+  const [year, month] = DateUtils.parseYearMonth(monthKey);
+  const lastDay = DateUtils.getLastDayOfMonth(year, month);
+  const matchingKey = Object.keys(accountBalances || {}).find((k) => k.toLowerCase() === accountKey) || accountKey;
+  const acc = (accountBalances && accountBalances[matchingKey]) || {
+    maturityDay: accountKey === "cib" ? 15 : lastDay
+  };
+  const maturityDay = Number(acc.maturityDay) || (accountKey === "cib" ? 15 : lastDay);
+  const defaultDate = DateUtils.formatDate(year, month, Math.min(maturityDay, lastDay));
+
+  form.elements.amount.value = calculatedTotal;
+  form.elements.date.value = defaultDate;
+  form.elements.actualAmount.value = cardSpendTotal > 0 ? cardSpendTotal : calculatedTotal;
+  form.dataset.clearedOverride = "true";
+
+  const statusEl = document.getElementById("recalcCreditDueStatus");
+  if (statusEl) {
+    statusEl.innerHTML = `<span class="recalc-status-success">✓ Recalculated from history: <strong>${money(cardSpendTotal)}</strong> card spend (${matchingCardExpenses.length} transaction${matchingCardExpenses.length === 1 ? "" : "s"})${baseDue > 0 ? ` + ${money(baseDue)} base due` : ""}. Click "Update entry" to save.</span>`;
   }
 }
 
@@ -7276,6 +7415,10 @@ function setupEventListeners() {
     }
     on("entryCurrencySelect", "change", updateCurrencyConversionNote);
     on("entryAmountInput", "input", updateCurrencyConversionNote);
+    const recalcBtn = document.getElementById("recalcCreditDueBtn");
+    if (recalcBtn) {
+      recalcBtn.addEventListener("click", handleRecalculateCreditDueFromHistory);
+    }
     entryForm.addEventListener("submit", persistEntryForm);
   }
 

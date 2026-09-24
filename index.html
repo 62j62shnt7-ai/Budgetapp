@@ -888,6 +888,15 @@
           Actual amount
           <input name="actualAmount" type="number" step="1" min="0" placeholder="0">
         </label>
+        <div id="recalcCreditDueContainer" class="recalc-credit-container" style="display: none;">
+          <div class="recalc-credit-row">
+            <button type="button" class="ghost-button recalc-credit-btn" id="recalcCreditDueBtn">
+              🔄 Recalculate from History
+            </button>
+            <small class="recalc-credit-hint">Resets to actual card spend</small>
+          </div>
+          <div id="recalcCreditDueStatus" class="recalc-credit-status"></div>
+        </div>
         <div id="recurringField" class="entry-field recurring-group">
           <label class="check-row">
             <input name="recurring" id="entryRecurringCheckbox" type="checkbox">

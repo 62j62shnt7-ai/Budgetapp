@@ -3559,3 +3559,67 @@ select.job-status-select option {
   padding: 8px 0;
 }
 
+/* --- Credit Settlement Recalculate & Source Badge Styles --- */
+.recalc-credit-container {
+  margin-top: -6px;
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--surface-subtle, rgba(0, 0, 0, 0.02));
+  border: 1px dashed var(--line);
+}
+
+.recalc-credit-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.recalc-credit-btn {
+  font-size: 11px !important;
+  padding: 4px 10px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  border-color: var(--blue) !important;
+  color: var(--blue) !important;
+  border-radius: 4px !important;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.recalc-credit-btn:hover {
+  background: rgba(37, 99, 235, 0.08) !important;
+}
+
+.recalc-credit-hint {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.recalc-credit-status {
+  font-size: 11.5px;
+  margin-top: 6px;
+  line-height: 1.4;
+}
+
+.recalc-status-success {
+  color: var(--green);
+  font-weight: 500;
+}
+
+.source-pill.credit-due-pill {
+  color: var(--blue) !important;
+  background: rgba(37, 99, 235, 0.08) !important;
+  border: 1px solid rgba(37, 99, 235, 0.25) !important;
+  font-weight: 600 !important;
+}
+
+[data-theme="dark"] .source-pill.credit-due-pill {
+  background: rgba(96, 165, 250, 0.15) !important;
+  border-color: rgba(96, 165, 250, 0.3) !important;
+  color: #93c5fd !important;
+}
+
+
