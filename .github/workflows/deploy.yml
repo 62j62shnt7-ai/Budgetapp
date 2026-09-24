@@ -2,11 +2,11 @@ name: Deploy Budget App to GitHub Pages
 
 on:
   push:
-    branches: [ main, v2-modern ]
+    branches: [ main ]
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -36,6 +36,12 @@ jobs:
       - name: Build application
         run: npm run build
 
+      - name: Deploy to gh-pages branch (for branch deployment)
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
@@ -44,6 +50,6 @@ jobs:
         with:
           path: './dist'
 
-      - name: Deploy to GitHub Pages
+      - name: Deploy to GitHub Pages (for actions deployment)
         id: deployment
         uses: actions/deploy-pages@v4
