@@ -477,6 +477,8 @@ body.sidebar-collapsed .sidebar-open-btn {
   color: var(--muted);
   font-size: 13px;
   font-weight: 700;
+  line-height: 1.35;
+  word-break: break-word;
 }
 
 .metric strong,
@@ -484,11 +486,16 @@ body.sidebar-collapsed .sidebar-open-btn {
   display: block;
   margin-top: 8px;
   font-size: 26px;
+  line-height: 1.2;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .metric small,
 .summary-block p {
   color: var(--muted);
+  line-height: 1.35;
+  word-break: break-word;
 }
 
 .danger-text {
@@ -1893,19 +1900,87 @@ label {
 
   .metric,
   .panel {
-    padding: 14px;
+    padding: 12px;
   }
 
   .metric strong {
-    font-size: 20px;
+    font-size: 18px;
+    line-height: 1.25;
+    word-break: break-word;
+    overflow-wrap: anywhere;
   }
 
   .metric span {
-    font-size: 11.5px;
+    font-size: 11px;
+    line-height: 1.3;
   }
 
   .metric small {
-    font-size: 11px;
+    font-size: 10.5px;
+    line-height: 1.3;
+  }
+
+  .credit-dual-metric .metric-header-row {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .credit-metric-badge {
+    font-size: 10px;
+    padding: 1px 6px;
+  }
+
+  .credit-sub-grid {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  .credit-sub-item:last-child {
+    text-align: left;
+  }
+
+  .credit-sub-divider {
+    display: none;
+  }
+
+  .credit-sub-label {
+    font-size: 10px !important;
+  }
+
+  .credit-sub-val {
+    font-size: 12.5px !important;
+  }
+
+  .forecast-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .forecast-kpi-card {
+    padding: 8px 10px;
+  }
+
+  .forecast-kpi-value {
+    font-size: 13.5px;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .jobs-kpis-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .job-kpi-card {
+    padding: 12px 14px;
+  }
+
+  .job-kpi-val {
+    font-size: 19px;
+    word-break: break-word;
+    overflow-wrap: anywhere;
   }
 
   .credit-due-controls {
@@ -1933,7 +2008,9 @@ label {
   .salary-grid,
   .salary-fields,
   .salary-controls,
-  .history-filters-bar {
+  .history-filters-bar,
+  .forecast-kpi-grid,
+  .jobs-kpis-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -2846,7 +2923,9 @@ label {
   font-weight: 700 !important;
   color: var(--ink);
   margin-top: 2px;
-  white-space: nowrap;
+  line-height: 1.25;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .credit-sub-divider {
