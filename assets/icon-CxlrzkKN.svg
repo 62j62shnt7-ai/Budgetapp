@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#18211f"/>
+      <stop offset="50%" stop-color="#131e1a"/>
+      <stop offset="100%" stop-color="#0a100e"/>
+    </linearGradient>
+    <linearGradient id="markGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2fa369"/>
+      <stop offset="100%" stop-color="#0f766e"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#0f766e" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  
+  <!-- App Icon Background Frame -->
+  <rect width="512" height="512" rx="115" fill="url(#bgGrad)"/>
+  
+  <!-- Subtle Inner Border -->
+  <rect x="12" y="12" width="488" height="488" rx="103" fill="none" stroke="#2fa369" stroke-opacity="0.25" stroke-width="4"/>
+  
+  <!-- Center Shield / Vault Mark -->
+  <g filter="url(#glow)">
+    <rect x="116" y="116" width="280" height="280" rx="60" fill="url(#markGrad)"/>
+    <text x="256" y="286" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="118" font-weight="900" fill="#ffffff" text-anchor="middle" letter-spacing="-2">BC</text>
+    <circle cx="256" cy="342" r="10" fill="#ffffff" fill-opacity="0.9"/>
+  </g>
+</svg>
