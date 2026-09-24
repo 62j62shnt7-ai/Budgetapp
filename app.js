@@ -9007,6 +9007,8 @@ function setupEventListeners() {
       }
     }
   });
+
+  setupGistSyncEventListeners();
 }
 
 // --- GitHub Gist Cloud Sync Engine ---
@@ -9402,27 +9404,37 @@ function triggerAutoGistSync() {
   }, 2500);
 }
 
-function setupGistSyncEventListeners() {
-  on("gistSyncBtn", "click", () => {
-    const dialog = document.getElementById("gistSyncDialog");
-    if (!dialog) return;
+function openGistSyncDialog() {
+  setupGistSyncEventListeners();
+  const dialog = document.getElementById("gistSyncDialog");
+  if (!dialog) return;
 
-    const { token, gistId, autoSync } = getGistConfig();
-    const tokenInput = document.getElementById("gistTokenInput");
-    const gistIdInput = document.getElementById("gistIdInput");
-    const autoSyncCheckbox = document.getElementById("gistAutoSyncCheckbox");
-    const msgEl = document.getElementById("gistSyncMessage");
+  const { token, gistId, autoSync } = getGistConfig();
+  const tokenInput = document.getElementById("gistTokenInput");
+  const gistIdInput = document.getElementById("gistIdInput");
+  const autoSyncCheckbox = document.getElementById("gistAutoSyncCheckbox");
+  const msgEl = document.getElementById("gistSyncMessage");
 
-    if (tokenInput) tokenInput.value = token;
-    if (gistIdInput) gistIdInput.value = gistId;
-    if (autoSyncCheckbox) autoSyncCheckbox.checked = autoSync;
-    if (msgEl) msgEl.style.display = "none";
+  if (tokenInput) tokenInput.value = token;
+  if (gistIdInput) gistIdInput.value = gistId;
+  if (autoSyncCheckbox) autoSyncCheckbox.checked = autoSync;
+  if (msgEl) msgEl.style.display = "none";
 
+  if (!dialog.open) {
     dialog.showModal();
-    if (token && gistId) {
-      inspectGistData();
-    }
-  });
+  }
+  if (token && gistId) {
+    inspectGistData();
+  }
+}
+window.openGistSyncDialog = openGistSyncDialog;
+
+let gistSyncEventListenersAttached = false;
+function setupGistSyncEventListeners() {
+  if (gistSyncEventListenersAttached) return;
+  gistSyncEventListenersAttached = true;
+
+  on("gistSyncBtn", "click", openGistSyncDialog);
 
   on("gistFindBtn", "click", async () => {
     const tokenInput = document.getElementById("gistTokenInput");
@@ -9628,6 +9640,8 @@ function setupGistSyncEventListeners() {
 }
 
 function initGistSync() {
+  setupGistSyncEventListeners();
+
   // Auto-detect Gist ID from URL hash (e.g. #gist=xxxx)
   if (window.location.hash) {
     const hashParams = new URLSearchParams(window.location.hash.slice(1));
@@ -9680,6 +9694,7 @@ function initApp() {
     healSingleDrawMismatches();
     updateUndoResetVisibility();
     setupEventListeners();
+    setupGistSyncEventListeners();
     renderAll();
     initGistSync();
 
