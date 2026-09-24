@@ -1015,7 +1015,7 @@ function buildSalaryEntries(startYearMonth, quarters) {
     const month = ((absoluteMonthIndex % 12) + 12) % 12;
 
     salaryPattern
-      .filter((payment) => (Number(payment.monthOffset) || 0) === phase)
+      .filter((payment) => (Number(payment.monthOffset) || 0) === phase && (Number(payment.amount) || 0) > 0)
       .forEach((payment) => {
         const lastDay = DateUtils.getLastDayOfMonth(year, month + 1);
         const day = Math.min(Number(payment.day), lastDay);
@@ -1331,7 +1331,8 @@ function creditDueEntries() {
       }, 0);
 
       const settlementId = `credit-settlement-${accountKey}-${monthKey}`;
-      const actualPaid = Number(entryActuals[settlementId] || 0);
+      const lumpActual = manualLumpEntries.reduce((sum, e) => sum + getEntryActualAmount(e), 0);
+      const actualPaid = Math.max(Number(entryActuals[settlementId] || 0), lumpActual);
       const calculatedPlannedDue = baseDue + lumpAmount + cardSpendTotal;
 
       const override = creditSettlementOverrides && creditSettlementOverrides[settlementId];
@@ -1341,9 +1342,10 @@ function creditDueEntries() {
       // Keep entry if there is a planned due OR if an actual payment was recorded (for past settled history) OR if overridden
       if (totalPlannedDue <= 0 && actualPaid <= 0 && calculatedPlannedDue <= 0) return;
 
-      // Auto-heal: If this cycle has card spend, manual lump amounts, an override, or payment, un-suppress it from deletedForecasts
-      if (deletedForecasts && deletedForecasts.includes(settlementId)) {
-        if (cardSpendTotal > 0 || lumpAmount > 0 || hasPlannedOverride || (override && override.date) || actualPaid > 0) {
+      // Auto-heal ONLY current and future cycles (monthKey >= currentMonthKey). NEVER un-delete past months!
+      const currentMonthKey = DateUtils.currentYearMonth();
+      if (monthKey >= currentMonthKey && deletedForecasts && deletedForecasts.includes(settlementId)) {
+        if (cardSpendTotal > 0 || lumpAmount > 0 || hasPlannedOverride || (override && override.date)) {
           deletedForecasts = deletedForecasts.filter((id) => id !== settlementId);
           saveSetting(keys.deletedForecasts, deletedForecasts);
         }
@@ -1368,6 +1370,7 @@ function creditDueEntries() {
         account: matchingBalanceKey,
         type: "expense",
         amount: totalPlannedDue > 0 ? totalPlannedDue : (calculatedPlannedDue > 0 ? calculatedPlannedDue : actualPaid),
+        actualAmount: actualPaid,
         calculatedAmount: calculatedPlannedDue,
         baseDue,
         cardSpendTotal,
@@ -1397,7 +1400,8 @@ function creditDueEntries() {
       const override = creditSettlementOverrides && creditSettlementOverrides[settlementId];
       const hasPlannedOverride = override && override.amount !== undefined && override.amount !== null && !isNaN(Number(override.amount));
 
-      if (deletedForecasts && deletedForecasts.includes(settlementId)) {
+      const currentMonthKey = DateUtils.currentYearMonth();
+      if (monthKey >= currentMonthKey && deletedForecasts && deletedForecasts.includes(settlementId)) {
         if (num > 0 || hasPlannedOverride || (override && override.date)) {
           deletedForecasts = deletedForecasts.filter((id) => id !== settlementId);
           saveSetting(keys.deletedForecasts, deletedForecasts);
@@ -3819,11 +3823,14 @@ function renderEntries() {
     return true;
   };
 
+  const today = DateUtils.todayString();
   const openingRows = openingBalanceEntries().filter(matchesFilters);
   const forecastRows = getForecastCandidateEntries()
     .filter((entry) => {
       if (entry.isClosed) return false;
       const actualAmount = getEntryActualAmount(entry);
+      // Past credit settlements (< today) belong in history, never as future cashflow forecasts
+      if (entry.isCreditSettlement && entry.date && entry.date < today) return false;
       if (actualAmount <= 0) return true;
       if (entry.keepOngoing) return true;
       return isPartialTracked(entry) && getRemainingForecastAmount(entry) > 0;
