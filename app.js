@@ -1714,14 +1714,40 @@ function openingBalanceEntries() {
 
 function actualizedEntries() {
   syncForecastPeriodSettings();
-  // Include all cashEntries (including manual credit settlements/lump sums), installments, and credit due entries
+
+  // Track accounts and months already covered by manual credit due payments in cashEntries
+  const coveredSettlementKeys = new Set();
+  (cashEntries || []).forEach((entry) => {
+    if (getEntryActualAmount(entry) > 0) {
+      ["cib", "hsbc"].forEach((accKey) => {
+        if (isLumpCreditDueForAccount(entry, accKey)) {
+          const actDate = getEntryActualDate(entry) || entry.date;
+          const mKey = DateUtils.getMonthKey(actDate);
+          if (mKey) coveredSettlementKeys.add(`${accKey}-${mKey}`);
+        }
+      });
+    }
+  });
+
+  // Only include dynamic creditDueEntries if not already recorded as manual payment in cashEntries
+  const validCreditDues = creditDueEntries().filter((entry) => {
+    if (getEntryActualAmount(entry) <= 0) return false;
+    const parts = (entry.id || "").split("-");
+    if (parts[0] === "credit" && parts[1] === "settlement") {
+      const accKey = parts[2];
+      const mKey = `${parts[3]}-${parts[4]}`;
+      if (coveredSettlementKeys.has(`${accKey}-${mKey}`)) return false;
+    }
+    return true;
+  });
+
   const activeCandidates = [
     ...cashEntries,
     ...buildInstallmentEntries(),
-    ...creditDueEntries()
+    ...validCreditDues
   ].filter((entry) => getEntryActualAmount(entry) > 0);
   
-  // Deduplicate active candidates so that if a manual cash entry matches a dynamic creditDueEntry, we don't duplicate it
+  // Deduplicate active candidates so that identical IDs are not added twice
   const seenIds = new Set();
   const dedupedActive = [];
   activeCandidates.forEach((entry) => {
@@ -1732,7 +1758,7 @@ function actualizedEntries() {
     }
   });
 
-  const archivedWithActuals = archivedEntries
+  const archivedWithActuals = (archivedEntries || [])
     .filter((entry) => getEntryActualAmount(entry) > 0 && !seenIds.has(getEntryId(entry)));
 
   return [...dedupedActive, ...archivedWithActuals];
