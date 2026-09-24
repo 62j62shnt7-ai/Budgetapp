@@ -1354,9 +1354,16 @@ function isCreditCardExpense(entry) {
   if (cat.includes("credit due")) return false;
   const t = (entry.creditType || "").toLowerCase();
   const acc = (entry.account || "").toLowerCase();
-  if (t === "cib_card" || t === "hsbc_card" || t === "cib-card" || t === "hsbc-card") return true;
+  const src = (entry.source || "").toLowerCase();
+  const tag = (entry.tag || "").toLowerCase();
+
+  if (src === "credit card" || src === "credit-card" || src === "credit_card" || src === "card") return true;
+  if (t === "cib_card" || t === "hsbc_card" || t === "cib-card" || t === "hsbc-card" || t === "cib_credit" || t === "hsbc_credit") return true;
   if ((t === "cib" || t === "hsbc") && !cat.includes("credit due")) return true;
+  if (acc.includes("cib") && (acc.includes("credit") || acc.includes("card"))) return true;
+  if (acc.includes("hsbc") && (acc.includes("credit") || acc.includes("card"))) return true;
   if (acc === "cib credit" || acc === "cib_credit" || acc === "cib-credit" || acc === "hsbc credit" || acc === "hsbc_credit" || acc === "hsbc-credit") return true;
+  if (tag.includes("credit card") || tag.includes("card spend")) return true;
   return false;
 }
 
@@ -1364,12 +1371,14 @@ function isCardExpenseForAccount(entry, accountKey) {
   if (!isCreditCardExpense(entry)) return false;
   const t = (entry.creditType || "").toLowerCase();
   const acc = (entry.account || "").toLowerCase();
+  const cat = (entry.category || "").toLowerCase();
+  const tag = (entry.tag || "").toLowerCase();
   const target = (accountKey || "").toLowerCase();
   if (target === "cib") {
-    return t.includes("cib") || acc.includes("cib");
+    return t.includes("cib") || acc.includes("cib") || (!t.includes("hsbc") && !acc.includes("hsbc") && !cat.includes("hsbc") && !tag.includes("hsbc"));
   }
   if (target === "hsbc") {
-    return t.includes("hsbc") || acc.includes("hsbc");
+    return t.includes("hsbc") || acc.includes("hsbc") || cat.includes("hsbc") || tag.includes("hsbc");
   }
   return false;
 }
@@ -1460,9 +1469,10 @@ function getCreditSettlementDate(entry) {
   if (isCreditCardExpense(entry)) {
     const t = (entry.creditType || "").toLowerCase();
     const acc = (entry.account || "").toLowerCase();
-    const type = (t.includes("hsbc") || acc.includes("hsbc")) ? "hsbc_card" : "cib_card";
-    const accKey = type === "hsbc_card" ? "hsbc" : "cib";
-    const d = getEntryActualDate(entry) || entry.date;
+    const isHsbc = t.includes("hsbc") || acc.includes("hsbc");
+    const type = isHsbc ? "hsbc_card" : "cib_card";
+    const accKey = isHsbc ? "hsbc" : "cib";
+    const d = getEntryActualDate(entry) || entry.date || DateUtils.todayString();
     const defaultDate = entry.creditSettlementDate || calculateCreditSettlementDate(d, type);
     const sMonth = defaultDate ? DateUtils.getMonthKey(defaultDate) : "";
     if (sMonth && creditSettlementOverrides) {
@@ -1480,12 +1490,8 @@ function getCreditSettlementDate(entry) {
 function getCreditSettlementMonth(entry) {
   if (!entry) return "";
   if (isCreditCardExpense(entry)) {
-    const t = (entry.creditType || "").toLowerCase();
-    const acc = (entry.account || "").toLowerCase();
-    const type = (t.includes("hsbc") || acc.includes("hsbc")) ? "hsbc_card" : "cib_card";
-    const d = getEntryActualDate(entry) || entry.date;
-    const defaultDate = entry.creditSettlementDate || calculateCreditSettlementDate(d, type);
-    return defaultDate ? DateUtils.getMonthKey(defaultDate) : "";
+    const sDate = getCreditSettlementDate(entry);
+    return sDate ? DateUtils.getMonthKey(sDate) : "";
   }
   const sDate = entry.creditSettlementDate || entry.date;
   return sDate ? DateUtils.getMonthKey(sDate) : "";
@@ -1577,7 +1583,7 @@ function creditDueEntries() {
 
       const override = creditSettlementOverrides && creditSettlementOverrides[settlementId];
       const hasPlannedOverride = override && override.amount !== undefined && override.amount !== null && !isNaN(Number(override.amount));
-      const totalPlannedDue = hasPlannedOverride ? Number(override.amount) : calculatedPlannedDue;
+      const totalPlannedDue = hasPlannedOverride ? Math.max(Number(override.amount), calculatedPlannedDue) : calculatedPlannedDue;
 
       // Keep entry if there is a planned due OR if an actual payment was recorded (for past settled history) OR if overridden
       if (totalPlannedDue <= 0 && actualPaid <= 0 && calculatedPlannedDue <= 0) return;
@@ -1641,6 +1647,7 @@ function creditDueEntries() {
       const settlementId = `credit-settlement-${accountKey}-${monthKey}`;
       const override = creditSettlementOverrides && creditSettlementOverrides[settlementId];
       const hasPlannedOverride = override && override.amount !== undefined && override.amount !== null && !isNaN(Number(override.amount));
+      const totalPlannedDue = hasPlannedOverride ? Math.max(Number(override.amount), num) : num;
 
       const currentMonthKey = DateUtils.currentYearMonth();
       if (monthKey >= currentMonthKey && deletedForecasts && deletedForecasts.includes(settlementId)) {
@@ -2098,7 +2105,7 @@ function getRemainingCreditDueAmount(id, targetMonth) {
   const settlementId = `credit-settlement-${accountKey}-${selectedMonth}`;
   const override = creditSettlementOverrides && creditSettlementOverrides[settlementId];
   const hasPlannedOverride = override && override.amount !== undefined && override.amount !== null && !isNaN(Number(override.amount));
-  const totalPlannedDue = hasPlannedOverride ? Number(override.amount) : (baseDue + lumpAmount + cardSpendTotal);
+  const totalPlannedDue = hasPlannedOverride ? Math.max(Number(override.amount), baseDue + lumpAmount + cardSpendTotal) : (baseDue + lumpAmount + cardSpendTotal);
 
   // 4. Actual payments made on recurring credit due
   const creditEntries = creditDueEntries();
@@ -4177,11 +4184,14 @@ function renderEntries() {
         : "";
       const action = !deleteKey || !canDelete ? "" : `${finishAction}<button class="delete-button" data-delete-key="${escapeHtml(deleteKey)}" type="button">Delete</button>`;
 
-      const inputPlaceholder = isLoan ? "Add draw" : entry.type === "income" ? "Add actual" : "Add spend";
+      const isCreditSettlement = entry.isCreditSettlement || (deleteKey && deleteKey.startsWith("credit-settlement-"));
+      const inputPlaceholder = isLoan ? "Add draw" : isCreditSettlement ? "Add payment" : entry.type === "income" ? "Add actual" : "Add spend";
       const origPlanned = Number(entry.originalPlannedAmount !== undefined ? entry.originalPlannedAmount : entry.amount) || 0;
       const isFull = origPlanned > 0 && actualValue >= origPlanned;
       const progressLabel = isLoan
         ? (isFull ? `Drawn so far: ${escapeHtml(money(actualValue))} (Full amount reached · Ongoing)` : `Drawn so far: ${escapeHtml(money(actualValue))} (Remaining: ${escapeHtml(money(remainingAmt))})`)
+        : isCreditSettlement
+        ? (isFull ? `Paid so far: ${escapeHtml(money(actualValue))} (Settled in full)` : `Paid so far: ${escapeHtml(money(actualValue))} (Remaining due: ${escapeHtml(money(remainingAmt))})`)
         : (isFull ? `Spent so far: ${escapeHtml(money(actualValue))} (Full budget reached · Ongoing)` : `Spent so far: ${escapeHtml(money(actualValue))} (Remaining: ${escapeHtml(money(remainingAmt))})`);
 
       const actualCell = editable
@@ -4492,10 +4502,10 @@ function renderHistory() {
 
     // Track credit card actuals maturing in this settlement month to prevent double counting on credit due payments
     let cibOffset = actualEntries
-      .filter((e) => isCreditCardExpense(e) && (e.creditType || "").toLowerCase().startsWith("cib") && getCreditSettlementMonth(e) === month)
+      .filter((e) => isCreditCardExpense(e) && isCardExpenseForAccount(e, "cib") && getCreditSettlementMonth(e) === month)
       .reduce((sum, e) => sum + getEntryActualAmount(e), 0);
     let hsbcOffset = actualEntries
-      .filter((e) => isCreditCardExpense(e) && (e.creditType || "").toLowerCase().startsWith("hsbc") && getCreditSettlementMonth(e) === month)
+      .filter((e) => isCreditCardExpense(e) && isCardExpenseForAccount(e, "hsbc") && getCreditSettlementMonth(e) === month)
       .reduce((sum, e) => sum + getEntryActualAmount(e), 0);
 
     actualEntries.forEach((entry) => {
@@ -4717,7 +4727,7 @@ function renderHistory() {
         const acc = (e.account || e.creditType || "").toLowerCase().includes("hsbc") ? "hsbc" : "cib";
         const entryMonth = DateUtils.getMonthKey(getEntryActualDate(e));
         const matchingCardActuals = actualEntries
-          .filter((card) => isCreditCardExpense(card) && (card.creditType || "").toLowerCase().startsWith(acc) && getCreditSettlementMonth(card) === entryMonth)
+          .filter((card) => isCreditCardExpense(card) && isCardExpenseForAccount(card, acc) && getCreditSettlementMonth(card) === entryMonth)
           .reduce((s, card) => s + getEntryActualAmount(card), 0);
         return sum + Math.max(0, amt - matchingCardActuals);
       }
@@ -4794,7 +4804,7 @@ function renderHistory() {
         const acc = (entry.account || entry.creditType || "").toLowerCase().includes("hsbc") ? "hsbc" : "cib";
         const entryMonth = DateUtils.getMonthKey(getEntryActualDate(entry));
         const matchingCardActuals = actualEntries
-          .filter((card) => isCreditCardExpense(card) && (card.creditType || "").toLowerCase().startsWith(acc) && getCreditSettlementMonth(card) === entryMonth)
+          .filter((card) => isCreditCardExpense(card) && isCardExpenseForAccount(card, acc) && getCreditSettlementMonth(card) === entryMonth)
           .reduce((s, card) => s + getEntryActualAmount(card), 0);
         if (matchingCardActuals > 0) {
           categoryCellHtml += `<small style="display:block;color:var(--muted);font-size:10px;margin-top:2px;">Settlement covers ${money(matchingCardActuals)} card spend${actualVal > matchingCardActuals ? ` + ${money(actualVal - matchingCardActuals)} untracked` : ""}</small>`;
@@ -5076,7 +5086,7 @@ function renderHistory() {
         const acc = (entry.account || entry.creditType || "").toLowerCase().includes("hsbc") ? "hsbc" : "cib";
         const entryMonth = DateUtils.getMonthKey(getEntryActualDate(entry));
         const matchingCardActuals = actualEntries
-          .filter((card) => isCreditCardExpense(card) && (card.creditType || "").toLowerCase().startsWith(acc) && getCreditSettlementMonth(card) === entryMonth)
+          .filter((card) => isCreditCardExpense(card) && isCardExpenseForAccount(card, acc) && getCreditSettlementMonth(card) === entryMonth)
           .reduce((s, card) => s + getEntryActualAmount(card), 0);
         actualForGroup = Math.max(0, actualForGroup - matchingCardActuals);
       }
@@ -6626,7 +6636,14 @@ async function persistEntryForm(event) {
             creditSettlementOverrides[originalId] = {};
           }
           creditSettlementOverrides[originalId].date = form.elements.date.value;
-          creditSettlementOverrides[originalId].amount = plannedAmountInEgp;
+          if (editingEntry && plannedAmountInEgp !== editingEntry.calculatedAmount && plannedAmountInEgp > 0) {
+            creditSettlementOverrides[originalId].amount = plannedAmountInEgp;
+          } else {
+            delete creditSettlementOverrides[originalId].amount;
+          }
+          if (Object.keys(creditSettlementOverrides[originalId]).length === 0) {
+            delete creditSettlementOverrides[originalId];
+          }
         }
         saveSetting(keys.creditSettlementOverrides, creditSettlementOverrides);
 
