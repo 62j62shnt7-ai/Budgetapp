@@ -6567,13 +6567,14 @@ function handleRecalculateCreditDueFromHistory() {
   const defaultDate = DateUtils.formatDate(year, month, Math.min(maturityDay, lastDay));
 
   form.elements.amount.value = calculatedTotal;
-  form.elements.date.value = defaultDate;
   form.elements.actualAmount.value = "";
-  form.dataset.clearedOverride = "true";
+  delete form.dataset.clearedOverride;
 
   const statusEl = document.getElementById("recalcCreditDueStatus");
   if (statusEl) {
-    statusEl.innerHTML = `<span class="recalc-status-success">✓ Recalculated from history: <strong>${money(cardSpendTotal)}</strong> card spend (${matchingCardExpenses.length} transaction${matchingCardExpenses.length === 1 ? "" : "s"})${baseDue > 0 ? ` + ${money(baseDue)} base due` : ""}. Click "Update entry" to save.</span>`;
+    const curDateStr = form.elements.date.value;
+    const dateNotice = curDateStr ? ` (settlement date preserved: ${DateUtils.formatDisplayDate(curDateStr)})` : "";
+    statusEl.innerHTML = `<span class="recalc-status-success">✓ Recalculated planned amount: <strong>${money(cardSpendTotal)}</strong> card spend (${matchingCardExpenses.length} transaction${matchingCardExpenses.length === 1 ? "" : "s"})${baseDue > 0 ? ` + ${money(baseDue)} base due` : ""}${dateNotice}. Click "Update entry" to save.</span>`;
   }
 }
 
@@ -7025,6 +7026,110 @@ function promptExactAmountDecision(entry, actualAmount, plannedAmount) {
   });
 }
 
+const CURRENT_APP_VERSION = "v43";
+let isAppUpdateAvailable = false;
+
+function updateAppUpdateStatus(hasUpdate, customText) {
+  isAppUpdateAvailable = !!hasUpdate;
+  const statusEl = document.getElementById("appUpdateStatus");
+  if (!statusEl) return;
+  if (hasUpdate) {
+    statusEl.className = "sync-pill update-ready";
+    statusEl.textContent = customText || "Update ready";
+    statusEl.title = "A newer version of the app is available. Click Refresh to apply.";
+  } else {
+    statusEl.className = "sync-pill synced";
+    statusEl.textContent = customText || "Latest";
+    statusEl.title = "App is running the latest version.";
+  }
+}
+
+async function checkForAppVersionUpdate() {
+  if (!navigator.onLine) {
+    updateAppUpdateStatus(false, "Offline");
+    return;
+  }
+  try {
+    // 1. Check if ServiceWorker has a waiting worker
+    if ("serviceWorker" in navigator) {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg) {
+        if (reg.waiting) {
+          updateAppUpdateStatus(true, "Update ready");
+          return;
+        }
+        reg.update().catch(() => {});
+      }
+    }
+
+    // 2. Fetch sw.js with cache: "no-store" and extract CACHE_NAME version
+    const res = await fetch("./sw.js?check=" + Date.now(), { cache: "no-store" });
+    if (res.ok) {
+      const text = await res.text();
+      const match = text.match(/CACHE_NAME\s*=\s*["']budget-control-(v\d+)["']/);
+      if (match && match[1]) {
+        const remoteVersion = match[1];
+        if (remoteVersion !== CURRENT_APP_VERSION) {
+          console.info(`[AppUpdate] New version detected: ${remoteVersion} (current: ${CURRENT_APP_VERSION})`);
+          updateAppUpdateStatus(true, "Update ready");
+          return;
+        }
+      }
+    }
+    updateAppUpdateStatus(false, "Latest");
+  } catch (err) {
+    console.debug("[AppUpdate] Version check:", err);
+  }
+}
+
+async function executeAppRefresh() {
+  const btns = [
+    document.getElementById("refreshAppBtn"),
+    document.getElementById("refreshAppDialogBtn")
+  ].filter(Boolean);
+
+  btns.forEach((btn) => {
+    btn.disabled = true;
+    btn.innerHTML = `Updating… 🔄`;
+  });
+
+  try {
+    // 1. Tell all waiting or active service workers to skip waiting
+    if ("serviceWorker" in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      for (const reg of registrations) {
+        if (reg.waiting) {
+          reg.waiting.postMessage({ action: "skipWaiting" });
+        }
+        if (reg.active) {
+          reg.active.postMessage({ action: "skipWaiting" });
+        }
+      }
+    }
+
+    // 2. Purge all Service Worker CacheStorage
+    if ("caches" in window) {
+      const cacheNames = await caches.keys();
+      await Promise.all(cacheNames.map((name) => caches.delete(name)));
+    }
+
+    // 3. Trigger active Service Worker update
+    if ("serviceWorker" in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map((reg) => reg.update().catch(() => {})));
+    }
+  } catch (err) {
+    console.warn("Cache purge error during Refresh App:", err);
+  }
+
+  // 4. Force hard reload bypassing cache with cache-busting timestamp
+  const targetUrl = new URL(window.location.href);
+  targetUrl.searchParams.set("reload", Date.now().toString());
+  window.location.replace(targetUrl.toString());
+}
+
+window.executeAppRefresh = executeAppRefresh;
+
 function setupEventListeners() {
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.addEventListener("click", () => {
@@ -7284,34 +7389,8 @@ function setupEventListeners() {
     reader.readAsText(file);
   });
 
-  on("refreshAppBtn", "click", async () => {
-    const btn = document.getElementById("refreshAppBtn");
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = "Updating… 🔄";
-    }
-
-    try {
-      // 1. Purge all Service Worker CacheStorage
-      if ("caches" in window) {
-        const cacheNames = await caches.keys();
-        await Promise.all(cacheNames.map((name) => caches.delete(name)));
-      }
-
-      // 2. Trigger active Service Worker update
-      if ("serviceWorker" in navigator) {
-        const registrations = await navigator.serviceWorker.getRegistrations();
-        await Promise.all(registrations.map((reg) => reg.update()));
-      }
-    } catch (err) {
-      console.warn("Cache purge error during Refresh App:", err);
-    }
-
-    // 3. Force hard reload bypassing cache with cache-busting timestamp
-    const targetUrl = new URL(window.location.href);
-    targetUrl.searchParams.set("reload", Date.now().toString());
-    window.location.replace(targetUrl.toString());
-  });
+  on("refreshAppBtn", "click", executeAppRefresh);
+  on("refreshAppDialogBtn", "click", executeAppRefresh);
 
   on("resetData", "click", async () => {
     const confirmed = await confirmAction(
@@ -9701,10 +9780,30 @@ function initApp() {
     // Register PWA Service Worker when served via HTTP / HTTPS
     if ("serviceWorker" in navigator && (location.protocol === "http:" || location.protocol === "https:")) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("./sw.js").catch((err) => {
+        navigator.serviceWorker.register("./sw.js").then((reg) => {
+          if (reg.waiting) {
+            updateAppUpdateStatus(true, "Update ready");
+          }
+          reg.addEventListener("updatefound", () => {
+            const newWorker = reg.installing;
+            if (newWorker) {
+              newWorker.addEventListener("statechange", () => {
+                if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+                  updateAppUpdateStatus(true, "Update ready");
+                }
+              });
+            }
+          });
+        }).catch((err) => {
           console.warn("ServiceWorker registration failed:", err);
         });
+
+        checkForAppVersionUpdate();
+        window.addEventListener("focus", checkForAppVersionUpdate);
+        window.addEventListener("online", checkForAppVersionUpdate);
       });
+    } else {
+      checkForAppVersionUpdate();
     }
   } catch (e) {
     console.error("Error during app initialization:", e);

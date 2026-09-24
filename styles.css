@@ -1973,6 +1973,14 @@ label {
   color: var(--amber);
 }
 
+.sync-pill.update-ready {
+  background: rgba(164, 106, 24, 0.2);
+  color: var(--amber);
+  border: 1px solid rgba(164, 106, 24, 0.4);
+  font-weight: 700;
+  animation: pulseSync 1.4s infinite;
+}
+
 @keyframes pulseSync {
   0% { opacity: 0.6; }
   50% { opacity: 1; }

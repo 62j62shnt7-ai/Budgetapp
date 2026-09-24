@@ -2,7 +2,7 @@
    Budget Control — Service Worker (Offline & PWA Support)
    ========================================================================== */
 
-const CACHE_NAME = "budget-control-v42";
+const CACHE_NAME = "budget-control-v43";
 const ASSETS = [
   "./",
   "./index.html",
@@ -11,6 +11,12 @@ const ASSETS = [
   "./manifest.webmanifest",
   "./icon.svg"
 ];
+
+self.addEventListener("message", (event) => {
+  if (event.data === "skipWaiting" || event.data?.action === "skipWaiting") {
+    self.skipWaiting();
+  }
+});
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
