@@ -851,6 +851,7 @@
           <option value="Groceries"></option>
           <option value="Credit"></option>
           <option value="Loan"></option>
+          <option value="Installment"></option>
           <option value="Rent"></option>
           <option value="Salary"></option>
           <option value="Bills"></option>
@@ -1036,6 +1037,10 @@
         <label>
           Name
           <input name="name" type="text" required placeholder="car, school, phone">
+        </label>
+        <label>
+          Subcategory / Tag
+          <input name="tag" type="text" list="subcatSuggestions" placeholder="e.g. Installment, Loan, Kids (optional)">
         </label>
         <label>
           Amount per payment

@@ -712,7 +712,14 @@ function inferTagForEntry(entry) {
     return "Medical";
   }
 
-  // 12. General Credit Card / Travel / Fuel
+  // 12. Installments & Subscriptions
+  if (src === "installment" || cat.includes("installment")) {
+    if (cat.includes("loan") || Boolean(entry.loanId)) return "Loan";
+    if (cat.includes("school") || cat.includes("tuition") || cat.includes("kids")) return "Kids";
+    return "Installment";
+  }
+
+  // 13. General Credit Card / Travel / Fuel
   if (cat.includes("accommodation") || cat.includes("hotel") || cat.includes("fuel") || cat.includes("petrol")) {
     return "Expense";
   }
@@ -746,6 +753,28 @@ function autoTagUntaggedEntries({ notify = false } = {}) {
         });
       }
     });
+  }
+
+  if (Array.isArray(installments)) {
+    let taggedInstCount = 0;
+    installments.forEach((inst) => {
+      if (!inst.tag || !inst.tag.trim()) {
+        const inferred = inferTagForEntry({
+          category: inst.name,
+          source: inst.loanId ? "loan" : "installment",
+          loanId: inst.loanId,
+          type: "expense"
+        }) || "Installment";
+        if (inferred) {
+          inst.tag = inferred;
+          taggedInstCount++;
+          taggedEntriesCount++;
+        }
+      }
+    });
+    if (taggedInstCount > 0) {
+      saveSetting(keys.installments, installments);
+    }
   }
 
   if (taggedEntriesCount > 0 || taggedDrawsCount > 0) {
@@ -1231,6 +1260,13 @@ function buildInstallmentEntries() {
   return installments.flatMap((installment) => {
     const [startYear, startMonth] = DateUtils.parseYearMonth(installment.startMonth);
     const frequency = Number(installment.frequency) || 1;
+    const tag = installment.tag || inferTagForEntry({
+      category: installment.name,
+      source: installment.loanId ? "loan" : "installment",
+      loanId: installment.loanId,
+      type: "expense"
+    }) || "Installment";
+
     return Array.from({ length: Number(installment.months) || 0 }, (_, index) => {
       const zeroBasedMonth = startMonth - 1 + index * frequency;
       const year = startYear + Math.floor(zeroBasedMonth / 12);
@@ -1243,7 +1279,8 @@ function buildInstallmentEntries() {
         account: "installment",
         type: "expense",
         amount: Number(installment.amount) || 0,
-        source: "installment"
+        source: "installment",
+        tag: tag
       };
     });
   });
@@ -8177,6 +8214,7 @@ function setupEventListeners() {
     form.elements.day.value = 30;
     form.elements.months.value = 12;
     form.elements.frequency.value = "1";
+    if (form.elements.tag) form.elements.tag.value = "Installment";
     const titleEl = document.getElementById("installmentDialogTitle");
     if (titleEl) titleEl.textContent = "Add installment";
     const dlg = document.getElementById("installmentDialog");
@@ -8194,6 +8232,7 @@ function setupEventListeners() {
       if (!form) return;
       form.reset();
       form.elements.name.value = item.name;
+      if (form.elements.tag) form.elements.tag.value = item.tag || "";
       form.elements.amount.value = item.amount;
       form.elements.frequency.value = String(item.frequency || 1);
       form.elements.day.value = item.day;
@@ -8228,6 +8267,7 @@ function setupEventListeners() {
     if (!form) return;
     const values = {
       name: form.elements.name.value.trim(),
+      tag: (form.elements.tag?.value || "").trim() || (inferTagForEntry({ category: form.elements.name.value, source: "installment" }) || "Installment"),
       amount: Number(form.elements.amount.value),
       day: Number(form.elements.day.value),
       startMonth: form.elements.startMonth.value,
@@ -8250,6 +8290,15 @@ function setupEventListeners() {
     saveSetting(keys.installments, installments);
     renderAll();
   });
+
+  const instForm = document.getElementById("installmentForm");
+  if (instForm && instForm.elements && instForm.elements.name) {
+    instForm.elements.name.addEventListener("input", (e) => {
+      if (instForm.elements.tag && !instForm.elements.tag.value) {
+        instForm.elements.tag.value = inferTagForEntry({ category: e.target.value, source: "installment" }) || "Installment";
+      }
+    });
+  }
 
   on("accountsList", "input", (event) => {
     const input = event.target.closest("[data-account-id]");
