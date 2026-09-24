@@ -26,32 +26,45 @@ export function getCurrencyRate(rates: RatesData, code: string): number {
 }
 
 export function computeSpreadPct(sell: number, buy: number): number {
-  const mid = (sell + buy) / 2;
-  if (!mid) return 0;
-  return ((sell - buy) / mid) * 100;
+  const mid = (Number(sell) + Number(buy)) / 2;
+  if (!mid) return 0.006;
+  return Math.abs(Number(sell) - Number(buy)) / mid;
+}
+
+export function applySpread(mid: number, spreadPct: number): { sell: number; buy: number } {
+  return {
+    sell: Math.round(mid * (1 + spreadPct / 2) * 100) / 100,
+    buy: Math.round(mid * (1 - spreadPct / 2) * 100) / 100,
+  };
+}
+
+export function resolveRateSourceValue(sourceValue: string | undefined, rates: RatesData): number | null {
+  if (!sourceValue || sourceValue === 'manual') return null;
+  const sep = sourceValue.indexOf(':');
+  if (sep === -1) return null;
+  const type = sourceValue.slice(0, sep);
+  const name = sourceValue.slice(sep + 1);
+  const list = type === 'gold' ? rates.gold : rates.currencies;
+  const match = (list || []).find((item) => item.name.toLowerCase() === name.toLowerCase());
+  return match ? match.sell : null;
+}
+
+export function storageValue(item: StorageAsset, rates?: RatesData): number {
+  const qty = Number(item.quantity) || 0;
+  let rate = Number((item as any).rate ?? item.buyPrice ?? 0);
+  if (rates && item.rateSource && item.rateSource !== 'manual') {
+    const resolved = resolveRateSourceValue(item.rateSource, rates);
+    if (resolved !== null) rate = resolved;
+  }
+  return qty * rate;
 }
 
 export function computeAssetEgpValue(asset: StorageAsset, rates: RatesData): number {
-  const qty = Number(asset.quantity) || 0;
-  if (asset.currentPrice && asset.currentPrice > 0) {
-    const rate = asset.currency && asset.currency !== 'EGP' ? getCurrencyRate(rates, asset.currency) : 1;
-    return qty * asset.currentPrice * rate;
-  }
-  
-  // Try matching gold
-  const gold = rates.gold.find((g) => g.name.toLowerCase() === asset.name.toLowerCase());
-  if (gold) {
-    return qty * gold.buy;
-  }
-
-  // Fallback to buy price
-  const buyPrice = Number(asset.buyPrice) || 0;
-  const rate = asset.currency && asset.currency !== 'EGP' ? getCurrencyRate(rates, asset.currency) : 1;
-  return qty * buyPrice * rate;
+  return storageValue(asset, rates);
 }
 
 export function computeTotalStorageValue(assets: StorageAsset[], rates: RatesData): number {
-  return assets.reduce((sum, asset) => sum + computeAssetEgpValue(asset, rates), 0);
+  return (assets || []).reduce((sum, asset) => sum + storageValue(asset, rates), 0);
 }
 
 // ==========================================================================
@@ -60,13 +73,6 @@ export function computeTotalStorageValue(assets: StorageAsset[], rates: RatesDat
 export const CURRENCY_RATES_ENDPOINT = 'https://open.er-api.com/v6/latest/USD';
 export const GOLD_PRICE_ENDPOINT = 'https://api.gold-api.com/price/XAU';
 export const TROY_OUNCE_GRAMS = 31.1035;
-
-export function applySpread(mid: number, spreadPct: number) {
-  return {
-    sell: Math.round(mid * (1 + spreadPct / 2) * 100) / 100,
-    buy: Math.round(mid * (1 - spreadPct / 2) * 100) / 100,
-  };
-}
 
 export function egpPerUnit(liveRates: Record<string, number>, code: string): number | null {
   if (code === 'USD') return liveRates.EGP;

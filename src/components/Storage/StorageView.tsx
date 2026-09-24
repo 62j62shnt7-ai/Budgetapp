@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { formatMoney } from '../../engine/dateUtils';
+import { resolveRateSourceValue, storageValue } from '../../engine/currency';
 import { Plus } from 'lucide-react';
 
 interface StorageViewProps {
@@ -8,10 +9,14 @@ interface StorageViewProps {
 }
 
 export const StorageView: React.FC<StorageViewProps> = ({ onOpenStorageModal }) => {
-  const { storageAssets, rates, updateStorageAsset, deleteStorageAsset } = useBudgetStore();
+  const { storageAssets, rates, updateStorageAsset, deleteStorageAsset, syncStorageRates } = useBudgetStore();
+
+  useEffect(() => {
+    syncStorageRates();
+  }, [rates]);
 
   const getAssetValue = (asset: any) => {
-    return (Number(asset.quantity) || 0) * (Number(asset.rate) || Number(asset.buyPrice) || 0);
+    return storageValue(asset, rates);
   };
 
   const totalValue = storageAssets.reduce((sum, item) => sum + getAssetValue(item), 0);
@@ -19,10 +24,19 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenStorageModal }) 
   const handleFieldChange = (index: number, field: string, value: any) => {
     const asset = storageAssets[index];
     if (!asset) return;
-    updateStorageAsset(asset.id, {
-      ...asset,
-      [field]: value,
-    });
+    if (field === 'rate') {
+      updateStorageAsset(asset.id, {
+        ...asset,
+        rateSource: 'manual',
+        rate: value,
+        buyPrice: value,
+      });
+    } else {
+      updateStorageAsset(asset.id, {
+        ...asset,
+        [field]: value,
+      });
+    }
   };
 
   const handleRateSourceChange = (index: number, value: string) => {
@@ -30,14 +44,9 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenStorageModal }) 
     if (!asset) return;
 
     let newRate = Number(asset.rate) || Number(asset.buyPrice) || 0;
-    if (value.startsWith('currency:')) {
-      const currName = value.replace('currency:', '');
-      const found = rates.currencies.find((c) => c.name.toLowerCase() === currName.toLowerCase());
-      if (found) newRate = found.sell;
-    } else if (value.startsWith('gold:')) {
-      const goldName = value.replace('gold:', '');
-      const found = rates.gold.find((g) => g.name.toLowerCase() === goldName.toLowerCase());
-      if (found) newRate = found.sell;
+    if (value !== 'manual') {
+      const resolved = resolveRateSourceValue(value, rates);
+      if (resolved !== null) newRate = resolved;
     }
 
     updateStorageAsset(asset.id, {
@@ -69,7 +78,8 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenStorageModal }) 
             ) : (
               storageAssets.map((item, index) => {
                 const currentSource = (item as any).rateSource || 'manual';
-                const currentRate = (item as any).rate || item.buyPrice || 0;
+                const resolvedLive = currentSource !== 'manual' ? resolveRateSourceValue(currentSource, rates) : null;
+                const currentRate = resolvedLive !== null ? resolvedLive : ((item as any).rate || item.buyPrice || 0);
                 const assetVal = getAssetValue(item);
 
                 return (

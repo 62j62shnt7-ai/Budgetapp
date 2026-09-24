@@ -1,16 +1,22 @@
 import React, { useState } from 'react';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
-import { isCreditCardExpense, calculateCreditSettlementDate } from '../../engine/creditCards';
+import { isCreditCardExpense, calculateCreditSettlementDate, buildCreditDueEntries, isLumpCreditDueForAccount } from '../../engine/creditCards';
+import { buildInstallmentEntries } from '../../engine/salaryAndInstallments';
 import type { CashEntry } from '../../types';
 import { Lock, Unlock, Trash2, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react';
 
 export const HistoryView: React.FC = () => {
   const {
     entries,
+    archivedEntries,
+    installments,
+    accounts,
+    creditDues,
+    creditSettlementOverrides,
     entryActuals,
     entryActualDates,
-    recordActual,
+    clearActual,
     deleteEntry,
   } = useBudgetStore();
 
@@ -29,19 +35,92 @@ export const HistoryView: React.FC = () => {
   const [groupBy, setGroupBy] = useState<'category' | 'tag'>('category');
   const [viewMode, setViewMode] = useState<'chart' | 'table' | 'both'>('chart');
 
-  // Actualized entries: entries that have recorded actuals
-  const actualEntries = entries.filter((e) => {
-    const act = entryActuals[e.id];
-    return act !== undefined && act !== null && act > 0;
-  });
+  const handleResetFilters = () => {
+    setSelectedMonth('all');
+    setSelectedType('all');
+    setSelectedAccount('all');
+    setSelectedTag('all');
+    setSearchTerm('');
+  };
+
+  const handleClearActual = (id: string) => {
+    if (window.confirm('Clear recorded actual for this entry? It will revert back to its planned forecast.')) {
+      clearActual(id);
+    }
+  };
 
   const getEntryActualAmount = (entry: CashEntry): number => {
-    return entryActuals[entry.id] ?? entry.amount;
+    if (!entry) return 0;
+    if (entryActuals[entry.id] !== undefined) return Math.round(Number(entryActuals[entry.id]) || 0);
+    const legacyId = `${entry.date}-${entry.category}-${entry.amount}-${entry.type}-${entry.account || 'cash'}`;
+    if (entryActuals[legacyId] !== undefined) return Math.round(Number(entryActuals[legacyId]) || 0);
+    if (entry.actualAmount !== undefined && entry.actualAmount !== null) return Math.round(Number(entry.actualAmount) || 0);
+    return 0;
   };
 
   const getEntryActualDate = (entry: CashEntry): string => {
-    return entryActualDates[entry.id] || entry.date;
+    if (!entry) return DateUtils.todayString();
+    return entryActualDates[entry.id] || (entry as any).actualDate || entry.date || DateUtils.todayString();
   };
+
+  // Actualized entries: matching legacy actualizedEntries() 1:1
+  const actualEntries = React.useMemo(() => {
+    const installmentEntries = buildInstallmentEntries(installments || []);
+    const creditEntries = buildCreditDueEntries({
+      accounts: accounts || {},
+      creditDues: creditDues || {},
+      cashEntries: entries || [],
+      archivedEntries: archivedEntries || [],
+      entryActuals: entryActuals || {},
+      creditSettlementOverrides: creditSettlementOverrides || {},
+    });
+
+    // Track accounts and months already covered by manual credit due payments in entries
+    const coveredSettlementKeys = new Set<string>();
+    (entries || []).forEach((entry) => {
+      if (getEntryActualAmount(entry) > 0) {
+        ['cib', 'hsbc'].forEach((accKey) => {
+          if (isLumpCreditDueForAccount(entry, accKey)) {
+            const actDate = getEntryActualDate(entry);
+            const mKey = DateUtils.getMonthKey(actDate);
+            if (mKey) coveredSettlementKeys.add(`${accKey}-${mKey}`);
+          }
+        });
+      }
+    });
+
+    const validCreditDues = creditEntries.filter((entry) => {
+      if (getEntryActualAmount(entry) <= 0) return false;
+      const parts = (entry.id || '').split('-');
+      if (parts[0] === 'credit' && parts[1] === 'settlement') {
+        const accKey = parts[2];
+        const mKey = `${parts[3]}-${parts[4]}`;
+        if (coveredSettlementKeys.has(`${accKey}-${mKey}`)) return false;
+      }
+      return true;
+    });
+
+    const activeCandidates = [
+      ...(entries || []),
+      ...installmentEntries,
+      ...validCreditDues,
+    ].filter((entry) => getEntryActualAmount(entry) > 0);
+
+    const seenIds = new Set<string>();
+    const dedupedActive: CashEntry[] = [];
+    activeCandidates.forEach((entry) => {
+      if (!seenIds.has(entry.id)) {
+        seenIds.add(entry.id);
+        dedupedActive.push(entry);
+      }
+    });
+
+    const archivedWithActuals = (archivedEntries || []).filter(
+      (entry) => getEntryActualAmount(entry) > 0 && !seenIds.has(entry.id)
+    );
+
+    return [...dedupedActive, ...archivedWithActuals];
+  }, [entries, archivedEntries, installments, accounts, creditDues, creditSettlementOverrides, entryActuals, entryActualDates]);
 
   // 1. Monthly Summary Calculation
   const monthsSet = new Set<string>();
@@ -220,18 +299,6 @@ export const HistoryView: React.FC = () => {
 
   const sortedGroups = Object.entries(groups).sort((a, b) => b[1].total - a[1].total);
   const totalAnalyticsAmount = sortedGroups.reduce((s, g) => s + g[1].total, 0);
-
-  const handleClearActual = (entryId: string) => {
-    recordActual(entryId, 0);
-  };
-
-  const handleResetFilters = () => {
-    setSelectedMonth('all');
-    setSelectedType('all');
-    setSelectedAccount('all');
-    setSelectedTag('all');
-    setSearchTerm('');
-  };
 
   return (
     <section className="view" id="history" style={{ display: 'block' }}>
@@ -649,8 +716,39 @@ export const HistoryView: React.FC = () => {
                     filteredEntries.map((entry) => {
                       const actual = getEntryActualAmount(entry);
                       const actDate = getEntryActualDate(entry);
-                      const variance = actual - entry.amount;
-                      const varianceClass = variance <= 0 ? 'favorable' : 'unfavorable';
+                      const plannedVal = Number(entry.amount) || 0;
+
+                      let varianceText = '—';
+                      let varianceClass = 'neutral';
+                      if (plannedVal > 0) {
+                        const roundedPlanned = Math.round(plannedVal);
+                        const roundedActual = Math.round(actual);
+                        if (entry.type === 'expense') {
+                          const diff = roundedPlanned - roundedActual;
+                          if (diff > 0) {
+                            varianceText = `+${formatMoney(diff)} under`;
+                            varianceClass = 'favorable';
+                          } else if (diff < 0) {
+                            varianceText = `-${formatMoney(Math.abs(diff))} over`;
+                            varianceClass = 'unfavorable';
+                          } else {
+                            varianceText = 'On budget';
+                            varianceClass = 'neutral';
+                          }
+                        } else {
+                          const diff = roundedActual - roundedPlanned;
+                          if (diff > 0) {
+                            varianceText = `+${formatMoney(diff)} extra`;
+                            varianceClass = 'favorable';
+                          } else if (diff < 0) {
+                            varianceText = `-${formatMoney(Math.abs(diff))} short`;
+                            varianceClass = 'unfavorable';
+                          } else {
+                            varianceText = 'Exact';
+                            varianceClass = 'neutral';
+                          }
+                        }
+                      }
 
                       return (
                         <tr key={entry.id}>
@@ -674,7 +772,7 @@ export const HistoryView: React.FC = () => {
                           <td className="number" style={{ fontWeight: 700 }}>{formatMoney(actual)}</td>
                           <td className="number">
                             <span className={`variance-pill ${varianceClass}`}>
-                              {variance > 0 ? `+${formatMoney(variance)}` : formatMoney(variance)}
+                              {varianceText}
                             </span>
                           </td>
                           <td>

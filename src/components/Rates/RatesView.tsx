@@ -84,26 +84,36 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
       const changes: string[] = [];
       const skipped: string[] = [];
       const updated = rates.gold.map((item) => {
+        let mid: number | null = null;
         const match = item.name.match(/(\d+)/);
-        if (!match) {
+        if (match) {
+          const karat = Number(match[1]);
+          mid = egpPerGram24k * (karat / 24);
+        } else if (item.name.toLowerCase().includes('coin') || item.name.toLowerCase().includes('pound')) {
+          // A Gold Coin (جنيه ذهب) is 8 grams of 21k gold
+          mid = egpPerGram24k * (21 / 24) * 8;
+        }
+
+        if (mid === null) {
           skipped.push(item.name);
           return item;
         }
-        const karat = Number(match[1]);
-        const mid = egpPerGram24k * (karat / 24);
+
         const spreadPct = computeSpreadPct(item.sell, item.buy);
         const next = applySpread(mid, spreadPct);
-        changes.push(`${item.name}: ${item.sell.toFixed(0)}/${item.buy.toFixed(0)} → ${next.sell.toFixed(0)}/${next.buy.toFixed(0)}`);
+        next.sell = Math.round(next.sell);
+        next.buy = Math.round(next.buy);
+        changes.push(`${item.name}: ${item.sell}/${item.buy} → ${next.sell}/${next.buy}`);
         return { ...item, ...next };
       });
 
       if (!changes.length) {
-        alert('None of the saved gold entries could be matched to a karat (e.g. "Gold 21").');
+        alert('None of the saved gold entries could be matched to a karat (e.g. "Gold 21" or "Gold coin").');
         return;
       }
 
       let message = `Update Gold Rates from live spot price ($${xauUsd.toFixed(2)}/oz)?\n\n${changes.join("\n")}`;
-      if (skipped.length) message += `\n\nSkipped (no karat in name): ${skipped.join(", ")}`;
+      if (skipped.length) message += `\n\nSkipped: ${skipped.join(", ")}`;
 
       const confirmed = window.confirm(message);
       if (!confirmed) return;
@@ -198,7 +208,7 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
                       </label>
                     </div>
                   ) : (
-                    <small>Sell {c.sell.toFixed(2)} / Buy {c.buy.toFixed(2)} ({spread.toFixed(1)}%)</small>
+                    <small>Sell {c.sell.toFixed(2)} / Buy {c.buy.toFixed(2)} ({(spread * 100).toFixed(1)}%)</small>
                   )}
                 </div>
               );
@@ -281,7 +291,7 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
                       </label>
                     </div>
                   ) : (
-                    <small>Sell {g.sell.toFixed(0)} / Buy {g.buy.toFixed(0)} ({spread.toFixed(1)}%)</small>
+                    <small>Sell {g.sell.toFixed(0)} / Buy {g.buy.toFixed(0)} ({(spread * 100).toFixed(1)}%)</small>
                   )}
                 </div>
               );

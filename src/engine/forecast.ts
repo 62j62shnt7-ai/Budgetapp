@@ -4,6 +4,23 @@
 import { DateUtils } from './dateUtils';
 import type { CashEntry, DeficitPeriod, DeficitSummary, MonthlyForecast } from '../types';
 
+export function isPartialTracked(entry: CashEntry): boolean {
+  if (!entry) return false;
+  if (entry.type === 'expense') return true;
+  if (entry.source === 'loan') return true;
+  const cat = (entry.category || '').toLowerCase();
+  if (cat.includes('loan')) return true;
+  return false;
+}
+
+export function getRemainingForecastAmount(entry: CashEntry, actualAmount: number = 0): number {
+  if (entry && (entry as any).isClosed) return 0;
+  if (isPartialTracked(entry) && actualAmount > 0) {
+    return Math.max(0, Number(entry.amount || 0) - actualAmount);
+  }
+  return Number(entry.amount || 0);
+}
+
 export function calculateForecast(
   entries: CashEntry[],
   openingCashBalance: number,

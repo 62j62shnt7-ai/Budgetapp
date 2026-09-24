@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { buildSalaryEntries, buildInstallmentEntries } from '../../engine/salaryAndInstallments';
+import { buildCreditDueEntries } from '../../engine/creditCards';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
-import { Plus, Trash2, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 
 import type { CashEntry } from '../../types';
 
@@ -16,6 +17,7 @@ interface CashflowViewProps {
 }
 
 export const CashflowView: React.FC<CashflowViewProps> = ({
+  onOpenEntryModal,
   onEditEntry,
   onDeductPrompt,
   onOpenCapModal,
@@ -23,6 +25,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
   onOpenInstallmentModal,
 }) => {
   const {
+    accounts,
     entries,
     updateEntry,
     deleteEntry,
@@ -34,12 +37,17 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     deleteCategoryCap,
     savingsGoals,
     deleteSavingsGoal,
+    creditDues,
+    creditSettlementOverrides,
+    entryActuals,
     recordActual,
+    setActiveTab,
   } = useBudgetStore();
 
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
 
   // Collapsible sections
@@ -52,13 +60,44 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
   const [startMonth, setStartMonth] = useState(currentYm);
   const [quarters, setQuarters] = useState(8);
 
-  const salaryEntries = buildSalaryEntries(salaryPattern, startMonth, quarters);
+  const hasMaterializedSalary = entries.some((e) => e.source === 'salary');
+  const salaryEntries = hasMaterializedSalary ? [] : buildSalaryEntries(salaryPattern, startMonth, quarters);
   const installmentEntries = buildInstallmentEntries(installments);
-  const allCandidate = [...entries, ...salaryEntries, ...installmentEntries];
+  const creditEntries = buildCreditDueEntries({
+    accounts,
+    creditDues,
+    cashEntries: entries,
+    archivedEntries: [],
+    entryActuals,
+    creditSettlementOverrides,
+  });
+  const allCandidate = [...entries, ...salaryEntries, ...installmentEntries, ...creditEntries];
+
+  // Opening balance rows (matching legacy openingBalanceEntries)
+  const openingRows: CashEntry[] = Object.entries(accounts || {}).map(([id, acc]) => ({
+    id: `opening-${id}`,
+    date: DateUtils.todayString(),
+    category: `${acc.name} Opening Balance`,
+    account: id,
+    type: 'income',
+    amount: Number(acc.balance) || 0,
+    source: 'starting balance',
+    locked: true,
+  }));
+
+  // Categories list for dropdown
+  const allCategories = React.useMemo(() => {
+    const set = new Set<string>();
+    [...openingRows, ...allCandidate].forEach((e) => {
+      if (e.category) set.add(e.category);
+    });
+    return Array.from(set).sort();
+  }, [openingRows, allCandidate]);
 
   // Filter entries
-  const filteredCandidates = allCandidate.filter((e) => {
+  const filteredForecastRows = allCandidate.filter((e) => {
     if (typeFilter !== 'all' && e.type !== typeFilter) return false;
+    if (categoryFilter !== 'all' && e.category !== categoryFilter) return false;
     if (dateFrom && e.date < dateFrom) return false;
     if (dateTo && e.date > dateTo) return false;
     if (searchTerm) {
@@ -67,17 +106,35 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
         e.category.toLowerCase().includes(term) ||
         (e.subcategory && e.subcategory.toLowerCase().includes(term)) ||
         (e.tag && e.tag.toLowerCase().includes(term)) ||
-        e.account.toLowerCase().includes(term)
+        e.account.toLowerCase().includes(term) ||
+        (e.source && e.source.toLowerCase().includes(term))
       );
+    }
+    return true;
+  }).sort((a, b) => {
+    const dateCmp = (a.date || '').localeCompare(b.date || '');
+    if (dateCmp !== 0) return dateCmp;
+    if (a.type !== b.type) return a.type === 'income' ? -1 : 1;
+    return 0;
+  });
+
+  const filteredOpeningRows = openingRows.filter((e) => {
+    if (typeFilter === 'expense') return false;
+    if (categoryFilter !== 'all' && e.category !== categoryFilter) return false;
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      return e.category.toLowerCase().includes(term) || e.account.toLowerCase().includes(term);
     }
     return true;
   });
 
-  const totalIncome = filteredCandidates
+  const allDisplayRows = [...filteredOpeningRows, ...filteredForecastRows];
+
+  const totalIncome = filteredForecastRows
     .filter((e) => e.type === 'income')
     .reduce((s, e) => s + (Number(e.amount) || 0), 0);
 
-  const totalExpenses = filteredCandidates
+  const totalExpenses = filteredForecastRows
     .filter((e) => e.type === 'expense')
     .reduce((s, e) => s + (Number(e.amount) || 0), 0);
 
@@ -85,7 +142,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
 
   // Expense Mix grouping
   const expensesByCategory: Record<string, number> = {};
-  filteredCandidates
+  filteredForecastRows
     .filter((e) => e.type === 'expense')
     .forEach((e) => {
       const cat = e.category || 'Other';
@@ -163,7 +220,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
         </article>
         <article className="metric">
           <span>Entries</span>
-          <strong>{filteredCandidates.length}</strong>
+          <strong>{filteredForecastRows.length}</strong>
           <small>Active candidate records</small>
         </article>
       </div>
@@ -451,17 +508,21 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
       {/* Forecast Entries Table */}
       <section className="panel" style={{ marginTop: '18px' }}>
         <div className="panel-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-          <h3 style={{ margin: 0 }}>Forecast entries</h3>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <input
-              type="text"
-              placeholder="Search entries..."
-              className="form-input"
-              style={{ width: '160px', padding: '4px 8px', fontSize: '12px' }}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <h3 style={{ margin: 0 }}>Forecast entries</h3>
+            <button
+              className="ghost-button"
+              type="button"
+              style={{ fontSize: '12px', padding: '3px 8px' }}
+              onClick={() => onOpenEntryModal('expense')}
+            >
+              <Plus size={14} style={{ marginRight: '4px' }} />
+              <span>Add entry</span>
+            </button>
+          </div>
+          <div className="filters" style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
             <select
+              id="typeFilter"
               className="form-select"
               style={{ width: '110px', padding: '4px 8px', fontSize: '12px' }}
               value={typeFilter}
@@ -471,24 +532,50 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
               <option value="income">Income</option>
               <option value="expense">Expense</option>
             </select>
+            <select
+              id="categoryFilter"
+              className="form-select"
+              style={{ width: '140px', padding: '4px 8px', fontSize: '12px' }}
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+            >
+              <option value="all">All categories</option>
+              {allCategories.map((cat) => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+            <input
+              id="searchEntries"
+              type="search"
+              placeholder="Search category, tag, account..."
+              className="form-input"
+              style={{ width: '180px', padding: '4px 8px', fontSize: '12px' }}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
           </div>
         </div>
+        <p style={{ color: 'var(--muted)', fontSize: '13px', margin: '-4px 0 12px' }}>
+          Every planned income and expense, including starting balances, salary, installments, and credit dues. Type an <strong>Actual</strong> amount once something really happens.
+        </p>
 
-        <div className="table-container" style={{ marginTop: '12px' }}>
+        <div className="table-wrap responsive-cards" style={{ marginTop: '12px' }}>
           <table>
             <thead>
               <tr>
                 <th>Date</th>
                 <th>Category</th>
                 <th>Account</th>
-                <th>Tag</th>
-                <th>Amount</th>
-                <th style={{ minWidth: '170px' }}>Actual</th>
-                <th style={{ width: '100px' }}>Actions</th>
+                <th>Type</th>
+                <th>Source</th>
+                <th className="number">Amount</th>
+                <th className="number" style={{ minWidth: '170px' }}>Actual</th>
+                <th style={{ width: '100px' }}></th>
               </tr>
             </thead>
             <tbody>
-              {filteredCandidates.map((e) => {
+              {allDisplayRows.map((e) => {
+                const isOpening = e.source === 'starting balance';
                 const isLoan = (e.source || '').toLowerCase().includes('loan') || (e.category || '').toLowerCase().includes('loan');
                 const isCreditSettlement = (e.source || '').toLowerCase().includes('credit') || (e.id && e.id.startsWith('credit-settlement-'));
                 const placeholder = isLoan ? 'Add draw' : isCreditSettlement ? 'Add payment' : e.type === 'income' ? 'Add actual' : 'Add spend';
@@ -496,44 +583,79 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                 const plannedAmt = Number(e.amount || 0);
                 const remainingAmt = Math.max(0, plannedAmt - actualValue);
                 const isFull = plannedAmt > 0 && actualValue >= plannedAmt;
-                const canFinish = actualValue > 0 && !e.isClosed;
+                const canFinish = actualValue > 0 && !e.isClosed && !isOpening;
 
                 return (
                   <tr
                     key={e.id}
+                    className={`entry-row ${isOpening ? 'opening-balance-row' : isLoan ? 'loan-entry-row' : ''}`}
                     style={{ cursor: 'pointer' }}
                     onClick={(ev) => {
                       if ((ev.target as HTMLElement).closest('input, button, select, a')) return;
-                      if (onEditEntry) onEditEntry(e);
+                      if (isOpening) {
+                        setActiveTab('accounts');
+                      } else if (onEditEntry) {
+                        onEditEntry(e);
+                      }
                     }}
                   >
-                    <td>{DateUtils.formatDisplayDate(e.date)}</td>
-                    <td>
+                    <td className="cell-date">{DateUtils.formatDisplayDate(e.date)}</td>
+                    <td className="cell-category">
                       <strong>{e.category}</strong>
-                      {e.subcategory && <span style={{ fontSize: '11px', color: 'var(--muted)', display: 'block' }}>{e.subcategory}</span>}
+                      {e.tag && (
+                        <span className="source-pill" style={{ marginLeft: '4px', fontSize: '10px' }}>
+                          #{e.tag}
+                        </span>
+                      )}
                       {e.creditType && (
-                        <span className="source-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', color: 'var(--blue)', fontWeight: 600, fontSize: '10px', marginTop: '2px' }}>
+                        <span className="source-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', color: 'var(--blue)', fontWeight: 600, fontSize: '10px', marginLeft: '4px' }}>
                           💳 {e.creditType.toUpperCase()}
                         </span>
                       )}
+                      {isCreditSettlement && (
+                        <small style={{ display: 'block', color: 'var(--muted)', fontSize: '10.5px', marginTop: '2px' }}>
+                          Settlement due
+                        </small>
+                      )}
                     </td>
-                    <td>{e.account.toUpperCase()}</td>
-                    <td>{e.tag ? `#${e.tag}` : '—'}</td>
-                    <td style={{ color: e.type === 'income' ? 'var(--green)' : 'var(--red)', fontWeight: 700 }}>
+                    <td className="cell-account">{e.account.toUpperCase()}</td>
+                    <td className="cell-type">
+                      <span className={`pill ${e.type}`}>{e.type}</span>
+                    </td>
+                    <td className="cell-source">
+                      <span className={`source-pill ${e.source === 'loan' ? 'loan' : ''}`}>
+                        {e.source || 'manual'}
+                      </span>
+                    </td>
+                    <td className="cell-amount number" style={{ color: e.type === 'income' ? 'var(--green)' : 'var(--red)', fontWeight: 700 }}>
                       {e.type === 'income' ? '+' : '-'}{formatMoney(e.amount)}
                     </td>
-                    <td>
-                      <div>
-                        <input
-                          className="inline-actual-input form-input"
-                          style={{ width: '110px', padding: '3px 6px', fontSize: '12px' }}
-                          placeholder={placeholder}
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          onKeyDown={(ev) => {
-                            if (ev.key === 'Enter') {
-                              ev.preventDefault();
+                    <td className="cell-actual number">
+                      {isOpening ? (
+                        <span>—</span>
+                      ) : (
+                        <div>
+                          <input
+                            className="inline-actual-input form-input"
+                            style={{ width: '110px', padding: '3px 6px', fontSize: '12px' }}
+                            placeholder={placeholder}
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            onKeyDown={(ev) => {
+                              if (ev.key === 'Enter') {
+                                ev.preventDefault();
+                                const input = ev.currentTarget;
+                                const val = Math.round(Number(input.value) || 0);
+                                if (val > 0) {
+                                  const newActual = actualValue + val;
+                                  recordActual(e.id, newActual, DateUtils.todayString());
+                                  if (onDeductPrompt) onDeductPrompt(e, val);
+                                }
+                                input.value = '';
+                              }
+                            }}
+                            onBlur={(ev) => {
                               const input = ev.currentTarget;
                               const val = Math.round(Number(input.value) || 0);
                               if (val > 0) {
@@ -542,73 +664,54 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                                 if (onDeductPrompt) onDeductPrompt(e, val);
                               }
                               input.value = '';
-                            }
-                          }}
-                          onBlur={(ev) => {
-                            const input = ev.currentTarget;
-                            const val = Math.round(Number(input.value) || 0);
-                            if (val > 0) {
-                              const newActual = actualValue + val;
-                              recordActual(e.id, newActual, DateUtils.todayString());
-                              if (onDeductPrompt) onDeductPrompt(e, val);
-                            }
-                            input.value = '';
-                          }}
-                        />
-                        {actualValue > 0 && (
-                          <small style={{ display: 'block', color: 'var(--muted)', marginTop: '4px', whiteSpace: 'nowrap', fontSize: '11px' }}>
-                            {isLoan
-                              ? `Drawn so far: ${formatMoney(actualValue)} ${isFull ? '(Full amount reached)' : `(Remaining: ${formatMoney(remainingAmt)})`}`
-                              : isCreditSettlement
-                              ? `Paid so far: ${formatMoney(actualValue)} ${isFull ? '(Settled in full)' : `(Remaining: ${formatMoney(remainingAmt)})`}`
-                              : `Spent so far: ${formatMoney(actualValue)} ${isFull ? '(Full budget reached)' : `(Remaining: ${formatMoney(remainingAmt)})`}`}
-                          </small>
-                        )}
-                      </div>
+                            }}
+                          />
+                          {actualValue > 0 && (
+                            <small style={{ display: 'block', color: 'var(--muted)', marginTop: '4px', whiteSpace: 'nowrap', fontSize: '11px' }}>
+                              {isLoan
+                                ? `Drawn so far: ${formatMoney(actualValue)} ${isFull ? '(Full amount reached)' : `(Remaining: ${formatMoney(remainingAmt)})`}`
+                                : isCreditSettlement
+                                ? `Paid so far: ${formatMoney(actualValue)} ${isFull ? '(Settled in full)' : `(Remaining: ${formatMoney(remainingAmt)})`}`
+                                : `Spent so far: ${formatMoney(actualValue)} ${isFull ? '(Full budget reached)' : `(Remaining: ${formatMoney(remainingAmt)})`}`}
+                            </small>
+                          )}
+                        </div>
+                      )}
                     </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                        {canFinish && (
+                    <td className="cell-actions number">
+                      {isOpening ? null : (
+                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center', justifyContent: 'flex-end' }}>
+                          {canFinish && (
+                            <button
+                              className="ghost-button finish-loan-btn"
+                              type="button"
+                              style={{ fontSize: '11px', padding: '2px 6px', color: 'var(--green)', borderColor: 'var(--green)' }}
+                              title="Finish and close entry at current actual amount"
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                if (window.confirm(`Finish and close "${e.category}" at current actual amount (${formatMoney(actualValue)})?\n\nRemaining budget will be closed and removed from future forecast.`)) {
+                                  updateEntry(e.id, { isClosed: true, amount: actualValue });
+                                }
+                              }}
+                            >
+                              ✓ Finish
+                            </button>
+                          )}
                           <button
-                            className="ghost-button finish-loan-btn"
-                            type="button"
-                            style={{ fontSize: '11px', padding: '2px 6px', color: 'var(--green)', borderColor: 'var(--green)' }}
-                            title="Finish and close entry at current actual amount"
+                            className="delete-button"
+                            style={{ padding: '2px 6px', fontSize: '11px' }}
+                            title="Delete entry"
                             onClick={(ev) => {
                               ev.stopPropagation();
-                              if (window.confirm(`Finish and close "${e.category}" at current actual amount (${formatMoney(actualValue)})?\n\nRemaining budget will be closed and removed from future forecast.`)) {
-                                updateEntry(e.id, { isClosed: true, amount: actualValue });
+                              if (window.confirm(`Delete entry "${e.category}" (${formatMoney(e.amount)})?`)) {
+                                deleteEntry(e.id);
                               }
                             }}
                           >
-                            ✓ Finish
+                            Delete
                           </button>
-                        )}
-                        <button
-                          className="ghost-button"
-                          style={{ padding: '2px 6px', fontSize: '11px' }}
-                          title="Record full amount as actual"
-                          onClick={(ev) => {
-                            ev.stopPropagation();
-                            recordActual(e.id, e.amount, e.date);
-                          }}
-                        >
-                          <CheckCircle2 size={13} color="var(--green)" />
-                        </button>
-                        <button
-                          className="ghost-button"
-                          style={{ padding: '2px 6px', fontSize: '11px' }}
-                          title="Delete entry"
-                          onClick={(ev) => {
-                            ev.stopPropagation();
-                            if (window.confirm(`Delete entry "${e.category}" (${formatMoney(e.amount)})?`)) {
-                              deleteEntry(e.id);
-                            }
-                          }}
-                        >
-                          <Trash2 size={13} color="var(--red)" />
-                        </button>
-                      </div>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );

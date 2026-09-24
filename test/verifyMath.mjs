@@ -61,12 +61,14 @@ const goldAsset = {
   name: 'Gold 24',
   category: 'Gold',
   quantity: 10,
+  rateSource: 'gold:Gold 24',
   unit: 'grams',
-  buyPrice: 3500,
+  rate: 3600,
+  buyPrice: 3600,
   currency: 'EGP'
 };
 const goldVal = computeAssetEgpValue(goldAsset, defaultRates);
-assert.strictEqual(goldVal, 10 * 3580); // 10 grams * 3580 buy rate
+assert.strictEqual(goldVal, 10 * 3600); // 10 grams * 3600 sell rate
 console.log('✓ Gold & currency valuation formulas verified');
 
 // 6. Financial Health Score

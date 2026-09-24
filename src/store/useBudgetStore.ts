@@ -13,7 +13,7 @@ import type {
   SavingsGoal,
   StorageAsset,
 } from '../types';
-import { defaultRates } from '../engine/currency';
+import { defaultRates, resolveRateSourceValue } from '../engine/currency';
 
 export const STORAGE_KEYS = {
   salary: 'budget-control-salary-pattern',
@@ -135,6 +135,7 @@ export interface BudgetStoreState {
   deleteSavingsGoal: (id: string) => void;
 
   updateRates: (rates: RatesData) => void;
+  syncStorageRates: (rates?: RatesData) => void;
 
   addStorageAsset: (asset: Omit<StorageAsset, 'id'>) => void;
   updateStorageAsset: (id: string, updates: Partial<StorageAsset>) => void;
@@ -338,9 +339,40 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     set({ savingsGoals: updated });
   },
 
+  syncStorageRates: (customRates) => {
+    const activeRates = customRates || get().rates;
+    let changed = false;
+    const updated = get().storageAssets.map((item) => {
+      const resolved = resolveRateSourceValue((item as any).rateSource, activeRates);
+      if (resolved !== null && resolved !== (item as any).rate) {
+        changed = true;
+        return { ...item, rate: resolved, buyPrice: resolved };
+      }
+      return item;
+    });
+    if (changed) {
+      saveStorage(STORAGE_KEYS.storage, updated);
+      set({ storageAssets: updated });
+    }
+  },
+
   updateRates: (rates) => {
     saveStorage(STORAGE_KEYS.rates, rates);
-    set({ rates });
+    let changed = false;
+    const updatedStorage = get().storageAssets.map((item) => {
+      const resolved = resolveRateSourceValue((item as any).rateSource, rates);
+      if (resolved !== null && resolved !== (item as any).rate) {
+        changed = true;
+        return { ...item, rate: resolved, buyPrice: resolved };
+      }
+      return item;
+    });
+    if (changed) {
+      saveStorage(STORAGE_KEYS.storage, updatedStorage);
+      set({ rates, storageAssets: updatedStorage });
+    } else {
+      set({ rates });
+    }
   },
 
   addStorageAsset: (assetData) => {
