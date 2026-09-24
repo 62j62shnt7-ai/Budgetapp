@@ -1247,7 +1247,16 @@ function getCreditSettlementDate(entry) {
 }
 
 function getCreditSettlementMonth(entry) {
-  const sDate = getCreditSettlementDate(entry);
+  if (!entry) return "";
+  if (isCreditCardExpense(entry)) {
+    const t = (entry.creditType || "").toLowerCase();
+    const acc = (entry.account || "").toLowerCase();
+    const type = (t.includes("hsbc") || acc.includes("hsbc")) ? "hsbc_card" : "cib_card";
+    const d = getEntryActualDate(entry) || entry.date;
+    const defaultDate = entry.creditSettlementDate || calculateCreditSettlementDate(d, type);
+    return defaultDate ? DateUtils.getMonthKey(defaultDate) : "";
+  }
+  const sDate = entry.creditSettlementDate || entry.date;
   return sDate ? DateUtils.getMonthKey(sDate) : "";
 }
 
@@ -1366,6 +1375,7 @@ function creditDueEntries() {
       entries.push({
         id: settlementId,
         date: settlementDate,
+        cycleMonth: monthKey,
         category: `${acc.name} Credit Due`,
         account: matchingBalanceKey,
         type: "expense",
@@ -1410,6 +1420,7 @@ function creditDueEntries() {
       entries.push({
         id: settlementId,
         date: (override && override.date) || DateUtils.formatDate(year, month, day),
+        cycleMonth: monthKey,
         category: `${acc.name} Credit Due`,
         account: id,
         type: "expense",
@@ -3829,8 +3840,14 @@ function renderEntries() {
     .filter((entry) => {
       if (entry.isClosed) return false;
       const actualAmount = getEntryActualAmount(entry);
-      // Past credit settlements (< today) belong in history, never as future cashflow forecasts
-      if (entry.isCreditSettlement && entry.date && entry.date < today) return false;
+      // Only past closed billing cycles (< currentMonthKey) with no unpaid balance are excluded from forecasts
+      if (entry.isCreditSettlement) {
+        const currentMonthKey = DateUtils.currentYearMonth();
+        const cycleMonth = entry.cycleMonth || (entry.id ? entry.id.split("-").slice(3).join("-") : "");
+        if (cycleMonth && cycleMonth < currentMonthKey && actualAmount <= 0 && !entry.isCustomized) {
+          return false;
+        }
+      }
       if (actualAmount <= 0) return true;
       if (entry.keepOngoing) return true;
       return isPartialTracked(entry) && getRemainingForecastAmount(entry) > 0;
