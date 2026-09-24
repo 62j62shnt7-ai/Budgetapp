@@ -2,7 +2,7 @@ import React from 'react';
 import { useBudgetStore, type ViewTab } from '../../store/useBudgetStore';
 
 export const Sidebar: React.FC = () => {
-  const { activeTab, setActiveTab, sidebarCollapsed, toggleSidebar } = useBudgetStore();
+  const { activeTab, setActiveTab, sidebarCollapsed, toggleSidebar, closeMobileSidebar } = useBudgetStore();
 
   const tabs: Array<{ id: ViewTab; label: string }> = [
     { id: 'dashboard', label: 'Dashboard' },
@@ -14,6 +14,21 @@ export const Sidebar: React.FC = () => {
     { id: 'jobs', label: 'Jobs' },
     { id: 'rates', label: 'Rates' },
   ];
+
+  const handleTabClick = (tabId: ViewTab) => {
+    setActiveTab(tabId);
+    if (typeof window !== 'undefined' && window.innerWidth <= 980) {
+      closeMobileSidebar();
+    }
+  };
+
+  const handleCollapseClick = () => {
+    if (typeof window !== 'undefined' && window.innerWidth <= 980) {
+      closeMobileSidebar();
+    } else {
+      toggleSidebar();
+    }
+  };
 
   return (
     <>
@@ -30,7 +45,7 @@ export const Sidebar: React.FC = () => {
             type="button"
             title="Collapse sidebar (Ctrl+B)"
             aria-label="Collapse sidebar"
-            onClick={toggleSidebar}
+            onClick={handleCollapseClick}
           >
             ◀
           </button>
@@ -43,7 +58,7 @@ export const Sidebar: React.FC = () => {
               className={`nav-item ${activeTab === tab.id ? 'active' : ''}`}
               data-view={tab.id}
               type="button"
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => handleTabClick(tab.id)}
             >
               {tab.label}
             </button>
@@ -53,7 +68,7 @@ export const Sidebar: React.FC = () => {
       <div
         className="sidebar-backdrop"
         id="sidebarBackdrop"
-        onClick={toggleSidebar}
+        onClick={closeMobileSidebar}
       />
     </>
   );

@@ -33,7 +33,7 @@ import { DeductAccountModal } from './components/Modals/DeductAccountModal';
 import type { CashEntry, JobItem } from './types';
 
 export const App: React.FC = () => {
-  const { activeTab, theme, toggleSidebar } = useBudgetStore();
+  const { activeTab, theme, sidebarCollapsed, toggleSidebar, closeMobileSidebar } = useBudgetStore();
 
   // Modals state
   const [entryModalOpen, setEntryModalOpen] = useState(false);
@@ -74,9 +74,18 @@ export const App: React.FC = () => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
+  // Synchronize sidebar collapsed state to body class
+  useEffect(() => {
+    document.body.classList.toggle('sidebar-collapsed', Boolean(sidebarCollapsed));
+  }, [sidebarCollapsed]);
+
   // Global Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        closeMobileSidebar();
+      }
+
       // Don't trigger if user is typing in an input/textarea
       const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
       if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
@@ -102,7 +111,7 @@ export const App: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [toggleSidebar]);
+  }, [toggleSidebar, closeMobileSidebar]);
 
   const handleOpenEntryModal = (type: 'expense' | 'income') => {
     setEntryModalType(type);

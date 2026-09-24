@@ -36,6 +36,7 @@ export const STORAGE_KEYS = {
   gistId: 'budget-control-gist-id',
   gistAutoSync: 'budget-control-gist-autosync',
   historyAdminUnlocked: 'budget-control-history-admin-unlocked',
+  sidebarCollapsed: 'budget-control-sidebar-collapsed',
 };
 
 function loadStorage<T>(key: string, fallback: T): T {
@@ -101,6 +102,7 @@ export interface BudgetStoreState {
   setTheme: (theme: 'dark' | 'light') => void;
   setActiveTab: (tab: ViewTab) => void;
   toggleSidebar: () => void;
+  closeMobileSidebar: () => void;
 
   addEntry: (entry: Omit<CashEntry, 'id'>) => void;
   updateEntry: (id: string, updates: Partial<CashEntry>) => void;
@@ -157,7 +159,7 @@ const defaultSalaryPattern: SalaryPayment[] = [
 export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
   theme: (localStorage.getItem(STORAGE_KEYS.theme) as 'dark' | 'light') || 'light',
   activeTab: 'dashboard',
-  sidebarCollapsed: false,
+  sidebarCollapsed: loadStorage<boolean>(STORAGE_KEYS.sidebarCollapsed, false),
 
   entries: loadStorage<CashEntry[]>(STORAGE_KEYS.entries, []),
   archivedEntries: loadStorage<CashEntry[]>(STORAGE_KEYS.archivedEntries, []),
@@ -190,7 +192,24 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
 
   setActiveTab: (activeTab) => set({ activeTab }),
 
-  toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+  toggleSidebar: () => {
+    if (typeof window !== 'undefined' && window.innerWidth <= 980) {
+      document.body.classList.toggle('mobile-sidebar-open');
+    } else {
+      const next = !get().sidebarCollapsed;
+      if (typeof document !== 'undefined') {
+        document.body.classList.toggle('sidebar-collapsed', next);
+      }
+      saveStorage(STORAGE_KEYS.sidebarCollapsed, next);
+      set({ sidebarCollapsed: next });
+    }
+  },
+
+  closeMobileSidebar: () => {
+    if (typeof document !== 'undefined') {
+      document.body.classList.remove('mobile-sidebar-open');
+    }
+  },
 
   addEntry: (entryData) => {
     const newEntry: CashEntry = {

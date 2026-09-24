@@ -82,6 +82,10 @@ body {
   position: relative;
 }
 
+#root {
+  display: contents;
+}
+
 /* Ambient Liquid Mesh Background Layer */
 body::before {
   content: "";

@@ -77,12 +77,41 @@
 
 body {
   font-family: var(--font-main);
-  background-color: var(--bg-app);
-  color: var(--text-main);
   min-height: 100vh;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  display: contents !important;
+}
+
+.sidebar {
+  grid-column: 1;
+}
+
+.app-shell {
+  grid-column: 2;
+  min-width: 0;
+  width: 100%;
+}
+
+@supports not (display: contents) {
+  #root {
+    display: grid !important;
+    grid-template-columns: 260px 1fr !important;
+    min-height: 100vh !important;
+    width: 100% !important;
+  }
+  body.sidebar-collapsed #root {
+    grid-template-columns: 0px 1fr !important;
+  }
+  @media (max-width: 980px) {
+    #root {
+      display: block !important;
+    }
+  }
 }
 
 /* Scrollbar Customization */
