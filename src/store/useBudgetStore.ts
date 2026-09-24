@@ -37,6 +37,10 @@ export const STORAGE_KEYS = {
   gistAutoSync: 'budget-control-gist-autosync',
   historyAdminUnlocked: 'budget-control-history-admin-unlocked',
   sidebarCollapsed: 'budget-control-sidebar-collapsed',
+  creditDues: 'budget-control-credit-dues',
+  creditDueMonths: 'budget-control-credit-due-months',
+  creditSettlementOverrides: 'budget-control-credit-settlement-overrides',
+  salaryAnchor: 'budget-control-salary-anchor',
 };
 
 function loadStorage<T>(key: string, fallback: T): T {
@@ -91,6 +95,12 @@ export interface BudgetStoreState {
   // Actuals Tracking
   entryActuals: Record<string, number>;
   entryActualDates: Record<string, string>;
+
+  // Credit Dues & Legacy Overrides
+  creditDues: Record<string, Record<string, number>>;
+  creditDueMonths: Record<string, string[]>;
+  creditSettlementOverrides: Record<string, { amount?: number; date?: string }>;
+  salaryAnchorMonth: string;
 
   // Cloud Sync & Admin
   gistToken: string;
@@ -178,6 +188,11 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
 
   entryActuals: loadStorage<Record<string, number>>(STORAGE_KEYS.entryActuals, {}),
   entryActualDates: loadStorage<Record<string, string>>(STORAGE_KEYS.entryActualDates, {}),
+
+  creditDues: loadStorage<Record<string, Record<string, number>>>(STORAGE_KEYS.creditDues, {}),
+  creditDueMonths: loadStorage<Record<string, string[]>>(STORAGE_KEYS.creditDueMonths, {}),
+  creditSettlementOverrides: loadStorage<Record<string, { amount?: number; date?: string }>>(STORAGE_KEYS.creditSettlementOverrides, {}),
+  salaryAnchorMonth: loadStorage<string>(STORAGE_KEYS.salaryAnchor, new Date().toISOString().slice(0, 7)),
 
   gistToken: localStorage.getItem(STORAGE_KEYS.gistToken) || '',
   gistId: localStorage.getItem(STORAGE_KEYS.gistId) || '',
@@ -677,6 +692,10 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         entryActualDates: newActualDates,
         deletedForecasts: newDeleted,
         archivedEntries: newArchived,
+        creditDues: (data.creditDues || parsed.creditDues) || get().creditDues,
+        creditDueMonths: (data.creditDueMonths || parsed.creditDueMonths) || get().creditDueMonths,
+        creditSettlementOverrides: (data.creditSettlementOverrides || parsed.creditSettlementOverrides) || get().creditSettlementOverrides,
+        salaryAnchorMonth: (data.salaryAnchorMonth || parsed.salaryAnchorMonth) || get().salaryAnchorMonth,
       });
 
       return true;
