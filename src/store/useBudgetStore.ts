@@ -388,14 +388,40 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
   exportJSON: () => {
     const state = get();
     const payload = {
+      app: 'budget-control',
       version: '2.0',
       exportedAt: new Date().toISOString(),
+      seedVersion: 'blank-template-v2',
+      data: {
+        salaryPattern: state.salaryPattern,
+        cashEntries: state.entries,
+        installments: state.installments,
+        storageAssets: state.storageAssets,
+        accountBalances: state.accounts,
+        asfJobs: state.asfJobs,
+        irqJobs: state.irqJobs,
+        partTimeJobs: state.partTimeJobs,
+        ratesData: state.rates,
+        entryActuals: state.entryActuals,
+        entryActualDates: state.entryActualDates,
+        deletedForecasts: state.deletedForecasts,
+        archivedEntries: state.archivedEntries,
+        categoryCaps: state.categoryCaps,
+        savingsGoals: state.savingsGoals,
+        // Aliases inside data:
+        entries: state.entries,
+        accounts: state.accounts,
+        rates: state.rates,
+      },
+      // Root-level aliases for direct access:
       entries: state.entries,
-      archivedEntries: state.archivedEntries,
+      cashEntries: state.entries,
       accounts: state.accounts,
+      accountBalances: state.accounts,
       salaryPattern: state.salaryPattern,
       installments: state.installments,
       rates: state.rates,
+      ratesData: state.rates,
       storageAssets: state.storageAssets,
       categoryCaps: state.categoryCaps,
       savingsGoals: state.savingsGoals,
@@ -404,43 +430,255 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       partTimeJobs: state.partTimeJobs,
       entryActuals: state.entryActuals,
       entryActualDates: state.entryActualDates,
+      deletedForecasts: state.deletedForecasts,
+      archivedEntries: state.archivedEntries,
     };
     return JSON.stringify(payload, null, 2);
   },
 
-  importJSON: (jsonString) => {
+  importJSON: (jsonString: string) => {
     try {
-      const data = JSON.parse(jsonString);
-      if (data.entries) saveStorage(STORAGE_KEYS.entries, data.entries);
-      if (data.accounts) saveStorage(STORAGE_KEYS.accounts, data.accounts);
-      if (data.salaryPattern) saveStorage(STORAGE_KEYS.salary, data.salaryPattern);
-      if (data.installments) saveStorage(STORAGE_KEYS.installments, data.installments);
-      if (data.rates) saveStorage(STORAGE_KEYS.rates, data.rates);
-      if (data.storageAssets) saveStorage(STORAGE_KEYS.storage, data.storageAssets);
-      if (data.categoryCaps) saveStorage(STORAGE_KEYS.categoryCaps, data.categoryCaps);
-      if (data.savingsGoals) saveStorage(STORAGE_KEYS.savingsGoals, data.savingsGoals);
-      if (data.asfJobs) saveStorage(STORAGE_KEYS.asf, data.asfJobs);
-      if (data.irqJobs) saveStorage(STORAGE_KEYS.irq, data.irqJobs);
-      if (data.partTimeJobs) saveStorage(STORAGE_KEYS.partTimeJobs, data.partTimeJobs);
-      if (data.entryActuals) saveStorage(STORAGE_KEYS.entryActuals, data.entryActuals);
-      if (data.entryActualDates) saveStorage(STORAGE_KEYS.entryActualDates, data.entryActualDates);
+      const parsed = typeof jsonString === 'string' ? JSON.parse(jsonString) : jsonString;
+      if (!parsed || typeof parsed !== 'object') {
+        console.error('Invalid JSON payload');
+        return false;
+      }
 
+      // 1. Direct array of cash entries
+      if (Array.isArray(parsed)) {
+        const normalized: CashEntry[] = parsed.map((e, idx) => ({
+          ...e,
+          id: e.id || `entry-import-${Date.now()}-${idx}`,
+          amount: Number(e.amount) || 0,
+          actualAmount: e.actualAmount !== undefined && e.actualAmount !== '' ? Number(e.actualAmount) : undefined,
+        }));
+        saveStorage(STORAGE_KEYS.entries, normalized);
+        set({ entries: normalized });
+        return true;
+      }
+
+      // 2. Direct raw localStorage dump format: { "budget-control-cash-entries": [...] }
+      if (parsed['budget-control-cash-entries'] || parsed['budget-control-account-balances']) {
+        for (const [k, v] of Object.entries(parsed)) {
+          if (k.startsWith('budget-control-')) {
+            try {
+              localStorage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v));
+            } catch (_) {}
+          }
+        }
+      }
+
+      // Standard budget export format (may be nested in .data or at root)
+      const data = (parsed.data && typeof parsed.data === 'object' && !Array.isArray(parsed.data))
+        ? parsed.data
+        : parsed;
+
+      // 1. Cash entries: check cashEntries, entries, items
+      const rawEntries = data.cashEntries || data.entries || data.items || parsed.cashEntries || parsed.entries;
+      let newEntries: CashEntry[] = get().entries;
+      if (Array.isArray(rawEntries)) {
+        newEntries = rawEntries.map((e: any, idx: number) => ({
+          ...e,
+          id: e.id || `entry-import-${Date.now()}-${idx}`,
+          amount: Number(e.amount) || 0,
+          actualAmount: e.actualAmount !== undefined && e.actualAmount !== '' ? Number(e.actualAmount) : undefined,
+        }));
+        saveStorage(STORAGE_KEYS.entries, newEntries);
+      }
+
+      // 2. Accounts: check accountBalances, accounts
+      const rawAccounts = data.accountBalances || data.accounts || parsed.accountBalances || parsed.accounts;
+      let newAccounts: Record<string, AccountBalance> = get().accounts;
+      if (rawAccounts && typeof rawAccounts === 'object') {
+        const accMap: Record<string, AccountBalance> = {};
+        for (const [k, v] of Object.entries(rawAccounts)) {
+          if (v && typeof v === 'object' && 'balance' in (v as any)) {
+            accMap[k] = {
+              name: (v as any).name || k.toUpperCase(),
+              balance: Number((v as any).balance) || 0,
+              maturityDay: Number((v as any).maturityDay) || 1,
+            };
+          } else if (typeof v === 'number') {
+            accMap[k] = {
+              name: k.toUpperCase(),
+              balance: v,
+              maturityDay: k.toLowerCase().includes('hsbc') ? 30 : 15,
+            };
+          }
+        }
+        if (Object.keys(accMap).length > 0) {
+          newAccounts = accMap;
+          saveStorage(STORAGE_KEYS.accounts, newAccounts);
+        }
+      }
+
+      // 3. Salary pattern
+      const rawSalary = data.salaryPattern || parsed.salaryPattern;
+      let newSalary: SalaryPayment[] = get().salaryPattern;
+      if (Array.isArray(rawSalary) && rawSalary.length > 0) {
+        newSalary = rawSalary.map((s: any) => ({
+          monthOffset: Number(s.monthOffset) || 0,
+          day: Number(s.day) || 15,
+          amount: Number(s.amount) || 0,
+        }));
+        saveStorage(STORAGE_KEYS.salary, newSalary);
+      }
+
+      // 4. Installments
+      const rawInstallments = data.installments || parsed.installments;
+      let newInstallments: Installment[] = get().installments;
+      if (Array.isArray(rawInstallments)) {
+        newInstallments = rawInstallments.map((inst: any, idx: number) => ({
+          ...inst,
+          id: inst.id || `inst-${Date.now()}-${idx}`,
+          name: inst.name || inst.item || 'Installment',
+          amount: Number(inst.amount) || Number(inst.monthlyAmount) || 0,
+          totalMonths: Number(inst.totalMonths) || Number(inst.months) || Number(inst.installmentsCount) || 1,
+          remainingMonths: Number(inst.remainingMonths) || Number(inst.totalMonths) || Number(inst.months) || 1,
+          startMonth: inst.startMonth || new Date().toISOString().slice(0, 7),
+        }));
+        saveStorage(STORAGE_KEYS.installments, newInstallments);
+      }
+
+      // 5. Rates
+      const rawRates = data.ratesData || data.rates || parsed.ratesData || parsed.rates;
+      let newRates: RatesData = get().rates;
+      if (rawRates && typeof rawRates === 'object') {
+        newRates = {
+          currencies: Array.isArray(rawRates.currencies) && rawRates.currencies.length > 0 ? rawRates.currencies : defaultRates.currencies,
+          gold: Array.isArray(rawRates.gold) && rawRates.gold.length > 0 ? rawRates.gold : defaultRates.gold,
+        };
+        saveStorage(STORAGE_KEYS.rates, newRates);
+      }
+
+      // 6. Storage assets
+      const rawStorage = data.storageAssets || data.storage || parsed.storageAssets || parsed.storage;
+      let newStorage: StorageAsset[] = get().storageAssets;
+      if (Array.isArray(rawStorage)) {
+        newStorage = rawStorage.map((asset: any, idx: number) => ({
+          ...asset,
+          id: asset.id || `storage-${Date.now()}-${idx}`,
+          amount: Number(asset.amount) || 0,
+          buyRate: Number(asset.buyRate) || 1,
+        }));
+        saveStorage(STORAGE_KEYS.storage, newStorage);
+      }
+
+      // 7. Category Caps
+      const rawCaps = data.categoryCaps || parsed.categoryCaps;
+      let newCaps: CategoryCap[] = get().categoryCaps;
+      if (Array.isArray(rawCaps)) {
+        newCaps = rawCaps.map((c: any) => ({
+          category: c.category || '',
+          cap: Number(c.cap) || 0,
+        }));
+        saveStorage(STORAGE_KEYS.categoryCaps, newCaps);
+      }
+
+      // 8. Savings Goals
+      const rawGoals = data.savingsGoals || parsed.savingsGoals;
+      let newGoals: SavingsGoal[] = get().savingsGoals;
+      if (Array.isArray(rawGoals)) {
+        newGoals = rawGoals.map((g: any, idx: number) => ({
+          ...g,
+          id: g.id || `goal-${Date.now()}-${idx}`,
+          targetAmount: Number(g.targetAmount) || 0,
+          currentAmount: Number(g.currentAmount) || 0,
+        }));
+        saveStorage(STORAGE_KEYS.savingsGoals, newGoals);
+      }
+
+      // 9. ASF Jobs
+      const rawAsf = data.asfJobs || data.asf || parsed.asfJobs || parsed.asf;
+      let newAsf: JobItem[] = get().asfJobs;
+      if (Array.isArray(rawAsf)) {
+        newAsf = rawAsf;
+        saveStorage(STORAGE_KEYS.asf, newAsf);
+      }
+
+      // 10. IRQ Jobs
+      const rawIrq = data.irqJobs || data.irq || parsed.irqJobs || parsed.irq;
+      let newIrq: JobItem[] = get().irqJobs;
+      if (Array.isArray(rawIrq)) {
+        newIrq = rawIrq;
+        saveStorage(STORAGE_KEYS.irq, newIrq);
+      }
+
+      // 11. Part Time Jobs
+      const rawPartTime = data.partTimeJobs || parsed.partTimeJobs;
+      let newPartTime: JobItem[] = get().partTimeJobs;
+      if (Array.isArray(rawPartTime)) {
+        newPartTime = rawPartTime;
+        saveStorage(STORAGE_KEYS.partTimeJobs, newPartTime);
+      }
+
+      // 12. Actuals Tracking
+      const rawActuals = data.entryActuals || parsed.entryActuals;
+      let newActuals: Record<string, number> = get().entryActuals;
+      if (rawActuals && typeof rawActuals === 'object') {
+        newActuals = { ...get().entryActuals, ...rawActuals };
+        saveStorage(STORAGE_KEYS.entryActuals, newActuals);
+      }
+
+      const rawActualDates = data.entryActualDates || parsed.entryActualDates;
+      let newActualDates: Record<string, string> = get().entryActualDates;
+      if (rawActualDates && typeof rawActualDates === 'object') {
+        newActualDates = { ...get().entryActualDates, ...rawActualDates };
+        saveStorage(STORAGE_KEYS.entryActualDates, newActualDates);
+      }
+
+      // 13. Deleted forecasts & archived entries
+      const rawDeleted = data.deletedForecasts || parsed.deletedForecasts;
+      let newDeleted: string[] = get().deletedForecasts;
+      if (Array.isArray(rawDeleted)) {
+        newDeleted = rawDeleted;
+        saveStorage(STORAGE_KEYS.deletedForecasts, newDeleted);
+      }
+
+      const rawArchived = data.archivedEntries || parsed.archivedEntries;
+      let newArchived: CashEntry[] = get().archivedEntries;
+      if (Array.isArray(rawArchived)) {
+        newArchived = rawArchived;
+        saveStorage(STORAGE_KEYS.archivedEntries, newArchived);
+      }
+
+      // 14. Preserve auxiliary legacy localStorage keys
+      try {
+        if (data.creditDues || parsed.creditDues) {
+          localStorage.setItem('budget-control-credit-dues', JSON.stringify(data.creditDues || parsed.creditDues));
+        }
+        if (data.creditDueMonths || parsed.creditDueMonths) {
+          localStorage.setItem('budget-control-credit-due-months', JSON.stringify(data.creditDueMonths || parsed.creditDueMonths));
+        }
+        if (data.creditSettlementOverrides || parsed.creditSettlementOverrides) {
+          localStorage.setItem('budget-control-credit-settlement-overrides', JSON.stringify(data.creditSettlementOverrides || parsed.creditSettlementOverrides));
+        }
+        if (data.salaryAnchorMonth || parsed.salaryAnchorMonth) {
+          localStorage.setItem('budget-control-salary-anchor', JSON.stringify(data.salaryAnchorMonth || parsed.salaryAnchorMonth));
+        }
+        localStorage.setItem('budget-control-salary-materialized', 'true');
+        localStorage.setItem('budget-control-seed-version', 'blank-template-v2');
+      } catch (_) {}
+
+      // Update Zustand state
       set({
-        entries: data.entries || get().entries,
-        archivedEntries: data.archivedEntries || get().archivedEntries,
-        accounts: data.accounts || get().accounts,
-        salaryPattern: data.salaryPattern || get().salaryPattern,
-        installments: data.installments || get().installments,
-        rates: data.rates || get().rates,
-        storageAssets: data.storageAssets || get().storageAssets,
-        categoryCaps: data.categoryCaps || get().categoryCaps,
-        savingsGoals: data.savingsGoals || get().savingsGoals,
-        asfJobs: data.asfJobs || get().asfJobs,
-        irqJobs: data.irqJobs || get().irqJobs,
-        partTimeJobs: data.partTimeJobs || get().partTimeJobs,
-        entryActuals: data.entryActuals || get().entryActuals,
-        entryActualDates: data.entryActualDates || get().entryActualDates,
+        entries: newEntries,
+        accounts: newAccounts,
+        salaryPattern: newSalary,
+        installments: newInstallments,
+        rates: newRates,
+        storageAssets: newStorage,
+        categoryCaps: newCaps,
+        savingsGoals: newGoals,
+        asfJobs: newAsf,
+        irqJobs: newIrq,
+        partTimeJobs: newPartTime,
+        entryActuals: newActuals,
+        entryActualDates: newActualDates,
+        deletedForecasts: newDeleted,
+        archivedEntries: newArchived,
       });
+
       return true;
     } catch (e) {
       console.error('Failed to import JSON data:', e);

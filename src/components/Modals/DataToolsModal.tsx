@@ -64,12 +64,14 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
       if (content) {
         const ok = importJSON(content);
         if (ok) {
-          alert('✓ Data restored successfully!');
+          const state = useBudgetStore.getState();
+          alert(`✓ Data restored successfully!\n\n• ${state.entries.length} cash entries\n• ${Object.keys(state.accounts).length} accounts\n• ${state.storageAssets.length} storage assets\n• ${state.installments.length} installments`);
           onClose();
         } else {
-          alert('Failed to parse backup JSON file.');
+          alert('Failed to parse backup JSON file. Please ensure it is a valid Budget Control export.');
         }
       }
+      e.target.value = '';
     };
     reader.readAsText(file);
   };

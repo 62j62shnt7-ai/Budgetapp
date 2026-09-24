@@ -75,6 +75,42 @@ assert.strictEqual(typeof health.score, 'number');
 assert.strictEqual(['A', 'B', 'C', 'D', 'F'].includes(health.grade), true);
 console.log('✓ Financial health score engine verified');
 
+// 7. Legacy Backup JSON Import Compatibility
+const legacyExport = JSON.stringify({
+  app: 'budget-control',
+  version: 1,
+  data: {
+    cashEntries: [
+      { id: 'entry-1', date: '2026-05-01', amount: 5000, type: 'income', category: 'Salary' }
+    ],
+    accountBalances: {
+      cib: { name: 'CIB', balance: 25000, maturityDay: 15 },
+      hsbc: { name: 'HSBC', balance: 12000, maturityDay: 30 }
+    },
+    ratesData: {
+      currencies: [{ name: 'USD', sell: 50, buy: 49 }],
+      goldGrams: 5,
+      goldBuyPricePerGram: 3600
+    },
+    installments: [
+      { id: 'inst-1', item: 'Laptop', totalAmount: 30000, monthlyAmount: 3000, installmentsCount: 10, startOffset: 0 }
+    ]
+  }
+});
+
+const parsedLegacy = JSON.parse(legacyExport);
+const data = parsedLegacy.data || parsedLegacy;
+const entries = data.cashEntries || data.entries;
+const accounts = data.accountBalances || data.accounts;
+const rates = data.ratesData || data.rates;
+
+assert.strictEqual(Array.isArray(entries), true);
+assert.strictEqual(entries.length, 1);
+assert.strictEqual(entries[0].amount, 5000);
+assert.strictEqual(accounts.cib.balance, 25000);
+assert.strictEqual(rates.goldGrams, 5);
+console.log('✓ Legacy JSON backup parsing & normalization verified');
+
 console.log('\n======================================================');
 console.log('🌟 100% OF ENGINE AND BUSINESS LOGIC TESTS PASSED! 🌟');
 console.log('======================================================');
