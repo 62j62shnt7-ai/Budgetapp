@@ -1877,8 +1877,8 @@ function getRemainingCreditDueAmount(id, targetMonth) {
   // 5. Actual payments made directly on manual lump sum entries
   const lumpActualPaid = activeLumpEntries.reduce((sum, entry) => sum + getEntryActualAmount(entry), 0);
 
-  // Total paid towards the settlement / bill
-  const totalPaid = recurringActualPaid + lumpActualPaid;
+  // Total paid towards the settlement / bill (monthRecurringEntry already includes lumpActual via Math.max)
+  const totalPaid = Math.max(recurringActualPaid, lumpActualPaid);
 
   return Math.max(0, totalPlannedDue - totalPaid);
 }
@@ -1898,13 +1898,13 @@ const TROY_OUNCE_GRAMS = 31.1035;
 function computeSpreadPct(sell, buy) {
   const mid = (Number(sell) + Number(buy)) / 2;
   if (!mid) return 0.006;
-  return (Number(buy) - Number(sell)) / mid;
+  return Math.abs(Number(sell) - Number(buy)) / mid;
 }
 
 function applySpread(mid, spreadPct) {
   return {
-    sell: Math.round(mid * (1 - spreadPct / 2) * 100) / 100,
-    buy: Math.round(mid * (1 + spreadPct / 2) * 100) / 100
+    sell: Math.round(mid * (1 + spreadPct / 2) * 100) / 100,
+    buy: Math.round(mid * (1 - spreadPct / 2) * 100) / 100
   };
 }
 
@@ -2346,7 +2346,7 @@ function calculateForecast(entries) {
   const balances = [];
 
   ordered.forEach((month) => {
-    running += months[month];
+    running = Math.round((running + months[month]) * 100) / 100;
     balances.push({ month, balance: running, net: months[month] });
   });
 
@@ -2460,7 +2460,7 @@ function getForecastTimeSeries(requestedMonths = forecastLineRangeMonths) {
       const amt = Number(entry.amount || 0);
       const delta = entry.type === "income" ? amt : -amt;
       const prevBal = running;
-      running += delta;
+      running = Math.round((running + delta) * 100) / 100;
 
       const [ey, em, ed] = DateUtils.parseDate(entry.date);
       const dObj = new Date(Date.UTC(ey, em - 1, ed));
@@ -2513,9 +2513,9 @@ function getForecastTimeSeries(requestedMonths = forecastLineRangeMonths) {
 
       const income = monthlyIncomes[monthKey] || 0;
       const expense = monthlyExpenses[monthKey] || 0;
-      const net = income - expense;
+      const net = Math.round((income - expense) * 100) / 100;
       const opening = running;
-      running += net;
+      running = Math.round((running + net) * 100) / 100;
 
       const dateObj = new Date(Date.UTC(y, m - 1, 1));
       const shortLabel = dateObj.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
@@ -3249,9 +3249,9 @@ function getDeficitPeriods(entries = forecastEntries()) {
 
   sorted.forEach((entry) => {
     const delta = Number(entry.amount || 0) * (entry.type === "income" ? 1 : -1);
-    running += delta;
+    running = Math.round((running + delta) * 100) / 100;
 
-    if (running < 0) {
+    if (running < -0.005) {
       if (!currentPeriod) {
         // Exact day balance turns negative
         currentPeriod = {
@@ -3403,7 +3403,7 @@ function getDeficitSummary() {
     .map((entry) => {
       const isPartial = isPartialTracked(entry);
       const remaining = isPartial ? getRemainingForecastAmount(entry) : Number(entry.amount || 0);
-      const settled = isPartial ? remaining <= 0 : getEntryActualAmount(entry) > 0;
+      const settled = Boolean(entry.isClosed) || (isPartial ? remaining <= 0 : getEntryActualAmount(entry) > 0);
       return { entry, remaining, settled, daysOverdue: DateUtils.daysBetween(entry.date, today) };
     })
     .filter((item) => !item.settled)
@@ -7066,7 +7066,7 @@ async function checkForAppVersionUpdate() {
     const res = await fetch("./sw.js?check=" + Date.now(), { cache: "no-store" });
     if (res.ok) {
       const text = await res.text();
-      const match = text.match(/CACHE_NAME\s*=\s*["']budget-control-(v\d+)["']/);
+      const match = text.match(/CACHE_NAME\s*=\s*["']budget-control-(.+?)["']/);
       if (match && match[1]) {
         const remoteVersion = match[1];
         if (remoteVersion !== CURRENT_APP_VERSION) {
@@ -7284,7 +7284,7 @@ function setupEventListeners() {
         const s = document.getElementById("historySearch");
         if (s) s.focus();
       } else {
-        const s = document.getElementById("cfSearch");
+        const s = document.getElementById("searchEntries") || document.getElementById("cfSearch");
         if (s) s.focus();
       }
     }
@@ -7553,6 +7553,9 @@ function setupEventListeners() {
         const submitBtn = dlg.querySelector('button[type="submit"]:not(.icon-button)');
         if (form && submitBtn) {
           event.preventDefault();
+          if (target && typeof target.blur === "function") {
+            target.blur();
+          }
           submitBtn.click();
         }
       }
