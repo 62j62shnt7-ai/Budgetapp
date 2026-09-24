@@ -60,7 +60,7 @@ export const DeficitBanner: React.FC<DeficitBannerProps> = ({ deficits }) => {
       <button
         className="btn btn-secondary"
         style={{ borderColor: 'rgba(244, 63, 94, 0.3)', color: '#f43f5e' }}
-        onClick={() => setActiveTab('forecast')}
+        onClick={() => setActiveTab('deficits')}
       >
         <span>Inspect Forecast &amp; Deficits</span>
         <ArrowRight size={14} />

@@ -1,193 +1,187 @@
 import React, { useState } from 'react';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { computeSpreadPct } from '../../engine/currency';
-import { Coins, DollarSign, Check, Edit2 } from 'lucide-react';
 import type { RatesData } from '../../types';
+import { Edit2, Check, X } from 'lucide-react';
 
-export const RatesView: React.FC = () => {
+interface RatesViewProps {
+  onOpenRateModal?: (type: 'currency' | 'gold') => void;
+}
+
+export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
   const { rates, updateRates } = useBudgetStore();
-  const [editingRates, setEditingRates] = useState<RatesData | null>(null);
+  const [isEditing, setIsEditing] = useState<boolean>(false);
+  const [draftRates, setDraftRates] = useState<RatesData | null>(null);
 
   const handleStartEdit = () => {
-    setEditingRates(JSON.parse(JSON.stringify(rates)));
+    setDraftRates(JSON.parse(JSON.stringify(rates)));
+    setIsEditing(true);
   };
 
   const handleSave = () => {
-    if (editingRates) {
-      updateRates(editingRates);
-      setEditingRates(null);
+    if (draftRates) {
+      updateRates(draftRates);
+      setIsEditing(false);
+      setDraftRates(null);
     }
   };
 
-  const current = editingRates || rates;
+  const handleCancel = () => {
+    setIsEditing(false);
+    setDraftRates(null);
+  };
+
+  const current = isEditing && draftRates ? draftRates : rates;
 
   return (
-    <div>
-      {/* Action Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-        <div>
-          <div style={{ fontWeight: 800, fontSize: '1.35rem', fontFamily: 'var(--font-heading)' }}>
-            Exchange Rates &amp; Gold Prices
+    <section className="view" id="rates" style={{ display: 'block' }}>
+      <div className="content-grid">
+        {/* Currencies Panel */}
+        <section className="panel">
+          <div className="panel-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 style={{ margin: 0 }}>Currency rates</h3>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              {isEditing ? (
+                <>
+                  <button className="primary-button" type="button" onClick={handleSave}>
+                    <Check size={14} style={{ marginRight: '4px' }} /> Save
+                  </button>
+                  <button className="ghost-button" type="button" onClick={handleCancel}>
+                    <X size={14} style={{ marginRight: '4px' }} /> Cancel
+                  </button>
+                </>
+              ) : (
+                <button
+                  className="ghost-button"
+                  id="editCurrencies"
+                  type="button"
+                  onClick={onOpenRateModal ? () => onOpenRateModal('currency') : handleStartEdit}
+                >
+                  <Edit2 size={14} style={{ marginRight: '4px' }} /> Update Rates
+                </button>
+              )}
+            </div>
           </div>
-          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-            Buy &amp; Sell market prices used for multi-currency storage valuation
-          </div>
-        </div>
 
-        {editingRates ? (
-          <button className="btn btn-primary" onClick={handleSave}>
-            <Check size={16} />
-            <span>Save Changes</span>
-          </button>
-        ) : (
-          <button className="btn btn-secondary" onClick={handleStartEdit}>
-            <Edit2 size={16} />
-            <span>Edit Rates</span>
-          </button>
-        )}
+          <div id="currencyRates" className="rate-grid" style={{ marginTop: '16px' }}>
+            {current.currencies.map((c, idx) => {
+              const spread = computeSpreadPct(c.sell, c.buy);
+              return (
+                <div key={c.name} className="rate-card">
+                  <strong>{c.name}</strong>
+                  {isEditing && draftRates ? (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginTop: '6px' }}>
+                      <label style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                        Sell
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={c.sell}
+                          onChange={(e) => {
+                            const copy = { ...draftRates };
+                            copy.currencies[idx].sell = Number(e.target.value) || 0;
+                            setDraftRates(copy);
+                          }}
+                          style={{ width: '100%', fontSize: '12px', padding: '3px 6px' }}
+                        />
+                      </label>
+                      <label style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                        Buy
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={c.buy}
+                          onChange={(e) => {
+                            const copy = { ...draftRates };
+                            copy.currencies[idx].buy = Number(e.target.value) || 0;
+                            setDraftRates(copy);
+                          }}
+                          style={{ width: '100%', fontSize: '12px', padding: '3px 6px' }}
+                        />
+                      </label>
+                    </div>
+                  ) : (
+                    <small>Sell {c.sell.toFixed(2)} / Buy {c.buy.toFixed(2)} ({spread.toFixed(1)}%)</small>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* Gold Rates Panel */}
+        <section className="panel">
+          <div className="panel-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 style={{ margin: 0 }}>Gold rates</h3>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              {isEditing ? (
+                <>
+                  <button className="primary-button" type="button" onClick={handleSave}>
+                    <Check size={14} style={{ marginRight: '4px' }} /> Save
+                  </button>
+                  <button className="ghost-button" type="button" onClick={handleCancel}>
+                    <X size={14} style={{ marginRight: '4px' }} /> Cancel
+                  </button>
+                </>
+              ) : (
+                <button
+                  className="ghost-button"
+                  id="editGold"
+                  type="button"
+                  onClick={onOpenRateModal ? () => onOpenRateModal('gold') : handleStartEdit}
+                >
+                  <Edit2 size={14} style={{ marginRight: '4px' }} /> Update Rates
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div id="goldRates" className="rate-grid" style={{ marginTop: '16px' }}>
+            {current.gold.map((g, idx) => {
+              const spread = computeSpreadPct(g.sell, g.buy);
+              return (
+                <div key={g.name} className="rate-card">
+                  <strong>{g.name}</strong>
+                  {isEditing && draftRates ? (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginTop: '6px' }}>
+                      <label style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                        Sell
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={g.sell}
+                          onChange={(e) => {
+                            const copy = { ...draftRates };
+                            copy.gold[idx].sell = Number(e.target.value) || 0;
+                            setDraftRates(copy);
+                          }}
+                          style={{ width: '100%', fontSize: '12px', padding: '3px 6px' }}
+                        />
+                      </label>
+                      <label style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                        Buy
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={g.buy}
+                          onChange={(e) => {
+                            const copy = { ...draftRates };
+                            copy.gold[idx].buy = Number(e.target.value) || 0;
+                            setDraftRates(copy);
+                          }}
+                          style={{ width: '100%', fontSize: '12px', padding: '3px 6px' }}
+                        />
+                      </label>
+                    </div>
+                  ) : (
+                    <small>Sell {g.sell.toFixed(0)} / Buy {g.buy.toFixed(0)} ({spread.toFixed(1)}%)</small>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
       </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '1.5rem' }}>
-        {/* Currencies */}
-        <div className="card">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontWeight: 700, fontSize: '1.1rem', marginBottom: '1rem' }}>
-            <DollarSign size={18} color="#10b981" />
-            <span>Foreign Currencies (vs EGP)</span>
-          </div>
-
-          <div className="table-container">
-            <table>
-              <thead>
-                <tr>
-                  <th>Currency</th>
-                  <th>Sell Rate</th>
-                  <th>Buy Rate</th>
-                  <th>Spread</th>
-                </tr>
-              </thead>
-              <tbody>
-                {current.currencies.map((c, idx) => {
-                  const spread = computeSpreadPct(c.sell, c.buy);
-                  return (
-                    <tr key={c.name}>
-                      <td style={{ fontWeight: 700 }}>{c.name}</td>
-                      <td>
-                        {editingRates ? (
-                          <input
-                            type="number"
-                            step="0.01"
-                            className="form-input"
-                            style={{ width: '80px', padding: '0.25rem 0.5rem' }}
-                            value={c.sell}
-                            onChange={(e) => {
-                              const copy = { ...editingRates };
-                              copy.currencies[idx].sell = Number(e.target.value);
-                              setEditingRates(copy);
-                            }}
-                          />
-                        ) : (
-                          `${c.sell.toFixed(2)} EGP`
-                        )}
-                      </td>
-                      <td>
-                        {editingRates ? (
-                          <input
-                            type="number"
-                            step="0.01"
-                            className="form-input"
-                            style={{ width: '80px', padding: '0.25rem 0.5rem' }}
-                            value={c.buy}
-                            onChange={(e) => {
-                              const copy = { ...editingRates };
-                              copy.currencies[idx].buy = Number(e.target.value);
-                              setEditingRates(copy);
-                            }}
-                          />
-                        ) : (
-                          `${c.buy.toFixed(2)} EGP`
-                        )}
-                      </td>
-                      <td>
-                        <span className="badge badge-cyan">{spread.toFixed(2)}%</span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Gold */}
-        <div className="card">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontWeight: 700, fontSize: '1.1rem', marginBottom: '1rem' }}>
-            <Coins size={18} color="#f59e0b" />
-            <span>Gold Rates (per gram / coin)</span>
-          </div>
-
-          <div className="table-container">
-            <table>
-              <thead>
-                <tr>
-                  <th>Item</th>
-                  <th>Sell Rate</th>
-                  <th>Buy Rate</th>
-                  <th>Spread</th>
-                </tr>
-              </thead>
-              <tbody>
-                {current.gold.map((g, idx) => {
-                  const spread = computeSpreadPct(g.sell, g.buy);
-                  return (
-                    <tr key={g.name}>
-                      <td style={{ fontWeight: 700 }}>{g.name}</td>
-                      <td>
-                        {editingRates ? (
-                          <input
-                            type="number"
-                            step="1"
-                            className="form-input"
-                            style={{ width: '90px', padding: '0.25rem 0.5rem' }}
-                            value={g.sell}
-                            onChange={(e) => {
-                              const copy = { ...editingRates };
-                              copy.gold[idx].sell = Number(e.target.value);
-                              setEditingRates(copy);
-                            }}
-                          />
-                        ) : (
-                          `${g.sell.toLocaleString()} EGP`
-                        )}
-                      </td>
-                      <td>
-                        {editingRates ? (
-                          <input
-                            type="number"
-                            step="1"
-                            className="form-input"
-                            style={{ width: '90px', padding: '0.25rem 0.5rem' }}
-                            value={g.buy}
-                            onChange={(e) => {
-                              const copy = { ...editingRates };
-                              copy.gold[idx].buy = Number(e.target.value);
-                              setEditingRates(copy);
-                            }}
-                          />
-                        ) : (
-                          `${g.buy.toLocaleString()} EGP`
-                        )}
-                      </td>
-                      <td>
-                        <span className="badge badge-warning">{spread.toFixed(2)}%</span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
+    </section>
   );
 };

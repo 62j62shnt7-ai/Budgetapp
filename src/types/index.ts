@@ -1,8 +1,15 @@
 // ==========================================================================
-// Budget Control — Core Domain Models & Type Definitions
+// Core Domain Models & Complete TypeScript Interfaces
 // ==========================================================================
 
 export type EntryType = 'income' | 'expense';
+
+export interface EntryDraw {
+  date: string;
+  amount: number;
+  note?: string;
+  tag?: string;
+}
 
 export interface CashEntry {
   id: string;
@@ -20,10 +27,12 @@ export interface CashEntry {
   source?: string;
   isDraw?: boolean;
   isClosed?: boolean;
-  draws?: Array<{ date: string; amount: number; note?: string }>;
+  draws?: EntryDraw[];
   settlementDate?: string;
   linkedInflowId?: string;
   archivedAt?: string;
+  currency?: string;
+  actualAmount?: number;
 }
 
 export interface SalaryPayment {
@@ -77,6 +86,8 @@ export interface StorageAsset {
   currentPrice?: number;
   currency: string;
   notes?: string;
+  rate?: number;
+  rateSource?: string;
 }
 
 export interface CategoryCap {
@@ -90,6 +101,59 @@ export interface SavingsGoal {
   target: number;
   current: number;
   deadline?: string;
+}
+
+export interface JobDayLog {
+  id?: string;
+  date: string;
+  units?: number;
+  hours?: number;
+  rate?: number;
+  note?: string;
+}
+
+export interface JobPayment {
+  id: string;
+  date: string;
+  amount: number;
+  currency?: string;
+  account?: string;
+  settlementAccount?: string;
+  syncToBudget?: boolean;
+  paymentNote?: string;
+  note?: string;
+}
+
+export interface JobExpense {
+  id: string;
+  date: string;
+  title?: string;
+  description?: string;
+  amount: number;
+  currency?: string;
+  isReimbursable?: boolean;
+  receiptNote?: string;
+  note?: string;
+}
+
+export interface JobItem {
+  id: string;
+  title: string;
+  client?: string;
+  startDate?: string;
+  endDate?: string;
+  currency: string;
+  type?: 'daily_rate' | 'lumpsum' | 'hourly' | 'fixed';
+  dailyRate?: number;
+  lumpSumAmount?: number;
+  rateType?: 'daily' | 'hourly' | 'fixed';
+  rateAmount?: number;
+  status?: 'active' | 'invoiced' | 'partial' | 'paid' | 'completed' | 'paused';
+  notes?: string;
+  daysWorked?: JobDayLog[];
+  logs?: JobDayLog[];
+  payments?: JobPayment[];
+  expenses?: JobExpense[];
 }
 
 export interface DeficitPeriod {

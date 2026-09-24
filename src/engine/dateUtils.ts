@@ -6,6 +6,9 @@ export const DateUtils = {
   formatDate: (year: number, month: number, day: number): string =>
     `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
 
+  formatDateObj: (d: Date): string =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
+
   currentYearMonth: (): string => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;

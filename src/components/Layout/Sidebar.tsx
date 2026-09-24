@@ -1,45 +1,60 @@
 import React from 'react';
-import { useBudgetStore } from '../../store/useBudgetStore';
-import type { BudgetStoreState } from '../../store/useBudgetStore';
-import { 
-  LayoutDashboard, 
-  TrendingUp, 
-  CreditCard, 
-  ReceiptText, 
-  Coins, 
-  Boxes, 
-  Settings 
-} from 'lucide-react';
+import { useBudgetStore, type ViewTab } from '../../store/useBudgetStore';
 
 export const Sidebar: React.FC = () => {
-  const { activeTab, setActiveTab } = useBudgetStore();
+  const { activeTab, setActiveTab, sidebarCollapsed, toggleSidebar } = useBudgetStore();
 
-  const navItems: Array<{ id: BudgetStoreState['activeTab']; label: string; icon: React.ReactNode }> = [
-    { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={18} /> },
-    { id: 'forecast', label: 'Cashflow Forecast', icon: <TrendingUp size={18} /> },
-    { id: 'credit', label: 'Credit Card Cycles', icon: <CreditCard size={18} /> },
-    { id: 'entries', label: 'Entries & History', icon: <ReceiptText size={18} /> },
-    { id: 'rates', label: 'Rates & Gold', icon: <Coins size={18} /> },
-    { id: 'storage', label: 'Storage Assets', icon: <Boxes size={18} /> },
-    { id: 'settings', label: 'Settings & Cloud', icon: <Settings size={18} /> },
+  const tabs: Array<{ id: ViewTab; label: string }> = [
+    { id: 'dashboard', label: 'Dashboard' },
+    { id: 'deficits', label: 'Deficits' },
+    { id: 'cashflow', label: 'Cash Flow' },
+    { id: 'history', label: 'History' },
+    { id: 'accounts', label: 'Accounts' },
+    { id: 'storage', label: 'Storage' },
+    { id: 'jobs', label: 'Jobs' },
+    { id: 'rates', label: 'Rates' },
   ];
 
   return (
-    <aside className="app-sidebar">
-      <nav className="sidebar-nav">
-        {navItems.map((item) => (
-          <div
-            key={item.id}
-            className={`nav-item ${activeTab === item.id ? 'active' : ''}`}
-            onClick={() => setActiveTab(item.id)}
-            role="button"
-            tabIndex={0}
-          >
-            {item.icon}
-            <span className="nav-text">{item.label}</span>
+    <>
+      <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
+        <div className="brand">
+          <div className="brand-mark">BC</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h1>Budget Control</h1>
+            <p>Cash, jobs, storage</p>
           </div>
-        ))}
-      </nav>
-    </aside>
+          <button
+            className="sidebar-toggle-btn"
+            id="sidebarCollapseBtn"
+            type="button"
+            title="Collapse sidebar (Ctrl+B)"
+            aria-label="Collapse sidebar"
+            onClick={toggleSidebar}
+          >
+            ◀
+          </button>
+        </div>
+
+        <nav className="nav" aria-label="Main views">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              className={`nav-item ${activeTab === tab.id ? 'active' : ''}`}
+              data-view={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+      </aside>
+      <div
+        className="sidebar-backdrop"
+        id="sidebarBackdrop"
+        onClick={toggleSidebar}
+      />
+    </>
   );
 };
