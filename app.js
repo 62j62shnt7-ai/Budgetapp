@@ -580,13 +580,206 @@ function confirmAction(title, message, confirmButtonText = "Delete") {
 // --- Subcategory & Tag Helpers ---
 const defaultCategorySubcats = {
   Home: ["Food", "Groceries", "Bills", "Electricity", "Internet", "Water", "Maintenance", "Cleaning", "Furniture", "Household"],
-  Bills: ["Electricity", "Internet", "Water", "Mobile Phone", "Gas", "Subscriptions", "Insurance"],
+  Bills: ["Bills", "Electricity", "Internet", "Water", "Mobile Phone", "Gas", "Subscriptions", "Insurance"],
   Training: ["Courses", "Gym", "Books", "Certifications", "Coaching"],
-  Kids: ["School", "Clothes", "Toys", "Activities", "Medical", "Supplies"],
-  Transportation: ["Fuel", "Uber / Careem", "Maintenance", "Parking", "Tolls", "License"],
+  Kids: ["Kids", "School", "Clothes", "Toys", "Activities", "Medical", "Supplies"],
+  Transportation: ["Kids", "Fuel", "Uber / Careem", "Maintenance", "Parking", "Tolls", "License"],
   Garage: ["Rent", "Maintenance", "Tools"],
   Other: ["Gifts", "Personal", "Dining Out", "Shopping", "Charity", "Healthcare"]
 };
+
+function inferTagForEntry(entry) {
+  if (!entry) return "";
+  const cat = (entry.category || "").toLowerCase().trim();
+  const src = (entry.source || "").toLowerCase().trim();
+  const cType = (entry.creditType || "").toLowerCase().trim();
+  const acc = (entry.account || "").toLowerCase().trim();
+  const id = (entry.id || "").toLowerCase();
+
+  // 1. Credit Due / Settlement
+  if (
+    id.startsWith("credit-settlement-") ||
+    src === "recurring credit" ||
+    entry.isCreditSettlement ||
+    cType === "cib" ||
+    cType === "hsbc" ||
+    cat.includes("credit due") ||
+    cat.includes("cib credit") ||
+    cat.includes("hsbc credit")
+  ) {
+    return "Credit";
+  }
+
+  // 2. Loans & Repayments
+  if (
+    src === "loan" ||
+    Boolean(entry.loanId) ||
+    cat.startsWith("loan inflow") ||
+    cat.startsWith("loan repayment") ||
+    cat.includes("repayment") ||
+    cat.includes("bridge loan") ||
+    cat === "loan"
+  ) {
+    return "Loan";
+  }
+
+  // 3. Garage / Rent
+  if (cat === "garage" || cat.startsWith("garage") || cat.includes("rent")) {
+    return "Rent";
+  }
+
+  // 4. Salary / Income patterns
+  if (
+    src === "salary" ||
+    cat === "salary" ||
+    cat.includes("profit share") ||
+    cat.includes("bonus")
+  ) {
+    return "Salary";
+  }
+
+  // 5. Part-Time / Freelance Jobs
+  if (
+    src === "part-time job" ||
+    cat.includes("barakat") ||
+    cat.includes("jadeela") ||
+    cat.includes("asf") ||
+    cat.includes("irq")
+  ) {
+    return "Part-Time";
+  }
+
+  // 6. Bills & Utilities
+  if (
+    cat.includes("electric") ||
+    cat.includes("mobile") ||
+    cat.includes("phone") ||
+    cat.includes("internet") ||
+    cat.includes("wifi") ||
+    cat.includes("gas") ||
+    cat.includes("water") ||
+    cat.includes("utility") ||
+    cat === "bills"
+  ) {
+    return "Bills";
+  }
+
+  // 7. Kids & School
+  if (
+    cat.includes("kids") ||
+    cat.includes("course") ||
+    cat.includes("school") ||
+    cat.includes("tuition") ||
+    cat.includes("nursery") ||
+    cat === "transportation"
+  ) {
+    return "Kids";
+  }
+
+  // 8. Food & Groceries
+  if (
+    cat === "home" ||
+    cat.includes("food") ||
+    cat.includes("grocer") ||
+    cat.includes("supermarket") ||
+    cat.includes("market")
+  ) {
+    return "Food";
+  }
+
+  // 9. Maintenance & Fixes
+  if (
+    cat.includes("fix") ||
+    cat.includes("repair") ||
+    cat.includes("maintenance")
+  ) {
+    return "Maintenance";
+  }
+
+  // 10. Shopping
+  if (cat.includes("amazon") || cat.includes("noon") || cat.includes("shopping")) {
+    return "Shopping";
+  }
+
+  // 11. Medical / Health
+  if (
+    cat.includes("medical") ||
+    cat.includes("pharmacy") ||
+    cat.includes("doctor") ||
+    cat.includes("hospital") ||
+    cat.includes("medicine")
+  ) {
+    return "Medical";
+  }
+
+  // 12. General Credit Card / Travel / Fuel
+  if (cat.includes("accommodation") || cat.includes("hotel") || cat.includes("fuel") || cat.includes("petrol")) {
+    return "Expense";
+  }
+
+  return "";
+}
+
+function autoTagUntaggedEntries({ notify = false } = {}) {
+  let taggedEntriesCount = 0;
+  let taggedDrawsCount = 0;
+
+  if (Array.isArray(cashEntries)) {
+    cashEntries.forEach((entry) => {
+      const currentTag = (entry.tag || "").trim();
+      const inferred = inferTagForEntry(entry);
+
+      if (!currentTag && inferred) {
+        entry.tag = inferred;
+        taggedEntriesCount++;
+      }
+
+      const activeTag = (entry.tag || "").trim() || inferred;
+      if (Array.isArray(entry.draws)) {
+        entry.draws.forEach((draw) => {
+          if (!draw.tag || !draw.tag.trim()) {
+            if (activeTag) {
+              draw.tag = activeTag;
+              taggedDrawsCount++;
+            }
+          }
+        });
+      }
+    });
+  }
+
+  if (taggedEntriesCount > 0 || taggedDrawsCount > 0) {
+    saveSetting(keys.entries, cashEntries);
+    renderAll();
+  }
+
+  if (notify) {
+    if (taggedEntriesCount === 0 && taggedDrawsCount === 0) {
+      alert("All entries and payments already have tags! No untagged items were found.");
+    } else {
+      alert(`Auto-tagged ${taggedEntriesCount} budget entries and ${taggedDrawsCount} payment tranches.`);
+    }
+  }
+
+  return { taggedEntriesCount, taggedDrawsCount };
+}
+
+function tryAutoFillEntryTag(form) {
+  if (!form || !form.elements || !form.elements.tag) return;
+  if (form.elements.tag.value && form.elements.tag.value.trim()) return;
+
+  const mockEntry = {
+    category: form.elements.category?.value || "",
+    creditType: form.elements.creditType?.value || "",
+    account: form.elements.account?.value || "",
+    type: form.elements.type?.value || "",
+    source: ""
+  };
+  const inferred = inferTagForEntry(mockEntry);
+  if (inferred) {
+    form.elements.tag.value = inferred;
+  }
+}
 
 function updateSubcategorySuggestions(categoryName, datalistId = "subcatSuggestions") {
   const datalist = document.getElementById(datalistId);
@@ -653,7 +846,7 @@ function promptAccountAdjustment(type, amount, defaultAccountKey = "cash", descr
       tagField.style.display = isIncome ? "none" : "block";
     }
     if (tagInput) {
-      tagInput.value = initialTag || "";
+      tagInput.value = initialTag || inferTagForEntry({ category: description, type, account: defaultAccountKey }) || "";
     }
 
     if (titleEl) {
@@ -1025,7 +1218,8 @@ function buildSalaryEntries(startYearMonth, quarters) {
           account: "hsbc",
           type: "income",
           amount: Number(payment.amount) || 0,
-          source: "salary"
+          source: "salary",
+          tag: "Salary"
         });
       });
   }
@@ -1388,7 +1582,8 @@ function creditDueEntries() {
         creditType: accountKey,
         isCreditSettlement: true,
         isCustomized: Boolean(override && (override.date || hasPlannedOverride)),
-        source: "recurring credit"
+        source: "recurring credit",
+        tag: "Credit"
       });
     });
   });
@@ -1432,7 +1627,8 @@ function creditDueEntries() {
         creditType: accountKey,
         isCreditSettlement: true,
         isCustomized: Boolean(override && (override.date || hasPlannedOverride)),
-        source: "recurring credit"
+        source: "recurring credit",
+        tag: "Credit"
       });
     });
   });
@@ -6166,6 +6362,9 @@ function syncEntryFormMode() {
     if (form.elements.account && (!form.elements.account.value || form.elements.account.value.toLowerCase() === "cash")) {
       form.elements.account.value = creditType === "cib" ? "cib" : "hsbc";
     }
+    if (form.elements.tag && !form.elements.tag.value) {
+      form.elements.tag.value = "Credit";
+    }
   }
 
   const recalcContainer = document.getElementById("recalcCreditDueContainer");
@@ -6259,6 +6458,7 @@ function openEntryDialog(type, entry = null) {
       form.elements.creditSettlementDate.dataset.autoGenerated = "true";
     }
     updateSubcategorySuggestions(type === "expense" ? "Home" : "");
+    tryAutoFillEntryTag(form);
   }
 
   syncEntryFormMode();
@@ -6672,7 +6872,8 @@ function handleLoanBridgeSubmit(event) {
     account: account,
     type: "income",
     amount: amount,
-    source: "loan"
+    source: "loan",
+    tag: "Loan"
   };
   cashEntries.push(inflowEntry);
 
@@ -6688,7 +6889,8 @@ function handleLoanBridgeSubmit(event) {
       account: account,
       type: "expense",
       amount: repaymentAmount,
-      source: "loan"
+      source: "loan",
+      tag: "Loan"
     };
     cashEntries.push(repaymentEntry);
   } else {
@@ -7391,6 +7593,9 @@ function setupEventListeners() {
 
   on("refreshAppBtn", "click", executeAppRefresh);
   on("refreshAppDialogBtn", "click", executeAppRefresh);
+  on("autoTagBtn", "click", () => {
+    autoTagUntaggedEntries({ notify: true });
+  });
 
   on("resetData", "click", async () => {
     const confirmed = await confirmAction(
@@ -7567,13 +7772,18 @@ function setupEventListeners() {
     if (entryForm.elements && entryForm.elements.category) {
       entryForm.elements.category.addEventListener("input", (e) => {
         updateSubcategorySuggestions(e.target.value);
+        tryAutoFillEntryTag(entryForm);
       });
       entryForm.elements.category.addEventListener("change", (e) => {
         updateSubcategorySuggestions(e.target.value);
+        tryAutoFillEntryTag(entryForm);
       });
     }
     if (entryForm.elements && entryForm.elements.creditType) {
-      entryForm.elements.creditType.addEventListener("change", syncEntryFormMode);
+      entryForm.elements.creditType.addEventListener("change", () => {
+        syncEntryFormMode();
+        tryAutoFillEntryTag(entryForm);
+      });
     }
     if (entryForm.elements && entryForm.elements.recurring) {
       entryForm.elements.recurring.addEventListener("change", () => syncRecurringFields(false));
@@ -8406,7 +8616,8 @@ function setupEventListeners() {
         type: "income",
         amount: egpVal,
         source: "part-time job",
-        creditType: ""
+        creditType: "",
+        tag: "Part-Time"
       };
       cashEntries.push(newEntry);
       entryActuals[newEntryId] = egpVal;
@@ -9774,6 +9985,7 @@ function initApp() {
     applySidebarState(sidebarCollapsed);
     materializeLegacySalaryEntries();
     healSingleDrawMismatches();
+    autoTagUntaggedEntries({ notify: false });
     updateUndoResetVisibility();
     setupEventListeners();
     setupGistSyncEventListeners();

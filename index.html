@@ -849,14 +849,22 @@
         <datalist id="subcatSuggestions">
           <option value="Food"></option>
           <option value="Groceries"></option>
+          <option value="Credit"></option>
+          <option value="Loan"></option>
+          <option value="Rent"></option>
+          <option value="Salary"></option>
           <option value="Bills"></option>
+          <option value="Kids"></option>
+          <option value="Part-Time"></option>
+          <option value="Maintenance"></option>
+          <option value="Expense"></option>
           <option value="Electricity"></option>
           <option value="Internet"></option>
           <option value="Water"></option>
-          <option value="Maintenance"></option>
           <option value="Fuel"></option>
           <option value="Dining Out"></option>
           <option value="Shopping"></option>
+          <option value="Medical"></option>
         </datalist>
         <label>
           Account
@@ -1507,6 +1515,13 @@
             <button class="ghost-button" id="exportData" type="button">Export Backup (JSON)</button>
             <button class="ghost-button" id="importData" type="button">Import Backup (JSON)</button>
             <input type="file" id="importDataFile" accept="application/json" hidden>
+          </div>
+        </div>
+        <div class="data-tools-card">
+          <h4 style="margin: 0 0 4px; font-size: 14px;">🏷️ Tags &amp; Auto-Classification</h4>
+          <p style="font-size: 13px; color: var(--muted); margin: 0 0 10px;">Automatically tag untagged past entries and payment tranches using smart presets (Credit, Loan, Rent, Salary, Bills, Food, Kids, etc.).</p>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+            <button class="ghost-button" id="autoTagBtn" type="button" style="border-color: var(--blue); color: var(--blue);">🏷️ Auto-Tag Untagged Items</button>
           </div>
         </div>
         <div class="data-tools-card">
