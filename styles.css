@@ -3027,7 +3027,7 @@ label {
 
   .table-wrap.responsive-cards tr {
     display: grid;
-    grid-template-columns: 1fr auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     row-gap: 8px;
     column-gap: 12px;
     padding: 14px;
@@ -3056,6 +3056,11 @@ label {
     font-size: 14.5px;
     color: var(--ink);
     word-break: break-word;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
   }
 
   .table-wrap.responsive-cards .cell-amount,
@@ -3067,6 +3072,9 @@ label {
     text-align: right;
     color: var(--ink);
     white-space: nowrap;
+    justify-self: end;
+    margin-left: 8px;
+    flex-shrink: 0;
   }
 
   /* Row 2: Date on left, Type Pill on right */
