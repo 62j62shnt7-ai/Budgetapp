@@ -21,6 +21,7 @@ export const GistSyncModal: React.FC<GistSyncModalProps> = ({ isOpen, onClose })
   const [autoSync, setAutoSync] = useState(true);
   const [statusMessage, setStatusMessage] = useState<{ text: string; isError?: boolean } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [gistDetails, setGistDetails] = useState<string | null>(null);
 
   useEffect(() => {
     setTokenInput(gistToken);
@@ -50,7 +51,11 @@ export const GistSyncModal: React.FC<GistSyncModalProps> = ({ isOpen, onClose })
       });
       if (!res.ok) throw new Error(`GitHub error: ${res.statusText}`);
       const gists = await res.json();
-      const match = gists.find((g: any) => g.files && (g.files['budget-control-backup.json'] || g.description?.includes('Budget Control')));
+      const match = gists.find((g: any) => g.files && (
+        g.files['budget-data.json'] ||
+        g.files['budget-control-backup.json'] ||
+        g.description?.includes('Budget Control')
+      ));
       if (match) {
         setIdInput(match.id);
         setGistConfig(token, match.id, autoSync);
@@ -84,7 +89,7 @@ export const GistSyncModal: React.FC<GistSyncModalProps> = ({ isOpen, onClose })
           description: 'Budget Control Backup',
           public: false,
           files: {
-            'budget-control-backup.json': {
+            'budget-data.json': {
               content: payload,
             },
           },
@@ -107,9 +112,16 @@ export const GistSyncModal: React.FC<GistSyncModalProps> = ({ isOpen, onClose })
     const token = tokenInput.trim() || gistToken;
     const gId = idInput.trim() || gistId;
     if (!token || !gId) return showMsg('Token and Gist ID are required to upload', true);
+    if (!window.confirm('This will replace the budget data stored in the GitHub Gist with this browser\'s current data. Continue?')) {
+      return;
+    }
 
     setIsLoading(true);
     try {
+      const current = await fetch(`https://api.github.com/gists/${gId}`, {
+        headers: { Authorization: `token ${token}`, Accept: 'application/vnd.github.v3+json' },
+      });
+      if (!current.ok) throw new Error(`Unable to verify Gist: ${current.statusText}`);
       const payload = exportJSON();
       const res = await fetch(`https://api.github.com/gists/${gId}`, {
         method: 'PATCH',
@@ -121,7 +133,7 @@ export const GistSyncModal: React.FC<GistSyncModalProps> = ({ isOpen, onClose })
         body: JSON.stringify({
           description: 'Budget Control Backup',
           files: {
-            'budget-control-backup.json': {
+            'budget-data.json': {
               content: payload,
             },
           },
@@ -132,6 +144,35 @@ export const GistSyncModal: React.FC<GistSyncModalProps> = ({ isOpen, onClose })
       showMsg('✓ Successfully uploaded local data to Cloud Gist!');
     } catch (err: any) {
       showMsg(`Upload error: ${err.message}`, true);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleInspect = async () => {
+    const token = tokenInput.trim() || gistToken;
+    const gId = idInput.trim() || gistId;
+    if (!token || !gId) return showMsg('Token and Gist ID are required to inspect', true);
+    setIsLoading(true);
+    try {
+      const res = await fetch(`https://api.github.com/gists/${gId}`, {
+        headers: { Authorization: `token ${token}`, Accept: 'application/vnd.github.v3+json' },
+      });
+      if (!res.ok) throw new Error(`Inspection failed: ${res.statusText}`);
+      const data = await res.json();
+      const file = data.files?.['budget-data.json'] || data.files?.['budget-control-backup.json'] || Object.values(data.files || {})[0];
+      if (!file?.content) throw new Error('No budget JSON file found in this Gist');
+      const payload = JSON.parse(file.content);
+      const source = payload?.data || payload;
+      setGistDetails(
+        `${Array.isArray(source.cashEntries || source.entries) ? (source.cashEntries || source.entries).length : 0} cash entries, ` +
+        `${Array.isArray(source.installments) ? source.installments.length : 0} installments, ` +
+        `${Array.isArray(source.storageAssets) ? source.storageAssets.length : 0} storage assets. ` +
+        `Exported ${payload.exportedAt ? new Date(payload.exportedAt).toLocaleString() : 'date unavailable'}.`
+      );
+      showMsg('Gist inspected successfully.');
+    } catch (err) {
+      showMsg(`Inspection error: ${err instanceof Error ? err.message : 'Unknown error'}`, true);
     } finally {
       setIsLoading(false);
     }
@@ -151,7 +192,11 @@ export const GistSyncModal: React.FC<GistSyncModalProps> = ({ isOpen, onClose })
       const res = await fetch(`https://api.github.com/gists/${gId}`, { headers });
       if (!res.ok) throw new Error(`Download failed: ${res.statusText}`);
       const data = await res.json();
-      const file = data.files && (data.files['budget-control-backup.json'] || Object.values(data.files)[0]);
+      const file = data.files && (
+        data.files['budget-data.json'] ||
+        data.files['budget-control-backup.json'] ||
+        Object.values(data.files)[0]
+      );
       if (!file || !file.content) throw new Error('No valid budget file content found in this Gist');
 
       const success = importJSON(file.content);
@@ -269,6 +314,9 @@ export const GistSyncModal: React.FC<GistSyncModalProps> = ({ isOpen, onClose })
             <button className="ghost-button" type="button" onClick={handleCopySyncLink}>
               🔗 Copy Sync Link
             </button>
+            <button className="ghost-button" type="button" onClick={handleInspect} disabled={isLoading}>
+              Inspect Gist
+            </button>
             {gistId && (
               <button className="ghost-button" type="button" onClick={handleDisconnect} style={{ color: 'var(--red)' }}>
                 Disconnect
@@ -284,6 +332,9 @@ export const GistSyncModal: React.FC<GistSyncModalProps> = ({ isOpen, onClose })
             </button>
           </div>
         </div>
+        {gistDetails && (
+          <div style={{ color: 'var(--muted)', fontSize: '12px' }}>{gistDetails}</div>
+        )}
       </div>
     </dialog>
   );

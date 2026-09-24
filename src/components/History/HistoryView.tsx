@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { isCreditCardExpense, calculateCreditSettlementDate, buildCreditDueEntries, isLumpCreditDueForAccount } from '../../engine/creditCards';
@@ -16,12 +16,15 @@ export const HistoryView: React.FC = () => {
     creditSettlementOverrides,
     entryActuals,
     entryActualDates,
+    recordActual,
     clearActual,
     deleteEntry,
   } = useBudgetStore();
 
   const [activeHistoryTab, setActiveHistoryTab] = useState<'summary' | 'transactions'>('summary');
-  const [isAdminUnlocked, setIsAdminUnlocked] = useState<boolean>(false);
+  const [isAdminUnlocked, setIsAdminUnlocked] = useState<boolean>(() =>
+    localStorage.getItem('budget-control-history-admin-unlocked') === 'true'
+  );
 
   // Filters
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
@@ -29,11 +32,32 @@ export const HistoryView: React.FC = () => {
   const [selectedAccount, setSelectedAccount] = useState<string>('all');
   const [selectedTag, setSelectedTag] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
+  const [expandedDraws, setExpandedDraws] = useState<Set<string>>(new Set());
 
   // Analytics UI state
-  const [analyticsCollapsed, setAnalyticsCollapsed] = useState<boolean>(false);
-  const [groupBy, setGroupBy] = useState<'category' | 'tag'>('category');
-  const [viewMode, setViewMode] = useState<'chart' | 'table' | 'both'>('chart');
+  const [analyticsCollapsed, setAnalyticsCollapsed] = useState<boolean>(() =>
+    localStorage.getItem('budget-control-history-analytics-collapsed') === 'true'
+  );
+  const [groupBy, setGroupBy] = useState<'category' | 'tag'>(() =>
+    localStorage.getItem('budget-control-history-analytics-grouping') === 'tag' ? 'tag' : 'category'
+  );
+  const [viewMode, setViewMode] = useState<'chart' | 'table' | 'both'>(() => {
+    const saved = localStorage.getItem('budget-control-history-analytics-view');
+    return saved === 'table' || saved === 'both' ? saved : 'chart';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('budget-control-history-admin-unlocked', String(isAdminUnlocked));
+  }, [isAdminUnlocked]);
+  useEffect(() => {
+    localStorage.setItem('budget-control-history-analytics-collapsed', String(analyticsCollapsed));
+  }, [analyticsCollapsed]);
+  useEffect(() => {
+    localStorage.setItem('budget-control-history-analytics-grouping', groupBy);
+  }, [groupBy]);
+  useEffect(() => {
+    localStorage.setItem('budget-control-history-analytics-view', viewMode);
+  }, [viewMode]);
 
   const handleResetFilters = () => {
     setSelectedMonth('all');
@@ -207,8 +231,19 @@ export const HistoryView: React.FC = () => {
   const lifetimeSavingsRate = totalLifetimeIncome > 0 ? Math.round((lifetimeNet / totalLifetimeIncome) * 100) : 0;
 
   // Filter options for Individual Validations
+  const getEntryTags = (entry: CashEntry): string[] => {
+    const tags = [entry.tag].filter((tag): tag is string => Boolean(tag && tag.trim()));
+    (entry.draws || []).forEach((draw) => {
+      if (draw.tag && draw.tag.trim()) tags.push(draw.tag.trim());
+    });
+    return Array.from(new Set(tags));
+  };
+
   const allAccounts = Array.from(new Set(actualEntries.map((e) => e.account || 'cash'))).sort();
-  const allTags = Array.from(new Set(actualEntries.map((e) => e.tag || e.subcategory || '').filter(Boolean))).sort();
+  const allTags = Array.from(new Set(actualEntries.flatMap(getEntryTags))).sort((a, b) => a.localeCompare(b));
+  const hasUntagged = actualEntries.some((entry) =>
+    getEntryTags(entry).length === 0 || (entry.draws || []).some((draw) => !draw.tag || !draw.tag.trim())
+  );
 
   // Helper for filtered entry amount
   const getFilteredEntryAmount = (entry: CashEntry): number => {
@@ -234,7 +269,8 @@ export const HistoryView: React.FC = () => {
     const actDate = getEntryActualDate(entry);
     if (selectedMonth !== 'all' && DateUtils.getMonthKey(actDate) !== selectedMonth) return 0;
 
-    const eTag = (entry.tag || entry.subcategory || '').trim();
+    const eTag = (entry.tag || '').trim();
+    if (selectedTag === '__untagged__') return eTag ? 0 : totalActual;
     if (selectedTag !== 'all' && eTag.toLowerCase() !== selectedTag.toLowerCase()) return 0;
 
     return totalActual;
@@ -255,18 +291,24 @@ export const HistoryView: React.FC = () => {
     if (selectedAccount !== 'all' && (entry.account || 'cash').toLowerCase() !== selectedAccount.toLowerCase()) return false;
 
     if (selectedTag !== 'all') {
-      const eTag = (entry.tag || entry.subcategory || '').toLowerCase();
-      const hasDrawTag = entry.draws && entry.draws.some((d) => (d.tag || '').toLowerCase() === selectedTag.toLowerCase());
-      if (eTag !== selectedTag.toLowerCase() && !hasDrawTag) return false;
+      const eTag = (entry.tag || '').toLowerCase();
+      const hasUntaggedDraw = (entry.draws || []).some((draw) => !draw.tag || !draw.tag.trim());
+      const hasDrawTag = (entry.draws || []).some((draw) => (draw.tag || '').toLowerCase() === selectedTag.toLowerCase());
+      if (selectedTag === '__untagged__') {
+        if (eTag || !hasUntaggedDraw && getEntryTags(entry).length > 0) return false;
+      } else if (eTag !== selectedTag.toLowerCase() && !hasDrawTag) {
+        return false;
+      }
     }
 
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       const cat = (entry.category || '').toLowerCase();
       const sub = (entry.subcategory || '').toLowerCase();
-      const tag = (entry.tag || '').toLowerCase();
+      const tag = getEntryTags(entry).join(' ').toLowerCase();
       const acc = (entry.account || '').toLowerCase();
-      if (!cat.includes(term) && !sub.includes(term) && !tag.includes(term) && !acc.includes(term)) return false;
+      const source = (entry.source || '').toLowerCase();
+      if (!cat.includes(term) && !sub.includes(term) && !tag.includes(term) && !acc.includes(term) && !source.includes(term)) return false;
     }
 
     return true;
@@ -281,23 +323,77 @@ export const HistoryView: React.FC = () => {
 
   const filteredExpenses = filteredEntries
     .filter((e) => e.type === 'expense')
-    .reduce((sum, e) => sum + getFilteredEntryAmount(e), 0);
+    .reduce((sum, e) => {
+      const amount = getFilteredEntryAmount(e);
+      if (e.source === 'recurring credit' || isLumpCreditDueForAccount(e, 'hsbc') || isLumpCreditDueForAccount(e, 'cib')) {
+        const account = (e.account || e.creditType || '').toLowerCase().includes('hsbc') ? 'hsbc' : 'cib';
+        const month = DateUtils.getMonthKey(getEntryActualDate(e));
+        const covered = actualEntries
+          .filter((card) => isCreditCardExpense(card)
+            && (card.account || card.creditType || '').toLowerCase().includes(account)
+            && DateUtils.getMonthKey(calculateCreditSettlementDate(card.date, account)) === month)
+          .reduce((total, card) => total + getEntryActualAmount(card), 0);
+        return sum + Math.max(0, amount - covered);
+      }
+      return sum + amount;
+    }, 0);
 
   const filteredNet = filteredIncome - filteredExpenses;
 
   // Grouped Analytics breakdown
+  const getSmartGroupBucket = (entry: CashEntry): string => {
+    const category = (entry.category || '').toLowerCase();
+    const source = (entry.source || '').toLowerCase();
+    if (entry.type === 'income') {
+      if (category.includes('salary')) return 'Salary';
+      if (category.includes('loan') || source.includes('loan')) return 'Loans Received';
+      return 'Other Income';
+    }
+    if (/bill|utility|rent|telecom|internet|subscription|mobile|phone|vodafone|orange|etisalat|electricity|water|gas|club/.test(category)) return 'Bills & Utilities';
+    if (source.includes('recurring credit') || category.includes('credit') || category.includes('cib') || category.includes('hsbc')) return 'Credit & Cards';
+    if (source.includes('installment') || /installment|valyou|sympl|souhoola/.test(category)) return 'Installments';
+    if (source.includes('loan') || category.includes('loan') || category.includes('repay')) return 'Loan Repayments';
+    if (/food|grocer|market|dining|cafe|coffee|restaurant|fuel|car|transport|uber|health|pharmacy|doctor|personal|shopping/.test(category)) return 'Living & Daily Spend';
+    return entry.category || 'General Expenses';
+  };
+
   const groups: Record<string, { count: number; total: number; type: 'income' | 'expense' }> = {};
   filteredEntries.forEach((e) => {
-    const key = groupBy === 'category' ? (e.category || 'Uncategorized') : (e.tag || e.subcategory || 'Untagged');
-    const amt = getFilteredEntryAmount(e);
-    if (!groups[key]) {
-      groups[key] = { count: 0, total: 0, type: e.type };
+    if (groupBy === 'tag' && e.draws && e.draws.length > 0) {
+      e.draws.forEach((draw) => {
+        if (selectedMonth !== 'all' && DateUtils.getMonthKey(draw.date) !== selectedMonth) return;
+        const tag = draw.tag?.trim() || 'Untagged';
+        if (selectedTag === '__untagged__' && tag !== 'Untagged') return;
+        if (selectedTag !== 'all' && selectedTag !== '__untagged__'
+          && selectedTag.toLowerCase() !== tag.toLowerCase()) return;
+        const key = `${tag}|${e.type}`;
+        if (!groups[key]) groups[key] = { count: 0, total: 0, type: e.type };
+        groups[key].count += 1;
+        groups[key].total += Number(draw.amount) || 0;
+      });
+      return;
     }
+    const key = `${groupBy === 'category' ? getSmartGroupBucket(e) : (e.tag || 'Untagged')}|${e.type}`;
+    let amt = getFilteredEntryAmount(e);
+    if (e.type === 'expense' && (e.source === 'recurring credit'
+      || isLumpCreditDueForAccount(e, 'hsbc') || isLumpCreditDueForAccount(e, 'cib'))) {
+      const account = (e.account || e.creditType || '').toLowerCase().includes('hsbc') ? 'hsbc' : 'cib';
+      const month = DateUtils.getMonthKey(getEntryActualDate(e));
+      const covered = actualEntries
+        .filter((card) => isCreditCardExpense(card)
+          && (card.account || card.creditType || '').toLowerCase().includes(account)
+          && DateUtils.getMonthKey(calculateCreditSettlementDate(card.date, account)) === month)
+        .reduce((total, card) => total + getEntryActualAmount(card), 0);
+      amt = Math.max(0, amt - covered);
+    }
+    if (!groups[key]) groups[key] = { count: 0, total: 0, type: e.type };
     groups[key].count += 1;
     groups[key].total += amt;
   });
 
-  const sortedGroups = Object.entries(groups).sort((a, b) => b[1].total - a[1].total);
+  const sortedGroups = Object.entries(groups)
+    .map(([key, value]) => [key.split('|')[0], value] as [string, typeof value])
+    .sort((a, b) => b[1].total - a[1].total);
   const totalAnalyticsAmount = sortedGroups.reduce((s, g) => s + g[1].total, 0);
 
   return (
@@ -456,6 +552,7 @@ export const HistoryView: React.FC = () => {
                 Tag / Subcategory
                 <select value={selectedTag} onChange={(e) => setSelectedTag(e.target.value)}>
                   <option value="all">All tags</option>
+                  {hasUntagged && <option value="__untagged__">📁 Untagged</option>}
                   {allTags.map((tag) => (
                     <option key={tag} value={tag}>🏷️ {tag}</option>
                   ))}
@@ -717,6 +814,9 @@ export const HistoryView: React.FC = () => {
                       const actual = getEntryActualAmount(entry);
                       const actDate = getEntryActualDate(entry);
                       const plannedVal = Number(entry.amount) || 0;
+                      const entryId = entry.id;
+                      const hasMultipleDraws = Boolean(entry.draws && entry.draws.length > 1);
+                      const isDrawsExpanded = expandedDraws.has(entryId);
 
                       let varianceText = '—';
                       let varianceClass = 'neutral';
@@ -751,15 +851,33 @@ export const HistoryView: React.FC = () => {
                       }
 
                       return (
-                        <tr key={entry.id}>
-                          <td><strong>{DateUtils.formatDisplayDate(actDate)}</strong></td>
+                        <React.Fragment key={entryId}>
+                        <tr>
+                          <td>
+                            <strong>{DateUtils.formatDisplayDate(actDate)}</strong>
+                            {hasMultipleDraws && (
+                              <button
+                                type="button"
+                                className="ghost-button"
+                                style={{ display: 'block', marginTop: '4px', padding: '2px 6px', fontSize: '11px' }}
+                                onClick={() => setExpandedDraws((current) => {
+                                  const next = new Set(current);
+                                  if (next.has(entryId)) next.delete(entryId);
+                                  else next.add(entryId);
+                                  return next;
+                                })}
+                              >
+                                {isDrawsExpanded ? '▴ Hide subspends' : `▾ ${entry.draws?.length} subspends`}
+                              </button>
+                            )}
+                          </td>
                           <td>
                             <strong>{entry.category}</strong>
-                            {(entry.tag || entry.subcategory) && (
-                              <span style={{ fontSize: '11px', color: 'var(--muted)', display: 'block' }}>
-                                🏷️ {entry.tag || entry.subcategory}
+                            {getEntryTags(entry).map((tag) => (
+                              <span key={`${entry.id}-${tag}`} style={{ fontSize: '11px', color: 'var(--muted)', display: 'block' }}>
+                                🏷️ {tag}
                               </span>
-                            )}
+                            ))}
                           </td>
                           <td><span className="account-pill">{entry.account?.toUpperCase() || 'CASH'}</span></td>
                           <td>
@@ -769,7 +887,25 @@ export const HistoryView: React.FC = () => {
                           </td>
                           <td style={{ fontSize: '12px', color: 'var(--muted)' }}>{entry.source || 'Manual'}</td>
                           <td className="number">{formatMoney(entry.amount)}</td>
-                          <td className="number" style={{ fontWeight: 700 }}>{formatMoney(actual)}</td>
+                          <td className="number" style={{ fontWeight: 700 }}>
+                            {isAdminUnlocked ? (
+                              <input
+                                type="number"
+                                min="0"
+                                step="1"
+                                defaultValue={actual || ''}
+                                style={{ width: '100px', textAlign: 'right' }}
+                                onKeyDown={(event) => {
+                                  if (event.key === 'Enter') {
+                                    const value = Math.round(Number(event.currentTarget.value) || 0);
+                                    if (value <= 0) clearActual(entry.id);
+                                    else recordActual(entry.id, value, actDate);
+                                    event.currentTarget.blur();
+                                  }
+                                }}
+                              />
+                            ) : formatMoney(actual)}
+                          </td>
                           <td className="number">
                             <span className={`variance-pill ${varianceClass}`}>
                               {varianceText}
@@ -799,14 +935,49 @@ export const HistoryView: React.FC = () => {
                               <button
                                 className="ghost-button icon-button"
                                 type="button"
-                                title="Revert actual"
+                                title="Reset actual amount to 0"
                                 onClick={() => handleClearActual(entry.id)}
                               >
-                                <RotateCcw size={13} />
+                                <span style={{ fontSize: '11px' }}>Clear</span>
                               </button>
                             )}
                           </td>
                         </tr>
+                        {hasMultipleDraws && isDrawsExpanded && (
+                          <tr>
+                            <td colSpan={9} style={{ padding: '0 16px 12px 36px', background: 'var(--surface-subtle, rgba(0,0,0,0.02))' }}>
+                              <div style={{ marginTop: '8px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', marginBottom: '8px', fontSize: '12px' }}>
+                                  <span>Breakdown of {entry.draws?.length} payment tranches for {entry.category || 'Expense'}</span>
+                                  <strong>Total spent: {formatMoney(actual)}</strong>
+                                </div>
+                                <div className="table-wrap compact">
+                                  <table>
+                                    <thead>
+                                      <tr>
+                                        <th>Payment Date</th>
+                                        <th>Subcategory Tag</th>
+                                        <th>Account</th>
+                                        <th className="number">Tranche Amount</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {entry.draws?.map((draw, index) => (
+                                        <tr key={`${entryId}-draw-${index}`}>
+                                          <td>{DateUtils.formatDisplayDate(draw.date)}</td>
+                                          <td>{draw.tag ? `🏷️ ${draw.tag}` : '—'}</td>
+                                          <td>{(entry.account || 'cash').toUpperCase()}</td>
+                                          <td className="number">{formatMoney(Number(draw.amount) || 0)}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                        </React.Fragment>
                       );
                     })
                   )}

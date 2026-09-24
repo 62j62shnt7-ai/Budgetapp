@@ -29,10 +29,20 @@ export interface CashEntry {
   isClosed?: boolean;
   draws?: EntryDraw[];
   settlementDate?: string;
+  creditSettlementDate?: string;
+  calculatedAmount?: number;
+  baseDue?: number;
+  cardSpendTotal?: number;
+  cardExpenseCount?: number;
+  isCreditSettlement?: boolean;
+  isCustomized?: boolean;
   linkedInflowId?: string;
   archivedAt?: string;
   currency?: string;
   actualAmount?: number;
+  actualDate?: string;
+  loanId?: string;
+  initialAmount?: number;
 }
 
 export interface SalaryPayment {
@@ -66,14 +76,17 @@ export interface RatesData {
 
 export interface Installment {
   id: string;
+  loanId?: string;
   name: string;
   amount: number;
+  day?: number;
   totalMonths: number;
   remainingMonths: number;
   startMonth: string; // YYYY-MM
   frequency?: number;
   account?: string;
   tag?: string;
+  initialAmount?: number;
 }
 
 export interface StorageAsset {
@@ -185,9 +198,13 @@ export interface HealthScoreResult {
   grade: 'A' | 'B' | 'C' | 'D' | 'F';
   deficitScore: number;
   runwayScore: number;
+  budgetScore: number;
   savingsScore: number;
   summaryNote: string;
   runwayMonths: number;
+  label?: string;
+  tone?: string;
+  hardScoreCap?: number;
 }
 
 export interface SmartInsight {

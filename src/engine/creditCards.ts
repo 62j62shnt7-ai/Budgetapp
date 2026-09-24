@@ -68,11 +68,11 @@ export function isCreditCardExpense(entry: CashEntry): boolean {
 
   if (src === 'credit card' || src === 'credit-card' || src === 'credit_card' || src === 'card') return true;
   if (t === 'cib_card' || t === 'hsbc_card' || t === 'cib-card' || t === 'hsbc-card' || t === 'cib_credit' || t === 'hsbc_credit') return true;
-  if ((t === 'cib' || t === 'hsbc' || acc === 'cib' || acc === 'hsbc') && !cat.includes('credit due')) return true;
+  if ((t === 'cib' || t === 'hsbc') && !cat.includes('credit due')) return true;
   if (acc.includes('cib') && (acc.includes('credit') || acc.includes('card'))) return true;
   if (acc.includes('hsbc') && (acc.includes('credit') || acc.includes('card'))) return true;
   if (acc === 'cib credit' || acc === 'cib_credit' || acc === 'cib-credit' || acc === 'hsbc credit' || acc === 'hsbc_credit' || acc === 'hsbc-credit') return true;
-  if (tag.includes('credit card') || tag.includes('credit-card') || tag.includes('credit_card') || tag.includes('card spend')) return true;
+  if (tag.includes('credit card') || tag.includes('card spend')) return true;
   return false;
 }
 
@@ -130,8 +130,11 @@ export function getCreditSettlementDate(
 ): string {
   if (!entry) return '';
   if (isCreditCardExpense(entry)) {
-    const accKey = (entry.creditType || entry.account || '').toLowerCase().includes('hsbc') ? 'hsbc' : 'cib';
-    const defaultDate = calculateCreditSettlementDate(entry.date, accKey);
+    const type = (entry.creditType || '').toLowerCase();
+    const account = (entry.account || '').toLowerCase();
+    const accKey = type.includes('hsbc') || account.includes('hsbc') ? 'hsbc' : 'cib';
+    const actualDate = entry.actualDate || entry.date;
+    const defaultDate = entry.creditSettlementDate || calculateCreditSettlementDate(actualDate, `${accKey}_card`);
     const sMonth = defaultDate ? DateUtils.getMonthKey(defaultDate) : '';
     if (sMonth && creditSettlementOverrides) {
       const override = creditSettlementOverrides[`credit-settlement-${accKey}-${sMonth}`];
@@ -145,12 +148,12 @@ export function getCreditSettlementDate(
   return entry.date || '';
 }
 
-export function getCreditSettlementMonth(entry: CashEntry): string {
-  if (entry.settlementDate) {
-    return DateUtils.getMonthKey(entry.settlementDate);
-  }
-  const date = calculateCreditSettlementDate(entry.date, entry.creditType || entry.account);
-  return DateUtils.getMonthKey(date);
+export function getCreditSettlementMonth(
+  entry: CashEntry,
+  creditSettlementOverrides?: Record<string, { amount?: number; date?: string }>
+): string {
+  const date = getCreditSettlementDate(entry, creditSettlementOverrides);
+  return date ? DateUtils.getMonthKey(date) : '';
 }
 
 export function buildCreditDueEntries(params: {
@@ -159,6 +162,7 @@ export function buildCreditDueEntries(params: {
   cashEntries: CashEntry[];
   archivedEntries?: CashEntry[];
   entryActuals: Record<string, number>;
+  entryActualDates?: Record<string, string>;
   creditSettlementOverrides?: Record<string, { amount?: number; date?: string }>;
 }): CashEntry[] {
   const {
@@ -167,6 +171,7 @@ export function buildCreditDueEntries(params: {
     cashEntries = [],
     archivedEntries = [],
     entryActuals = {},
+    entryActualDates = {},
     creditSettlementOverrides = {},
   } = params;
 
@@ -202,7 +207,10 @@ export function buildCreditDueEntries(params: {
 
     allExpenses.forEach((entry) => {
       if (isCardExpenseForAccount(entry, accountKey)) {
-        const sMonth = getCreditSettlementMonth(entry);
+        const effectiveEntry = entryActualDates[entry.id]
+          ? { ...entry, actualDate: entryActualDates[entry.id] }
+          : entry;
+        const sMonth = getCreditSettlementMonth(effectiveEntry, creditSettlementOverrides);
         if (sMonth) settlementMonths.add(sMonth);
       } else if (isLumpCreditDueForAccount(entry, accountKey)) {
         const sMonth = DateUtils.getMonthKey(entry.date);
@@ -234,7 +242,12 @@ export function buildCreditDueEntries(params: {
       }, 0);
 
       const cardExpenses = allExpenses.filter(
-        (entry) => isCardExpenseForAccount(entry, accountKey) && getCreditSettlementMonth(entry) === monthKey
+        (entry) =>
+          isCardExpenseForAccount(entry, accountKey) &&
+          getCreditSettlementMonth(
+            entryActualDates[entry.id] ? { ...entry, actualDate: entryActualDates[entry.id] } : entry,
+            creditSettlementOverrides
+          ) === monthKey
       );
       const cardSpendTotal = cardExpenses.reduce((sum, e) => {
         const act = getActual(e);

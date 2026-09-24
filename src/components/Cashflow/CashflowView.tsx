@@ -1,7 +1,21 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { buildSalaryEntries, buildInstallmentEntries } from '../../engine/salaryAndInstallments';
-import { buildCreditDueEntries } from '../../engine/creditCards';
+import {
+  buildCreditDueEntries,
+  calculateCreditSettlementDate,
+  isCreditCardExpense,
+  isCreditDueLumpSum,
+} from '../../engine/creditCards';
+import {
+  getEntryActualAmount,
+  getEntryActualDate,
+  getActiveForecastEntries,
+  getForecastCandidateEntries,
+  getRemainingForecastAmount,
+  isPartialTracked,
+  isOngoingEntry,
+} from '../../engine/forecast';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 
@@ -40,6 +54,8 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     creditDues,
     creditSettlementOverrides,
     entryActuals,
+    entryActualDates,
+    deletedForecasts,
     recordActual,
     setActiveTab,
   } = useBudgetStore();
@@ -51,9 +67,25 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
 
   // Collapsible sections
-  const [salaryOpen, setSalaryOpen] = useState(true);
-  const [installmentsOpen, setInstallmentsOpen] = useState(true);
-  const [expenseMixOpen, setExpenseMixOpen] = useState(true);
+  const [salaryOpen, setSalaryOpen] = useState<boolean>(() =>
+    localStorage.getItem('budget-control-salary-collapsed') !== 'true'
+  );
+  const [installmentsOpen, setInstallmentsOpen] = useState<boolean>(() =>
+    localStorage.getItem('budget-control-installments-collapsed') !== 'true'
+  );
+  const [expenseMixOpen, setExpenseMixOpen] = useState<boolean>(() =>
+    localStorage.getItem('budget-control-expense-mix-collapsed') !== 'true'
+  );
+
+  useEffect(() => {
+    localStorage.setItem('budget-control-salary-collapsed', String(!salaryOpen));
+  }, [salaryOpen]);
+  useEffect(() => {
+    localStorage.setItem('budget-control-installments-collapsed', String(!installmentsOpen));
+  }, [installmentsOpen]);
+  useEffect(() => {
+    localStorage.setItem('budget-control-expense-mix-collapsed', String(!expenseMixOpen));
+  }, [expenseMixOpen]);
 
   // Salary matrix inputs
   const currentYm = DateUtils.currentYearMonth();
@@ -71,7 +103,36 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     entryActuals,
     creditSettlementOverrides,
   });
-  const allCandidate = [...entries, ...salaryEntries, ...installmentEntries, ...creditEntries];
+  const forecastCandidates = getForecastCandidateEntries(
+    [...entries, ...salaryEntries],
+    installmentEntries,
+    creditEntries,
+    deletedForecasts,
+  );
+  const allCandidate = forecastCandidates
+    .filter((entry) => !entry.isClosed)
+    .filter((entry) => {
+      const actual = getEntryActualAmount(entry, entryActuals);
+      if (actual <= 0) return true;
+      if ((entry as CashEntry & { keepOngoing?: boolean }).keepOngoing) return true;
+      return isPartialTracked(entry) && getRemainingForecastAmount(entry, entryActuals) > 0;
+    })
+    .map((entry) => {
+      const actual = getEntryActualAmount(entry, entryActuals);
+      const remaining = isPartialTracked(entry) && actual > 0
+        ? getRemainingForecastAmount(entry, entryActuals)
+        : Number(entry.amount || 0);
+      return actual > 0 && isPartialTracked(entry)
+        ? { ...entry, amount: remaining }
+        : entry;
+    });
+  const forecastRows = getActiveForecastEntries(
+    [...entries, ...salaryEntries],
+    installmentEntries,
+    creditEntries,
+    deletedForecasts,
+    entryActuals,
+  );
 
   // Opening balance rows (matching legacy openingBalanceEntries)
   const openingRows: CashEntry[] = Object.entries(accounts || {}).map(([id, acc]) => ({
@@ -130,19 +191,27 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
 
   const allDisplayRows = [...filteredOpeningRows, ...filteredForecastRows];
 
-  const totalIncome = filteredForecastRows
+  const totalIncome = forecastRows
+    .filter((e) => (!dateFrom || e.date >= dateFrom) && (!dateTo || e.date <= dateTo))
     .filter((e) => e.type === 'income')
     .reduce((s, e) => s + (Number(e.amount) || 0), 0);
 
-  const totalExpenses = filteredForecastRows
+  const totalExpenses = forecastRows
+    .filter((e) => (!dateFrom || e.date >= dateFrom) && (!dateTo || e.date <= dateTo))
     .filter((e) => e.type === 'expense')
     .reduce((s, e) => s + (Number(e.amount) || 0), 0);
 
   const netPeriod = totalIncome - totalExpenses;
+  const summaryRows = forecastRows.filter((e) => (!dateFrom || e.date >= dateFrom) && (!dateTo || e.date <= dateTo));
+  const summaryDates = summaryRows.map((e) => e.date).filter(Boolean).sort();
+  const summaryRange = summaryDates.length
+    ? `${summaryDates[0]} to ${summaryDates[summaryDates.length - 1]}`
+    : 'No entries';
 
   // Expense Mix grouping
   const expensesByCategory: Record<string, number> = {};
-  filteredForecastRows
+  forecastRows
+    .filter((e) => (!dateFrom || e.date >= dateFrom) && (!dateTo || e.date <= dateTo))
     .filter((e) => e.type === 'expense')
     .forEach((e) => {
       const cat = e.category || 'Other';
@@ -196,6 +265,9 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
           >
             Use full list
           </button>
+          <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
+            {dateFrom || dateTo ? `${dateFrom || 'start'} to ${dateTo || 'end'}` : 'Full forecast list'}
+          </span>
         </div>
       </div>
 
@@ -220,8 +292,8 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
         </article>
         <article className="metric">
           <span>Entries</span>
-          <strong>{filteredForecastRows.length}</strong>
-          <small>Active candidate records</small>
+          <strong>{summaryRows.length}</strong>
+          <small>{summaryRange}</small>
         </article>
       </div>
 
@@ -578,12 +650,23 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                 const isOpening = e.source === 'starting balance';
                 const isLoan = (e.source || '').toLowerCase().includes('loan') || (e.category || '').toLowerCase().includes('loan');
                 const isCreditSettlement = (e.source || '').toLowerCase().includes('credit') || (e.id && e.id.startsWith('credit-settlement-'));
+                const isCardPurchase = isCreditCardExpense(e);
                 const placeholder = isLoan ? 'Add draw' : isCreditSettlement ? 'Add payment' : e.type === 'income' ? 'Add actual' : 'Add spend';
-                const actualValue = Number(e.actualAmount || 0);
-                const plannedAmt = Number(e.amount || 0);
+                const actualValue = getEntryActualAmount(e, entryActuals);
+                const originalEntry = entries.find((entry) => entry.id === e.id) || e;
+                const plannedAmt = Number(originalEntry.amount || e.amount || 0);
                 const remainingAmt = Math.max(0, plannedAmt - actualValue);
                 const isFull = plannedAmt > 0 && actualValue >= plannedAmt;
-                const canFinish = actualValue > 0 && !e.isClosed && !isOpening;
+                const isPartial = e.type === 'expense' || isLoan;
+                const isPastDate = Boolean(e.date && e.date < DateUtils.todayString());
+                const ongoing = isOngoingEntry(e, entryActuals) || (isPartial && !e.isClosed && remainingAmt > 0 && (actualValue > 0 || isPastDate));
+                const canFinish = isPartial && !e.isClosed && (remainingAmt > 0 || ongoing) && (actualValue > 0 || isPastDate || isLoan) && !isOpening;
+                const actualDate = actualValue > 0 ? getEntryActualDate(e, entryActualDates) : '';
+                const dateLabel = ongoing
+                  ? `${DateUtils.formatDisplayDate(e.date)} → ${actualDate && actualDate !== DateUtils.todayString()
+                    ? DateUtils.formatDisplayDate(actualDate)
+                    : 'Today'}`
+                  : DateUtils.formatDisplayDate(e.date);
 
                 return (
                   <tr
@@ -599,14 +682,27 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                       }
                     }}
                   >
-                    <td className="cell-date">{DateUtils.formatDisplayDate(e.date)}</td>
-                    <td className="cell-category">
-                      <strong>{e.category}</strong>
-                      {e.tag && (
-                        <span className="source-pill" style={{ marginLeft: '4px', fontSize: '10px' }}>
-                          #{e.tag}
+                    <td className="cell-date">
+                      <strong>{dateLabel}</strong>
+                      {ongoing && (
+                        <span
+                          className={isLoan ? 'source-pill loan' : 'source-pill'}
+                          style={{ fontSize: '10px', marginLeft: '4px', padding: '1px 6px' }}
+                          title="Active ongoing budget"
+                        >
+                          Ongoing
                         </span>
                       )}
+                    </td>
+                    <td className="cell-category">
+                      <strong>{e.category}</strong>
+                      {[e.tag, ...(e.draws || []).map((draw) => draw.tag)]
+                        .filter((tag, index, tags): tag is string => Boolean(tag) && tags.indexOf(tag) === index)
+                        .map((tag) => (
+                        <span key={`${e.id}-${tag}`} className="source-pill" style={{ marginLeft: '4px', fontSize: '10px' }}>
+                          #{tag}
+                        </span>
+                        ))}
                       {e.creditType && (
                         <span className="source-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', color: 'var(--blue)', fontWeight: 600, fontSize: '10px', marginLeft: '4px' }}>
                           💳 {e.creditType.toUpperCase()}
@@ -623,9 +719,17 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                       <span className={`pill ${e.type}`}>{e.type}</span>
                     </td>
                     <td className="cell-source">
-                      <span className={`source-pill ${e.source === 'loan' ? 'loan' : ''}`}>
-                        {e.source || 'manual'}
-                      </span>
+                      {isCardPurchase ? (
+                        <span className="source-pill" style={{ color: 'var(--blue)', fontWeight: 600 }}>
+                          💳 Settles {DateUtils.formatDisplayDate(calculateCreditSettlementDate(e.date, e.creditType || e.account || ''))}
+                        </span>
+                      ) : isCreditSettlement || isCreditDueLumpSum(e) ? (
+                        <span className="source-pill credit-due-pill">🏛️ Credit Due</span>
+                      ) : (
+                        <span className={`source-pill ${e.source === 'loan' ? 'loan' : ''}`}>
+                          {e.source || 'manual'}
+                        </span>
+                      )}
                     </td>
                     <td className="cell-amount number" style={{ color: e.type === 'income' ? 'var(--green)' : 'var(--red)', fontWeight: 700 }}>
                       {e.type === 'income' ? '+' : '-'}{formatMoney(e.amount)}
@@ -669,10 +773,10 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                           {actualValue > 0 && (
                             <small style={{ display: 'block', color: 'var(--muted)', marginTop: '4px', whiteSpace: 'nowrap', fontSize: '11px' }}>
                               {isLoan
-                                ? `Drawn so far: ${formatMoney(actualValue)} ${isFull ? '(Full amount reached)' : `(Remaining: ${formatMoney(remainingAmt)})`}`
+                                ? `Drawn so far: ${formatMoney(actualValue)} ${isFull ? '(Full amount reached · Ongoing)' : `(Remaining: ${formatMoney(remainingAmt)})`}`
                                 : isCreditSettlement
                                 ? `Paid so far: ${formatMoney(actualValue)} ${isFull ? '(Settled in full)' : `(Remaining: ${formatMoney(remainingAmt)})`}`
-                                : `Spent so far: ${formatMoney(actualValue)} ${isFull ? '(Full budget reached)' : `(Remaining: ${formatMoney(remainingAmt)})`}`}
+                                : `Spent so far: ${formatMoney(actualValue)} ${isFull ? '(Full budget reached · Ongoing)' : `(Remaining: ${formatMoney(remainingAmt)})`}`}
                             </small>
                           )}
                         </div>

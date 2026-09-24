@@ -33,7 +33,7 @@ import { DeductAccountModal } from './components/Modals/DeductAccountModal';
 import type { CashEntry, JobItem } from './types';
 
 export const App: React.FC = () => {
-  const { activeTab, theme, sidebarCollapsed, toggleSidebar, closeMobileSidebar } = useBudgetStore();
+  const { activeTab, theme, sidebarCollapsed, toggleSidebar, closeMobileSidebar, gistToken, gistAutoSync, setGistConfig } = useBudgetStore();
 
   // Modals state
   const [entryModalOpen, setEntryModalOpen] = useState(false);
@@ -73,6 +73,20 @@ export const App: React.FC = () => {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (!('serviceWorker' in navigator) || !/^https?:$/.test(window.location.protocol)) return;
+    void navigator.serviceWorker.register('/sw.js').catch((error) => {
+      console.error('Failed to register service worker:', error);
+    });
+  }, []);
+
+  useEffect(() => {
+    const gistId = new URLSearchParams(window.location.hash.slice(1)).get('gist')?.trim();
+    if (!gistId) return;
+    setGistConfig(gistToken, gistId, gistAutoSync);
+    window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+  }, [gistAutoSync, gistToken, setGistConfig]);
 
   // Synchronize sidebar collapsed state to body class
   useEffect(() => {
@@ -155,7 +169,7 @@ export const App: React.FC = () => {
       case 'dashboard':
         return <DashboardView />;
       case 'deficits':
-        return <DeficitsView />;
+        return <DeficitsView onBridgeDeficit={() => setLoanModalOpen(true)} />;
       case 'cashflow':
         return (
           <CashflowView

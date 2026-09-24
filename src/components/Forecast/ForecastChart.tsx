@@ -288,7 +288,7 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
         className="forecast-line-svg"
         viewBox={`0 0 ${viewBoxW} ${viewBoxH}`}
         preserveAspectRatio="none"
-        style={{ width: '100%', height: 'auto', display: 'block', overflow: 'visible' }}
+        style={{ width: '100%', height: '100%', display: 'block', overflow: 'hidden' }}
       >
         <defs>
           <linearGradient id="forecastAreaGrad" x1="0" y1="0" x2="0" y2="1">

@@ -1,10 +1,17 @@
 import React, { useState } from 'react';
 import { useBudgetStore } from '../../store/useBudgetStore';
-import { calculateForecast, detectDeficits } from '../../engine/forecast';
+import {
+  calculateForecast,
+  getActiveForecastEntries,
+  getDeficitPeriods,
+  getLowestProjectedBalance,
+} from '../../engine/forecast';
 import { computeFinancialHealthScore, generateSmartInsights } from '../../engine/healthScore';
-import { computeTotalStorageValue } from '../../engine/currency';
+import { computeAssetEgpValue, computeTotalStorageValue } from '../../engine/currency';
 import { buildSalaryEntries, buildInstallmentEntries } from '../../engine/salaryAndInstallments';
-import { isCreditCardExpense, calculateCreditSettlementDate } from '../../engine/creditCards';
+import {
+  buildCreditDueEntries,
+} from '../../engine/creditCards';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { ForecastChart } from '../Forecast/ForecastChart';
 
@@ -16,6 +23,13 @@ export const DashboardView: React.FC = () => {
     installments,
     rates,
     storageAssets,
+    creditDues,
+    archivedEntries,
+    creditSettlementOverrides,
+    categoryCaps,
+    savingsGoals,
+    entryActuals,
+    deletedForecasts,
     setActiveTab,
   } = useBudgetStore();
 
@@ -33,47 +47,111 @@ export const DashboardView: React.FC = () => {
   // Credit dues with this month / next month breakdown
   const currentYm = DateUtils.currentYearMonth();
   const nextYm = DateUtils.addMonths(currentYm, 1);
+  const creditDueEntries = buildCreditDueEntries({
+    accounts,
+    creditDues,
+    cashEntries: entries,
+    archivedEntries,
+    entryActuals,
+    creditSettlementOverrides,
+  });
+  const remainingDue = (entry: (typeof creditDueEntries)[number]) =>
+    Math.max(0, Number(entry.amount || 0) - Number(entry.actualAmount || 0));
+  const dueFor = (account: string, month: string) =>
+    creditDueEntries
+      .filter((entry) => {
+        const prefix = `credit-settlement-${account}-`;
+        return entry.id.startsWith(prefix) && entry.id.slice(prefix.length) === month;
+      })
+      .reduce((sum, entry) => sum + remainingDue(entry), 0);
 
-  const creditExpenses = entries.filter((e) => isCreditCardExpense(e));
-
-  const cibExpenses = creditExpenses.filter((e) => (e.creditType || e.account || '').toLowerCase().includes('cib'));
-  const hsbcExpenses = creditExpenses.filter((e) => (e.creditType || e.account || '').toLowerCase().includes('hsbc'));
-
-  const cibTotal = cibExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
-  const hsbcTotal = hsbcExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
-
-  const cibThisMonth = cibExpenses
-    .filter((e) => DateUtils.getMonthKey(calculateCreditSettlementDate(e.date, 'cib')) === currentYm)
-    .reduce((s, e) => s + (Number(e.amount) || 0), 0);
-
-  const cibNextMonth = cibExpenses
-    .filter((e) => DateUtils.getMonthKey(calculateCreditSettlementDate(e.date, 'cib')) === nextYm)
-    .reduce((s, e) => s + (Number(e.amount) || 0), 0);
-
-  const hsbcThisMonth = hsbcExpenses
-    .filter((e) => DateUtils.getMonthKey(calculateCreditSettlementDate(e.date, 'hsbc')) === currentYm)
-    .reduce((s, e) => s + (Number(e.amount) || 0), 0);
-
-  const hsbcNextMonth = hsbcExpenses
-    .filter((e) => DateUtils.getMonthKey(calculateCreditSettlementDate(e.date, 'hsbc')) === nextYm)
-    .reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const cibThisMonth = dueFor('cib', currentYm);
+  const cibNextMonth = dueFor('cib', nextYm);
+  const hsbcThisMonth = dueFor('hsbc', currentYm);
+  const hsbcNextMonth = dueFor('hsbc', nextYm);
+  const cibTotal = cibThisMonth || cibNextMonth;
+  const hsbcTotal = hsbcThisMonth || hsbcNextMonth;
+  const activeCibMonth = cibThisMonth > 0 ? currentYm : nextYm;
+  const activeHsbcMonth = hsbcThisMonth > 0 ? currentYm : nextYm;
+  const monthLabel = (month: string, suffix: string) => {
+    const [year, monthNumber] = month.split('-').map(Number);
+    const name = new Date(Date.UTC(year, monthNumber - 1, 1))
+      .toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })
+      .toUpperCase();
+    return `${name} (${suffix})`;
+  };
+  const cibDueDate = creditDueEntries.find(
+    (entry) => entry.id === `credit-settlement-cib-${activeCibMonth}`
+  )?.date;
+  const hsbcDueDate = creditDueEntries.find(
+    (entry) => entry.id === `credit-settlement-hsbc-${activeHsbcMonth}`
+  )?.date;
 
   // Forecast & Deficits
-  const salaryEntries = buildSalaryEntries(salaryPattern, currentYm, 4);
+  const hasMaterializedSalary = entries.some((entry) => entry.source === 'salary');
+  const salaryEntries = hasMaterializedSalary ? [] : buildSalaryEntries(salaryPattern, currentYm, 4);
   const installmentEntries = buildInstallmentEntries(installments);
-  const allCandidateEntries = [...entries, ...salaryEntries, ...installmentEntries];
-
-  const forecast = calculateForecast(allCandidateEntries, totalCash, forecastRangeMonths);
-  const deficits = detectDeficits(forecast);
-  const health = computeFinancialHealthScore(forecast, deficits, totalCash, storageTotal);
-  const insights = generateSmartInsights(forecast, deficits, totalCash, storageTotal);
-
-  const lowestPoint = forecast.reduce(
-    (min, f) => (f.balance < min ? f.balance : min),
-    forecast.length > 0 ? forecast[0].balance : totalCash
+  const allCandidateEntries = getActiveForecastEntries(
+    [...entries, ...salaryEntries],
+    installmentEntries,
+    creditDueEntries,
+    deletedForecasts,
+    entryActuals
   );
 
+  const forecast = calculateForecast(allCandidateEntries, totalCash, forecastRangeMonths);
+  const visibleForecast = forecast.slice(0, forecastRangeMonths);
+  const deficitPeriods = getDeficitPeriods(allCandidateEntries, totalCash);
+  const health = computeFinancialHealthScore({
+    entries: allCandidateEntries,
+    forecast,
+    deficitPeriods,
+    actualCashNow: totalCash,
+    storageTotal,
+    categoryCaps,
+    savingsGoals,
+    entryActuals,
+  });
+  const insights = generateSmartInsights({
+    entries: allCandidateEntries,
+    forecast,
+    deficitPeriods,
+    actualCashNow: totalCash,
+    storageTotal,
+    savingsGoals,
+  });
+  const deficits = {
+    hasDeficit: deficitPeriods.length > 0 || forecast.some((item) => item.balance < 0),
+    worstDeficit: Math.max(0, ...deficitPeriods.map((item) => Math.abs(item.lowestBalance))),
+  };
+
+  const lowestProjection = getLowestProjectedBalance(allCandidateEntries, totalCash);
+  const lowestPoint = lowestProjection.balance;
+
   const safeToSpend = Math.max(0, lowestPoint);
+  const plottedCutoff = DateUtils.addMonths(DateUtils.todayString(), forecastRangeMonths);
+  const plottedEntryRows = allCandidateEntries.filter(
+    (entry) => entry.date >= DateUtils.todayString() && entry.date <= plottedCutoff
+  ).sort((a, b) => a.date.localeCompare(b.date));
+  const plottedEntryCount = plottedEntryRows.length;
+  const categoryTotals = allCandidateEntries
+    .filter((entry) => entry.type === 'expense')
+    .reduce<Record<string, number>>((totals, entry) => {
+      const label = entry.subcategory || entry.category || 'Other';
+      totals[label] = (totals[label] || 0) + Number(entry.amount || 0);
+      return totals;
+    }, {});
+  const categoryRows = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]);
+  const categoryTotal = categoryRows.reduce((sum, [, amount]) => sum + amount, 0);
+  const assetRows = storageAssets.reduce<Record<string, number>>((totals, asset) => {
+    const key = /gold/i.test(`${asset.category || ''} ${asset.name || ''} ${asset.rateSource || ''}`)
+      ? 'Gold Assets'
+      : 'Foreign Currency';
+    totals[key] = (totals[key] || 0) + computeAssetEgpValue(asset, rates);
+    return totals;
+  }, {});
+  assetRows['Liquid Cash / Bank'] = totalCash;
+  const assetTotal = Object.values(assetRows).reduce((sum, amount) => sum + amount, 0);
 
   // Spend Simulator
   const handleRunSim = () => {
@@ -110,6 +188,24 @@ export const DashboardView: React.FC = () => {
     setSimVerdict(null);
   };
 
+  const firstDeficit = deficitPeriods[0];
+  const remediationAdvice = firstDeficit
+    ? (() => {
+        const peak = Math.ceil(Math.abs(firstDeficit.lowestBalance));
+        const fx = storageAssets.find((asset) => /eur|euro|usd|dollar|currency|foreign/i.test(asset.name) && Number(asset.quantity) > 0);
+        const flexible = firstDeficit.steps.find((step) => step.type === 'expense' && !/installment|credit due|loan repayment|bill/i.test(step.category) && step.amount > 0);
+        const options = [
+          fx ? `Exchange approximately ${Math.ceil(peak / Math.max(1, Number(fx.rate || fx.currentPrice || 1)))} ${fx.unit || fx.name}` : 'Exchange foreign currency if available',
+          'Liquidate gold or another liquid asset',
+          flexible ? `Postpone ${flexible.category}` : 'Postpone a flexible expense',
+          firstDeficit.resolvedDate
+            ? `Bridge until ${DateUtils.formatDisplayDate(firstDeficit.resolvedDate)}`
+            : `Bridge ${formatMoney(peak)} via short-term loan or credit`,
+        ];
+        return `Remediation: ${options.join(' · ')}`;
+      })()
+    : '';
+
   return (
     <section className="view" id="dashboard" style={{ display: 'block' }}>
       {/* Deficit Alert Banner */}
@@ -119,10 +215,12 @@ export const DashboardView: React.FC = () => {
           <div className="alert-banner-body">
             <strong>Deficiencies detected</strong>
             <p id="deficitBannerSummary">
-              Projected deficit of up to -{formatMoney(deficits.worstDeficit)} within the next {forecastRangeMonths} months.
+              Balance turns negative on {DateUtils.formatDisplayDate(firstDeficit?.startDate || DateUtils.todayString())}
+              {' · '}peak deficit {formatMoney(deficits.worstDeficit)}
+              {firstDeficit?.isResolved ? ` · recovers on ${DateUtils.formatDisplayDate(firstDeficit.resolvedDate || firstDeficit.lowestDate)}` : ' · remains unresolved'}
             </p>
             <div id="deficitRemediationAdvice" className="deficit-remediation-pill" style={{ display: 'block' }}>
-              Action recommended: Defer non-essential expenses or utilize credit card grace cycle.
+              {remediationAdvice}
             </div>
           </div>
           <button
@@ -154,17 +252,19 @@ export const DashboardView: React.FC = () => {
         <article className="metric credit-dual-metric">
           <div className="metric-header-row">
             <span>CIB credit due</span>
-            <span className="credit-metric-badge" id="cibCreditBadge">15th Cutoff</span>
+            <span className="credit-metric-badge" id="cibCreditBadge">
+              {cibDueDate ? `Due ${DateUtils.formatDisplayDate(cibDueDate)}` : '15th Cutoff'}
+            </span>
           </div>
           <strong id="cibCreditDue">{formatMoney(cibTotal)}</strong>
           <div className="credit-sub-grid">
             <div className="credit-sub-item">
-              <span className="credit-sub-label" id="cibCurrentMonthLabel">This Month</span>
+              <span className="credit-sub-label" id="cibCurrentMonthLabel">{monthLabel(currentYm, 'THIS MO')}</span>
               <span className="credit-sub-val" id="cibCurrentDue">{formatMoney(cibThisMonth)}</span>
             </div>
             <div className="credit-sub-divider" />
             <div className="credit-sub-item">
-              <span className="credit-sub-label" id="cibNextMonthLabel">Next Month</span>
+              <span className="credit-sub-label" id="cibNextMonthLabel">{monthLabel(nextYm, 'NEXT MO')}</span>
               <span className="credit-sub-val" id="cibNextDue">{formatMoney(cibNextMonth)}</span>
             </div>
           </div>
@@ -174,17 +274,19 @@ export const DashboardView: React.FC = () => {
         <article className="metric credit-dual-metric">
           <div className="metric-header-row">
             <span>HSBC credit due</span>
-            <span className="credit-metric-badge" id="hsbcCreditBadge">End of Month</span>
+            <span className="credit-metric-badge" id="hsbcCreditBadge">
+              {hsbcDueDate ? `Due ${DateUtils.formatDisplayDate(hsbcDueDate)}` : 'End of Month'}
+            </span>
           </div>
           <strong id="hsbcCreditDue">{formatMoney(hsbcTotal)}</strong>
           <div className="credit-sub-grid">
             <div className="credit-sub-item">
-              <span className="credit-sub-label" id="hsbcCurrentMonthLabel">This Month</span>
+              <span className="credit-sub-label" id="hsbcCurrentMonthLabel">{monthLabel(currentYm, 'THIS MO')}</span>
               <span className="credit-sub-val" id="hsbcCurrentDue">{formatMoney(hsbcThisMonth)}</span>
             </div>
             <div className="credit-sub-divider" />
             <div className="credit-sub-item">
-              <span className="credit-sub-label" id="hsbcNextMonthLabel">Next Month</span>
+              <span className="credit-sub-label" id="hsbcNextMonthLabel">{monthLabel(nextYm, 'NEXT MO')}</span>
               <span className="credit-sub-val" id="hsbcNextDue">{formatMoney(hsbcNextMonth)}</span>
             </div>
           </div>
@@ -201,16 +303,18 @@ export const DashboardView: React.FC = () => {
           <strong id="forecastLow" style={{ color: lowestPoint < 0 ? 'var(--red)' : 'inherit' }}>
             {formatMoney(lowestPoint)}
           </strong>
-          <small id="forecastLowDate">Lowest projected cash</small>
+          <small id="forecastLowDate">
+            {lowestProjection.date ? `Floor on ${DateUtils.formatDisplayDate(lowestProjection.date)}` : 'Lowest projected cash'}
+          </small>
         </article>
 
         <article className="metric">
           <span>Cashflow status</span>
           <strong id="cashflowStatus" style={{ color: deficits.hasDeficit ? 'var(--red)' : 'var(--green)' }}>
-            {deficits.hasDeficit ? 'Deficit Risk' : 'Healthy'}
+            {deficits.hasDeficit ? 'Deficit Risk' : 'OK'}
           </strong>
           <small id="cashflowStatusNote">
-            {deficits.hasDeficit ? 'Review upcoming obligations' : 'Positive cash runway'}
+            {deficits.hasDeficit ? 'Review upcoming obligations' : 'Cash stays positive across entire forecast'}
           </small>
         </article>
       </div>
@@ -221,7 +325,7 @@ export const DashboardView: React.FC = () => {
           <div className="panel-heading" style={{ marginBottom: '10px' }}>
             <h3>Financial Health Score</h3>
             <span id="healthScoreBadge" className="health-badge">
-              Grade {health.grade}
+              {health.label?.toUpperCase() ?? `GRADE ${health.grade}`}
             </span>
           </div>
           <div className="health-score-body">
@@ -238,7 +342,7 @@ export const DashboardView: React.FC = () => {
                   />
                 </div>
                 <small id="healthScoreSummary" style={{ color: 'var(--muted)', display: 'block', marginTop: '8px', lineHeight: 1.4 }}>
-                  {health.summaryNote} ({health.runwayMonths} months estimated runway)
+                  {health.summaryNote}
                 </small>
               </div>
             </div>
@@ -272,14 +376,14 @@ export const DashboardView: React.FC = () => {
       </div>
 
       {/* Forecast Line Trajectory Section */}
-      <div className="content-grid" style={{ marginTop: '18px' }}>
+      <div style={{ marginTop: '18px' }}>
         <section className="panel panel-full-width forecast-line-panel">
           <div className="panel-heading forecast-line-heading">
             <div className="forecast-heading-left">
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                 <h3 style={{ margin: 0 }}>Forecast Trajectory</h3>
                 <span id="forecastLineRangeBadge" className="forecast-range-badge">
-                  {forecastRangeMonths} Months Projection
+                  {forecastRangeMonths} Months
                 </span>
                 {deficits.hasDeficit && (
                   <span id="forecastDeficitAlertBadge" className="forecast-deficit-alert-badge" style={{ display: 'inline-block' }}>
@@ -288,7 +392,12 @@ export const DashboardView: React.FC = () => {
                 )}
               </div>
               <span id="forecastLineDateSpan" style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px', display: 'block' }}>
-                Entry-by-entry cashflow trajectory with deficit awareness
+                {DateUtils.formatDisplayDate(DateUtils.todayString())} (Current Balance)
+                {' → '}
+                {plottedEntryRows.length
+                  ? DateUtils.formatDisplayDate(plottedEntryRows[plottedEntryRows.length - 1].date)
+                  : DateUtils.formatDisplayDate(DateUtils.todayString())}
+                {' • Entry-by-entry cashflow trajectory'}
               </span>
             </div>
 
@@ -420,10 +529,10 @@ export const DashboardView: React.FC = () => {
             <div className="forecast-kpi-card">
               <span className="forecast-kpi-label">Projected Ending</span>
               <strong className="forecast-kpi-value" id="fLineEndCash">
-                {formatMoney(forecast.length > 0 ? forecast[forecast.length - 1].balance : totalCash)}
+                {formatMoney(visibleForecast.length > 0 ? visibleForecast[visibleForecast.length - 1].balance : totalCash)}
               </strong>
               <small className="forecast-kpi-sub" id="fLineEndMonth">
-                {forecast.length > 0 ? forecast[forecast.length - 1].month : '—'}
+                {visibleForecast.length > 0 ? visibleForecast[visibleForecast.length - 1].month : '—'}
               </small>
             </div>
             <div className="forecast-kpi-card">
@@ -431,21 +540,26 @@ export const DashboardView: React.FC = () => {
               <strong className="forecast-kpi-value" id="fLineLowestPoint" style={{ color: lowestPoint < 0 ? 'var(--red)' : 'inherit' }}>
                 {formatMoney(lowestPoint)}
               </strong>
-              <small className="forecast-kpi-sub" id="fLineLowestDate">Lowest cash floor</small>
+              <small className="forecast-kpi-sub" id="fLineLowestDate">
+                {lowestProjection.date ? `Floor: ${DateUtils.formatDisplayDate(lowestProjection.date)}` : 'Lowest cash floor'}
+              </small>
             </div>
             <div className="forecast-kpi-card" style={{ borderColor: 'rgba(16, 185, 129, 0.4)' }}>
               <span className="forecast-kpi-label" style={{ color: 'var(--green)' }}>Safe to Spend Today</span>
               <strong className="forecast-kpi-value" id="fLineSafeToSpend" style={{ color: 'var(--green)' }}>
                 {formatMoney(safeToSpend)}
               </strong>
-              <small className="forecast-kpi-sub" id="fLineSafeSub">Before any deficit</small>
+              <small className="forecast-kpi-sub" id="fLineSafeSub">Safe floor: {formatMoney(safeToSpend)}</small>
             </div>
             <div className="forecast-kpi-card">
               <span className="forecast-kpi-label">Plotted Entries</span>
               <strong className="forecast-kpi-value" id="fLineEntryCount">
-                {allCandidateEntries.length}
+                {plottedEntryCount} Entries
               </strong>
-              <small className="forecast-kpi-sub" id="fLineNetChange">Active records</small>
+              <small className="forecast-kpi-sub" id="fLineNetChange">
+                {(visibleForecast[visibleForecast.length - 1]?.balance || totalCash) - totalCash >= 0 ? '+' : ''}
+                {formatMoney((visibleForecast[visibleForecast.length - 1]?.balance || totalCash) - totalCash)} Net
+              </small>
             </div>
           </div>
 
@@ -465,6 +579,61 @@ export const DashboardView: React.FC = () => {
               }}
             />
           </div>
+        </section>
+
+        <section className="content-grid dashboard-summary-grid" style={{ marginTop: '16px' }}>
+          <section className="panel">
+            <div className="panel-heading">
+              <h3 style={{ margin: 0 }}>Category expense breakdown</h3>
+            </div>
+            {categoryRows.length === 0 ? (
+              <p style={{ color: 'var(--muted)' }}>No expense categories yet</p>
+            ) : (
+              <div className="stack-list">
+                {categoryRows.map(([category, amount]) => (
+                  <div key={category} className="list-row">
+                    <span>{category}</span>
+                    <strong>{formatMoney(amount)} ({categoryTotal ? Math.round((amount / categoryTotal) * 100) : 0}%)</strong>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+          <section className="panel">
+            <div className="panel-heading">
+              <h3 style={{ margin: 0 }}>Asset allocation</h3>
+              <strong>{formatMoney(assetTotal)}</strong>
+            </div>
+            <div className="stack-list">
+              {Object.entries(assetRows)
+                .filter(([, amount]) => amount > 0)
+                .map(([label, amount]) => (
+                  <div key={label} className="list-row">
+                    <span>
+                      {label === 'Foreign Currency' ? '💱 ' : label === 'Gold Assets' ? '🪙 ' : label === 'Liquid Cash / Bank' ? '💵 ' : ''}
+                      {label}
+                    </span>
+                    <strong>{formatMoney(amount)} ({assetTotal ? Math.round((amount / assetTotal) * 100) : 0}%)</strong>
+                  </div>
+                ))}
+            </div>
+          </section>
+          <section className="panel">
+            <div className="panel-heading">
+              <h3 style={{ margin: 0 }}>Forecast warning</h3>
+            </div>
+            {deficits.hasDeficit ? (
+              <div className="list-row danger-row">
+                <span>Cashflow deficit projected</span>
+                <strong>{formatMoney(deficits.worstDeficit)}</strong>
+              </div>
+            ) : (
+              <div className="list-row success-row">
+                <span>Cashflow is covered</span>
+                <strong>No deficit</strong>
+              </div>
+            )}
+          </section>
         </section>
       </div>
     </section>

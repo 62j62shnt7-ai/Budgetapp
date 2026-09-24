@@ -16,13 +16,15 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
   actualAmount,
   onClose,
 }) => {
-  const { accounts, updateAccountBalance } = useBudgetStore();
+  const { accounts, updateAccountBalance, updateEntry } = useBudgetStore();
 
   const [selectedAccountId, setSelectedAccountId] = useState<string>('cib');
+  const [tag, setTag] = useState('');
 
   useEffect(() => {
     if (entry) {
       setSelectedAccountId(entry.account || 'cib');
+      setTag(entry.tag || '');
     }
   }, [entry, isOpen]);
 
@@ -33,6 +35,9 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
   const handleConfirm = () => {
     const acc = accounts[selectedAccountId];
     if (acc) {
+      if (tag.trim() && tag.trim() !== entry.tag) {
+        updateEntry(entry.id, { tag: tag.trim() });
+      }
       const currentBal = acc.balance || 0;
       const newBal = isIncome ? currentBal + actualAmount : currentBal - actualAmount;
       updateAccountBalance(selectedAccountId, newBal);
@@ -64,6 +69,16 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
             </option>
           ))}
         </select>
+      </label>
+      <label style={{ marginTop: '10px' }}>
+        <span>Subcategory / Tag <small style={{ color: 'var(--muted)', fontSize: '12px' }}>(Optional)</small></span>
+        <input
+          type="text"
+          list="subcatSuggestions"
+          placeholder="e.g. Food, Bills, Utilities"
+          value={tag}
+          onChange={(e) => setTag(e.target.value)}
+        />
       </label>
 
       <div className="dialog-actions" style={{ marginTop: '18px' }}>

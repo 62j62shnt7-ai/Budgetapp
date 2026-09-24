@@ -14,10 +14,11 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
   onAutoTagPrompt,
   onResetPrompt,
 }) => {
-  const { exportJSON, importJSON, entries } = useBudgetStore();
+  const { exportJSON, importJSON, entries, archivedEntries, entryActuals, entryActualDates, autoTagEntries, resetData, restoreResetBackup } = useBudgetStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
+  const hasResetBackup = Boolean(localStorage.getItem('budget-control-reset-backup'));
 
   // Export JSON file download
   const handleExportJSON = () => {
@@ -33,18 +34,20 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
 
   // Export CSV for Excel
   const handleExportCSV = () => {
-    const headers = ['Date', 'Category', 'Subcategory/Tag', 'Account', 'Type', 'Amount', 'ActualAmount', 'Currency'];
-    const rows = entries.map((e) => [
-      e.date,
-      `"${(e.category || '').replace(/"/g, '""')}"`,
-      `"${(e.tag || e.subcategory || '').replace(/"/g, '""')}"`,
-      e.account || 'cib',
-      e.type,
-      e.amount,
-      e.actualAmount || '',
-      e.currency || 'EGP',
+    const escapeCsv = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const headers = ['Date', 'Actual Date', 'Category', 'Subcategory / Tags', 'Account', 'Type', 'Source', 'Planned Amount (EGP)', 'Actual Amount (EGP)'];
+    const rows = [...entries, ...archivedEntries].map((e) => [
+      escapeCsv(e.date),
+      escapeCsv(entryActualDates[e.id] || e.date),
+      escapeCsv(e.category),
+      escapeCsv([e.subcategory, e.tag].filter(Boolean).join(', ')),
+      escapeCsv(e.account || 'cib'),
+      escapeCsv(e.type),
+      escapeCsv(e.source),
+      Number(e.amount || 0),
+      entryActuals[e.id] ?? e.actualAmount ?? '',
     ]);
-    const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -121,7 +124,7 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
               className="ghost-button"
               type="button"
               style={{ borderColor: 'var(--blue)', color: 'var(--blue)' }}
-              onClick={onAutoTagPrompt ? onAutoTagPrompt : () => alert('All items tagged!')}
+              onClick={onAutoTagPrompt ? onAutoTagPrompt : () => alert(`${autoTagEntries()} item(s) tagged.`)}
             >
               🏷️ Auto-Tag Untagged Items
             </button>
@@ -137,14 +140,30 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
             <button className="ghost-button" type="button" onClick={() => window.location.reload()}>
               🔄 Refresh App
             </button>
-            {onResetPrompt && (
-              <button
+            <button
                 className="ghost-button"
                 type="button"
                 style={{ color: 'var(--red)' }}
-                onClick={onResetPrompt}
+                onClick={onResetPrompt || (() => {
+                  if (window.confirm('Reset all budget data? A backup will be saved first.')) {
+                    resetData();
+                    onClose();
+                  }
+                })}
               >
                 Reset sample data
+              </button>
+            {hasResetBackup && (
+              <button
+                className="ghost-button"
+                type="button"
+                onClick={() => {
+                  if (window.confirm('Undo the last reset and restore the previous data?')) {
+                    if (restoreResetBackup()) onClose();
+                  }
+                }}
+              >
+                Undo last reset
               </button>
             )}
           </div>

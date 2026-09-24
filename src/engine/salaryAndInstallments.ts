@@ -61,7 +61,7 @@ export function buildInstallmentEntries(installments: Installment[]): CashEntry[
       const y = Math.floor(totalMonthIndex / 12);
       const m = (totalMonthIndex % 12) + 1;
       const lastDay = DateUtils.getLastDayOfMonth(y, m);
-      const day = Math.min(10, lastDay); // Default installment date
+      const day = Math.min(Number(installment.day) || 10, lastDay);
 
       entries.push({
         id: `installment-${installment.id}-${i}`,

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { useBudgetStore } from '../../store/useBudgetStore';
+import { inferTag, useBudgetStore } from '../../store/useBudgetStore';
 import { calculateCreditSettlementDate, getCreditCycleHint } from '../../engine/creditCards';
 import { getCurrencyRate } from '../../engine/currency';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
+import { getEntryActualAmount } from '../../engine/forecast';
 import type { CashEntry } from '../../types';
 
 interface EntryModalProps {
@@ -20,7 +21,16 @@ export const EntryModal: React.FC<EntryModalProps> = ({
   onClose,
   onDeductPrompt,
 }) => {
-  const { addEntry, updateEntry, rates } = useBudgetStore();
+  const {
+    addEntry,
+    updateEntry,
+    recordActual,
+    clearActual,
+    updateCreditSettlementOverride,
+    recalculateCreditSettlement,
+    rates,
+    entryActuals,
+  } = useBudgetStore();
 
   const [creditType, setCreditType] = useState<string>('');
   const [date, setDate] = useState<string>(DateUtils.todayString());
@@ -33,11 +43,13 @@ export const EntryModal: React.FC<EntryModalProps> = ({
   const [currency, setCurrency] = useState<string>('EGP');
   const [amount, setAmount] = useState<string>('');
   const [actualAmount, setActualAmount] = useState<string>('');
+  const [recalcStatus, setRecalcStatus] = useState<string>('');
 
   // Recurring options
   const [isRecurring, setIsRecurring] = useState<boolean>(false);
   const [recurringFrequency, setRecurringFrequency] = useState<'monthly' | 'weekly' | 'biweekly'>('monthly');
   const [recurringCount, setRecurringCount] = useState<number>(12);
+  const [recurringDayOfWeek, setRecurringDayOfWeek] = useState<number>(new Date().getDay());
 
   useEffect(() => {
     if (entryToEdit) {
@@ -49,8 +61,11 @@ export const EntryModal: React.FC<EntryModalProps> = ({
       setType(entryToEdit.type);
       setCurrency(entryToEdit.currency || 'EGP');
       setAmount(String(entryToEdit.amount));
-      setActualAmount(entryToEdit.actualAmount ? String(entryToEdit.actualAmount) : '');
+      const existingActual = getEntryActualAmount(entryToEdit, entryActuals);
+      setActualAmount(existingActual > 0 ? String(existingActual) : '');
+      setCreditSettlementDate(entryToEdit.creditSettlementDate || entryToEdit.settlementDate || '');
       setIsRecurring(false);
+      setRecalcStatus('');
     } else {
       setType(initialType);
       setCreditType('');
@@ -61,7 +76,10 @@ export const EntryModal: React.FC<EntryModalProps> = ({
       setCurrency('EGP');
       setAmount('');
       setActualAmount('');
+      setCreditSettlementDate('');
+      setRecurringDayOfWeek(new Date(`${DateUtils.todayString()}T00:00:00`).getDay());
       setIsRecurring(false);
+      setRecalcStatus('');
     }
   }, [entryToEdit, initialType, isOpen]);
 
@@ -90,6 +108,13 @@ export const EntryModal: React.FC<EntryModalProps> = ({
     }
   }, [creditType, date]);
 
+  useEffect(() => {
+    if (!tag.trim()) {
+      const inferred = inferTag({ category, creditType, account, type });
+      if (inferred) setTag(inferred);
+    }
+  }, [category, creditType, account, type, tag]);
+
   if (!isOpen) return null;
 
   // Currency conversion calculation note
@@ -101,23 +126,51 @@ export const EntryModal: React.FC<EntryModalProps> = ({
     e.preventDefault();
     if (!numericAmount || numericAmount <= 0) return;
 
+    const isCardExpense = creditType === 'cib_card' || creditType === 'hsbc_card';
+    const isCreditDue = creditType === 'cib' || creditType === 'hsbc';
+    const normalizedCategory = category.trim() || (isCreditDue
+      ? `${creditType === 'cib' ? 'CIB' : 'HSBC'} Credit Due`
+      : type === 'income' ? 'Income' : 'Other');
+    const chosenAccount = isCardExpense && (!account.trim() || account.toLowerCase() === 'cash')
+      ? (creditType.includes('hsbc') ? 'HSBC Credit' : 'CIB Credit')
+      : account.toLowerCase().trim() || 'cash';
+    const settlementDate = isCardExpense
+      ? creditSettlementDate || calculateCreditSettlementDate(date, creditType.includes('hsbc') ? 'hsbc' : 'cib')
+      : '';
     const baseEntry: Omit<CashEntry, 'id'> = {
       date,
-      category: category.trim() || (type === 'income' ? 'Income' : 'General'),
+      category: normalizedCategory,
       subcategory: tag.trim() || undefined,
       tag: tag.trim() || undefined,
-      account: account.toLowerCase().trim() || 'cash',
+      account: chosenAccount,
       type,
       amount: egpEquivalent,
       currency,
       creditType: creditType || undefined,
-      actualAmount: actualAmount ? Number(actualAmount) : undefined,
+      creditSettlementDate: settlementDate || undefined,
+      source: isCardExpense ? 'credit card' : undefined,
+      actualAmount: actualAmount ? Math.round(Number(actualAmount) * fxRate) : undefined,
+      actualDate: actualAmount ? date : undefined,
     };
 
     if (entryToEdit) {
-      updateEntry(entryToEdit.id, baseEntry);
-      if (actualAmount && onDeductPrompt) {
-        onDeductPrompt({ ...baseEntry, id: entryToEdit.id }, Number(actualAmount));
+      const newActual = actualAmount ? Math.round(Number(actualAmount) * fxRate) : 0;
+      const previousActual = getEntryActualAmount(entryToEdit, entryActuals);
+      if (entryToEdit.id.startsWith('credit-settlement-')) {
+        updateCreditSettlementOverride(entryToEdit.id, {
+          amount: egpEquivalent,
+          date,
+        });
+      } else {
+        updateEntry(entryToEdit.id, baseEntry);
+      }
+      if (newActual > 0) {
+        recordActual(entryToEdit.id, newActual, date);
+        if (onDeductPrompt && newActual !== previousActual) {
+          onDeductPrompt({ ...baseEntry, id: entryToEdit.id }, newActual - previousActual);
+        }
+      } else if (previousActual > 0) {
+        clearActual(entryToEdit.id);
       }
     } else {
       if (isRecurring && recurringCount > 1) {
@@ -132,13 +185,12 @@ export const EntryModal: React.FC<EntryModalProps> = ({
             const daysInTargetMonth = new Date(targetYear, targetMonth, 0).getDate();
             const safeDay = Math.min(d, daysInTargetMonth);
             recDate = `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(safeDay).padStart(2, '0')}`;
-          } else if (recurringFrequency === 'weekly') {
+          } else if (recurringFrequency === 'weekly' || recurringFrequency === 'biweekly') {
             const dObj = new Date(date);
-            dObj.setDate(dObj.getDate() + i * 7);
-            recDate = DateUtils.formatDateObj(dObj);
-          } else if (recurringFrequency === 'biweekly') {
-            const dObj = new Date(date);
-            dObj.setDate(dObj.getDate() + i * 14);
+            const baseDay = dObj.getDay();
+            const target = recurringDayOfWeek;
+            const offset = (target - baseDay + 7) % 7;
+            dObj.setDate(dObj.getDate() + offset + i * (recurringFrequency === 'biweekly' ? 14 : 7));
             recDate = DateUtils.formatDateObj(dObj);
           }
 
@@ -155,6 +207,20 @@ export const EntryModal: React.FC<EntryModalProps> = ({
     }
 
     onClose();
+  };
+
+  const handleRecalculateCreditDue = () => {
+    if (!entryToEdit?.id.startsWith('credit-settlement-')) return;
+    const recalculated = recalculateCreditSettlement(entryToEdit.id);
+    if (!recalculated) {
+      setRecalcStatus('No matching card spend or base due was found for this cycle.');
+      return;
+    }
+    setAmount(String(recalculated.amount));
+    setDate(recalculated.date);
+    setActualAmount('');
+    setCreditSettlementDate(recalculated.date);
+    setRecalcStatus(`Recalculated from ${recalculated.cardExpenseCount || 0} card transaction(s). Click Update entry to save.`);
   };
 
   return (
@@ -177,6 +243,19 @@ export const EntryModal: React.FC<EntryModalProps> = ({
             <option value="hsbc">🏛️ HSBC Credit Due (Lump sum)</option>
           </select>
         </label>
+
+        {entryToEdit?.id.startsWith('credit-settlement-') && (
+          <div style={{ marginTop: '8px' }}>
+            <button className="ghost-button" type="button" onClick={handleRecalculateCreditDue}>
+              Recalculate from card history
+            </button>
+            {recalcStatus && (
+              <small style={{ display: 'block', color: 'var(--muted)', marginTop: '6px' }}>
+                {recalcStatus}
+              </small>
+            )}
+          </div>
+        )}
 
         <label id="dateField">
           Date
@@ -215,7 +294,6 @@ export const EntryModal: React.FC<EntryModalProps> = ({
             placeholder="Home, Training, Kids, Food, Bills..."
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            required
           />
         </label>
         <datalist id="expenseCategories">
@@ -365,6 +443,20 @@ export const EntryModal: React.FC<EntryModalProps> = ({
                     onChange={(e) => setRecurringCount(Number(e.target.value) || 12)}
                   />
                 </label>
+                {(recurringFrequency === 'weekly' || recurringFrequency === 'biweekly') && (
+                  <label>
+                    Day of the week
+                    <select value={recurringDayOfWeek} onChange={(e) => setRecurringDayOfWeek(Number(e.target.value))}>
+                      <option value="5">Friday</option>
+                      <option value="6">Saturday</option>
+                      <option value="0">Sunday</option>
+                      <option value="1">Monday</option>
+                      <option value="2">Tuesday</option>
+                      <option value="3">Wednesday</option>
+                      <option value="4">Thursday</option>
+                    </select>
+                  </label>
+                )}
               </div>
             )}
           </div>

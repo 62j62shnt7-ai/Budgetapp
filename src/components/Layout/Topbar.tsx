@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useBudgetStore, type ViewTab } from '../../store/useBudgetStore';
 import { 
   Menu, 
@@ -36,6 +36,29 @@ export const Topbar: React.FC<TopbarProps> = ({
   onOpenGistSync,
 }) => {
   const { theme, setTheme, activeTab, toggleSidebar, gistId } = useBudgetStore();
+  const [updateStatus, setUpdateStatus] = useState('Latest');
+
+  useEffect(() => {
+    const checkStatus = async () => {
+      if (!navigator.onLine) {
+        setUpdateStatus('Offline');
+        return;
+      }
+      if (!('serviceWorker' in navigator)) {
+        setUpdateStatus('Latest');
+        return;
+      }
+      const registration = await navigator.serviceWorker.getRegistration();
+      setUpdateStatus(registration?.waiting ? 'Update ready' : 'Latest');
+    };
+    void checkStatus();
+    window.addEventListener('online', checkStatus);
+    window.addEventListener('offline', checkStatus);
+    return () => {
+      window.removeEventListener('online', checkStatus);
+      window.removeEventListener('offline', checkStatus);
+    };
+  }, []);
 
   return (
     <header className="topbar">
@@ -79,7 +102,9 @@ export const Topbar: React.FC<TopbarProps> = ({
         >
           <RotateCw size={14} />
           <span>Refresh</span>
-          <span className="sync-pill synced" id="appUpdateStatus">Latest</span>
+          <span className={`sync-pill ${updateStatus === 'Update ready' ? 'update-ready' : 'synced'}`} id="appUpdateStatus">
+            {updateStatus}
+          </span>
         </button>
 
         <button

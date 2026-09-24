@@ -32,11 +32,12 @@ export const LoanBridgeModal: React.FC<LoanBridgeModalProps> = ({ isOpen, onClos
     e.preventDefault();
     const loanAmt = Number(amount);
     if (!loanAmt || loanAmt <= 0) return;
+    const loanId = `loan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     // 1. Add disbursement income entry
     addEntry({
       date: disbursementDate,
-      category: 'Loan Disbursement',
+      category: `Loan Inflow: ${name.trim() || 'Bridge Loan'}`,
       subcategory: 'Loan',
       tag: 'Loan',
       account,
@@ -44,6 +45,8 @@ export const LoanBridgeModal: React.FC<LoanBridgeModalProps> = ({ isOpen, onClos
       amount: loanAmt,
       currency: 'EGP',
       source: 'bridge loan',
+      loanId,
+      initialAmount: loanAmt,
     });
 
     // 2. Schedule repayment
@@ -51,7 +54,7 @@ export const LoanBridgeModal: React.FC<LoanBridgeModalProps> = ({ isOpen, onClos
       const repAmt = Number(repaymentAmount) || loanAmt;
       addEntry({
         date: dueDate,
-        category: 'Loan Repayment',
+        category: `Loan Repayment: ${name.trim() || 'Bridge Loan'}`,
         subcategory: 'Loan Repayment',
         tag: 'Loan Repayment',
         account,
@@ -59,6 +62,8 @@ export const LoanBridgeModal: React.FC<LoanBridgeModalProps> = ({ isOpen, onClos
         amount: repAmt,
         currency: 'EGP',
         source: 'loan repayment',
+        loanId,
+        initialAmount: repAmt,
       });
     } else {
       const perMonth = Number(installmentAmount) || Math.round(loanAmt / installmentMonths);
@@ -71,6 +76,8 @@ export const LoanBridgeModal: React.FC<LoanBridgeModalProps> = ({ isOpen, onClos
         remainingMonths: installmentMonths,
         startMonth: installmentStartMonth,
         account,
+        loanId,
+        initialAmount: perMonth,
       });
     }
 

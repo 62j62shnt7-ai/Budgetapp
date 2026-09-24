@@ -9,10 +9,11 @@ import {
   ShieldAlert, 
   Activity 
 } from 'lucide-react';
-import { calculateForecast, detectDeficits } from '../../engine/forecast';
+import { calculateForecast, getActiveForecastEntries, getDeficitPeriods } from '../../engine/forecast';
 import { computeFinancialHealthScore } from '../../engine/healthScore';
 import { computeTotalStorageValue } from '../../engine/currency';
 import { buildSalaryEntries, buildInstallmentEntries } from '../../engine/salaryAndInstallments';
+import { buildCreditDueEntries } from '../../engine/creditCards';
 import { DateUtils } from '../../engine/dateUtils';
 
 interface HeaderProps {
@@ -28,7 +29,14 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddModal }) => {
     salaryPattern, 
     installments, 
     rates, 
-    storageAssets 
+    storageAssets,
+    creditDues,
+    archivedEntries,
+    creditSettlementOverrides,
+    categoryCaps,
+    savingsGoals,
+    entryActuals,
+    deletedForecasts,
   } = useBudgetStore();
 
   const totalCash = Object.values(accounts).reduce((sum, acc) => sum + (acc.balance || 0), 0);
@@ -36,13 +44,38 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddModal }) => {
 
   // Dynamic forecast & health calculation
   const currentYm = DateUtils.currentYearMonth();
-  const salaryEntries = buildSalaryEntries(salaryPattern, currentYm, 4);
+  const hasMaterializedSalary = entries.some((entry) => entry.source === 'salary');
+  const salaryEntries = hasMaterializedSalary ? [] : buildSalaryEntries(salaryPattern, currentYm, 4);
   const installmentEntries = buildInstallmentEntries(installments);
-  const allCandidateEntries = [...entries, ...salaryEntries, ...installmentEntries];
+  const creditEntries = buildCreditDueEntries({
+    accounts,
+    creditDues,
+    cashEntries: entries,
+    archivedEntries,
+    entryActuals,
+    creditSettlementOverrides,
+  });
+  const allCandidateEntries = getActiveForecastEntries(
+    [...entries, ...salaryEntries],
+    installmentEntries,
+    creditEntries,
+    deletedForecasts,
+    entryActuals
+  );
 
   const forecast = calculateForecast(allCandidateEntries, totalCash, 12);
-  const deficits = detectDeficits(forecast);
-  const health = computeFinancialHealthScore(forecast, deficits, totalCash, storageTotal);
+  const deficitPeriods = getDeficitPeriods(allCandidateEntries, totalCash);
+  const health = computeFinancialHealthScore({
+    entries: allCandidateEntries,
+    forecast,
+    deficitPeriods,
+    actualCashNow: totalCash,
+    storageTotal,
+    categoryCaps,
+    savingsGoals,
+    entryActuals,
+  });
+  const hasDeficit = deficitPeriods.length > 0 || forecast.some((item) => item.balance < 0);
 
   return (
     <header className="app-header">
@@ -58,10 +91,10 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddModal }) => {
           <span>{formatMoney(totalCash)}</span>
         </div>
 
-        {deficits.hasDeficit ? (
+        {hasDeficit ? (
           <div className="badge badge-danger" title="Projected cash deficit detected">
             <ShieldAlert size={14} />
-            <span>Deficit: -{formatMoney(deficits.worstDeficit)}</span>
+            <span>Deficit: -{formatMoney(Math.max(0, ...deficitPeriods.map((item) => Math.abs(item.lowestBalance))))}</span>
           </div>
         ) : (
           <div className="badge badge-success" title="Cashflow forecast healthy">

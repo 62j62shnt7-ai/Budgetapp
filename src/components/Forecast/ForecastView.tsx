@@ -1,6 +1,6 @@
 import React from 'react';
 import { useBudgetStore } from '../../store/useBudgetStore';
-import { calculateForecast } from '../../engine/forecast';
+import { calculateForecast, getActiveForecastEntries } from '../../engine/forecast';
 import { buildSalaryEntries, buildInstallmentEntries } from '../../engine/salaryAndInstallments';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { ForecastChart } from './ForecastChart';
@@ -8,13 +8,20 @@ import { SpendSimulator } from './SpendSimulator';
 import { TrendingUp, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 
 export const ForecastView: React.FC = () => {
-  const { accounts, entries, salaryPattern, installments } = useBudgetStore();
+  const { accounts, entries, salaryPattern, installments, entryActuals, deletedForecasts } = useBudgetStore();
 
   const totalCash = Object.values(accounts).reduce((sum, acc) => sum + (acc.balance || 0), 0);
   const currentYm = DateUtils.currentYearMonth();
-  const salaryEntries = buildSalaryEntries(salaryPattern, currentYm, 4);
+  const hasMaterializedSalary = entries.some((entry) => entry.source === 'salary');
+  const salaryEntries = hasMaterializedSalary ? [] : buildSalaryEntries(salaryPattern, currentYm, 4);
   const installmentEntries = buildInstallmentEntries(installments);
-  const allCandidateEntries = [...entries, ...salaryEntries, ...installmentEntries];
+  const allCandidateEntries = getActiveForecastEntries(
+    [...entries, ...salaryEntries],
+    installmentEntries,
+    [],
+    deletedForecasts,
+    entryActuals
+  );
 
   const forecast = calculateForecast(allCandidateEntries, totalCash, 12);
 

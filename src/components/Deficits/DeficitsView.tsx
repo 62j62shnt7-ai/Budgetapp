@@ -1,24 +1,87 @@
 import React from 'react';
 import { useBudgetStore } from '../../store/useBudgetStore';
-import { calculateForecast, detectDeficits } from '../../engine/forecast';
+import {
+  calculateForecast,
+  getActiveForecastEntries,
+  getDeficitPeriods,
+  getEntryActualAmount,
+  getForecastCandidateEntries,
+  isPartialTracked,
+  getRemainingForecastAmount,
+  isOngoingEntry,
+} from '../../engine/forecast';
 import { buildSalaryEntries, buildInstallmentEntries } from '../../engine/salaryAndInstallments';
+import { buildCreditDueEntries } from '../../engine/creditCards';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { AlertCircle, Clock, CheckCircle } from 'lucide-react';
 
-export const DeficitsView: React.FC = () => {
-  const { accounts, entries, salaryPattern, installments } = useBudgetStore();
+interface DeficitsViewProps {
+  onBridgeDeficit?: () => void;
+}
+
+export const DeficitsView: React.FC<DeficitsViewProps> = ({ onBridgeDeficit }) => {
+  const {
+    accounts,
+    entries,
+    salaryPattern,
+    installments,
+    creditDues,
+    archivedEntries,
+    creditSettlementOverrides,
+    entryActuals,
+    deletedForecasts,
+    recordActual,
+  } = useBudgetStore();
 
   const totalCash = Object.values(accounts).reduce((sum, acc) => sum + (acc.balance || 0), 0);
   const currentYm = DateUtils.currentYearMonth();
-  const salaryEntries = buildSalaryEntries(salaryPattern, currentYm, 4);
+  const hasMaterializedSalary = entries.some((entry) => entry.source === 'salary');
+  const salaryEntries = hasMaterializedSalary ? [] : buildSalaryEntries(salaryPattern, currentYm, 4);
   const installmentEntries = buildInstallmentEntries(installments);
-  const allCandidateEntries = [...entries, ...salaryEntries, ...installmentEntries];
+  const creditDueEntries = buildCreditDueEntries({
+    accounts,
+    creditDues,
+    cashEntries: entries,
+    archivedEntries,
+    entryActuals,
+    creditSettlementOverrides,
+  });
+  const allCandidateEntries = getActiveForecastEntries(
+    [...entries, ...salaryEntries],
+    installmentEntries,
+    creditDueEntries,
+    deletedForecasts,
+    entryActuals
+  );
 
   const forecast = calculateForecast(allCandidateEntries, totalCash, 12);
-  const deficits = detectDeficits(forecast);
+  const deficitPeriods = getDeficitPeriods(allCandidateEntries, totalCash);
+  const deficits = {
+    hasDeficit: deficitPeriods.length > 0 || forecast.some((item) => item.balance < 0),
+    deficitPeriods,
+  };
 
   const today = DateUtils.todayString();
-  const overdueEntries = entries.filter((e) => e.date && e.date < today && e.type === 'expense');
+  const overdueEntries = getForecastCandidateEntries(
+    [...entries, ...salaryEntries],
+    installmentEntries,
+    creditDueEntries,
+    deletedForecasts
+  )
+    .filter((entry) => entry.date && entry.date < today)
+    .filter((entry) => !isOngoingEntry(entry, entryActuals))
+    .map((entry) => {
+      const partial = isPartialTracked(entry);
+      const remaining = partial
+        ? getRemainingForecastAmount(entry, entryActuals)
+        : Number(entry.amount || 0);
+      const settled = Boolean(entry.isClosed) || (partial
+        ? remaining <= 0
+        : getEntryActualAmount(entry, entryActuals) > 0);
+      return { entry, remaining, settled, daysOverdue: DateUtils.daysBetween(entry.date, today) };
+    })
+    .filter((item) => !item.settled && item.remaining > 0)
+    .sort((a, b) => b.entry.date.localeCompare(a.entry.date));
 
   return (
     <section className="view" id="deficits" style={{ display: 'block' }}>
@@ -28,7 +91,7 @@ export const DeficitsView: React.FC = () => {
           <div className="panel-heading">
             <h3 style={{ margin: 0 }}>Forecast deficit timeline</h3>
             <span style={{ fontSize: '13px', color: 'var(--muted)' }}>
-              Exact months balance turns negative until income recovers it
+              Exact days balance turns negative until income recovers it
             </span>
           </div>
 
@@ -50,22 +113,45 @@ export const DeficitsView: React.FC = () => {
                     border: '1px solid rgba(192, 61, 53, 0.25)',
                     marginBottom: '8px',
                     display: 'flex',
-                    alignItems: 'center',
+                    alignItems: 'stretch',
+                    flexDirection: 'column',
                     justifyContent: 'space-between',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
                     <AlertCircle size={20} color="var(--red)" />
                     <div>
                       <strong style={{ display: 'block', color: 'var(--red)', fontSize: '14px' }}>
-                        Deficit: -{formatMoney(period.maxDeficit)}
+                        {DateUtils.formatDisplayDate(period.startDate)} → {period.resolvedDate ? DateUtils.formatDisplayDate(period.resolvedDate) : 'Ongoing'}
                       </strong>
                       <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
-                        Span: {DateUtils.formatDisplayDate(period.startDate)} to {DateUtils.formatDisplayDate(period.endDate)} (~{period.shortfallDays} days)
+                        Turns negative on {period.initialTrigger}
+                        {period.isResolved ? ` · Fixed by ${period.resolvedBy}` : ' · Remains negative'}
+                        {' · '}{period.daysInDeficit} days
                       </span>
                     </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <strong style={{ color: 'var(--red)', display: 'block' }}>{formatMoney(period.lowestBalance)}</strong>
+                      <small style={{ color: 'var(--muted)' }}>Peak deficit</small>
+                      {onBridgeDeficit && (
+                        <button className="ghost-button" type="button" style={{ display: 'block', marginTop: '6px', fontSize: '11px' }} onClick={onBridgeDeficit}>
+                          💳 Bridge with Loan
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <span className="badge badge-danger">Unresolved</span>
+                  <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed var(--line)' }}>
+                    <small style={{ color: 'var(--muted)', textTransform: 'uppercase' }}>Daily deficit progression</small>
+                    {period.steps.map((step) => (
+                      <div key={`${step.entryId}-${step.date}`} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', padding: '5px 0', fontSize: '12px' }}>
+                        <span>
+                          <strong>{DateUtils.formatDisplayDate(step.date)}</strong> · {step.isRecoveryStep ? `Fixed by ${step.category}` : step.category}
+                          {' '}({step.delta >= 0 ? '+' : '-'}{formatMoney(step.amount)})
+                        </span>
+                        <strong style={{ color: step.balance < 0 ? 'var(--red)' : 'var(--green)' }}>{formatMoney(step.balance)}</strong>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))
             )}
@@ -88,7 +174,7 @@ export const DeficitsView: React.FC = () => {
                 <span>No overdue entries found</span>
               </div>
             ) : (
-              overdueEntries.slice(0, 10).map((entry) => (
+              overdueEntries.slice(0, 10).map(({ entry, remaining, daysOverdue }) => (
                 <div
                   key={entry.id}
                   style={{
@@ -104,12 +190,15 @@ export const DeficitsView: React.FC = () => {
                   <div>
                     <strong style={{ fontSize: '13px', display: 'block' }}>{entry.category}</strong>
                     <span style={{ fontSize: '11px', color: 'var(--muted)' }}>
-                      Due: {DateUtils.formatDisplayDate(entry.date)} · Account: {entry.account.toUpperCase()}
+                      Due: {DateUtils.formatDisplayDate(entry.date)} · {daysOverdue}d overdue · Account: {entry.account.toUpperCase()}
                     </span>
                   </div>
-                  <strong style={{ color: 'var(--red)', fontFamily: 'var(--font-heading)' }}>
-                    {formatMoney(entry.amount)}
-                  </strong>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <strong style={{ color: 'var(--red)', fontFamily: 'var(--font-heading)' }}>{formatMoney(remaining)}</strong>
+                    <button className="ghost-button" type="button" style={{ fontSize: '11px', padding: '4px 8px' }} onClick={() => recordActual(entry.id, remaining, today)}>
+                      Mark Paid
+                    </button>
+                  </div>
                 </div>
               ))
             )}

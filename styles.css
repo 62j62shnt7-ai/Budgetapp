@@ -516,6 +516,10 @@ body.sidebar-collapsed .sidebar-open-btn {
   gap: 18px;
 }
 
+.dashboard-summary-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .salary-layout {
   display: grid;
   margin-bottom: 18px;
@@ -2573,7 +2577,7 @@ label {
 /* KPI Summary Cards */
 .forecast-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
   margin: 10px 0 16px;
 }
@@ -2587,6 +2591,7 @@ label {
   flex-direction: column;
   gap: 3px;
   transition: transform 0.15s ease, border-color 0.15s ease;
+  min-width: 0;
 }
 
 .forecast-kpi-card:hover {
@@ -2605,7 +2610,8 @@ label {
   font-size: 15px;
   font-weight: 700;
   color: var(--ink);
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .forecast-kpi-sub {
@@ -2625,8 +2631,8 @@ label {
 .forecast-chart-container {
   position: relative;
   width: 100%;
-  min-height: 400px;
-  overflow: visible;
+  min-height: 0;
+  overflow: hidden;
   background: var(--surface-soft);
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -2636,16 +2642,16 @@ label {
 
 .forecast-line-svg-wrap {
   width: 100%;
-  height: 380px;
+  height: clamp(260px, 34vw, 380px);
   position: relative;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .forecast-line-svg {
   width: 100%;
   height: 100%;
   display: block;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .forecast-tooltip {
@@ -2844,6 +2850,10 @@ label {
 }
 
 @media (max-width: 768px) {
+  .dashboard-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
   .forecast-line-heading {
     flex-direction: column;
     align-items: flex-start;
@@ -3720,5 +3730,3 @@ select.job-status-select option {
   border-color: rgba(96, 165, 250, 0.3) !important;
   color: #93c5fd !important;
 }
-
-
