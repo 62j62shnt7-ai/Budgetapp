@@ -25,7 +25,7 @@ import {
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { Plus } from 'lucide-react';
 
-import type { CashEntry } from '../../types';
+import type { CashEntry, Installment } from '../../types';
 import { ExactAmountDecisionModal } from '../Modals/ExactAmountDecisionModal';
 import { AdjustLoanRepaymentModal, type LinkedRepaymentInfo } from '../Modals/AdjustLoanRepaymentModal';
 import { SalaryStructureSection } from './SalaryStructureSection';
@@ -36,7 +36,7 @@ interface CashflowViewProps {
   onOpenEntryModal: (type: 'expense' | 'income') => void;
   onEditEntry?: (entry: CashEntry) => void;
   onDeductPrompt?: (entry: CashEntry, actualAmount: number) => void;
-  onOpenInstallmentModal: () => void;
+  onOpenInstallmentModal: (inst?: Installment) => void;
 }
 
 export const CashflowView: React.FC<CashflowViewProps> = ({

@@ -57,8 +57,8 @@ export function getCreditCycleHint(dateStr: string, creditType?: string): string
 export function isCreditCardExpense(entry: CashEntry): boolean {
   if (!entry || entry.type !== 'expense') return false;
   const id = entry.id || '';
-  if (id.startsWith('credit-settlement-')) return false;
-  if (entry.source === 'recurring credit' || (entry as any).isCreditSettlement) return false;
+  if (id.startsWith('credit-settlement-') || id.startsWith('installment-')) return false;
+  if (entry.source === 'recurring credit' || entry.source === 'installment' || (entry as any).isCreditSettlement) return false;
   const cat = (entry.category || '').toLowerCase();
   if (cat.includes('credit due')) return false;
   const t = (entry.creditType || '').toLowerCase();
@@ -78,8 +78,9 @@ export function isCreditCardExpense(entry: CashEntry): boolean {
 
 export function isCreditDueLumpSum(entry: CashEntry): boolean {
   if (!entry || entry.type !== 'expense') return false;
-  if (isCreditCardExpense(entry)) return false;
   const id = entry.id || '';
+  if (id.startsWith('installment-') || entry.source === 'installment') return false;
+  if (isCreditCardExpense(entry)) return false;
   if (id.startsWith('credit-settlement-')) return true;
   const t = (entry.creditType || '').toLowerCase();
   const cat = (entry.category || '').toLowerCase();

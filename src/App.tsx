@@ -31,7 +31,7 @@ import { DataToolsModal } from './components/Modals/DataToolsModal';
 import { DeductAccountModal } from './components/Modals/DeductAccountModal';
 import { MobileActionSheet } from './components/Layout/MobileActionSheet';
 import { autoFetchLatestRates } from './engine/currency';
-import type { CashEntry, JobItem } from './types';
+import type { CashEntry, JobItem, Installment } from './types';
 
 export const App: React.FC = () => {
   const { 
@@ -56,6 +56,7 @@ export const App: React.FC = () => {
   const [loanModalOpen, setLoanModalOpen] = useState(false);
   const [storageModalOpen, setStorageModalOpen] = useState(false);
   const [installmentModalOpen, setInstallmentModalOpen] = useState(false);
+  const [installmentToEdit, setInstallmentToEdit] = useState<Installment | null>(null);
 
   // Job Modals
   const [jobModalOpen, setJobModalOpen] = useState(false);
@@ -294,7 +295,10 @@ export const App: React.FC = () => {
               setEntryModalOpen(true);
             }}
             onDeductPrompt={handleDeductPrompt}
-            onOpenInstallmentModal={() => setInstallmentModalOpen(true)}
+            onOpenInstallmentModal={(inst) => {
+              setInstallmentToEdit(inst || null);
+              setInstallmentModalOpen(true);
+            }}
           />
         );
       case 'history':
@@ -374,7 +378,11 @@ export const App: React.FC = () => {
 
       <InstallmentModal
         isOpen={installmentModalOpen}
-        onClose={() => setInstallmentModalOpen(false)}
+        installmentToEdit={installmentToEdit}
+        onClose={() => {
+          setInstallmentModalOpen(false);
+          setInstallmentToEdit(null);
+        }}
       />
 
       <JobFormModal

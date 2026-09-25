@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Trash2, Edit2, ChevronDown, ChevronUp } from 'lucide-react';
 import type { Installment } from '../../types';
 import { formatMoney } from '../../engine/dateUtils';
 
@@ -10,7 +10,7 @@ interface InstallmentsSectionProps {
   installmentMonthlyTotal: number;
   installmentOutstandingTotal: number;
   installmentProgressSummary: { paid: number; total: number; remaining: number };
-  onOpenInstallmentModal: () => void;
+  onOpenInstallmentModal: (inst?: Installment) => void;
   getInstallmentProgress: (inst: Installment) => { paid: number; total: number; remaining: number };
   onDeleteInstallment: (id: string) => void;
 }
@@ -99,6 +99,7 @@ export const InstallmentsSection: React.FC<InstallmentsSectionProps> = ({
                     <strong>{inst.name}</strong>
                     <span style={{ fontSize: '12px', color: 'var(--muted)', display: 'block', marginTop: '2px' }}>
                       {formatMoney(inst.amount)}/mo · Total: {formatMoney((Number(inst.amount) || 0) * progress.total)}
+                      {inst.account ? ` · Account: ${inst.account.toUpperCase()}` : ''}
                     </span>
                     <span style={{ fontSize: '12px', color: 'var(--muted)', display: 'block' }}>
                       {progress.paid > 0 ? `Paid ${progress.paid} of ${progress.total}` : `${progress.total} scheduled`}
@@ -117,15 +118,26 @@ export const InstallmentsSection: React.FC<InstallmentsSectionProps> = ({
                         : `${progress.remaining} remaining · ${formatMoney((Number(inst.amount) || 0) * progress.remaining)} outstanding`}
                     </span>
                   </div>
-                  <button
-                    className="ghost-button icon-button"
-                    style={{ padding: '6px' }}
-                    type="button"
-                    aria-label={`Delete installment ${inst.name}`}
-                    onClick={() => onDeleteInstallment(inst.id)}
-                  >
-                    <Trash2 size={14} color="var(--red)" />
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <button
+                      className="ghost-button icon-button"
+                      style={{ padding: '6px' }}
+                      type="button"
+                      aria-label={`Edit installment ${inst.name}`}
+                      onClick={() => onOpenInstallmentModal(inst)}
+                    >
+                      <Edit2 size={14} />
+                    </button>
+                    <button
+                      className="ghost-button icon-button"
+                      style={{ padding: '6px' }}
+                      type="button"
+                      aria-label={`Delete installment ${inst.name}`}
+                      onClick={() => onDeleteInstallment(inst.id)}
+                    >
+                      <Trash2 size={14} color="var(--red)" />
+                    </button>
+                  </div>
                 </div>
               );
             })

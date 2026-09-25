@@ -63,16 +63,17 @@ export function buildInstallmentEntries(installments: Installment[]): CashEntry[
       const y = Math.floor(totalMonthIndex / 12);
       const m = (totalMonthIndex % 12) + 1;
       const lastDay = DateUtils.getLastDayOfMonth(y, m);
-      const day = Math.min(Number(installment.day) || 10, lastDay);
+      const day = Math.min(Number(installment.day) || 30, lastDay);
 
       entries.push({
         id: `installment-${installment.id}-${i}`,
         date: DateUtils.formatDate(y, m, day),
-        category: 'Installments',
+        category: installment.name,
         subcategory: installment.name,
         account: installment.account || 'cib',
         type: 'expense',
         amount: Number(installment.amount) || 0,
+        source: 'installment',
         tag: installment.tag || 'Installment',
         note: `Installment: ${installment.name} (${i + 1}/${count})`,
       });
