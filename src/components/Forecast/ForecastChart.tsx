@@ -230,9 +230,17 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
     }
   }
 
-  const valMargin = (rawMax - rawMin) * 0.1 || 1000;
-  const minVal = Math.min(0, rawMin - valMargin);
-  const maxVal = rawMax + valMargin;
+  const rawRange = rawMax - rawMin || 1;
+  const roughStep = rawRange / 5;
+  const stepMagnitude = 10 ** Math.floor(Math.log10(roughStep));
+  const normalizedStep = roughStep / stepMagnitude;
+  const niceStep =
+    (normalizedStep <= 1 ? 1 : normalizedStep <= 2 ? 2 : normalizedStep <= 5 ? 5 : 10) *
+    stepMagnitude;
+  const minVal = hasDeficit
+    ? Math.floor(rawMin / niceStep) * niceStep
+    : 0;
+  const maxVal = Math.ceil(rawMax / niceStep) * niceStep;
   const range = maxVal - minVal || 1;
 
   const getY = (val: number) => padT + chartH - ((val - minVal) / range) * chartH;
@@ -279,11 +287,11 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
   const areaD = `${pathD} L ${points[points.length - 1].x.toFixed(1)},${(padT + chartH).toFixed(1)} L ${points[0].x.toFixed(1)},${(padT + chartH).toFixed(1)} Z`;
 
   // Grid ticks
-  const numGridLines = 5;
-  const gridTicks = Array.from({ length: numGridLines + 1 }, (_, i) => {
-    const val = minVal + (i / numGridLines) * range;
-    return { val, y: getY(val) };
-  });
+  const gridTicks: { val: number; y: number }[] = [];
+  for (let value = minVal; value <= maxVal; value += niceStep) {
+    const roundedValue = Math.round(value / niceStep) * niceStep;
+    gridTicks.push({ val: roundedValue, y: getY(roundedValue) });
+  }
 
   // Active hover data
   const activePoint = hoverIndex !== null && series[hoverIndex] ? series[hoverIndex] : null;
