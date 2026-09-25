@@ -288,7 +288,9 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
 
   // Grid ticks
   const gridTicks: { val: number; y: number }[] = [];
-  for (let value = minVal; value <= maxVal; value += niceStep) {
+  const tickCount = Math.max(1, Math.ceil((maxVal - minVal) / niceStep));
+  for (let index = 0; index <= tickCount; index += 1) {
+    const value = Math.min(minVal + index * niceStep, maxVal);
     const roundedValue = Math.round(value / niceStep) * niceStep;
     gridTicks.push({ val: roundedValue, y: getY(roundedValue) });
   }
