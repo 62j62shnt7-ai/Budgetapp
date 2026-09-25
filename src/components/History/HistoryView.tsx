@@ -453,9 +453,9 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                 {filteredEntries.length} {filteredEntries.length === 1 ? 'entry' : 'entries'}
               </span>
             </div>
-            <div className="salary-controls history-filters-bar" style={{ marginBottom: 0, display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-              <label>
-                Month
+            <div className="history-filters-bar">
+              <label className="history-filter-field">
+                <span className="field-label-text">Month</span>
                 <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)}>
                   <option value="all">All months</option>
                   {orderedMonths.slice().reverse().map((m) => (
@@ -463,16 +463,16 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                   ))}
                 </select>
               </label>
-              <label>
-                Type
+              <label className="history-filter-field">
+                <span className="field-label-text">Type</span>
                 <select value={selectedType} onChange={(e) => setSelectedType(e.target.value)}>
                   <option value="all">All types</option>
                   <option value="expense">Expenses</option>
                   <option value="income">Income</option>
                 </select>
               </label>
-              <label>
-                Account
+              <label className="history-filter-field">
+                <span className="field-label-text">Account</span>
                 <select value={selectedAccount} onChange={(e) => setSelectedAccount(e.target.value)}>
                   <option value="all">All accounts</option>
                   {allAccounts.map((acc) => (
@@ -480,8 +480,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                   ))}
                 </select>
               </label>
-              <label>
-                Tag / Subcategory
+              <label className="history-filter-field">
+                <span className="field-label-text">Tag / Subcategory</span>
                 <select value={selectedTag} onChange={(e) => setSelectedTag(e.target.value)}>
                   <option value="all">All tags</option>
                   {hasUntagged && <option value="__untagged__">📁 Untagged</option>}
@@ -490,8 +490,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                   ))}
                 </select>
               </label>
-              <label style={{ flex: '1 1 180px' }}>
-                Search
+              <label className="history-filter-field history-search-field">
+                <span className="field-label-text">Search</span>
                 <input
                   id="historySearch"
                   type="search"
@@ -501,9 +501,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                 />
               </label>
               <button
-                className="ghost-button"
+                className="ghost-button history-reset-btn"
                 type="button"
-                style={{ alignSelf: 'flex-end' }}
                 onClick={handleResetFilters}
               >
                 Reset filters
@@ -545,12 +544,11 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
 
           {/* Validated Entries Table */}
           <section className="panel">
-            <div className="panel-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="panel-heading history-entries-heading">
               <h3 style={{ margin: 0 }}>Individual Validated Entries</h3>
               <button
-                className="ghost-button"
+                className="ghost-button history-admin-toggle-btn"
                 type="button"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '4px 10px' }}
                 onClick={() => setIsAdminUnlocked(!isAdminUnlocked)}
               >
                 {isAdminUnlocked ? <Unlock size={14} color="var(--amber)" /> : <Lock size={14} />}
@@ -650,7 +648,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                           role={isAdminUnlocked && onEditEntry ? 'button' : undefined}
                           title={isAdminUnlocked && onEditEntry ? 'Click to edit this entry' : undefined}
                         >
-                          <td>
+                          <td className="cell-date">
                             <strong>{DateUtils.formatDisplayDate(actDate)}</strong>
                             {hasMultipleDraws && (
                               <button
@@ -668,7 +666,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                               </button>
                             )}
                           </td>
-                          <td>
+                          <td className="cell-category">
                             <strong>{entry.category}</strong>
                             {getEntryTags(entry).map((tag) => (
                               <button
@@ -682,22 +680,22 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                               </button>
                             ))}
                           </td>
-                          <td><span className="account-pill">{entry.account?.toUpperCase() || 'CASH'}</span></td>
-                          <td>
+                          <td className="cell-account"><span className="account-pill">{entry.account?.toUpperCase() || 'CASH'}</span></td>
+                          <td className="cell-type">
                             <span className={`badge ${entry.type === 'income' ? 'badge-income' : 'badge-expense'}`}>
                               {entry.type}
                             </span>
                           </td>
-                          <td style={{ fontSize: '12px', color: 'var(--muted)' }}>{entry.source || 'Manual'}</td>
-                          <td className="number">{formatMoney(entry.amount)}</td>
-                          <td className="number" style={{ fontWeight: 700 }}>
+                          <td className="cell-source" style={{ fontSize: '12px', color: 'var(--muted)' }}>{entry.source || 'Manual'}</td>
+                          <td className="cell-planned number">{formatMoney(entry.amount)}</td>
+                          <td className="cell-actual number" style={{ fontWeight: 700 }}>
                             {isAdminUnlocked ? (
                               <input
                                 type="number"
                                 min="0"
                                 step="1"
                                 defaultValue={actual || ''}
-                                style={{ width: '100px', textAlign: 'right' }}
+                                className="history-admin-input form-input"
                                 onKeyDown={(event) => {
                                   if (event.key === 'Enter') {
                                     const value = Math.round(Number(event.currentTarget.value) || 0);
@@ -709,12 +707,12 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                               />
                             ) : formatMoney(actual)}
                           </td>
-                          <td className="number">
+                          <td className="cell-variance number">
                             <span className={`variance-pill ${varianceClass}`}>
                               {varianceText}
                             </span>
                           </td>
-                          <td>
+                          <td className="cell-actions">
                             {isAdminUnlocked ? (
                               <div style={{ display: 'flex', gap: '4px' }}>
                                 <button
@@ -747,8 +745,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                           </td>
                         </tr>
                         {hasMultipleDraws && isDrawsExpanded && (
-                          <tr>
-                            <td colSpan={9} style={{ padding: '0 16px 12px 36px', background: 'var(--surface-subtle, rgba(0,0,0,0.02))' }}>
+                          <tr className="history-draws-subrow">
+                            <td colSpan={9} className="cell-draws-details" style={{ padding: '0 16px 12px 36px', background: 'var(--surface-subtle, rgba(0,0,0,0.02))' }}>
                               <div style={{ marginTop: '8px' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', marginBottom: '8px', fontSize: '12px' }}>
                                   <span>Breakdown of {entry.draws?.length} payment tranches for {entry.category || 'Expense'}</span>

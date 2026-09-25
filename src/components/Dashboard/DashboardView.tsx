@@ -372,8 +372,8 @@ export const DashboardView: React.FC = () => {
       </div>
 
       <section className="panel dashboard-focus-panel dashboard-section-block" aria-labelledby="dashboardFocusHeading">
-        <div className="panel-heading panel-heading-compact">
-          <div>
+        <div className="panel-heading panel-heading-compact dashboard-focus-heading">
+          <div className="dashboard-focus-title">
             <h3 id="dashboardFocusHeading">Today at a glance</h3>
             <span className="panel-kicker">Your next useful actions</span>
           </div>
@@ -507,8 +507,10 @@ export const DashboardView: React.FC = () => {
 
           {/* "Can I Spend X?" Simulator Toolbar */}
           <div className="forecast-sim-bar" id="forecastSimBar">
-            <div className="forecast-sim-inputs">
-              <span className="forecast-sim-label">🎯 Can I Spend:</span>
+            <div className="forecast-sim-header">
+              <span className="forecast-sim-title">🎯 Can I Spend:</span>
+            </div>
+            <div className="forecast-sim-fields">
               <div className="forecast-sim-input-group">
                 <input
                   type="number"
@@ -520,15 +522,19 @@ export const DashboardView: React.FC = () => {
                 />
                 <span className="forecast-sim-currency">EGP</span>
               </div>
-              <span className="forecast-sim-label">on</span>
-              <input
-                type="date"
-                id="forecastSimDate"
-                aria-label="Spend simulation date"
-                className="forecast-sim-date"
-                value={simDate}
-                onChange={(e) => setSimDate(e.target.value)}
-              />
+              <div className="forecast-sim-date-wrap">
+                <span className="forecast-sim-on-label">on</span>
+                <input
+                  type="date"
+                  id="forecastSimDate"
+                  aria-label="Spend simulation date"
+                  className="forecast-sim-date"
+                  value={simDate}
+                  onChange={(e) => setSimDate(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="forecast-sim-actions">
               <button
                 type="button"
                 className="primary-button forecast-sim-btn"

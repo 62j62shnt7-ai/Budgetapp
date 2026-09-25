@@ -772,6 +772,7 @@ html {
 }
 
 @media (max-width: 768px) {
+  /* Prevent iOS Safari auto-zoom on input focus */
   button,
   .primary-button,
   .ghost-button,
@@ -779,11 +780,35 @@ html {
   .form-input,
   .form-select,
   input,
-  select {
-    min-height: 42px;
+  select,
+  textarea {
+    font-size: 16px !important;
+    min-height: 44px;
+    border-radius: 10px;
+    -webkit-tap-highlight-color: transparent;
   }
 
-  /* Single-row streamlined Mobile Topbar */
+  /* Form Labels across all pages */
+  label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+
+  .field-label-text {
+    font-size: 11.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--muted);
+    display: block;
+    margin-bottom: 2px;
+  }
+
+  /* Single-row streamlined Mobile iOS Navigation Topbar */
   .topbar {
     display: flex !important;
     flex-direction: row !important;
@@ -791,13 +816,16 @@ html {
     justify-content: space-between !important;
     gap: 10px !important;
     height: auto !important;
-    min-height: 56px;
-    margin-top: calc(-1 * max(14px, env(safe-area-inset-top))) !important;
+    min-height: 54px;
+    margin-top: calc(-1 * max(12px, env(safe-area-inset-top))) !important;
     padding-top: max(14px, env(safe-area-inset-top)) !important;
     padding-bottom: 10px !important;
     padding-left: max(14px, env(safe-area-inset-left)) !important;
     padding-right: max(14px, env(safe-area-inset-right)) !important;
     margin-bottom: 14px !important;
+    background: var(--topbar-glass-bg, var(--surface));
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
   }
 
   .topbar-title-group {
@@ -809,7 +837,9 @@ html {
   }
 
   .topbar-title-group h2 {
-    font-size: 1.15rem !important;
+    font-size: 1.18rem !important;
+    font-weight: 800 !important;
+    letter-spacing: -0.3px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -831,8 +861,9 @@ html {
     display: inline-flex !important;
     align-items: center;
     min-height: 36px !important;
-    padding: 0 12px !important;
-    font-size: 12.5px !important;
+    padding: 0 14px !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
     border-radius: 999px !important;
     white-space: nowrap;
   }
@@ -849,77 +880,76 @@ html {
     flex-shrink: 0;
   }
 
-  /* Keep panel headings with action buttons / collapse toggles on one horizontal row on mobile */
-  .collapsible-panel .panel-heading,
-  .cashflow-collapsible-panel .panel-heading,
-  .panel-heading:has(button),
-  .panel-heading:has(.icon-button) {
+  /* Panel Headings on Mobile */
+  .panel-heading {
     display: flex !important;
-    flex-direction: row !important;
-    align-items: center !important;
-    justify-content: space-between !important;
-    flex-wrap: nowrap !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
     gap: 10px !important;
   }
 
   .panel-heading > *:first-child {
     min-width: 0 !important;
-    flex: 1 !important;
+    width: 100% !important;
   }
 
-  .panel-heading > *:last-child,
-  .collapse-toggle-btn,
-  .panel-heading .icon-button,
-  .panel-heading > .ghost-button {
-    flex-shrink: 0 !important;
+  .panel-heading.panel-heading-row {
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
   }
 
-  /* Simple panel headings without action buttons stack vertically */
-  .panel-heading:not(:has(button)):not(:has(.icon-button)) {
-    display: flex !important;
-    flex-direction: column !important;
-    align-items: flex-start !important;
-    gap: 4px !important;
-  }
-
-  /* Subnav tabs touch & fit optimization */
+  /* Subnav Tabs as iOS Segmented Controls */
   .subnav-tabs {
     padding: 3px !important;
     gap: 4px !important;
+    border-radius: 999px !important;
+    background: var(--surface-soft) !important;
+    border: 1px solid var(--line) !important;
   }
 
   .subnav-tab {
-    padding: 7px 6px !important;
-    font-size: 11.5px !important;
+    padding: 8px 12px !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
     letter-spacing: -0.2px !important;
+    border-radius: 999px !important;
+    min-height: 36px;
+    touch-action: manipulation;
   }
 
   /* App Shell & Bottom Nav Clearance */
   .app-shell {
-    padding: 12px 12px max(32px, calc(16px + env(safe-area-inset-bottom)));
+    padding: 12px 14px max(32px, calc(16px + env(safe-area-inset-bottom)));
   }
 
   .app-shell.has-bottom-nav {
-    padding-bottom: calc(76px + env(safe-area-inset-bottom)) !important;
+    padding-bottom: calc(104px + env(safe-area-inset-bottom)) !important;
   }
 
-  /* Fixed Native Bottom Navigation Bar */
+  /* Native iOS Tab Bar (Bottom Navigation) */
   .mobile-bottom-nav {
     display: flex !important;
     position: fixed;
     bottom: 0;
     left: 0;
     right: 0;
-    height: calc(58px + env(safe-area-inset-bottom));
+    height: calc(54px + env(safe-area-inset-bottom));
     padding-bottom: env(safe-area-inset-bottom);
-    background: var(--topbar-glass-bg, var(--surface));
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border-top: 1px solid var(--border-subtle, var(--line));
-    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
+    background: rgba(255, 255, 255, 0.86);
+    backdrop-filter: blur(25px) saturate(190%);
+    -webkit-backdrop-filter: blur(25px) saturate(190%);
+    border-top: 0.5px solid var(--line, rgba(0, 0, 0, 0.12));
+    box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.05);
     z-index: 1000;
     justify-content: space-around;
     align-items: center;
+  }
+
+  [data-theme="dark"] .mobile-bottom-nav {
+    background: rgba(18, 28, 24, 0.88);
+    border-top: 0.5px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
   }
 
   .bottom-nav-item {
@@ -928,23 +958,24 @@ html {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 3px;
+    gap: 2px;
     background: transparent;
     border: none;
-    color: var(--muted, #64748b);
-    padding: 6px 0;
+    color: var(--muted, #8d9e96);
+    padding: 4px 0;
     min-height: 48px;
     cursor: pointer;
     touch-action: manipulation;
-    transition: color 0.15s ease, transform 0.1s ease;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 0.12s cubic-bezier(0.16, 1, 0.3, 1), color 0.15s ease;
   }
 
   .bottom-nav-item:active {
-    transform: scale(0.92);
+    transform: scale(0.88);
   }
 
   .bottom-nav-item.active {
-    color: var(--green, #10b981);
+    color: var(--green, #1a7a4c);
   }
 
   .bottom-nav-icon {
@@ -954,12 +985,133 @@ html {
   }
 
   .bottom-nav-label {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
     font-size: 10px;
     font-weight: 600;
-    letter-spacing: 0.2px;
+    letter-spacing: -0.1px;
   }
 
-  /* Responsive Cashflow Filter Bar */
+  /* ========================================================================
+     Page 1: Dashboard Mobile Adjustments
+     ======================================================================== */
+  .forecast-sim-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background: var(--surface-soft);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 14px;
+    margin: 8px 0 14px 0;
+  }
+
+  .forecast-sim-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .forecast-sim-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+
+  .forecast-sim-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    width: 100%;
+  }
+
+  @media (max-width: 440px) {
+    .forecast-sim-fields {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .forecast-sim-input-group {
+    display: flex;
+    align-items: center;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 0 10px;
+    min-height: 44px;
+  }
+
+  .forecast-sim-input {
+    border: none !important;
+    background: transparent !important;
+    flex: 1;
+    min-width: 0;
+    font-size: 16px !important;
+    font-weight: 700;
+    padding: 8px 0;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .forecast-sim-currency {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--muted);
+    margin-left: 6px;
+  }
+
+  .forecast-sim-date-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .forecast-sim-on-label {
+    font-size: 12px;
+    color: var(--muted);
+    font-weight: 600;
+  }
+
+  .forecast-sim-date {
+    flex: 1;
+    min-width: 0;
+    border-radius: 10px;
+    min-height: 44px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    padding: 0 10px;
+    font-size: 16px !important;
+  }
+
+  .forecast-sim-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    width: 100%;
+    margin-top: 4px;
+  }
+
+  .forecast-sim-btn {
+    width: 100%;
+    justify-content: center;
+    min-height: 44px;
+    border-radius: 10px;
+    font-weight: 700;
+  }
+
+  /* Forecast KPI Grid */
+  .forecast-kpi-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+  }
+
+  .forecast-kpi-card:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+
+  /* ========================================================================
+     Page 2: Cash Flow & Salary Structure Mobile Adjustments
+     ======================================================================== */
   .cashflow-table-header {
     flex-direction: column !important;
     align-items: stretch !important;
@@ -973,12 +1125,14 @@ html {
     width: 100% !important;
   }
 
-  .cashflow-filters select {
+  .cashflow-filters select,
+  .cashflow-filters input {
     width: 100% !important;
+    box-sizing: border-box !important;
   }
 
   .cashflow-filters input#searchEntries {
-    grid-column: 1 / -1;
+    grid-column: 1 / -1 !important;
     width: 100% !important;
   }
 
@@ -1014,7 +1168,262 @@ html {
     text-align: center !important;
   }
 
-  /* Responsive History Filters Bar */
+  /* Salary Structure Controls & Cards */
+  .salary-structure-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 14px;
+    width: 100%;
+  }
+
+  .salary-controls-inputs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    width: 100%;
+  }
+
+  .salary-control-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .salary-controls-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .salary-controls-actions .salary-populate-button {
+    grid-column: 1 / -1;
+    min-height: 44px;
+    justify-content: center;
+  }
+
+  .salary-structure-card {
+    padding: 14px;
+    border-radius: 12px;
+    background: var(--surface-soft);
+    border: 1px solid var(--line);
+    margin-bottom: 10px;
+  }
+
+  .salary-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .salary-card-title {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--ink);
+    display: block;
+  }
+
+  .salary-card-subtitle {
+    font-size: 11.5px;
+    color: var(--muted);
+    display: block;
+    margin-top: 2px;
+  }
+
+  .salary-card-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .salary-card-fields .salary-field-item:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .actual-spend-note {
+    display: block;
+    font-size: 11.5px;
+    color: var(--muted);
+    margin-top: 5px;
+    line-height: 1.35;
+    white-space: normal !important;
+    word-break: break-word;
+  }
+
+  /* ========================================================================
+     Page 3: Deficits Mobile Adjustments
+     ======================================================================== */
+  .deficit-card-item {
+    background: rgba(192, 61, 53, 0.08);
+    border: 1px solid rgba(192, 61, 53, 0.25);
+    border-radius: 14px;
+    padding: 14px;
+    margin-bottom: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .deficit-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .deficit-card-lead {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .deficit-card-dates {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--red);
+    display: block;
+  }
+
+  .deficit-card-desc {
+    font-size: 12px;
+    color: var(--muted);
+    display: block;
+    margin-top: 2px;
+    line-height: 1.35;
+  }
+
+  .deficit-card-peak {
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .deficit-peak-val {
+    font-size: 15px;
+    font-weight: 800;
+    color: var(--red);
+    display: block;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .deficit-peak-label {
+    font-size: 11px;
+    color: var(--muted);
+    display: block;
+  }
+
+  .deficit-bridge-btn {
+    width: 100%;
+    justify-content: center;
+    min-height: 42px;
+    border-color: rgba(192, 61, 53, 0.35);
+    color: var(--red);
+    font-weight: 700;
+    font-size: 13px;
+    border-radius: 10px;
+  }
+
+  .deficit-progression-wrap {
+    padding-top: 10px;
+    border-top: 1px dashed var(--line);
+  }
+
+  .deficit-progression-title {
+    color: var(--muted);
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: block;
+    margin-bottom: 6px;
+  }
+
+  .deficit-step-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+    font-size: 12px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+  }
+
+  [data-theme="dark"] .deficit-step-row {
+    border-bottom-color: rgba(255, 255, 255, 0.04);
+  }
+
+  .deficit-step-row strong {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .overdue-entry-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: var(--surface-soft);
+    border: 1px solid var(--line);
+    margin-bottom: 8px;
+    gap: 12px;
+  }
+
+  @media (max-width: 480px) {
+    .overdue-entry-card {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 10px;
+    }
+  }
+
+  .overdue-entry-info {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .overdue-entry-title {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--ink);
+    display: block;
+  }
+
+  .overdue-entry-meta {
+    font-size: 11.5px;
+    color: var(--muted);
+    display: block;
+    margin-top: 2px;
+  }
+
+  .overdue-entry-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    justify-content: space-between;
+  }
+
+  .overdue-entry-amount {
+    font-size: 15px;
+    font-weight: 800;
+    color: var(--red);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .overdue-mark-paid-btn {
+    min-height: 38px;
+    padding: 4px 12px;
+    font-size: 12.5px;
+    font-weight: 700;
+    border-radius: 8px;
+  }
+
+  /* ========================================================================
+     Page 4: History Filters Mobile Adjustments
+     ======================================================================== */
   .history-filters-bar {
     display: grid !important;
     grid-template-columns: 1fr 1fr !important;
@@ -1022,45 +1431,722 @@ html {
     width: 100% !important;
   }
 
-  .history-filters-bar label {
-    display: flex !important;
-    flex-direction: column !important;
-    align-items: stretch !important;
-    gap: 4px !important;
-    font-size: 12px !important;
+  .history-filter-field {
+    min-width: 0;
     width: 100% !important;
   }
 
-  .history-filters-bar label select,
-  .history-filters-bar label input {
+  .history-filter-field select,
+  .history-filter-field input {
     width: 100% !important;
     box-sizing: border-box !important;
   }
 
-  .history-filters-bar label:has(input[type="search"]),
-  .history-filters-bar label:last-of-type {
+  .history-search-field {
     grid-column: 1 / -1 !important;
-    width: 100% !important;
   }
 
-  .history-filters-bar .ghost-button {
+  .history-reset-btn {
     grid-column: 1 / -1 !important;
     width: 100% !important;
     justify-content: center !important;
+    min-height: 44px;
+    font-weight: 700;
   }
 
-  /* Dialogs on mobile */
+  /* ========================================================================
+     Page 5: Accounts Mobile Inset Grouped Cells
+     ======================================================================== */
+  .account-row-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 16px;
+    border-radius: 12px;
+    background: var(--surface-soft);
+    border: 1px solid var(--line);
+    margin-bottom: 10px;
+    gap: 12px;
+  }
+
+  .account-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .account-badge {
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+
+  .account-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--ink);
+    display: block;
+  }
+
+  .account-subtitle {
+    font-size: 11.5px;
+    color: var(--muted);
+    display: block;
+  }
+
+  .account-balance-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--surface);
+    padding: 4px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    flex-shrink: 0;
+  }
+
+  .account-currency-prefix {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+  }
+
+  .account-balance-input {
+    width: 120px !important;
+    border: none !important;
+    background: transparent !important;
+    font-weight: 800;
+    font-size: 16px !important;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    padding: 4px 0 !important;
+    min-height: auto !important;
+  }
+
+  .quick-transfer-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 12px;
+  }
+
+  .quick-transfer-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  @media (max-width: 440px) {
+    .quick-transfer-row {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .transfer-submit-btn {
+    width: 100%;
+    justify-content: center;
+    min-height: 48px;
+    font-size: 15px;
+    font-weight: 700;
+    border-radius: 12px;
+  }
+
+  .transfer-success-msg {
+    padding: 10px 14px;
+    border-radius: 10px;
+    background: rgba(16, 185, 129, 0.12);
+    color: var(--green);
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  /* ========================================================================
+     Page 6: Storage Mobile Adjustments
+     ======================================================================== */
+  .storage-fields-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .storage-field-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  /* ========================================================================
+     Page 7: Jobs Mobile Layout
+     ======================================================================== */
+  .jobs-kpis-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+  }
+
+  .jobs-toolbar {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+    padding: 14px !important;
+  }
+
+  .jobs-filters-group {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+    width: 100% !important;
+  }
+
+  .jobs-filter-chips {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    width: 100%;
+  }
+
+  .jobs-filter-chips::-webkit-scrollbar {
+    display: none;
+  }
+
+  .job-filter-pill {
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+    padding: 6px 14px !important;
+    border-radius: 999px !important;
+    font-size: 12.5px !important;
+    min-height: 36px !important;
+    display: inline-flex !important;
+    align-items: center;
+  }
+
+  .jobs-filter-selects {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .job-filter-select {
+    width: 100% !important;
+    min-height: 42px !important;
+    border-radius: 10px !important;
+  }
+
+  .jobs-add-btn {
+    width: 100% !important;
+    justify-content: center !important;
+    min-height: 46px !important;
+    font-size: 14.5px !important;
+    font-weight: 700 !important;
+    border-radius: 12px !important;
+  }
+
+  .jobs-card-header {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+  }
+
+  .jobs-card-header-left {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .jobs-card-header-right {
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .jobs-card-heading {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--ink);
+    margin: 4px 0 6px;
+    word-break: break-word;
+  }
+
+  .jobs-card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+
+  .jobs-card-total-val {
+    font-size: 1.3rem;
+    font-weight: 800;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .jobs-card-total-egp {
+    font-size: 11px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .jobs-card-quick-actions {
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+    margin-top: 6px;
+  }
+
+  .job-client-tag {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+
+  /* Rates View Mobile Ergonomics */
+  .rates-panel-heading {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    flex-wrap: wrap !important;
+    gap: 10px !important;
+  }
+
+  .rates-heading-actions {
+    display: flex !important;
+    gap: 8px !important;
+    align-items: center !important;
+  }
+
+  .rates-heading-actions button {
+    min-height: 38px !important;
+    border-radius: 10px !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+  }
+
+  .rate-edit-input {
+    font-size: 16px !important;
+    min-height: 42px !important;
+    border-radius: 8px !important;
+    font-variant-numeric: tabular-nums !important;
+    padding: 6px 10px !important;
+  }
+
+  .rate-grid {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  .rate-card {
+    padding: 12px 14px !important;
+    border-radius: 14px !important;
+    background: var(--surface-soft) !important;
+    border: 1px solid var(--line) !important;
+  }
+
+  /* Dashboard "Today at a glance" Mobile Ergonomics */
+  .dashboard-focus-heading {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+
+  .dashboard-focus-title {
+    width: 100% !important;
+  }
+
+  .dashboard-density-toggle {
+    width: 100% !important;
+    min-height: 40px !important;
+    border-radius: 10px !important;
+    justify-content: center !important;
+  }
+
+  /* Forecast Trajectory Mobile Toolbar */
+  .forecast-line-heading {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+  }
+
+  .forecast-heading-left {
+    width: 100% !important;
+  }
+
+  .forecast-toolbar {
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+    align-items: stretch !important;
+  }
+
+  .forecast-view-toggle {
+    display: flex !important;
+    width: 100% !important;
+  }
+
+  .forecast-mode-btn {
+    flex: 1 !important;
+    text-align: center !important;
+    min-height: 36px !important;
+  }
+
+  .forecast-range-group {
+    width: 100% !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+    align-items: center !important;
+  }
+
+  .forecast-presets {
+    display: flex !important;
+    flex: 1 !important;
+    gap: 4px !important;
+  }
+
+  .forecast-preset-btn {
+    flex: 1 !important;
+    min-height: 34px !important;
+    text-align: center !important;
+    border-radius: 8px !important;
+  }
+
+  .forecast-slider-wrap {
+    width: 100% !important;
+  }
+
+  /* Cashflow Forecast Entries Header & Filters */
+  .cashflow-table-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+  }
+
+  .cashflow-table-header-top {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    width: 100% !important;
+  }
+
+  .cashflow-add-btn {
+    min-height: 36px !important;
+    border-radius: 10px !important;
+    padding: 6px 12px !important;
+    font-size: 13px !important;
+  }
+
+  .cashflow-filters-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .cashflow-search-input {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+  }
+
+  /* History Analytics Section Mobile Styling */
+  .history-analytics-heading {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+    cursor: pointer !important;
+  }
+
+  .history-analytics-header-top {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    width: 100% !important;
+  }
+
+  .history-analytics-actions {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+
+  .history-groupby-tabs,
+  .history-view-tabs {
+    display: flex !important;
+    width: 100% !important;
+    border-radius: 9px !important;
+    padding: 2px !important;
+    background: var(--surface-soft) !important;
+    border: 1px solid var(--line) !important;
+  }
+
+  .history-groupby-tabs .subnav-tab,
+  .history-view-tabs .subnav-tab {
+    flex: 1 !important;
+    text-align: center !important;
+    padding: 6px 10px !important;
+    font-size: 12.5px !important;
+    border-radius: 7px !important;
+    min-height: 34px !important;
+  }
+
+  .history-entries-heading {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+  }
+
+  .history-admin-toggle-btn {
+    align-self: flex-start !important;
+    min-height: 36px !important;
+    border-radius: 10px !important;
+    font-size: 12.5px !important;
+    padding: 6px 12px !important;
+  }
+
+  .history-admin-input {
+    font-size: 16px !important;
+    width: 100% !important;
+    min-height: 40px !important;
+    border-radius: 8px !important;
+    padding: 6px 10px !important;
+    box-sizing: border-box !important;
+    text-align: right !important;
+  }
+
+  /* Responsive iOS-styled Card Transformation for Tables */
+  .table-wrap.responsive-cards {
+    overflow: visible !important;
+  }
+
+  .table-wrap.responsive-cards table {
+    display: block !important;
+    width: 100% !important;
+    border-collapse: separate !important;
+  }
+
+  .table-wrap.responsive-cards thead {
+    display: none !important;
+  }
+
+  .table-wrap.responsive-cards tbody {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+    width: 100% !important;
+  }
+
+  .table-wrap.responsive-cards tr:not(.history-draws-subrow) {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    row-gap: 6px !important;
+    column-gap: 12px !important;
+    padding: 14px !important;
+    background: var(--surface) !important;
+    border: 1px solid var(--line) !important;
+    border-radius: 14px !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04) !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+    align-items: center !important;
+  }
+
+  .table-wrap.responsive-cards td {
+    padding: 0 !important;
+    border: none !important;
+    min-width: 0 !important;
+  }
+
+  .table-wrap.responsive-cards .cell-category {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+    font-weight: 700 !important;
+    font-size: 15px !important;
+    color: var(--ink) !important;
+    word-break: break-word !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    gap: 6px !important;
+  }
+
+  .table-wrap.responsive-cards .cell-amount,
+  .table-wrap.responsive-cards .cell-planned {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    font-weight: 800 !important;
+    font-size: 16px !important;
+    text-align: right !important;
+    font-variant-numeric: tabular-nums !important;
+    white-space: nowrap !important;
+    justify-self: end !important;
+  }
+
+  .table-wrap.responsive-cards .cell-date {
+    grid-column: 1 !important;
+    grid-row: 2 !important;
+    font-size: 12.5px !important;
+    color: var(--muted) !important;
+    font-weight: 500 !important;
+  }
+
+  .table-wrap.responsive-cards .cell-type {
+    grid-column: 2 !important;
+    grid-row: 2 !important;
+    text-align: right !important;
+    justify-self: end !important;
+  }
+
+  .table-wrap.responsive-cards .cell-account {
+    grid-column: 1 !important;
+    grid-row: 3 !important;
+    font-size: 12px !important;
+    color: var(--muted) !important;
+    font-weight: 600 !important;
+    text-transform: uppercase !important;
+  }
+
+  .table-wrap.responsive-cards .cell-source {
+    grid-column: 2 !important;
+    grid-row: 3 !important;
+    text-align: right !important;
+    justify-self: end !important;
+  }
+
+  .table-wrap.responsive-cards .cell-actual {
+    grid-column: 1 / -1 !important;
+    grid-row: 4 !important;
+    padding-top: 8px !important;
+    margin-top: 4px !important;
+    border-top: 1px dashed var(--line) !important;
+  }
+
+  .table-wrap.responsive-cards .cell-variance {
+    grid-column: 1 / -1 !important;
+    grid-row: 5 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    padding-top: 4px !important;
+  }
+
+  .table-wrap.responsive-cards .cell-actions {
+    grid-column: 1 / -1 !important;
+    grid-row: 6 !important;
+    display: flex !important;
+    justify-content: flex-end !important;
+    align-items: center !important;
+    gap: 8px !important;
+    padding-top: 4px !important;
+  }
+
+  .table-wrap.responsive-cards tr.history-draws-subrow {
+    display: block !important;
+    background: var(--surface-soft) !important;
+    border: 1px solid var(--line) !important;
+    border-radius: 12px !important;
+    padding: 10px !important;
+  }
+
+  .table-wrap.responsive-cards tr.history-draws-subrow td.cell-draws-details {
+    display: block !important;
+    width: 100% !important;
+    padding: 0 !important;
+  }
+
+  /* ========================================================================
+     Native iOS Bottom Sheet Presentation for ALL Modals
+     ======================================================================== */
   dialog.native-dialog,
   dialog.modern-top-layer-dialog,
   dialog[open] {
     position: fixed !important;
-    inset: 0 !important;
-    width: calc(100vw - 20px) !important;
+    inset: auto 0 0 0 !important;
+    bottom: 0 !important;
+    top: auto !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100vw !important;
     max-width: 100vw !important;
-    max-height: calc(90dvh - env(safe-area-inset-bottom)) !important;
-    border-radius: 16px;
-    margin: auto !important;
+    max-height: calc(90dvh - env(safe-area-inset-top)) !important;
+    margin: 0 !important;
+    border-radius: 20px 20px 0 0 !important;
+    border: none !important;
+    border-top: 1px solid var(--glass-border, rgba(255, 255, 255, 0.15)) !important;
+    box-shadow: 0 -12px 36px rgba(0, 0, 0, 0.35) !important;
+    background: var(--surface) !important;
+    padding: 16px 18px max(24px, calc(16px + env(safe-area-inset-bottom))) !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    animation: slideUpSheet 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
     z-index: 9999 !important;
+  }
+
+  dialog.native-dialog::before,
+  dialog.modern-top-layer-dialog::before {
+    content: '';
+    display: block;
+    width: 36px;
+    height: 4.5px;
+    border-radius: 3px;
+    background: var(--line, rgba(0, 0, 0, 0.2));
+    margin: 0 auto 12px auto;
+  }
+
+  [data-theme="dark"] dialog.native-dialog::before,
+  [data-theme="dark"] dialog.modern-top-layer-dialog::before {
+    background: rgba(255, 255, 255, 0.22);
+  }
+
+  dialog.native-dialog .dialog-heading,
+  dialog.modern-top-layer-dialog .dialog-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  dialog.native-dialog .dialog-heading h3,
+  dialog.modern-top-layer-dialog .dialog-heading h3 {
+    font-size: 17px;
+    font-weight: 700;
+    margin: 0;
+  }
+
+  dialog.native-dialog form,
+  dialog.modern-top-layer-dialog form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  dialog.native-dialog .dialog-actions,
+  dialog.modern-top-layer-dialog .dialog-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px solid var(--line);
+  }
+
+  dialog.native-dialog .dialog-actions button,
+  dialog.modern-top-layer-dialog .dialog-actions button {
+    min-height: 46px;
+    border-radius: 12px;
+    font-weight: 700;
+    font-size: 15px;
+    justify-content: center;
   }
 }
 

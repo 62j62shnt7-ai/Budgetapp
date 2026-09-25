@@ -52,30 +52,23 @@ export const AccountsView: React.FC = () => {
             {displayedAccounts.map(([id, acc]) => (
               <div
                 key={id}
-                className="list-row"
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  padding: '12px 14px',
-                  borderRadius: '8px',
-                  background: 'var(--surface-soft)',
-                  marginBottom: '8px',
-                }}
+                className="list-row account-row-card"
               >
-                <div>
-                  <strong style={{ fontSize: '15px' }}>{acc.name}</strong>
+                <div className="account-info">
+                  <span className="account-badge">🏦</span>
+                  <div>
+                    <strong className="account-title">{acc.name}</strong>
+                    <span className="account-subtitle">Liquid Account</span>
+                  </div>
                 </div>
-                <div className="inline-fields" style={{ display: 'grid', gridTemplateColumns: '130px', gap: '10px', margin: 0 }}>
-                  <label style={{ margin: 0, fontSize: '12px' }}>
-                    Balance
-                    <input
-                      type="number"
-                      value={acc.balance}
-                      onChange={(e) => handleBalanceChange(id, Number(e.target.value) || 0)}
-                      style={{ marginTop: '2px', fontWeight: 600 }}
-                    />
-                  </label>
+                <div className="account-balance-input-wrap">
+                  <span className="account-currency-prefix">EGP</span>
+                  <input
+                    type="number"
+                    className="form-input account-balance-input"
+                    value={acc.balance}
+                    onChange={(e) => handleBalanceChange(id, Number(e.target.value) || 0)}
+                  />
                 </div>
               </div>
             ))}
@@ -87,28 +80,29 @@ export const AccountsView: React.FC = () => {
           <div className="panel-heading">
             <h3 style={{ margin: 0 }}>Quick Transfer</h3>
           </div>
-          <form onSubmit={handleTransfer} style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '12px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-              <label>
-                From
-                <select value={transferFrom} onChange={(e) => setTransferFrom(e.target.value)}>
+          <form onSubmit={handleTransfer} className="quick-transfer-form">
+            <div className="quick-transfer-row">
+              <label className="transfer-field">
+                <span className="field-label-text">From Account</span>
+                <select className="form-select" value={transferFrom} onChange={(e) => setTransferFrom(e.target.value)}>
                   {Object.entries(accounts).map(([id, a]) => (
                     <option key={id} value={id}>{a.name} ({formatMoney(a.balance)})</option>
                   ))}
                 </select>
               </label>
-              <label>
-                To
-                <select value={transferTo} onChange={(e) => setTransferTo(e.target.value)}>
+              <label className="transfer-field">
+                <span className="field-label-text">To Account</span>
+                <select className="form-select" value={transferTo} onChange={(e) => setTransferTo(e.target.value)}>
                   {Object.entries(accounts).map(([id, a]) => (
                     <option key={id} value={id}>{a.name} ({formatMoney(a.balance)})</option>
                   ))}
                 </select>
               </label>
             </div>
-            <label>
-              Amount (EGP)
+            <label className="transfer-field">
+              <span className="field-label-text">Amount (EGP)</span>
               <input
+                className="form-input"
                 type="number"
                 min="1"
                 step="1"
@@ -118,12 +112,12 @@ export const AccountsView: React.FC = () => {
                 required
               />
             </label>
-            <button className="primary-button" type="submit" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-              <ArrowRightLeft size={14} />
+            <button className="primary-button transfer-submit-btn" type="submit">
+              <ArrowRightLeft size={15} style={{ marginRight: '6px' }} />
               <span>Transfer Funds</span>
             </button>
             {transferSuccess && (
-              <div style={{ padding: '8px 12px', borderRadius: '6px', background: 'rgba(16, 185, 129, 0.12)', color: 'var(--green)', fontSize: '12.5px' }}>
+              <div className="transfer-success-msg">
                 ✓ {transferSuccess}
               </div>
             )}

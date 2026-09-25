@@ -34,26 +34,36 @@ export const HistoryAnalyticsSection: React.FC<HistoryAnalyticsSectionProps> = (
   return (
     <section className="panel collapsible-panel history-analytics-panel" style={{ marginBottom: '18px' }}>
       <div
-        className="panel-heading"
-        style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+        className="panel-heading history-analytics-heading"
         onClick={() => setAnalyticsCollapsed(!analyticsCollapsed)}
       >
-        <div>
-          <h3 style={{ margin: 0 }}>Spending Analytics &amp; Grouped Sources</h3>
-          <span style={{ fontSize: '11.5px', color: 'var(--muted)' }}>
-            Filtered actuals · {sortedGroups.length} groups
-          </span>
+        <div className="history-analytics-header-top">
+          <div className="history-analytics-title">
+            <h3 style={{ margin: 0 }}>Spending Analytics</h3>
+            <span style={{ fontSize: '11.5px', color: 'var(--muted)' }}>
+              Filtered actuals · {sortedGroups.length} groups
+            </span>
+          </div>
+          <button
+            className="ghost-button collapse-toggle-btn"
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setAnalyticsCollapsed(!analyticsCollapsed);
+            }}
+            aria-label={analyticsCollapsed ? 'Expand analytics' : 'Collapse analytics'}
+          >
+            {analyticsCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+          </button>
         </div>
         <div
           className="history-analytics-actions"
-          style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="subnav-tabs history-groupby-tabs" style={{ padding: '2px' }}>
+          <div className="subnav-tabs history-groupby-tabs">
             <button
               type="button"
               className={`subnav-tab ${groupBy === 'category' ? 'active' : ''}`}
-              style={{ padding: '4px 9px', fontSize: '11.5px' }}
               onClick={() => setGroupBy('category')}
             >
               📁 Category
@@ -61,17 +71,15 @@ export const HistoryAnalyticsSection: React.FC<HistoryAnalyticsSectionProps> = (
             <button
               type="button"
               className={`subnav-tab ${groupBy === 'tag' ? 'active' : ''}`}
-              style={{ padding: '4px 9px', fontSize: '11.5px' }}
               onClick={() => setGroupBy('tag')}
             >
               🏷️ Tag
             </button>
           </div>
-          <div className="subnav-tabs history-view-tabs" style={{ padding: '2px' }}>
+          <div className="subnav-tabs history-view-tabs">
             <button
               type="button"
               className={`subnav-tab ${viewMode === 'chart' ? 'active' : ''}`}
-              style={{ padding: '4px 10px', fontSize: '12px' }}
               onClick={() => setViewMode('chart')}
             >
               📊 Breakdown
@@ -79,7 +87,6 @@ export const HistoryAnalyticsSection: React.FC<HistoryAnalyticsSectionProps> = (
             <button
               type="button"
               className={`subnav-tab ${viewMode === 'table' ? 'active' : ''}`}
-              style={{ padding: '4px 10px', fontSize: '12px' }}
               onClick={() => setViewMode('table')}
             >
               📋 Table
@@ -87,20 +94,11 @@ export const HistoryAnalyticsSection: React.FC<HistoryAnalyticsSectionProps> = (
             <button
               type="button"
               className={`subnav-tab ${viewMode === 'both' ? 'active' : ''}`}
-              style={{ padding: '4px 10px', fontSize: '12px' }}
               onClick={() => setViewMode('both')}
             >
               📑 Both
             </button>
           </div>
-          <button
-            className="ghost-button collapse-toggle-btn"
-            type="button"
-            onClick={() => setAnalyticsCollapsed(!analyticsCollapsed)}
-            aria-label={analyticsCollapsed ? 'Expand analytics' : 'Collapse analytics'}
-          >
-            {analyticsCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
-          </button>
         </div>
       </div>
 

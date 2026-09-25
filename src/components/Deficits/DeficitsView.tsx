@@ -129,44 +129,36 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({ onBridgeDeficit }) =
               deficits.deficitPeriods.map((period, idx) => (
                 <div
                   key={idx}
-                  style={{
-                    padding: '12px 16px',
-                    borderRadius: '8px',
-                    background: 'rgba(192, 61, 53, 0.08)',
-                    border: '1px solid rgba(192, 61, 53, 0.25)',
-                    marginBottom: '8px',
-                    display: 'flex',
-                    alignItems: 'stretch',
-                    flexDirection: 'column',
-                    justifyContent: 'space-between',
-                  }}
+                  className="deficit-card-item"
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
-                    <AlertCircle size={20} color="var(--red)" />
-                    <div>
-                      <strong style={{ display: 'block', color: 'var(--red)', fontSize: '14px' }}>
-                        {DateUtils.formatDisplayDate(period.startDate)} → {period.resolvedDate ? DateUtils.formatDisplayDate(period.resolvedDate) : 'Ongoing'}
-                      </strong>
-                      <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
-                        Turns negative on {period.initialTrigger}
-                        {period.isResolved ? ` · Fixed by ${period.resolvedBy}` : ' · Remains negative'}
-                        {' · '}{period.daysInDeficit} days
-                      </span>
+                  <div className="deficit-card-header">
+                    <div className="deficit-card-lead">
+                      <AlertCircle size={20} color="var(--red)" className="deficit-card-icon" />
+                      <div>
+                        <strong className="deficit-card-dates">
+                          {DateUtils.formatDisplayDate(period.startDate)} → {period.resolvedDate ? DateUtils.formatDisplayDate(period.resolvedDate) : 'Ongoing'}
+                        </strong>
+                        <span className="deficit-card-desc">
+                          Turns negative on {period.initialTrigger}
+                          {period.isResolved ? ` · Fixed by ${period.resolvedBy}` : ' · Remains negative'}
+                          {' · '}{period.daysInDeficit} days
+                        </span>
+                      </div>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <strong style={{ color: 'var(--red)', display: 'block' }}>{formatMoney(period.lowestBalance)}</strong>
-                      <small style={{ color: 'var(--muted)' }}>Peak deficit</small>
-                      {onBridgeDeficit && (
-                        <button className="ghost-button" type="button" style={{ display: 'block', marginTop: '6px', fontSize: '11px' }} onClick={onBridgeDeficit}>
-                          💳 Bridge with Loan
-                        </button>
-                      )}
+                    <div className="deficit-card-peak">
+                      <strong className="deficit-peak-val">{formatMoney(period.lowestBalance)}</strong>
+                      <small className="deficit-peak-label">Peak deficit</small>
                     </div>
                   </div>
-                  <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed var(--line)' }}>
-                    <small style={{ color: 'var(--muted)', textTransform: 'uppercase' }}>Daily deficit progression</small>
+                  {onBridgeDeficit && (
+                    <button className="ghost-button deficit-bridge-btn" type="button" onClick={onBridgeDeficit}>
+                      💳 Bridge with Loan
+                    </button>
+                  )}
+                  <div className="deficit-progression-wrap">
+                    <small className="deficit-progression-title">Daily deficit progression</small>
                     {period.steps.map((step) => (
-                      <div key={`${step.entryId}-${step.date}`} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', padding: '5px 0', fontSize: '12px' }}>
+                      <div key={`${step.entryId}-${step.date}`} className="deficit-step-row">
                         <span>
                           <strong>{DateUtils.formatDisplayDate(step.date)}</strong> · {step.isRecoveryStep ? `Fixed by ${step.category}` : step.category}
                           {' '}({step.delta >= 0 ? '+' : '-'}{formatMoney(step.amount)})
@@ -202,25 +194,17 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({ onBridgeDeficit }) =
               overdueEntries.slice(0, 10).map(({ entry, remaining, daysOverdue }) => (
                 <div
                   key={entry.id}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '10px 14px',
-                    borderRadius: '8px',
-                    background: 'var(--surface-soft)',
-                    marginBottom: '6px',
-                  }}
+                  className="overdue-entry-card"
                 >
-                  <div>
-                    <strong style={{ fontSize: '13px', display: 'block' }}>{entry.category}</strong>
-                    <span style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                  <div className="overdue-entry-info">
+                    <strong className="overdue-entry-title">{entry.category}</strong>
+                    <span className="overdue-entry-meta">
                       Due: {DateUtils.formatDisplayDate(entry.date)} · {daysOverdue}d overdue · Account: {entry.account.toUpperCase()}
                     </span>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <strong style={{ color: 'var(--red)', fontFamily: 'var(--font-heading)' }}>{formatMoney(remaining)}</strong>
-                    <button className="ghost-button" type="button" style={{ fontSize: '11px', padding: '4px 8px' }} onClick={() => recordActual(entry.id, remaining, today)}>
+                  <div className="overdue-entry-actions">
+                    <strong className="overdue-entry-amount">{formatMoney(remaining)}</strong>
+                    <button className="ghost-button overdue-mark-paid-btn" type="button" onClick={() => recordActual(entry.id, remaining, today)}>
                       Mark Paid
                     </button>
                   </div>

@@ -108,15 +108,15 @@ export const JobsView: React.FC<JobsViewProps> = ({
   return (
     <section className="view" id="jobs" style={{ display: 'block' }}>
       {/* Top Metrics Cards */}
-      <div className="jobs-kpis-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '14px', marginBottom: '18px' }}>
-        <div className="job-kpi-card glass-panel jobs-kpi-pending" style={{ padding: '16px', borderRadius: '10px' }}>
-          <span className="job-kpi-label" style={{ fontSize: '12px', color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>
+      <div className="jobs-kpis-grid">
+        <div className="job-kpi-card glass-panel jobs-kpi-pending">
+          <span className="job-kpi-label">
             Pending Invoices
           </span>
-          <div className="job-kpi-val" style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--amber)' }}>
+          <div className="job-kpi-val">
             {formatMoney(totalPendingEgp)}
           </div>
-          <div className="job-kpi-sub" style={{ fontSize: '11.5px', color: 'var(--muted)', marginTop: '4px' }}>
+          <div className="job-kpi-sub">
             {Object.keys(pendingByCurrency).length === 0
               ? 'No pending receivables'
               : Object.entries(pendingByCurrency)
@@ -125,102 +125,93 @@ export const JobsView: React.FC<JobsViewProps> = ({
           </div>
         </div>
 
-        <div className="job-kpi-card glass-panel jobs-kpi-paid" style={{ padding: '16px', borderRadius: '10px' }}>
-          <span className="job-kpi-label" style={{ fontSize: '12px', color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>
+        <div className="job-kpi-card glass-panel jobs-kpi-paid">
+          <span className="job-kpi-label">
             Collected / Paid
           </span>
-          <div className="job-kpi-val text-green" style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--green)' }}>
+          <div className="job-kpi-val text-green">
             {formatMoney(totalPaidEgp)}
           </div>
-          <div className="job-kpi-sub" style={{ fontSize: '11.5px', color: 'var(--muted)', marginTop: '4px' }}>
+          <div className="job-kpi-sub">
             {paidJobsCount} {paidJobsCount === 1 ? 'job' : 'jobs'} settled
           </div>
         </div>
 
-        <div className="job-kpi-card glass-panel jobs-kpi-active" style={{ padding: '16px', borderRadius: '10px' }}>
-          <span className="job-kpi-label" style={{ fontSize: '12px', color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>
+        <div className="job-kpi-card glass-panel jobs-kpi-active">
+          <span className="job-kpi-label">
             Active Work
           </span>
-          <div className="job-kpi-val text-blue" style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0ea5e9' }}>
+          <div className="job-kpi-val text-blue">
             {activeJobsCount}
           </div>
-          <div className="job-kpi-sub" style={{ fontSize: '11.5px', color: 'var(--muted)', marginTop: '4px' }}>
+          <div className="job-kpi-sub">
             {activeJobsCount} {activeJobsCount === 1 ? 'job' : 'jobs'} in progress
           </div>
         </div>
 
-        <div className="job-kpi-card glass-panel jobs-kpi-expenses" style={{ padding: '16px', borderRadius: '10px' }}>
-          <span className="job-kpi-label" style={{ fontSize: '12px', color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>
+        <div className="job-kpi-card glass-panel jobs-kpi-expenses">
+          <span className="job-kpi-label">
             Reimbursable Expenses
           </span>
-          <div className="job-kpi-val text-amber" style={{ fontSize: '1.5rem', fontWeight: 800, color: '#f59e0b' }}>
+          <div className="job-kpi-val text-amber">
             {formatMoney(totalReimbursableEgp)}
           </div>
-          <div className="job-kpi-sub" style={{ fontSize: '11.5px', color: 'var(--muted)', marginTop: '4px' }}>
+          <div className="job-kpi-sub">
             Billed to clients
           </div>
         </div>
       </div>
 
       {/* Controls Toolbar */}
-      <div className="jobs-toolbar glass-panel" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', padding: '12px 16px', borderRadius: '10px', marginBottom: '18px' }}>
-        <div className="jobs-filters-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          {(['all', 'active', 'invoiced', 'partial', 'paid'] as const).map((filter) => (
-            <button
-              key={filter}
-              className={`job-filter-pill ${activeFilter === filter ? 'is-active' : ''}`}
-              type="button"
-              onClick={() => setActiveFilter(filter)}
-              style={{
-                padding: '5px 12px',
-                borderRadius: '20px',
-                border: '1px solid var(--line)',
-                background: activeFilter === filter ? 'var(--ink)' : 'transparent',
-                color: activeFilter === filter ? 'var(--surface)' : 'var(--ink)',
-                fontSize: '12px',
-                cursor: 'pointer',
-                fontWeight: 600,
-                textTransform: 'capitalize',
-              }}
+      <div className="jobs-toolbar glass-panel">
+        <div className="jobs-filters-group">
+          <div className="jobs-filter-chips">
+            {(['all', 'active', 'invoiced', 'partial', 'paid'] as const).map((filter) => (
+              <button
+                key={filter}
+                className={`job-filter-pill ${activeFilter === filter ? 'is-active' : ''}`}
+                type="button"
+                onClick={() => setActiveFilter(filter)}
+              >
+                {filter === 'all' ? 'All Jobs' : filter}
+              </button>
+            ))}
+          </div>
+
+          <div className="jobs-filter-selects">
+            <select
+              value={activeCurrencyFilter}
+              onChange={(e) => setActiveCurrencyFilter(e.target.value)}
+              className="job-filter-select"
             >
-              {filter === 'all' ? 'All Jobs' : filter}
-            </button>
-          ))}
+              <option value="all">All Currencies</option>
+              <option value="USD">USD ($)</option>
+              <option value="EUR">EUR (€)</option>
+              <option value="EGP">EGP (Local)</option>
+              <option value="GBP">GBP (£)</option>
+              <option value="SAR">SAR (﷼)</option>
+              <option value="AED">AED (د.إ)</option>
+            </select>
 
-          <select
-            value={activeCurrencyFilter}
-            onChange={(e) => setActiveCurrencyFilter(e.target.value)}
-            className="job-filter-select"
-            style={{ padding: '4px 8px', borderRadius: '6px', fontSize: '12px' }}
-          >
-            <option value="all">All Currencies</option>
-            <option value="USD">USD ($)</option>
-            <option value="EUR">EUR (€)</option>
-            <option value="EGP">EGP (Local)</option>
-            <option value="GBP">GBP (£)</option>
-            <option value="SAR">SAR (﷼)</option>
-            <option value="AED">AED (د.إ)</option>
-          </select>
-
-          <select
-            value={activeSort}
-            onChange={(e) => setActiveSort(e.target.value as any)}
-            className="job-filter-select"
-            style={{ padding: '4px 8px', borderRadius: '6px', fontSize: '12px' }}
-          >
-            <option value="newest">📅 Newest Date</option>
-            <option value="oldest">📅 Oldest Date</option>
-          </select>
+            <select
+              value={activeSort}
+              onChange={(e) => setActiveSort(e.target.value as any)}
+              className="job-filter-select"
+            >
+              <option value="newest">📅 Newest Date</option>
+              <option value="oldest">📅 Oldest Date</option>
+            </select>
+          </div>
         </div>
 
-        <button className="primary-button" type="button" onClick={() => onOpenJobModal()}>
-          <Plus size={14} style={{ marginRight: '4px' }} />
-          <span>+ New Job / Project</span>
+        <button className="primary-button jobs-add-btn" type="button" onClick={() => onOpenJobModal()}>
+          <Plus size={15} style={{ marginRight: '4px' }} />
+          <span>New Job / Project</span>
         </button>
       </div>
 
       {/* Jobs Stream */}
-      <div id="jobsList" className="jobs-stream" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+      <div id="jobsList" className="jobs-stream">
         {filteredJobs.length === 0 ? (
           <div className="glass-panel" style={{ textAlign: 'center', padding: '48px 20px', borderRadius: '12px' }}>
             <div style={{ fontSize: '38px', marginBottom: '12px' }}>💼</div>
@@ -246,28 +237,22 @@ export const JobsView: React.FC<JobsViewProps> = ({
               <article
                 key={job.id}
                 className="job-card glass-panel jobs-job-card"
-                style={{
-                  borderRadius: '12px',
-                  padding: '18px',
-                  border: '1px solid var(--line)',
-                  background: 'var(--surface)',
-                }}
               >
                 {/* Header Row */}
-                <div className="jobs-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                <div className="jobs-card-header">
+                  <div className="jobs-card-header-left">
+                    <div className="jobs-card-status-row">
                       <span className={`badge ${fin.computedStatus === 'paid' ? 'badge-income' : fin.computedStatus === 'invoiced' ? 'badge-warning' : 'badge-neutral'}`}>
                         {fin.computedStatus.toUpperCase()}
                       </span>
                       {job.client && (
-                        <span style={{ fontSize: '12px', color: 'var(--muted)', fontWeight: 600 }}>
+                        <span className="job-client-tag">
                           🏢 {job.client}
                         </span>
                       )}
                     </div>
-                    <h3 style={{ margin: '0 0 6px', fontSize: '1.15rem', color: 'var(--ink)' }}>{job.title}</h3>
-                    <div style={{ display: 'flex', gap: '12px', fontSize: '12px', color: 'var(--muted)', flexWrap: 'wrap' }}>
+                    <h3 className="job-card-heading">{job.title}</h3>
+                    <div className="jobs-card-meta">
                       {job.startDate && (
                         <span>📅 {DateUtils.formatDisplayDate(job.startDate)} {job.endDate ? `to ${DateUtils.formatDisplayDate(job.endDate)}` : '– Ongoing'}</span>
                       )}
@@ -282,14 +267,14 @@ export const JobsView: React.FC<JobsViewProps> = ({
                     </div>
                   </div>
 
-                  <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-                    <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--ink)' }}>
+                  <div className="jobs-card-header-right">
+                    <div className="jobs-card-total-val">
                       {formatJobCurrency(fin.totalInvoice, job.currency)}
                     </div>
-                    <div style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                    <div className="jobs-card-total-egp">
                       ≈ {formatMoney(fin.totalInvoiceEgp)}
                     </div>
-                    <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+                    <div className="jobs-card-quick-actions">
                       <button
                         className="ghost-button icon-button"
                         type="button"

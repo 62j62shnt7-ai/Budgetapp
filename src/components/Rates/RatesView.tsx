@@ -135,9 +135,9 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
       <div className="content-grid">
         {/* Currencies Panel */}
         <section className="panel">
-          <div className="panel-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="panel-heading rates-panel-heading">
             <h3 style={{ margin: 0 }}>Currency rates</h3>
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div className="rates-heading-actions">
               {isEditing ? (
                 <>
                   <button className="primary-button" type="button" onClick={handleSave}>
@@ -183,13 +183,13 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
                         <input
                           type="number"
                           step="0.01"
+                          className="rate-edit-input form-input"
                           value={c.sell}
                           onChange={(e) => {
                             const copy = { ...draftRates };
                             copy.currencies[idx].sell = Number(e.target.value) || 0;
                             setDraftRates(copy);
                           }}
-                          style={{ width: '100%', fontSize: '12px', padding: '3px 6px' }}
                         />
                       </label>
                       <label style={{ fontSize: '11px', color: 'var(--muted)' }}>
@@ -197,13 +197,13 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
                         <input
                           type="number"
                           step="0.01"
+                          className="rate-edit-input form-input"
                           value={c.buy}
                           onChange={(e) => {
                             const copy = { ...draftRates };
                             copy.currencies[idx].buy = Number(e.target.value) || 0;
                             setDraftRates(copy);
                           }}
-                          style={{ width: '100%', fontSize: '12px', padding: '3px 6px' }}
                         />
                       </label>
                     </div>
@@ -218,9 +218,9 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
 
         {/* Gold Rates Panel */}
         <section className="panel">
-          <div className="panel-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="panel-heading rates-panel-heading">
             <h3 style={{ margin: 0 }}>Gold rates</h3>
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div className="rates-heading-actions">
               {isEditing ? (
                 <>
                   <button className="primary-button" type="button" onClick={handleSave}>
@@ -266,13 +266,13 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
                         <input
                           type="number"
                           step="0.01"
+                          className="rate-edit-input form-input"
                           value={g.sell}
                           onChange={(e) => {
                             const copy = { ...draftRates };
                             copy.gold[idx].sell = Number(e.target.value) || 0;
                             setDraftRates(copy);
                           }}
-                          style={{ width: '100%', fontSize: '12px', padding: '3px 6px' }}
                         />
                       </label>
                       <label style={{ fontSize: '11px', color: 'var(--muted)' }}>
@@ -280,13 +280,13 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
                         <input
                           type="number"
                           step="0.01"
+                          className="rate-edit-input form-input"
                           value={g.buy}
                           onChange={(e) => {
                             const copy = { ...draftRates };
                             copy.gold[idx].buy = Number(e.target.value) || 0;
                             setDraftRates(copy);
                           }}
-                          style={{ width: '100%', fontSize: '12px', padding: '3px 6px' }}
                         />
                       </label>
                     </div>

@@ -543,24 +543,22 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
 
       {/* Forecast Entries Table */}
       <section className="panel cashflow-table-panel" style={{ marginTop: '18px' }}>
-        <div className="panel-heading cashflow-table-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div className="panel-heading cashflow-table-header">
+          <div className="cashflow-table-header-top">
             <h3 style={{ margin: 0 }}>Forecast entries</h3>
             <button
-              className="ghost-button"
+              className="ghost-button cashflow-add-btn"
               type="button"
-              style={{ fontSize: '12px', padding: '3px 8px' }}
               onClick={() => onOpenEntryModal('expense')}
             >
               <Plus size={14} style={{ marginRight: '4px' }} />
               <span>Add entry</span>
             </button>
           </div>
-          <div className="filters cashflow-filters" style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div className="cashflow-filters-grid">
             <select
               id="typeFilter"
               className="form-select"
-              style={{ width: '110px', padding: '4px 8px', fontSize: '12px' }}
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value as any)}
             >
@@ -571,7 +569,6 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
             <select
               id="categoryFilter"
               className="form-select"
-              style={{ width: '140px', padding: '4px 8px', fontSize: '12px' }}
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
             >
@@ -584,8 +581,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
               id="searchEntries"
               type="search"
               placeholder="Search category, tag, account..."
-              className="form-input"
-              style={{ width: '180px', padding: '4px 8px', fontSize: '12px' }}
+              className="form-input cashflow-search-input"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -708,7 +704,6 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                         <div>
                           <input
                             className="inline-actual-input form-input"
-                            style={{ width: '110px', padding: '3px 6px', fontSize: '12px' }}
                             placeholder={placeholder}
                             type="number"
                             min="0"
@@ -734,7 +729,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                             }}
                           />
                           {actualValue > 0 && (
-                            <small style={{ display: 'block', color: 'var(--muted)', marginTop: '4px', whiteSpace: 'nowrap', fontSize: '11px' }}>
+                            <small className="actual-spend-note">
                               {isLoan
                                 ? `Drawn so far: ${formatMoney(actualValue)} ${isFull ? '(Full amount reached · Ongoing)' : `(Remaining: ${formatMoney(remainingAmt)})`}`
                                 : isCreditSettlement

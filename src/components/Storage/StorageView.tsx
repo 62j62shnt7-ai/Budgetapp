@@ -96,21 +96,23 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenStorageModal }) 
                       </button>
                     </div>
 
-                    <div className="inline-fields storage-fields" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '10px' }}>
-                      <label style={{ fontSize: '12px' }}>
-                        Quantity
+                    <div className="storage-fields-grid">
+                      <label className="storage-field-item">
+                        <span className="field-label-text">Quantity</span>
                         <input
                           type="number"
+                          className="form-input"
                           min="0"
                           step="0.01"
                           value={item.quantity}
                           onChange={(e) => handleFieldChange(index, 'quantity', Number(e.target.value) || 0)}
                         />
                       </label>
-                      <label style={{ fontSize: '12px' }}>
-                        Rate
+                      <label className="storage-field-item">
+                        <span className="field-label-text">Rate (EGP)</span>
                         <input
                           type="number"
+                          className="form-input"
                           min="0"
                           step="0.01"
                           value={currentRate}
@@ -119,12 +121,12 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenStorageModal }) 
                       </label>
                     </div>
 
-                    <label style={{ fontSize: '12px', marginTop: '8px', display: 'block' }}>
-                      Rate source
+                    <label className="storage-field-item" style={{ marginTop: '8px' }}>
+                      <span className="field-label-text">Rate source</span>
                       <select
+                        className="form-select"
                         value={currentSource}
                         onChange={(e) => handleRateSourceChange(index, e.target.value)}
-                        style={{ marginTop: '2px', width: '100%' }}
                       >
                         <option value="manual">Manual entry</option>
                         <optgroup label="Currencies">

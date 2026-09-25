@@ -72,44 +72,43 @@ export const SalaryStructureSection: React.FC<SalaryStructureSectionProps> = ({
 
       {salaryOpen && (
         <div className="collapsible-content" style={{ marginTop: '12px' }}>
-          <div
-            className="salary-structure-controls"
-            style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap' }}
-          >
-            <label style={{ display: 'inline-flex', alignItems: 'center', fontSize: '13px' }}>
-              Start month:
-              <input
-                type="month"
-                className="form-input salary-start-month"
-                style={{ marginLeft: '6px', padding: '4px 8px' }}
-                value={startMonth}
-                onChange={(e) => setStartMonth(e.target.value)}
-              />
-            </label>
-            <label style={{ display: 'inline-flex', alignItems: 'center', fontSize: '13px' }}>
-              Quarters:
-              <input
-                type="number"
-                min="1"
-                max="24"
-                className="form-input"
-                style={{ width: '70px', marginLeft: '6px', padding: '4px 8px' }}
-                value={quarters}
-                onChange={(e) => setQuarters(Math.min(24, Math.max(1, Number(e.target.value) || 1)))}
-              />
-            </label>
-            <button className="ghost-button" type="button" onClick={onAddPayment}>
-              <Plus size={15} style={{ marginRight: '4px' }} /> Add payment
-            </button>
-            <button className="primary-button salary-populate-button" type="button" onClick={onPopulate}>
-              Populate forecast
-            </button>
-            <button className="ghost-button salary-clear-button" type="button" onClick={onClearPeriod}>
-              Clear period
-            </button>
-            <button className="ghost-button salary-clear-all-button" type="button" onClick={onClearAll}>
-              Clear all
-            </button>
+          <div className="salary-structure-controls">
+            <div className="salary-controls-inputs">
+              <label className="salary-control-field">
+                <span className="field-label-text">Start month</span>
+                <input
+                  type="month"
+                  className="form-input salary-start-month"
+                  value={startMonth}
+                  onChange={(e) => setStartMonth(e.target.value)}
+                />
+              </label>
+              <label className="salary-control-field">
+                <span className="field-label-text">Quarters</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="24"
+                  className="form-input salary-quarters-input"
+                  value={quarters}
+                  onChange={(e) => setQuarters(Math.min(24, Math.max(1, Number(e.target.value) || 1)))}
+                />
+              </label>
+            </div>
+            <div className="salary-controls-actions">
+              <button className="ghost-button" type="button" onClick={onAddPayment}>
+                <Plus size={15} style={{ marginRight: '4px' }} /> Add payment
+              </button>
+              <button className="primary-button salary-populate-button" type="button" onClick={onPopulate}>
+                Populate forecast
+              </button>
+              <button className="ghost-button salary-clear-button" type="button" onClick={onClearPeriod}>
+                Clear period
+              </button>
+              <button className="ghost-button salary-clear-all-button" type="button" onClick={onClearAll}>
+                Clear all
+              </button>
+            </div>
           </div>
 
           <div className="salary-structure-grid">
@@ -117,39 +116,30 @@ export const SalaryStructureSection: React.FC<SalaryStructureSectionProps> = ({
               <div
                 key={idx}
                 className="salary-structure-card"
-                style={{
-                  padding: '14px',
-                  borderRadius: '8px',
-                  background: 'var(--surface-soft)',
-                  border: '1px solid var(--line)',
-                  marginBottom: '10px',
-                }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', alignItems: 'center' }}>
+                <div className="salary-card-header">
                   <div>
-                    <strong style={{ fontSize: '13px' }}>
+                    <strong className="salary-card-title">
                       Payment #{idx + 1} · {salaryGroupMonths(Number(p.monthOffset) || 0)}
                     </strong>
-                    <span style={{ fontSize: '11.5px', color: 'var(--muted)', display: 'block' }}>
+                    <span className="salary-card-subtitle">
                       Repeats every 3 months ({salaryGroupMonths(Number(p.monthOffset) || 0)})
                     </span>
                   </div>
                   <button
-                    className="ghost-button"
-                    style={{ padding: '2px 6px', fontSize: '11px', color: 'var(--red)' }}
+                    className="ghost-button icon-button salary-card-remove"
                     type="button"
                     onClick={() => onRemovePayment(idx)}
                     aria-label={`Remove payment ${idx + 1}`}
                   >
-                    <Trash2 size={13} />
+                    <Trash2 size={14} />
                   </button>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px' }}>
-                  <label style={{ fontSize: '12px' }}>
-                    Group / Months
+                <div className="salary-card-fields">
+                  <label className="salary-field-item">
+                    <span className="field-label-text">Group / Months</span>
                     <select
                       className="form-select"
-                      style={{ marginTop: '2px', padding: '4px 8px', fontSize: '12px' }}
                       value={p.monthOffset}
                       onChange={(e) => onUpdatePayment(idx, 'monthOffset', Number(e.target.value))}
                     >
@@ -158,26 +148,24 @@ export const SalaryStructureSection: React.FC<SalaryStructureSectionProps> = ({
                       <option value={2}>Group 3 ({salaryGroupMonths(2)})</option>
                     </select>
                   </label>
-                  <label style={{ fontSize: '12px' }}>
-                    Day of month
+                  <label className="salary-field-item">
+                    <span className="field-label-text">Day of month</span>
                     <input
                       type="number"
                       min="1"
                       max="31"
                       className="form-input"
-                      style={{ marginTop: '2px', padding: '4px 8px', fontSize: '12px' }}
                       value={p.day}
                       onChange={(e) => onUpdatePayment(idx, 'day', Number(e.target.value))}
                     />
                   </label>
-                  <label style={{ fontSize: '12px' }}>
-                    Amount (EGP)
+                  <label className="salary-field-item">
+                    <span className="field-label-text">Amount (EGP)</span>
                     <input
                       type="number"
                       min="0"
                       step="100"
                       className="form-input"
-                      style={{ marginTop: '2px', padding: '4px 8px', fontSize: '12px' }}
                       value={p.amount}
                       onChange={(e) => onUpdatePayment(idx, 'amount', Number(e.target.value))}
                     />
