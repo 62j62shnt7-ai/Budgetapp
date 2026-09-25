@@ -15,6 +15,7 @@ import {
 } from '../../engine/creditCards';
 import { DateUtils, formatMoney, formatLastUpdated } from '../../engine/dateUtils';
 import { ForecastChart } from '../Forecast/ForecastChart';
+import { CreditCard, CheckCircle2, Clock } from 'lucide-react';
 
 export const DashboardView: React.FC = () => {
   const {
@@ -282,29 +283,54 @@ export const DashboardView: React.FC = () => {
         </article>
 
         {/* CIB Dual Metric */}
-        <article className="metric credit-dual-metric">
+        <article className="metric credit-dual-metric cib-metric-card">
           <div className="metric-header-row">
-            <span>CIB credit due</span>
+            <div className="credit-card-title">
+              <CreditCard size={15} className="credit-card-icon cib" />
+              <span>CIB Credit Card</span>
+            </div>
             <span
-              className={`credit-metric-badge ${cibDueDate && DateUtils.daysBetween(DateUtils.todayString(), cibDueDate) >= 0 && DateUtils.daysBetween(DateUtils.todayString(), cibDueDate) <= 7 && cibThisMonth > 0 ? 'urgent' : ''}`}
+              className={`credit-metric-badge ${cibDueDate && DateUtils.daysBetween(DateUtils.todayString(), cibDueDate) >= 0 && DateUtils.daysBetween(DateUtils.todayString(), cibDueDate) <= 7 && cibThisMonth > 0 ? 'urgent' : cibThisMonth === 0 ? 'settled' : ''}`}
               id="cibCreditBadge"
             >
-              {cibDueDate ? `Due ${DateUtils.formatDisplayDate(cibDueDate)}` : '15th Cutoff'}
+              {cibThisMonth === 0 ? (
+                <>
+                  <CheckCircle2 size={11} style={{ marginRight: '4px' }} />
+                  {cibDueDate ? `Due ${DateUtils.formatDisplayDate(cibDueDate)}` : '15th Cutoff'}
+                </>
+              ) : (
+                <>
+                  <Clock size={11} style={{ marginRight: '4px' }} />
+                  {cibDueDate ? `Due ${DateUtils.formatDisplayDate(cibDueDate)}` : '15th Cutoff'}
+                </>
+              )}
             </span>
           </div>
-          <strong id="cibCreditDue" style={{ color: cibThisMonth > 0 ? 'var(--red, #f43f5e)' : cibTotal > 0 ? 'var(--amber, #f59e0b)' : 'var(--muted)', fontWeight: 800 }}>
-            {formatMoney(cibTotal)}
-          </strong>
+          <div className="credit-amount-hero">
+            <strong
+              id="cibCreditDue"
+              className="credit-amount-value"
+              style={{
+                color: cibThisMonth > 0 ? 'var(--red, #f43f5e)' : cibTotal > 0 ? 'var(--amber, #f59e0b)' : 'var(--muted)',
+                fontWeight: 800,
+              }}
+            >
+              {formatMoney(cibTotal)}
+            </strong>
+            <span className="credit-amount-sublabel">
+              {cibThisMonth > 0 ? 'Immediate due this cycle' : cibNextMonth > 0 ? 'Upcoming next cycle' : 'No dues pending'}
+            </span>
+          </div>
           <div className="credit-sub-grid">
-            <div className="credit-sub-item">
+            <div className={`credit-sub-item ${cibThisMonth > 0 ? 'is-due' : 'is-settled'}`}>
               <span className="credit-sub-label" id="cibCurrentMonthLabel">{monthLabel(currentYm, 'THIS MO')}</span>
-              <span className="credit-sub-val" id="cibCurrentDue" style={{ color: cibThisMonth > 0 ? 'var(--red, #f43f5e)' : 'var(--muted)' }}>
-                {formatMoney(cibThisMonth)}
+              <span className="credit-sub-val" id="cibCurrentDue">
+                {cibThisMonth > 0 ? formatMoney(cibThisMonth) : '0 EGP · Settled'}
               </span>
             </div>
-            <div className="credit-sub-item">
+            <div className="credit-sub-item upcoming">
               <span className="credit-sub-label" id="cibNextMonthLabel">{monthLabel(nextYm, 'NEXT MO')}</span>
-              <span className="credit-sub-val" id="cibNextDue" style={{ color: cibNextMonth > 0 ? 'var(--amber, #fb923c)' : 'var(--muted)' }}>
+              <span className="credit-sub-val" id="cibNextDue">
                 {formatMoney(cibNextMonth)}
               </span>
             </div>
@@ -312,29 +338,54 @@ export const DashboardView: React.FC = () => {
         </article>
 
         {/* HSBC Dual Metric */}
-        <article className="metric credit-dual-metric">
+        <article className="metric credit-dual-metric hsbc-metric-card">
           <div className="metric-header-row">
-            <span>HSBC credit due</span>
+            <div className="credit-card-title">
+              <CreditCard size={15} className="credit-card-icon hsbc" />
+              <span>HSBC Credit Card</span>
+            </div>
             <span
-              className={`credit-metric-badge ${hsbcDueDate && DateUtils.daysBetween(DateUtils.todayString(), hsbcDueDate) >= 0 && DateUtils.daysBetween(DateUtils.todayString(), hsbcDueDate) <= 7 && hsbcThisMonth > 0 ? 'urgent' : ''}`}
+              className={`credit-metric-badge ${hsbcDueDate && DateUtils.daysBetween(DateUtils.todayString(), hsbcDueDate) >= 0 && DateUtils.daysBetween(DateUtils.todayString(), hsbcDueDate) <= 7 && hsbcThisMonth > 0 ? 'urgent' : hsbcThisMonth === 0 ? 'settled' : ''}`}
               id="hsbcCreditBadge"
             >
-              {hsbcDueDate ? `Due ${DateUtils.formatDisplayDate(hsbcDueDate)}` : 'End of Month'}
+              {hsbcThisMonth === 0 ? (
+                <>
+                  <CheckCircle2 size={11} style={{ marginRight: '4px' }} />
+                  {hsbcDueDate ? `Due ${DateUtils.formatDisplayDate(hsbcDueDate)}` : 'End of Month'}
+                </>
+              ) : (
+                <>
+                  <Clock size={11} style={{ marginRight: '4px' }} />
+                  {hsbcDueDate ? `Due ${DateUtils.formatDisplayDate(hsbcDueDate)}` : 'End of Month'}
+                </>
+              )}
             </span>
           </div>
-          <strong id="hsbcCreditDue" style={{ color: hsbcThisMonth > 0 ? 'var(--red, #f43f5e)' : hsbcTotal > 0 ? 'var(--amber, #f59e0b)' : 'var(--muted)', fontWeight: 800 }}>
-            {formatMoney(hsbcTotal)}
-          </strong>
+          <div className="credit-amount-hero">
+            <strong
+              id="hsbcCreditDue"
+              className="credit-amount-value"
+              style={{
+                color: hsbcThisMonth > 0 ? 'var(--red, #f43f5e)' : hsbcTotal > 0 ? 'var(--amber, #f59e0b)' : 'var(--muted)',
+                fontWeight: 800,
+              }}
+            >
+              {formatMoney(hsbcTotal)}
+            </strong>
+            <span className="credit-amount-sublabel">
+              {hsbcThisMonth > 0 ? 'Immediate due this cycle' : hsbcNextMonth > 0 ? 'Upcoming next cycle' : 'No dues pending'}
+            </span>
+          </div>
           <div className="credit-sub-grid">
-            <div className="credit-sub-item">
+            <div className={`credit-sub-item ${hsbcThisMonth > 0 ? 'is-due' : 'is-settled'}`}>
               <span className="credit-sub-label" id="hsbcCurrentMonthLabel">{monthLabel(currentYm, 'THIS MO')}</span>
-              <span className="credit-sub-val" id="hsbcCurrentDue" style={{ color: hsbcThisMonth > 0 ? 'var(--red, #f43f5e)' : 'var(--muted)' }}>
-                {formatMoney(hsbcThisMonth)}
+              <span className="credit-sub-val" id="hsbcCurrentDue">
+                {hsbcThisMonth > 0 ? formatMoney(hsbcThisMonth) : '0 EGP · Settled'}
               </span>
             </div>
-            <div className="credit-sub-item">
+            <div className="credit-sub-item upcoming">
               <span className="credit-sub-label" id="hsbcNextMonthLabel">{monthLabel(nextYm, 'NEXT MO')}</span>
-              <span className="credit-sub-val" id="hsbcNextDue" style={{ color: hsbcNextMonth > 0 ? 'var(--amber, #fb923c)' : 'var(--muted)' }}>
+              <span className="credit-sub-val" id="hsbcNextDue">
                 {formatMoney(hsbcNextMonth)}
               </span>
             </div>
