@@ -263,12 +263,136 @@ body {
   border-color: rgba(255, 255, 255, 0.12);
 }
 
-/* Metric Cards Grid */
+/* Metric Cards Grid & Articles */
 .metrics-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 1.25rem;
   margin-bottom: 1.75rem;
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  padding: 16px 18px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease, box-shadow 0.2s ease;
+  min-width: 0;
+  position: relative;
+}
+
+.metric:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.18);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+.metric span:first-child,
+.metric .metric-header-row span:first-child {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.metric strong {
+  display: block;
+  font-family: var(--font-heading, inherit);
+  font-size: 1.55rem;
+  font-weight: 800;
+  line-height: 1.2;
+  margin: 6px 0 4px;
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
+  word-break: break-word;
+}
+
+.metric small {
+  font-size: 11.5px;
+  color: var(--muted);
+  line-height: 1.35;
+  margin-top: auto;
+}
+
+/* Highlight Crown Metric (Net Worth) */
+.metric.highlight-metric {
+  background: linear-gradient(145deg, rgba(16, 185, 129, 0.09) 0%, rgba(16, 185, 129, 0.02) 100%) !important;
+  border: 1px solid rgba(16, 185, 129, 0.35) !important;
+  box-shadow: 0 4px 20px -2px rgba(16, 185, 129, 0.15) !important;
+}
+
+/* Credit Due Dual Cards */
+.credit-dual-metric {
+  background: linear-gradient(145deg, rgba(244, 63, 94, 0.04) 0%, var(--surface) 100%);
+  border: 1px solid rgba(244, 63, 94, 0.18);
+}
+
+.credit-dual-metric .metric-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.credit-metric-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(56, 189, 248, 0.12);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.credit-metric-badge.urgent {
+  background: rgba(244, 63, 94, 0.18) !important;
+  color: #f43f5e !important;
+  border-color: rgba(244, 63, 94, 0.35) !important;
+}
+
+.credit-sub-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+}
+
+.credit-sub-item {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-soft, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 5px 8px;
+  min-width: 0;
+}
+
+.credit-sub-label {
+  font-size: 9.5px !important;
+  font-weight: 700 !important;
+  color: var(--muted) !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.04em !important;
+}
+
+.credit-sub-val {
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  font-variant-numeric: tabular-nums !important;
+  margin-top: 2px !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
 }
 
 .metric-card {

@@ -241,13 +241,17 @@ export const DashboardView: React.FC = () => {
       <div className="metrics-grid">
         <article className="metric highlight-metric">
           <span>Total Net Worth</span>
-          <strong id="totalNetWorth">{formatMoney(netWorth)}</strong>
+          <strong id="totalNetWorth" style={{ color: 'var(--green, #10b981)', fontWeight: 800 }}>
+            {formatMoney(netWorth)}
+          </strong>
           <small>Cash + Stored assets</small>
         </article>
 
         <article className="metric">
           <span>Actual cash today</span>
-          <strong id="actualCashToday">{formatMoney(totalCash)}</strong>
+          <strong id="actualCashToday" style={{ color: '#38bdf8', fontWeight: 800 }}>
+            {formatMoney(totalCash)}
+          </strong>
           <small>Sum of account balances only</small>
         </article>
 
@@ -255,20 +259,28 @@ export const DashboardView: React.FC = () => {
         <article className="metric credit-dual-metric">
           <div className="metric-header-row">
             <span>CIB credit due</span>
-            <span className="credit-metric-badge" id="cibCreditBadge">
+            <span
+              className={`credit-metric-badge ${cibDueDate && DateUtils.daysBetween(DateUtils.todayString(), cibDueDate) >= 0 && DateUtils.daysBetween(DateUtils.todayString(), cibDueDate) <= 7 && cibThisMonth > 0 ? 'urgent' : ''}`}
+              id="cibCreditBadge"
+            >
               {cibDueDate ? `Due ${DateUtils.formatDisplayDate(cibDueDate)}` : '15th Cutoff'}
             </span>
           </div>
-          <strong id="cibCreditDue">{formatMoney(cibTotal)}</strong>
+          <strong id="cibCreditDue" style={{ color: cibThisMonth > 0 ? 'var(--red, #f43f5e)' : cibTotal > 0 ? 'var(--amber, #f59e0b)' : 'var(--muted)', fontWeight: 800 }}>
+            {formatMoney(cibTotal)}
+          </strong>
           <div className="credit-sub-grid">
             <div className="credit-sub-item">
               <span className="credit-sub-label" id="cibCurrentMonthLabel">{monthLabel(currentYm, 'THIS MO')}</span>
-              <span className="credit-sub-val" id="cibCurrentDue">{formatMoney(cibThisMonth)}</span>
+              <span className="credit-sub-val" id="cibCurrentDue" style={{ color: cibThisMonth > 0 ? 'var(--red, #f43f5e)' : 'var(--muted)' }}>
+                {formatMoney(cibThisMonth)}
+              </span>
             </div>
-            <div className="credit-sub-divider" />
             <div className="credit-sub-item">
               <span className="credit-sub-label" id="cibNextMonthLabel">{monthLabel(nextYm, 'NEXT MO')}</span>
-              <span className="credit-sub-val" id="cibNextDue">{formatMoney(cibNextMonth)}</span>
+              <span className="credit-sub-val" id="cibNextDue" style={{ color: cibNextMonth > 0 ? 'var(--amber, #fb923c)' : 'var(--muted)' }}>
+                {formatMoney(cibNextMonth)}
+              </span>
             </div>
           </div>
         </article>
@@ -277,33 +289,49 @@ export const DashboardView: React.FC = () => {
         <article className="metric credit-dual-metric">
           <div className="metric-header-row">
             <span>HSBC credit due</span>
-            <span className="credit-metric-badge" id="hsbcCreditBadge">
+            <span
+              className={`credit-metric-badge ${hsbcDueDate && DateUtils.daysBetween(DateUtils.todayString(), hsbcDueDate) >= 0 && DateUtils.daysBetween(DateUtils.todayString(), hsbcDueDate) <= 7 && hsbcThisMonth > 0 ? 'urgent' : ''}`}
+              id="hsbcCreditBadge"
+            >
               {hsbcDueDate ? `Due ${DateUtils.formatDisplayDate(hsbcDueDate)}` : 'End of Month'}
             </span>
           </div>
-          <strong id="hsbcCreditDue">{formatMoney(hsbcTotal)}</strong>
+          <strong id="hsbcCreditDue" style={{ color: hsbcThisMonth > 0 ? 'var(--red, #f43f5e)' : hsbcTotal > 0 ? 'var(--amber, #f59e0b)' : 'var(--muted)', fontWeight: 800 }}>
+            {formatMoney(hsbcTotal)}
+          </strong>
           <div className="credit-sub-grid">
             <div className="credit-sub-item">
               <span className="credit-sub-label" id="hsbcCurrentMonthLabel">{monthLabel(currentYm, 'THIS MO')}</span>
-              <span className="credit-sub-val" id="hsbcCurrentDue">{formatMoney(hsbcThisMonth)}</span>
+              <span className="credit-sub-val" id="hsbcCurrentDue" style={{ color: hsbcThisMonth > 0 ? 'var(--red, #f43f5e)' : 'var(--muted)' }}>
+                {formatMoney(hsbcThisMonth)}
+              </span>
             </div>
-            <div className="credit-sub-divider" />
             <div className="credit-sub-item">
               <span className="credit-sub-label" id="hsbcNextMonthLabel">{monthLabel(nextYm, 'NEXT MO')}</span>
-              <span className="credit-sub-val" id="hsbcNextDue">{formatMoney(hsbcNextMonth)}</span>
+              <span className="credit-sub-val" id="hsbcNextDue" style={{ color: hsbcNextMonth > 0 ? 'var(--amber, #fb923c)' : 'var(--muted)' }}>
+                {formatMoney(hsbcNextMonth)}
+              </span>
             </div>
           </div>
         </article>
 
         <article className="metric">
           <span>Stored assets</span>
-          <strong id="storageTotal">{formatMoney(storageTotal)}</strong>
+          <strong id="storageTotal" style={{ color: '#fbbf24', fontWeight: 800 }}>
+            {formatMoney(storageTotal)}
+          </strong>
           <small>Gold, USD, EUR</small>
         </article>
 
         <article className="metric">
           <span>Forecast low point</span>
-          <strong id="forecastLow" style={{ color: lowestPoint < 0 ? 'var(--red)' : 'inherit' }}>
+          <strong
+            id="forecastLow"
+            style={{
+              color: lowestPoint < 0 ? 'var(--red, #f43f5e)' : lowestPoint < 15000 ? 'var(--amber, #f59e0b)' : '#34d399',
+              fontWeight: 800,
+            }}
+          >
             {formatMoney(lowestPoint)}
           </strong>
           <small id="forecastLowDate">
@@ -313,7 +341,7 @@ export const DashboardView: React.FC = () => {
 
         <article className="metric">
           <span>Cashflow status</span>
-          <strong id="cashflowStatus" style={{ color: deficits.hasDeficit ? 'var(--red)' : 'var(--green)' }}>
+          <strong id="cashflowStatus" style={{ color: deficits.hasDeficit ? 'var(--red, #f43f5e)' : 'var(--green, #10b981)', fontWeight: 800 }}>
             {deficits.hasDeficit ? 'Deficit Risk' : 'OK'}
           </strong>
           <small id="cashflowStatusNote">
@@ -389,22 +417,28 @@ export const DashboardView: React.FC = () => {
         <div className="dashboard-focus-grid">
           <div className="dashboard-focus-card dashboard-focus-card--safe">
             <span className="dashboard-focus-label">Safe to spend</span>
-            <strong>{formatMoney(safeToSpend)}</strong>
+            <strong style={{ color: 'var(--green, #10b981)', fontWeight: 800 }}>{formatMoney(safeToSpend)}</strong>
             <small>Protected by your lowest projected floor</small>
           </div>
           <div className={`dashboard-focus-card ${deficits.hasDeficit ? 'dashboard-focus-card--danger' : 'dashboard-focus-card--safe'}`}>
             <span className="dashboard-focus-label">{deficits.hasDeficit ? 'Deficit watch' : 'Forecast status'}</span>
-            <strong>{deficits.hasDeficit ? formatMoney(deficits.worstDeficit) : 'Covered'}</strong>
+            <strong style={{ color: deficits.hasDeficit ? 'var(--red, #f43f5e)' : 'var(--green, #10b981)', fontWeight: 800 }}>
+              {deficits.hasDeficit ? formatMoney(deficits.worstDeficit) : 'Covered'}
+            </strong>
             <small>{deficits.hasDeficit ? 'Review the remediation plan above' : 'No negative balance in the forecast'}</small>
           </div>
           <div className="dashboard-focus-card">
             <span className="dashboard-focus-label">Next expense</span>
-            <strong>{nextUpcomingExpense ? formatMoney(nextUpcomingExpense.amount) : 'None'}</strong>
+            <strong style={{ color: nextUpcomingExpense ? 'var(--red, #f43f5e)' : 'var(--muted)', fontWeight: 700 }}>
+              {nextUpcomingExpense ? `-${formatMoney(nextUpcomingExpense.amount)}` : 'None'}
+            </strong>
             <small>{nextUpcomingExpense ? `${nextUpcomingExpense.category} · ${DateUtils.formatDisplayDate(nextUpcomingExpense.date)}` : 'No upcoming expense in range'}</small>
           </div>
           <div className="dashboard-focus-card">
             <span className="dashboard-focus-label">Next income</span>
-            <strong>{nextUpcomingIncome ? formatMoney(nextUpcomingIncome.amount) : 'None'}</strong>
+            <strong style={{ color: nextUpcomingIncome ? 'var(--green, #10b981)' : 'var(--muted)', fontWeight: 700 }}>
+              {nextUpcomingIncome ? `+${formatMoney(nextUpcomingIncome.amount)}` : 'None'}
+            </strong>
             <small>{nextUpcomingIncome ? `${nextUpcomingIncome.category} · ${DateUtils.formatDisplayDate(nextUpcomingIncome.date)}` : 'No upcoming income in range'}</small>
           </div>
         </div>
