@@ -688,11 +688,11 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                         </span>
                       ) : isCreditSettlement || isCreditDueLumpSum(e) ? (
                         <span className="source-pill credit-due-pill">🏛️ Credit Due</span>
-                      ) : (
+                      ) : e.source && e.source.toLowerCase() !== 'manual' && e.source.toLowerCase() !== (e.type || '').toLowerCase() ? (
                         <span className={`source-pill ${e.source === 'loan' ? 'loan' : ''}`}>
-                          {e.source || 'manual'}
+                          {e.source}
                         </span>
-                      )}
+                      ) : null}
                     </td>
                     <td className="cell-amount number" style={{ color: e.type === 'income' ? 'var(--green)' : 'var(--red)', fontWeight: 700 }}>
                       {e.type === 'income' ? '+' : '-'}{formatMoney(e.amount)}

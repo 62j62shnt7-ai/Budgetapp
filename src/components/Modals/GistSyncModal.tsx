@@ -274,8 +274,8 @@ export const GistSyncModal: React.FC<GistSyncModalProps> = ({ isOpen, onClose })
     <dialog open className="native-dialog gist-sync-dialog" onClick={(e) => e.target === e.currentTarget && onClose()} style={{ display: 'block', zIndex: 1000 }}>
       <div className="dialog-heading">
         <h3>☁️ GitHub Gist Cloud Sync</h3>
-        <button className="icon-button" type="button" aria-label="Close" onClick={onClose}>
-          x
+        <button className="icon-button close-dialog-btn" type="button" aria-label="Close dialog" onClick={onClose}>
+          ✕
         </button>
       </div>
 
@@ -367,10 +367,9 @@ export const GistSyncModal: React.FC<GistSyncModalProps> = ({ isOpen, onClose })
             <h4 id="gist-transfer-heading">Cloud data</h4>
             <span>Manual actions</span>
           </div>
-          <div className="dialog-actions gist-sync-actions" style={{ flexWrap: 'wrap', gap: '8px', justifyContent: 'space-between', marginTop: '12px' }}>
-          <div className="gist-sync-action-group" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <div className="gist-sync-actions-grid">
             <button className="ghost-button" type="button" onClick={handleCreateGist} disabled={isLoading}>
-              Auto-Create Gist
+              ✨ Auto-Create Gist
             </button>
             <button className="ghost-button" type="button" onClick={handleCopySyncLink}>
               🔗 Copy Sync Link
@@ -383,15 +382,12 @@ export const GistSyncModal: React.FC<GistSyncModalProps> = ({ isOpen, onClose })
                 Disconnect
               </button>
             )}
-          </div>
-          <div className="gist-sync-action-group gist-sync-data-actions" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <button className="ghost-button" type="button" onClick={handleDownload} disabled={isLoading}>
-              ⬇️ Download Cloud Data
+              ⬇️ Download Cloud
             </button>
             <button className="primary-button" type="button" onClick={handleUpload} disabled={isLoading}>
               ⬆️ Upload Local Data
             </button>
-          </div>
           </div>
         </section>
       </div>

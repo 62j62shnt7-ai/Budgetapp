@@ -230,8 +230,8 @@ export const EntryModal: React.FC<EntryModalProps> = ({
       <form onSubmit={handleSubmit} className="entry-form entry-form-modern" id="entryForm">
         <div className="dialog-heading">
           <h3>{entryToEdit ? 'Edit budget entry' : `Add ${type === 'income' ? 'Income' : 'Expense'}`}</h3>
-          <button className="icon-button" type="button" aria-label="Close" onClick={onClose}>
-            x
+          <button className="icon-button close-dialog-btn" type="button" aria-label="Close dialog" onClick={onClose}>
+            ✕
           </button>
         </div>
 
