@@ -1,5 +1,5 @@
 import React from 'react';
-import { useBudgetStore } from '../../store/useBudgetStore';
+import { useBudgetStore, type ViewTab } from '../../store/useBudgetStore';
 import { 
   Sun, 
   Moon, 
@@ -9,6 +9,10 @@ import {
   CreditCard, 
   PlusCircle, 
   MinusCircle,
+  Landmark,
+  Coins,
+  Briefcase,
+  TrendingUp,
   X 
 } from 'lucide-react';
 import { executeAppRefresh } from '../../utils/appRefresh';
@@ -32,7 +36,7 @@ export const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
   onOpenGistSync,
   updateStatus,
 }) => {
-  const { theme, setTheme, gistId, gistAutoSync, gistSyncStatus } = useBudgetStore();
+  const { theme, setTheme, gistId, gistAutoSync, gistSyncStatus, activeTab, setActiveTab } = useBudgetStore();
 
   if (!isOpen) return null;
 
@@ -56,6 +60,13 @@ export const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
         ? 'synced'
         : '';
 
+  const secondaryViews: Array<{ id: ViewTab; label: string; icon: React.ReactNode }> = [
+    { id: 'accounts', label: 'Accounts', icon: <Landmark size={18} color="#38bdf8" /> },
+    { id: 'storage', label: 'Storage', icon: <Coins size={18} color="#fbbf24" /> },
+    { id: 'jobs', label: 'Jobs', icon: <Briefcase size={18} color="#a855f7" /> },
+    { id: 'rates', label: 'Rates', icon: <TrendingUp size={18} color="#34d399" /> },
+  ];
+
   return (
     <div className="mobile-action-sheet-backdrop" onClick={onClose}>
       <div 
@@ -68,7 +79,7 @@ export const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
         <div className="action-sheet-header">
           <div className="action-sheet-drag-handle" />
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-            <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>Quick Actions &amp; Tools</h3>
+            <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>Menu &amp; Quick Actions</h3>
             <button 
               className="ghost-button icon-button" 
               type="button" 
@@ -81,7 +92,49 @@ export const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
           </div>
         </div>
 
+        {/* Secondary Views Grid */}
+        <div style={{ marginBottom: '16px' }}>
+          <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '8px' }}>
+            More Views
+          </span>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
+            {secondaryViews.map((tab) => {
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  className="ghost-button"
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '8px 4px',
+                    borderRadius: '10px',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    background: isActive ? 'color-mix(in srgb, var(--green) 12%, var(--surface))' : 'var(--surface-soft)',
+                    border: `1px solid ${isActive ? 'var(--green)' : 'var(--line)'}`,
+                    color: isActive ? 'var(--green)' : 'var(--ink)',
+                  }}
+                  onClick={() => {
+                    onClose();
+                    setActiveTab(tab.id);
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{tab.icon}</div>
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         <div className="action-sheet-grid">
+          <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '-2px' }}>
+            Quick Actions &amp; Tools
+          </span>
           {/* Add Expense (Primary) */}
           <button
             type="button"

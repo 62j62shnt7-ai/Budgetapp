@@ -29,12 +29,15 @@ import { RateModal } from './components/Modals/RateModal';
 import { GistSyncModal } from './components/Modals/GistSyncModal';
 import { DataToolsModal } from './components/Modals/DataToolsModal';
 import { DeductAccountModal } from './components/Modals/DeductAccountModal';
+import { MobileActionSheet } from './components/Layout/MobileActionSheet';
 import type { CashEntry, JobItem } from './types';
 
 export const App: React.FC = () => {
   const { activeTab, theme, sidebarCollapsed, toggleSidebar, closeMobileSidebar, gistToken, gistId, gistAutoSync, setGistConfig, syncFromGist } = useBudgetStore();
 
   // Modals state
+  const [actionSheetOpen, setActionSheetOpen] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState('Latest');
   const [entryModalOpen, setEntryModalOpen] = useState(false);
   const [entryModalType, setEntryModalType] = useState<'expense' | 'income'>('expense');
   const [entryToEdit, setEntryToEdit] = useState<CashEntry | null>(null);
@@ -70,6 +73,28 @@ export const App: React.FC = () => {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    const checkStatus = async () => {
+      if (!navigator.onLine) {
+        setUpdateStatus('Offline');
+        return;
+      }
+      if (!('serviceWorker' in navigator)) {
+        setUpdateStatus('Latest');
+        return;
+      }
+      const registration = await navigator.serviceWorker.getRegistration();
+      setUpdateStatus(registration?.waiting ? 'Update ready' : 'Latest');
+    };
+    void checkStatus();
+    window.addEventListener('online', checkStatus);
+    window.addEventListener('offline', checkStatus);
+    return () => {
+      window.removeEventListener('online', checkStatus);
+      window.removeEventListener('offline', checkStatus);
+    };
+  }, []);
 
   useEffect(() => {
     const dismissModalOnOutsideClick = (event: PointerEvent) => {
@@ -266,9 +291,19 @@ export const App: React.FC = () => {
       </main>
 
       {/* Mobile Bottom Navigation Bar */}
-      <BottomNav onOpenMobileMenu={toggleSidebar} />
+      <BottomNav onOpenMobileMenu={() => setActionSheetOpen(true)} />
 
       {/* Global Modals */}
+      <MobileActionSheet
+        isOpen={actionSheetOpen}
+        onClose={() => setActionSheetOpen(false)}
+        onOpenEntryModal={handleOpenEntryModal}
+        onOpenLoanModal={() => setLoanModalOpen(true)}
+        onOpenDataTools={() => setDataToolsOpen(true)}
+        onOpenGistSync={() => setGistSyncOpen(true)}
+        updateStatus={updateStatus}
+      />
+
       <EntryModal
         isOpen={entryModalOpen}
         initialType={entryModalType}
@@ -281,7 +316,6 @@ export const App: React.FC = () => {
         isOpen={loanModalOpen}
         onClose={() => setLoanModalOpen(false)}
       />
-
 
       <StorageModal
         isOpen={storageModalOpen}

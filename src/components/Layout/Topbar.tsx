@@ -12,7 +12,6 @@ import {
 } from 'lucide-react';
 
 import { executeAppRefresh } from '../../utils/appRefresh';
-import { MobileActionSheet } from './MobileActionSheet';
 
 interface TopbarProps {
   onOpenEntryModal: (type: 'expense' | 'income') => void;
@@ -40,7 +39,6 @@ export const Topbar: React.FC<TopbarProps> = ({
 }) => {
   const { theme, setTheme, activeTab, toggleSidebar, gistId, gistAutoSync, gistSyncStatus } = useBudgetStore();
   const [updateStatus, setUpdateStatus] = useState('Latest');
-  const [actionSheetOpen, setActionSheetOpen] = useState(false);
   const syncLabel = !gistId
     ? 'Setup'
     : !gistAutoSync
@@ -221,17 +219,6 @@ export const Topbar: React.FC<TopbarProps> = ({
           </button>
         </div>
       </header>
-
-      {/* Mobile Action Sheet Drawer */}
-      <MobileActionSheet
-        isOpen={actionSheetOpen}
-        onClose={() => setActionSheetOpen(false)}
-        onOpenEntryModal={onOpenEntryModal}
-        onOpenLoanModal={onOpenLoanModal}
-        onOpenDataTools={onOpenDataTools}
-        onOpenGistSync={onOpenGistSync}
-        updateStatus={updateStatus}
-      />
     </>
   );
 };
