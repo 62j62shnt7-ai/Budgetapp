@@ -196,9 +196,11 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
   };
 
   // Collapsible sections
-  const [salaryOpen, setSalaryOpen] = useState<boolean>(() =>
-    localStorage.getItem('budget-control-salary-collapsed') !== 'true'
-  );
+  const [salaryOpen, setSalaryOpen] = useState<boolean>(() => {
+    const saved = localStorage.getItem('budget-control-salary-collapsed');
+    if (saved !== null) return saved !== 'true';
+    return typeof window !== 'undefined' ? window.innerWidth > 768 : true;
+  });
   const [installmentsOpen, setInstallmentsOpen] = useState<boolean>(() =>
     localStorage.getItem('budget-control-installments-collapsed') !== 'true'
   );
@@ -437,29 +439,27 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
           <h3 style={{ margin: 0 }}>Summary period</h3>
           <span style={{ fontSize: '13px', color: 'var(--muted)' }}>Forecast candidate entries list</span>
         </div>
-        <div className="salary-controls cashflow-filters" style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '10px', flexWrap: 'wrap' }}>
-          <label style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <div className="salary-controls cashflow-period-controls">
+          <label className="period-filter-label">
             From:
             <input
               type="date"
               className="form-input"
-              style={{ width: '150px', padding: '4px 8px' }}
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
             />
           </label>
-          <label style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <label className="period-filter-label">
             To:
             <input
               type="date"
               className="form-input"
-              style={{ width: '150px', padding: '4px 8px' }}
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
             />
           </label>
           <button
-            className="ghost-button"
+            className="ghost-button full-list-btn"
             type="button"
             onClick={() => {
               setDateFrom('');
@@ -468,7 +468,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
           >
             Use full list
           </button>
-          <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
+          <span className="period-filter-status" style={{ fontSize: '12px', color: 'var(--muted)' }}>
             {dateFrom || dateTo ? `${dateFrom || 'start'} to ${dateTo || 'end'}` : 'Full forecast list'}
           </span>
         </div>

@@ -694,9 +694,83 @@ html {
   scrollbar-color: var(--muted, #64748b) transparent;
 }
 
-/* ==========================================================================
-   Mobile Touch Targets, Safe Area Insets & Responsive Layouts
-   ========================================================================== */
+/* Desktop defaults for mobile components */
+.top-actions-mobile {
+  display: none;
+}
+
+.mobile-bottom-nav {
+  display: none;
+}
+
+.mobile-action-sheet-backdrop {
+  display: none;
+}
+
+/* Subnav tabs smooth touch scrolling */
+.subnav-tabs {
+  display: flex !important;
+  gap: 8px !important;
+  overflow-x: auto !important;
+  flex-wrap: nowrap !important;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  max-width: 100%;
+  padding-bottom: 2px;
+}
+
+.subnav-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.subnav-tab {
+  flex: 1 1 auto;
+  white-space: nowrap;
+  text-align: center;
+}
+
+/* Panel heading layout to prevent chevron toggle misalignment */
+.panel-heading {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  flex-wrap: nowrap !important;
+  gap: 10px !important;
+}
+
+.panel-heading > *:first-child {
+  min-width: 0;
+  flex: 1;
+}
+
+.panel-heading > *:last-child,
+.collapse-toggle-btn,
+.panel-heading .icon-button,
+.panel-heading > .ghost-button {
+  flex-shrink: 0 !important;
+}
+
+/* Summary period controls */
+.cashflow-period-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.cashflow-period-controls .period-filter-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.cashflow-period-controls .period-filter-label input[type="date"] {
+  width: 150px;
+  padding: 4px 8px;
+}
+
 @media (max-width: 768px) {
   button,
   .primary-button,
@@ -709,46 +783,273 @@ html {
     min-height: 42px;
   }
 
+  /* Single-row streamlined Mobile Topbar */
   .topbar {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 12px;
-    margin-top: calc(-1 * max(16px, env(safe-area-inset-top)));
-    padding-top: max(16px, env(safe-area-inset-top));
-    padding-left: max(12px, env(safe-area-inset-left));
-    padding-right: max(12px, env(safe-area-inset-right));
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 10px !important;
+    height: auto !important;
+    min-height: 56px;
+    margin-top: calc(-1 * max(14px, env(safe-area-inset-top))) !important;
+    padding-top: max(14px, env(safe-area-inset-top)) !important;
+    padding-bottom: 10px !important;
+    padding-left: max(14px, env(safe-area-inset-left)) !important;
+    padding-right: max(14px, env(safe-area-inset-right)) !important;
+    margin-bottom: 14px !important;
   }
 
   .topbar-title-group {
-    width: 100%;
-    justify-content: space-between;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    flex: 1;
   }
 
-  .top-actions {
-    width: 100%;
-    overflow-x: auto;
-    flex-wrap: nowrap;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    padding-bottom: 4px;
-    gap: 8px;
-  }
-
-  .top-actions::-webkit-scrollbar {
-    display: none;
-  }
-
-  .top-actions .ghost-button,
-  .top-actions .primary-button {
-    flex-shrink: 0;
+  .topbar-title-group h2 {
+    font-size: 1.15rem !important;
     white-space: nowrap;
-    font-size: 12.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
+  /* Toggle desktop vs mobile topbar buttons */
+  .desktop-top-actions {
+    display: none !important;
+  }
+
+  .top-actions-mobile {
+    display: flex !important;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .mobile-quick-add-btn {
+    display: inline-flex !important;
+    align-items: center;
+    min-height: 36px !important;
+    padding: 0 12px !important;
+    font-size: 12.5px !important;
+    border-radius: 999px !important;
+    white-space: nowrap;
+  }
+
+  .mobile-more-btn {
+    width: 36px !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    padding: 0 !important;
+    border-radius: 50% !important;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  /* Keep panel headings with action buttons / collapse toggles on one horizontal row on mobile */
+  .collapsible-panel .panel-heading,
+  .cashflow-collapsible-panel .panel-heading,
+  .panel-heading:has(button),
+  .panel-heading:has(.icon-button) {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    flex-wrap: nowrap !important;
+    gap: 10px !important;
+  }
+
+  .panel-heading > *:first-child {
+    min-width: 0 !important;
+    flex: 1 !important;
+  }
+
+  .panel-heading > *:last-child,
+  .collapse-toggle-btn,
+  .panel-heading .icon-button,
+  .panel-heading > .ghost-button {
+    flex-shrink: 0 !important;
+  }
+
+  /* Simple panel headings without action buttons stack vertically */
+  .panel-heading:not(:has(button)):not(:has(.icon-button)) {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 4px !important;
+  }
+
+  /* Subnav tabs touch & fit optimization */
+  .subnav-tabs {
+    padding: 3px !important;
+    gap: 4px !important;
+  }
+
+  .subnav-tab {
+    padding: 7px 6px !important;
+    font-size: 11.5px !important;
+    letter-spacing: -0.2px !important;
+  }
+
+  /* App Shell & Bottom Nav Clearance */
   .app-shell {
-    padding: 14px 12px max(36px, calc(16px + env(safe-area-inset-bottom)));
+    padding: 12px 12px max(32px, calc(16px + env(safe-area-inset-bottom)));
   }
 
+  .app-shell.has-bottom-nav {
+    padding-bottom: calc(76px + env(safe-area-inset-bottom)) !important;
+  }
+
+  /* Fixed Native Bottom Navigation Bar */
+  .mobile-bottom-nav {
+    display: flex !important;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: calc(58px + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    background: var(--topbar-glass-bg, var(--surface));
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid var(--border-subtle, var(--line));
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
+    z-index: 1000;
+    justify-content: space-around;
+    align-items: center;
+  }
+
+  .bottom-nav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    background: transparent;
+    border: none;
+    color: var(--muted, #64748b);
+    padding: 6px 0;
+    min-height: 48px;
+    cursor: pointer;
+    touch-action: manipulation;
+    transition: color 0.15s ease, transform 0.1s ease;
+  }
+
+  .bottom-nav-item:active {
+    transform: scale(0.92);
+  }
+
+  .bottom-nav-item.active {
+    color: var(--green, #10b981);
+  }
+
+  .bottom-nav-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .bottom-nav-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+  }
+
+  /* Responsive Cashflow Filter Bar */
+  .cashflow-table-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+
+  .cashflow-filters {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+
+  .cashflow-filters select {
+    width: 100% !important;
+  }
+
+  .cashflow-filters input#searchEntries {
+    grid-column: 1 / -1;
+    width: 100% !important;
+  }
+
+  .cashflow-period-controls {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+
+  .cashflow-period-controls .period-filter-label {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 4px !important;
+    font-size: 12px !important;
+    width: 100% !important;
+  }
+
+  .cashflow-period-controls .period-filter-label input[type="date"] {
+    width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  .cashflow-period-controls .full-list-btn {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  .cashflow-period-controls .period-filter-status {
+    grid-column: 1 / -1 !important;
+    text-align: center !important;
+  }
+
+  /* Responsive History Filters Bar */
+  .history-filters-bar {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+
+  .history-filters-bar label {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 4px !important;
+    font-size: 12px !important;
+    width: 100% !important;
+  }
+
+  .history-filters-bar label select,
+  .history-filters-bar label input {
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .history-filters-bar label:has(input[type="search"]),
+  .history-filters-bar label:last-of-type {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+  }
+
+  .history-filters-bar .ghost-button {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  /* Dialogs on mobile */
   dialog.native-dialog,
   dialog.modern-top-layer-dialog,
   dialog[open] {
@@ -760,6 +1061,113 @@ html {
     border-radius: 16px;
     margin: auto !important;
     z-index: 9999 !important;
+  }
+}
+
+/* Mobile Action Sheet (Bottom Drawer Modal) */
+.mobile-action-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 16, 14, 0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  animation: fadeIn 0.18s ease-out;
+}
+
+.mobile-action-sheet {
+  background: var(--surface);
+  border-top: 1px solid var(--glass-border, rgba(255, 255, 255, 0.15));
+  border-radius: 20px 20px 0 0;
+  box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.35);
+  padding: 12px 16px max(24px, calc(16px + env(safe-area-inset-bottom)));
+  max-height: 85dvh;
+  overflow-y: auto;
+  animation: slideUpSheet 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.action-sheet-drag-handle {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line, rgba(255, 255, 255, 0.2));
+  margin: 0 auto 10px;
+}
+
+.action-sheet-header {
+  margin-bottom: 14px;
+}
+
+.action-sheet-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.action-sheet-btn {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--ink);
+  min-height: 52px;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.action-sheet-btn:active {
+  background: var(--line);
+  transform: scale(0.98);
+}
+
+.action-sheet-btn-expense {
+  border-color: rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.action-sheet-btn-income {
+  border-color: rgba(16, 185, 129, 0.3);
+  background: rgba(16, 185, 129, 0.06);
+}
+
+.action-sheet-btn-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.action-sheet-btn-text strong {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.action-sheet-btn-text span {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+@keyframes slideUpSheet {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
 

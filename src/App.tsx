@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useBudgetStore } from './store/useBudgetStore';
 import { Topbar } from './components/Layout/Topbar';
 import { Sidebar } from './components/Layout/Sidebar';
+import { BottomNav } from './components/Layout/BottomNav';
 
 // 8 Views
 import { DashboardView } from './components/Dashboard/DashboardView';
@@ -254,7 +255,7 @@ export const App: React.FC = () => {
   return (
     <>
       <Sidebar />
-      <main className="app-shell">
+      <main className="app-shell has-bottom-nav">
         <Topbar
           onOpenEntryModal={handleOpenEntryModal}
           onOpenLoanModal={() => setLoanModalOpen(true)}
@@ -263,6 +264,9 @@ export const App: React.FC = () => {
         />
         {renderActiveView()}
       </main>
+
+      {/* Mobile Bottom Navigation Bar */}
+      <BottomNav onOpenMobileMenu={toggleSidebar} />
 
       {/* Global Modals */}
       <EntryModal

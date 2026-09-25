@@ -31,7 +31,7 @@ export const ExpenseMixSection: React.FC<ExpenseMixSectionProps> = ({
         onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && setExpenseMixOpen(!expenseMixOpen)}
       >
         <h3 style={{ margin: 0 }}>Expense mix</h3>
-        <button className="ghost-button icon-button" type="button" aria-label={expenseMixOpen ? 'Collapse' : 'Expand'}>
+        <button className="ghost-button icon-button collapse-toggle-btn" type="button" aria-label={expenseMixOpen ? 'Collapse' : 'Expand'}>
           {expenseMixOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
         </button>
       </div>

@@ -110,10 +110,12 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({ onBridgeDeficit }) =
         {/* Forecast Deficit Timeline */}
         <section className="panel">
           <div className="panel-heading">
-            <h3 style={{ margin: 0 }}>Forecast deficit timeline</h3>
-            <span style={{ fontSize: '13px', color: 'var(--muted)' }}>
-              Exact days balance turns negative until income recovers it
-            </span>
+            <div>
+              <h3 style={{ margin: 0 }}>Forecast deficit timeline</h3>
+              <span style={{ fontSize: '13px', color: 'var(--muted)' }}>
+                Exact days balance turns negative until income recovers it
+              </span>
+            </div>
           </div>
 
           <div id="deficitForecastList" className="stack-list" style={{ marginTop: '12px' }}>
@@ -182,10 +184,12 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({ onBridgeDeficit }) =
         {/* Overdue & Unpaid */}
         <section className="panel">
           <div className="panel-heading">
-            <h3 style={{ margin: 0 }}>Overdue &amp; unpaid</h3>
-            <span style={{ fontSize: '13px', color: 'var(--muted)' }}>
-              Past their scheduled date without recorded payment
-            </span>
+            <div>
+              <h3 style={{ margin: 0 }}>Overdue &amp; unpaid</h3>
+              <span style={{ fontSize: '13px', color: 'var(--muted)' }}>
+                Past their scheduled date without recorded payment
+              </span>
+            </div>
           </div>
 
           <div id="deficitOverdueList" className="stack-list" style={{ marginTop: '12px' }}>

@@ -37,7 +37,7 @@ export const InstallmentsSection: React.FC<InstallmentsSectionProps> = ({
         aria-expanded={installmentsOpen}
         onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && setInstallmentsOpen(!installmentsOpen)}
       >
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap', minWidth: 0, flex: 1 }}>
           <h3 style={{ margin: 0 }}>Installments</h3>
           <span style={{ fontSize: '12px', color: 'var(--muted)' }}>({installments.length})</span>
           {!installmentsOpen && installments.length > 0 && (
@@ -52,7 +52,7 @@ export const InstallmentsSection: React.FC<InstallmentsSectionProps> = ({
             </span>
           )}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
           <button
             className="ghost-button"
             type="button"
@@ -65,7 +65,7 @@ export const InstallmentsSection: React.FC<InstallmentsSectionProps> = ({
             <Plus size={14} style={{ marginRight: '4px' }} />
             <span>Installment</span>
           </button>
-          <button className="ghost-button icon-button" type="button" aria-label={installmentsOpen ? 'Collapse' : 'Expand'}>
+          <button className="ghost-button icon-button collapse-toggle-btn" type="button" aria-label={installmentsOpen ? 'Collapse' : 'Expand'}>
             {installmentsOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </button>
         </div>

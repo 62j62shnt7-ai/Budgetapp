@@ -59,13 +59,13 @@ export const SalaryStructureSection: React.FC<SalaryStructureSectionProps> = ({
         aria-expanded={salaryOpen}
         onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && setSalaryOpen(!salaryOpen)}
       >
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px', flexWrap: 'wrap', minWidth: 0, flex: 1 }}>
           <h3 style={{ margin: 0 }}>Salary structure</h3>
           <span style={{ fontSize: '13px', color: 'var(--muted)' }}>
             Quarter total: <strong style={{ color: 'var(--green)' }}>{formatMoney(salaryQuarterTotal)}</strong>
           </span>
         </div>
-        <button className="ghost-button icon-button" type="button" aria-label={salaryOpen ? 'Collapse' : 'Expand'}>
+        <button className="ghost-button icon-button collapse-toggle-btn" type="button" aria-label={salaryOpen ? 'Collapse' : 'Expand'}>
           {salaryOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
         </button>
       </div>
