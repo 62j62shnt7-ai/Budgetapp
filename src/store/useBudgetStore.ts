@@ -149,7 +149,7 @@ export interface BudgetStoreState {
   updateInstallment: (id: string, updates: Partial<Installment>) => void;
   deleteInstallment: (id: string) => void;
 
-  updateRates: (rates: RatesData) => void;
+  updateRates: (rates: RatesData, syncImmediately?: boolean) => void;
   syncStorageRates: (rates?: RatesData) => void;
 
   addStorageAsset: (asset: Omit<StorageAsset, 'id'>) => void;
@@ -171,10 +171,14 @@ export interface BudgetStoreState {
   importJSON: (jsonString: string) => boolean;
 }
 
-function scheduleAutoGistSync(getState: () => BudgetStoreState): void {
-  if (gistSyncTimer) clearTimeout(gistSyncTimer);
+function scheduleAutoGistSync(getState: () => BudgetStoreState, immediate = false): void {
+  if (gistSyncTimer) {
+    clearTimeout(gistSyncTimer);
+    gistSyncTimer = null;
+  }
   useBudgetStore.setState({ gistSyncStatus: 'scheduled' });
-  gistSyncTimer = setTimeout(async () => {
+
+  const executeSync = async () => {
     gistSyncTimer = null;
     const state = getState();
     if (!state.gistAutoSync || !state.gistToken || !state.gistId) {
@@ -182,7 +186,7 @@ function scheduleAutoGistSync(getState: () => BudgetStoreState): void {
       return;
     }
     if (gistSyncInFlight) {
-      scheduleAutoGistSync(getState);
+      scheduleAutoGistSync(getState, false);
       return;
     }
     gistSyncInFlight = true;
@@ -212,7 +216,13 @@ function scheduleAutoGistSync(getState: () => BudgetStoreState): void {
     } finally {
       gistSyncInFlight = false;
     }
-  }, 2500);
+  };
+
+  if (immediate) {
+    void executeSync();
+  } else {
+    gistSyncTimer = setTimeout(executeSync, 1500);
+  }
 }
 
 const defaultAccounts: Record<string, AccountBalance> = {
@@ -675,7 +685,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     }
   },
 
-  updateRates: (newRates) => {
+  updateRates: (newRates, syncImmediately = false) => {
     const currentStorageTotal = computeTotalStorageValue(get().storageAssets, get().rates);
     const nextStorageTotal = computeTotalStorageValue(get().storageAssets, newRates);
 
@@ -702,7 +712,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     } else {
       set({ rates: ratesToSave });
     }
-    scheduleAutoGistSync(get);
+    scheduleAutoGistSync(get, syncImmediately);
   },
 
   addStorageAsset: (assetData) => {
@@ -1122,15 +1132,24 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       const rawRates = data.ratesData || data.rates || parsed.ratesData || parsed.rates;
       let newRates: RatesData = get().rates;
       if (rawRates && typeof rawRates === 'object') {
-        newRates = {
-          currencies: Array.isArray(rawRates.currencies) && rawRates.currencies.length > 0 ? rawRates.currencies : defaultRates.currencies,
-          gold: Array.isArray(rawRates.gold) && rawRates.gold.length > 0 ? rawRates.gold : defaultRates.gold,
-          lastFetched: typeof rawRates.lastFetched === 'string' ? rawRates.lastFetched : get().rates.lastFetched,
-          currenciesLastFetched: typeof rawRates.currenciesLastFetched === 'string' ? rawRates.currenciesLastFetched : get().rates.currenciesLastFetched,
-          goldLastFetched: typeof rawRates.goldLastFetched === 'string' ? rawRates.goldLastFetched : get().rates.goldLastFetched,
-          previousStorageTotal: typeof rawRates.previousStorageTotal === 'number' ? rawRates.previousStorageTotal : get().rates.previousStorageTotal,
-        };
-        saveStorage(STORAGE_KEYS.rates, newRates);
+        const localRates = get().rates;
+        const localLast = localRates.lastFetched ? new Date(localRates.lastFetched).getTime() : 0;
+        const rawLast = typeof rawRates.lastFetched === 'string' ? new Date(rawRates.lastFetched).getTime() : 0;
+
+        // If local rates were updated more recently than the incoming backup/Gist, retain newer local rates
+        if (localLast > 0 && rawLast > 0 && localLast > rawLast) {
+          newRates = localRates;
+        } else {
+          newRates = {
+            currencies: Array.isArray(rawRates.currencies) && rawRates.currencies.length > 0 ? rawRates.currencies : (localRates.currencies || defaultRates.currencies),
+            gold: Array.isArray(rawRates.gold) && rawRates.gold.length > 0 ? rawRates.gold : (localRates.gold || defaultRates.gold),
+            lastFetched: typeof rawRates.lastFetched === 'string' ? rawRates.lastFetched : localRates.lastFetched,
+            currenciesLastFetched: typeof rawRates.currenciesLastFetched === 'string' ? rawRates.currenciesLastFetched : localRates.currenciesLastFetched,
+            goldLastFetched: typeof rawRates.goldLastFetched === 'string' ? rawRates.goldLastFetched : localRates.goldLastFetched,
+            previousStorageTotal: typeof rawRates.previousStorageTotal === 'number' ? rawRates.previousStorageTotal : localRates.previousStorageTotal,
+          };
+          saveStorage(STORAGE_KEYS.rates, newRates);
+        }
       }
 
       // 6. Storage assets

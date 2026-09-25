@@ -35,7 +35,7 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
         currenciesLastFetched: now,
         goldLastFetched: now,
         lastFetched: now,
-      });
+      }, true);
       setIsEditing(false);
       setDraftRates(null);
     }
@@ -119,7 +119,7 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
         currenciesLastFetched: currenciesFetched ? now : (currentRates.currenciesLastFetched || currentRates.lastFetched),
         goldLastFetched: goldFetched ? now : (currentRates.goldLastFetched || currentRates.lastFetched),
         lastFetched: now,
-      });
+      }, true);
 
       if (changes.length > 0) {
         alert(`Updated Live Market Rates:\n\n${changes.join("\n")}`);

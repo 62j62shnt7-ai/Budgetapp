@@ -66,7 +66,7 @@ export const RateModal: React.FC<RateModalProps> = ({ isOpen, rateType = 'curren
     }
     copy.lastFetched = now;
 
-    updateRates(copy);
+    updateRates(copy, true);
     onClose();
   };
 
