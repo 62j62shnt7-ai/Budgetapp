@@ -673,21 +673,32 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                                 key={`${entry.id}-${tag}`}
                                 type="button"
                                 className={`history-tag-filter ${selectedTag.toLowerCase() === tag.toLowerCase() ? 'active' : ''}`}
-                                onClick={() => handleTagFilter(tag)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleTagFilter(tag);
+                                }}
                                 aria-pressed={selectedTag.toLowerCase() === tag.toLowerCase()}
                               >
-                                🏷️ {tag}
+                                <span aria-hidden="true">#</span>{tag}
                               </button>
                             ))}
                           </td>
                           <td className="cell-account"><span className="account-pill">{entry.account?.toUpperCase() || 'CASH'}</span></td>
                           <td className="cell-type">
-                            <span className={`badge ${entry.type === 'income' ? 'badge-income' : 'badge-expense'}`}>
+                            <span className={`pill ${entry.type}`}>
                               {entry.type}
                             </span>
                           </td>
-                          <td className="cell-source" style={{ fontSize: '12px', color: 'var(--muted)' }}>{entry.source || 'Manual'}</td>
-                          <td className="cell-planned number">{formatMoney(entry.amount)}</td>
+                          <td className="cell-source" style={{ fontSize: '12px', color: 'var(--muted)' }}>
+                            {entry.source && entry.source.toLowerCase() !== 'manual' && entry.source.toLowerCase() !== entry.type.toLowerCase() ? (
+                              <span className={`source-pill ${entry.source === 'loan' ? 'loan' : ''}`}>
+                                {entry.source}
+                              </span>
+                            ) : null}
+                          </td>
+                          <td className="cell-planned number" style={{ color: entry.type === 'income' ? 'var(--green)' : 'var(--red)', fontWeight: 700 }}>
+                            {entry.type === 'income' ? '+' : '-'}{formatMoney(entry.amount)}
+                          </td>
                           <td className="cell-actual number" style={{ fontWeight: 700 }}>
                             {isAdminUnlocked ? (
                               <div className="history-admin-input-wrap">
@@ -727,7 +738,10 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                                   className="ghost-button icon-button"
                                   type="button"
                                   title="Clear actual (revert to forecast)"
-                                  onClick={() => handleClearActual(entry.id)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleClearActual(entry.id);
+                                  }}
                                 >
                                   <RotateCcw size={13} />
                                 </button>
@@ -735,19 +749,25 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                                   className="delete-button icon-button"
                                   type="button"
                                   title="Delete entry"
-                                  onClick={() => deleteEntry(entry.id)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    deleteEntry(entry.id);
+                                  }}
                                 >
                                   <Trash2 size={13} />
                                 </button>
                               </div>
                             ) : (
                               <button
-                                className="ghost-button icon-button"
+                                className="ghost-button history-clear-btn"
                                 type="button"
                                 title="Reset actual amount to 0"
-                                onClick={() => handleClearActual(entry.id)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleClearActual(entry.id);
+                                }}
                               >
-                                <span style={{ fontSize: '11px' }}>Clear</span>
+                                Clear
                               </button>
                             )}
                           </td>

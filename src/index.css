@@ -2068,18 +2068,46 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     grid-column: 1 !important;
     grid-row: 1 !important;
     font-weight: 700 !important;
-    font-size: 15px !important;
+    font-size: 15.5px !important;
     color: var(--ink) !important;
     word-break: break-word !important;
     display: flex !important;
     flex-wrap: wrap !important;
     align-items: center !important;
     gap: 6px !important;
+    line-height: 1.3 !important;
   }
 
   .table-wrap.responsive-cards .cell-category strong {
     font-weight: 700 !important;
-    font-size: 15px !important;
+    font-size: 15.5px !important;
+  }
+
+  /* Compact Tag Chips in Mobile Cards */
+  .history-tag-filter,
+  .table-wrap.responsive-cards .cashflow-tag-pill {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 2px !important;
+    height: 22px !important;
+    min-height: 22px !important;
+    padding: 1px 8px !important;
+    font-size: 10.5px !important;
+    font-weight: 600 !important;
+    border-radius: 999px !important;
+    background: var(--surface-soft, rgba(255, 255, 255, 0.06)) !important;
+    border: 1px solid var(--line) !important;
+    color: var(--muted) !important;
+    margin: 0 2px 0 0 !important;
+    vertical-align: middle !important;
+    cursor: pointer !important;
+    transition: background 0.15s ease, color 0.15s ease !important;
+  }
+
+  .history-tag-filter.active {
+    background: color-mix(in srgb, var(--green) 15%, var(--surface)) !important;
+    border-color: var(--green) !important;
+    color: var(--green) !important;
   }
 
   .table-wrap.responsive-cards .cell-amount,
@@ -2092,13 +2120,15 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     font-variant-numeric: tabular-nums !important;
     white-space: nowrap !important;
     justify-self: end !important;
+    align-self: flex-start !important;
+    padding-top: 1px !important;
   }
 
   /* Row 2: Date & Subspends button on left, Type Pill on right */
   .table-wrap.responsive-cards .cell-date {
     grid-column: 1 !important;
     grid-row: 2 !important;
-    font-size: 12.5px !important;
+    font-size: 12px !important;
     color: var(--muted) !important;
     font-weight: 500 !important;
     display: flex !important;
@@ -2112,18 +2142,61 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     grid-row: 2 !important;
     text-align: right !important;
     justify-self: end !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+  }
+
+  /* Type & Status Badges on Cards */
+  .table-wrap.responsive-cards .pill,
+  .table-wrap.responsive-cards .badge {
+    display: inline-flex !important;
+    align-items: center !important;
+    padding: 2px 8px !important;
+    border-radius: 6px !important;
+    font-size: 10.5px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.03em !important;
+  }
+
+  .table-wrap.responsive-cards .pill.expense,
+  .table-wrap.responsive-cards .badge-expense {
+    background: rgba(244, 63, 94, 0.12) !important;
+    color: #f43f5e !important;
+    border: 1px solid rgba(244, 63, 94, 0.2) !important;
+  }
+
+  .table-wrap.responsive-cards .pill.income,
+  .table-wrap.responsive-cards .badge-income {
+    background: rgba(16, 185, 129, 0.12) !important;
+    color: #10b981 !important;
+    border: 1px solid rgba(16, 185, 129, 0.2) !important;
   }
 
   /* Row 3: Account Pill on left, Source info on right */
   .table-wrap.responsive-cards .cell-account {
     grid-column: 1 !important;
     grid-row: 3 !important;
-    font-size: 11.5px !important;
+    font-size: 11px !important;
     color: var(--muted) !important;
     font-weight: 600 !important;
     text-transform: uppercase !important;
     display: flex !important;
     align-items: center !important;
+    gap: 4px !important;
+  }
+
+  .table-wrap.responsive-cards .account-pill {
+    background: var(--surface-soft) !important;
+    border: 1px solid var(--line) !important;
+    padding: 2px 7px !important;
+    border-radius: 6px !important;
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    color: var(--muted) !important;
+    display: inline-block !important;
   }
 
   .table-wrap.responsive-cards .cell-source {
@@ -2131,7 +2204,20 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     grid-row: 3 !important;
     text-align: right !important;
     justify-self: end !important;
-    font-size: 11.5px !important;
+    font-size: 11px !important;
+    color: var(--muted) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+  }
+
+  .table-wrap.responsive-cards .source-pill {
+    background: var(--surface-soft) !important;
+    border: 1px solid var(--line) !important;
+    padding: 2px 7px !important;
+    border-radius: 6px !important;
+    font-size: 10px !important;
+    font-weight: 600 !important;
     color: var(--muted) !important;
   }
 
@@ -2159,6 +2245,12 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     text-transform: uppercase !important;
     letter-spacing: 0.04em !important;
     margin-right: 4px !important;
+  }
+
+  .table-wrap.responsive-cards .history-actual-display {
+    font-size: 13.5px !important;
+    font-weight: 700 !important;
+    color: var(--ink) !important;
   }
 
   .table-wrap.responsive-cards .history-admin-input-wrap {
@@ -2193,7 +2285,7 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     justify-content: flex-end !important;
     align-items: center !important;
     gap: 8px !important;
-    padding-top: 6px !important;
+    padding-top: 4px !important;
     margin-top: 0 !important;
     border-top: none !important;
     width: 100% !important;
@@ -2219,6 +2311,27 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     width: 100% !important;
   }
 
+  .history-clear-btn {
+    min-height: 28px !important;
+    padding: 2px 12px !important;
+    font-size: 11.5px !important;
+    font-weight: 600 !important;
+    border-radius: 6px !important;
+    background: var(--surface-soft) !important;
+    border: 1px solid var(--line) !important;
+    color: var(--muted) !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  .history-clear-btn:hover {
+    background: rgba(239, 68, 68, 0.12) !important;
+    color: #ef4444 !important;
+    border-color: rgba(239, 68, 68, 0.25) !important;
+  }
+
   .table-wrap.responsive-cards .finish-loan-btn {
     min-height: 34px !important;
     padding: 4px 12px !important;
@@ -2228,10 +2341,25 @@ dialog.modern-top-layer-dialog .dialog-actions button {
   }
 
   .table-wrap.responsive-cards .delete-button {
-    min-height: 34px !important;
+    min-height: 32px !important;
     padding: 4px 10px !important;
-    font-size: 12.5px !important;
+    font-size: 12px !important;
     font-weight: 600 !important;
+  }
+
+  /* Subspends button in History Cards */
+  .history-draws-toggle-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    padding: 2px 8px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    border-radius: 6px !important;
+    background: var(--surface-soft) !important;
+    border: 1px solid var(--line) !important;
+    color: var(--muted) !important;
+    min-height: 24px !important;
+    margin-top: 2px !important;
   }
 
   /* Opening Balance rows on mobile: hide redundant empty actual/actions footer */
@@ -2241,19 +2369,6 @@ dialog.modern-top-layer-dialog .dialog-actions button {
   }
 
   /* Cashflow inline tags, credit badges & summaries */
-  .table-wrap.responsive-cards .cashflow-tag-pill {
-    display: inline-flex !important;
-    align-items: center !important;
-    gap: 2px !important;
-    min-height: 20px !important;
-    padding: 1px 7px !important;
-    font-size: 10.5px !important;
-    font-weight: 600 !important;
-    border-radius: 999px !important;
-    margin: 2px 2px 0 0 !important;
-    vertical-align: middle !important;
-  }
-
   .table-wrap.responsive-cards .credit-due-summary {
     font-size: 11px !important;
     color: var(--muted) !important;
@@ -2275,20 +2390,22 @@ dialog.modern-top-layer-dialog .dialog-actions button {
 
   .table-wrap.responsive-cards .inline-actual-input {
     width: 100% !important;
-    max-width: 150px !important;
-    min-height: 34px !important;
-    padding: 4px 10px !important;
-    font-size: 13px !important;
+    max-width: 100% !important;
+    min-height: 36px !important;
+    padding: 6px 12px !important;
+    font-size: 13.5px !important;
     border-radius: 8px !important;
+    box-sizing: border-box !important;
   }
 
   .table-wrap.responsive-cards .actual-spend-note {
-    font-size: 11px !important;
+    font-size: 11.5px !important;
     font-weight: 500 !important;
     color: var(--muted) !important;
     line-height: 1.35 !important;
     margin-top: 2px !important;
-    white-space: normal !important;
+    display: block !important;
+    width: 100% !important;
     word-break: break-word !important;
   }
 

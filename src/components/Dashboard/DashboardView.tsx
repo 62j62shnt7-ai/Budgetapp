@@ -628,8 +628,6 @@ export const DashboardView: React.FC = () => {
               simDate={simDate}
               onSelectDate={(date) => {
                 setSimDate(date);
-                const amtInput = document.getElementById('forecastSimAmount');
-                if (amtInput) amtInput.focus();
               }}
             />
           </div>

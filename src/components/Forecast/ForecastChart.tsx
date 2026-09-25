@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import type { CashEntry } from '../../types';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
 
@@ -45,6 +45,22 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
   onSelectDate,
 }) => {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (hoverIndex === null) return;
+    const handleOutsideTap = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.forecast-line-svg-wrap')) {
+        setHoverIndex(null);
+      }
+    };
+    document.addEventListener('click', handleOutsideTap);
+    document.addEventListener('touchstart', handleOutsideTap, { passive: true });
+    return () => {
+      document.removeEventListener('click', handleOutsideTap);
+      document.removeEventListener('touchstart', handleOutsideTap);
+    };
+  }, [hoverIndex]);
 
   const today = DateUtils.todayString();
   const currentYm = DateUtils.currentYearMonth();
@@ -496,7 +512,7 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
           );
         })}
 
-        {/* Transparent interactive hover columns */}
+        {/* Transparent interactive hover & touch columns */}
         {points.map((pt, idx) => {
           const colW = chartW / Math.max(1, series.length);
           return (
@@ -507,11 +523,20 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
               width={colW}
               height={chartH}
               fill="transparent"
-              style={{ cursor: 'pointer' }}
+              style={{ cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}
               onMouseEnter={() => setHoverIndex(idx)}
               onMouseMove={() => setHoverIndex(idx)}
               onMouseLeave={() => setHoverIndex(null)}
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
+                setHoverIndex((prev) => (prev === idx ? null : idx));
+                if (onSelectDate) {
+                  onSelectDate(series[idx].date || today);
+                }
+              }}
+              onTouchStart={(e) => {
+                e.stopPropagation();
+                setHoverIndex(idx);
                 if (onSelectDate) {
                   onSelectDate(series[idx].date || today);
                 }
@@ -521,10 +546,11 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
         })}
       </svg>
 
-      {/* Floating Glass Tooltip */}
+      {/* Floating Glass Tooltip / Point Card */}
       {activePoint && activeCoord && (
         <div
           className="forecast-tooltip"
+          onClick={(e) => e.stopPropagation()}
           style={{
             left: `${(activeCoord.x / viewBoxW) * 100}%`,
             top: `${(activeCoord.y / viewBoxH) * 100}%`,
