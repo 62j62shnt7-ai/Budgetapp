@@ -1,13 +1,14 @@
 import React from 'react';
 import { Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import type { SalaryPayment } from '../../types';
-import { formatMoney } from '../../engine/dateUtils';
-import { groupPhaseForMonthIndex } from '../../engine/salaryAndInstallments';
+import { DateUtils, formatMoney } from '../../engine/dateUtils';
+import { groupPhaseForMonthIndex, monthIndexFromYearMonth } from '../../engine/salaryAndInstallments';
 
 interface SalaryStructureSectionProps {
   salaryOpen: boolean;
   setSalaryOpen: (open: boolean) => void;
   salaryQuarterTotal: number;
+  salaryAnchorMonth?: string;
   startMonth: string;
   setStartMonth: (val: string) => void;
   quarters: number;
@@ -25,6 +26,7 @@ export const SalaryStructureSection: React.FC<SalaryStructureSectionProps> = ({
   salaryOpen,
   setSalaryOpen,
   salaryQuarterTotal,
+  salaryAnchorMonth,
   startMonth,
   setStartMonth,
   quarters,
@@ -37,6 +39,15 @@ export const SalaryStructureSection: React.FC<SalaryStructureSectionProps> = ({
   onUpdatePayment,
   onRemovePayment,
 }) => {
+  const salaryGroupMonths = (offset: number) => {
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const anchorIndex = monthIndexFromYearMonth(salaryAnchorMonth || DateUtils.currentYearMonth());
+    let firstMatch = anchorIndex;
+    while (groupPhaseForMonthIndex(firstMatch, salaryAnchorMonth) !== offset) firstMatch += 1;
+    return [0, 1, 2, 3]
+      .map((quarter) => monthNames[((firstMatch + quarter * 3) % 12 + 12) % 12])
+      .join(', ');
+  };
   return (
     <section className="panel collapsible-panel cashflow-collapsible-panel" style={{ marginTop: '18px' }}>
       <div
@@ -115,28 +126,36 @@ export const SalaryStructureSection: React.FC<SalaryStructureSectionProps> = ({
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', alignItems: 'center' }}>
-                  <strong style={{ fontSize: '13px' }}>Payment #{idx + 1}</strong>
+                  <div>
+                    <strong style={{ fontSize: '13px' }}>
+                      Payment #{idx + 1} · {salaryGroupMonths(Number(p.monthOffset) || 0)}
+                    </strong>
+                    <span style={{ fontSize: '11.5px', color: 'var(--muted)', display: 'block' }}>
+                      Repeats every 3 months ({salaryGroupMonths(Number(p.monthOffset) || 0)})
+                    </span>
+                  </div>
                   <button
                     className="ghost-button"
                     style={{ padding: '2px 6px', fontSize: '11px', color: 'var(--red)' }}
                     type="button"
                     onClick={() => onRemovePayment(idx)}
+                    aria-label={`Remove payment ${idx + 1}`}
                   >
                     <Trash2 size={13} />
                   </button>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px' }}>
                   <label style={{ fontSize: '12px' }}>
-                    Month offset
+                    Group / Months
                     <select
                       className="form-select"
                       style={{ marginTop: '2px', padding: '4px 8px', fontSize: '12px' }}
                       value={p.monthOffset}
                       onChange={(e) => onUpdatePayment(idx, 'monthOffset', Number(e.target.value))}
                     >
-                      <option value={0}>Month 1 ({groupPhaseForMonthIndex(0)})</option>
-                      <option value={1}>Month 2 ({groupPhaseForMonthIndex(1)})</option>
-                      <option value={2}>Month 3 ({groupPhaseForMonthIndex(2)})</option>
+                      <option value={0}>Group 1 ({salaryGroupMonths(0)})</option>
+                      <option value={1}>Group 2 ({salaryGroupMonths(1)})</option>
+                      <option value={2}>Group 3 ({salaryGroupMonths(2)})</option>
                     </select>
                   </label>
                   <label style={{ fontSize: '12px' }}>

@@ -505,6 +505,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
         salaryOpen={salaryOpen}
         setSalaryOpen={setSalaryOpen}
         salaryQuarterTotal={salaryQuarterTotal}
+        salaryAnchorMonth={salaryAnchorMonth}
         startMonth={startMonth}
         setStartMonth={setStartMonth}
         quarters={quarters}
