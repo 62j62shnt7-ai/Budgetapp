@@ -30,7 +30,7 @@ export const GoalModal: React.FC<GoalModalProps> = ({ isOpen, onClose }) => {
   };
 
   return (
-    <dialog open className="native-dialog" style={{ display: 'block', zIndex: 1000 }}>
+    <dialog open className="native-dialog" onClick={(e) => e.target === e.currentTarget && onClose()} style={{ display: 'block', zIndex: 1000 }}>
       <form onSubmit={handleSubmit} className="entry-form" id="goalForm">
         <div className="dialog-heading">
           <h3>Add Savings Goal</h3>

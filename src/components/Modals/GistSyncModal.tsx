@@ -271,7 +271,7 @@ export const GistSyncModal: React.FC<GistSyncModalProps> = ({ isOpen, onClose })
   };
 
   return (
-    <dialog open className="native-dialog gist-sync-dialog" style={{ display: 'block', zIndex: 1000 }}>
+    <dialog open className="native-dialog gist-sync-dialog" onClick={(e) => e.target === e.currentTarget && onClose()} style={{ display: 'block', zIndex: 1000 }}>
       <div className="dialog-heading">
         <h3>☁️ GitHub Gist Cloud Sync</h3>
         <button className="icon-button" type="button" aria-label="Close" onClick={onClose}>

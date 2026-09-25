@@ -224,7 +224,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
   };
 
   return (
-    <dialog open className="native-dialog entry-dialog" style={{ display: 'block', zIndex: 1000 }}>
+    <dialog open className="native-dialog entry-dialog" onClick={(e) => e.target === e.currentTarget && onClose()} style={{ display: 'block', zIndex: 1000 }}>
       <form onSubmit={handleSubmit} className="entry-form entry-form-modern" id="entryForm">
         <div className="dialog-heading">
           <h3>{entryToEdit ? 'Edit budget entry' : `Add ${type === 'income' ? 'Income' : 'Expense'}`}</h3>

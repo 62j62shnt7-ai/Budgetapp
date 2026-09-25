@@ -81,7 +81,7 @@ export const JobFormModal: React.FC<JobFormModalProps> = ({ isOpen, jobToEdit, o
   };
 
   return (
-    <dialog open className="native-dialog" style={{ display: 'block', zIndex: 1000 }}>
+    <dialog open className="native-dialog" onClick={(e) => e.target === e.currentTarget && onClose()} style={{ display: 'block', zIndex: 1000 }}>
       <form onSubmit={handleSubmit} className="entry-form" id="jobForm">
         <div className="dialog-heading">
           <h3>{jobToEdit ? 'Edit Part-Time Job' : 'Add Part-Time Job'}</h3>
@@ -258,7 +258,7 @@ export const JobLogDayModal: React.FC<JobLogDayModalProps> = ({ isOpen, jobId, o
   };
 
   return (
-    <dialog open className="native-dialog" style={{ display: 'block', zIndex: 1000 }}>
+    <dialog open className="native-dialog" onClick={(e) => e.target === e.currentTarget && onClose()} style={{ display: 'block', zIndex: 1000 }}>
       <form onSubmit={handleSubmit} className="entry-form" id="jobLogDayForm">
         <div className="dialog-heading">
           <h3>Log Day / Shift Worked</h3>
@@ -373,7 +373,7 @@ export const JobExpenseModal: React.FC<JobExpenseModalProps> = ({ isOpen, jobId,
   };
 
   return (
-    <dialog open className="native-dialog" style={{ display: 'block', zIndex: 1000 }}>
+    <dialog open className="native-dialog" onClick={(e) => e.target === e.currentTarget && onClose()} style={{ display: 'block', zIndex: 1000 }}>
       <form onSubmit={handleSubmit} className="entry-form" id="jobExpenseForm">
         <div className="dialog-heading">
           <h3>Log Job Expense</h3>
@@ -535,7 +535,7 @@ export const JobPaymentModal: React.FC<JobPaymentModalProps> = ({ isOpen, jobId,
   };
 
   return (
-    <dialog open className="native-dialog" style={{ display: 'block', zIndex: 1000 }}>
+    <dialog open className="native-dialog" onClick={(e) => e.target === e.currentTarget && onClose()} style={{ display: 'block', zIndex: 1000 }}>
       <form onSubmit={handleSubmit} className="entry-form" id="jobPaymentForm">
         <div className="dialog-heading">
           <h3>Record Job Payment</h3>

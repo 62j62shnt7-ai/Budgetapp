@@ -6,6 +6,7 @@ import {
   detectDeficits,
   getEntryActualAmount,
   getDeficitPeriods,
+  getLowestProjectedBalanceAfterSpend,
   getRemainingForecastAmount,
   isOngoingEntry,
 } from '../src/engine/forecast.ts';
@@ -70,6 +71,21 @@ const deficits = detectDeficits(forecast);
 assert.strictEqual(deficits.hasDeficit, true);
 assert.strictEqual(deficits.worstDeficit, 4000);
 console.log('✓ Forecast calculation & deficit detection verified');
+
+assert.deepStrictEqual(
+  getLowestProjectedBalanceAfterSpend([
+    { date: '2026-01-01', type: 'expense', amount: 120 },
+    { date: '2026-01-02', type: 'income', amount: 50 },
+  ], 100, '2026-01-01', 20),
+  { balance: -40, date: '2026-01-01' }
+);
+assert.deepStrictEqual(
+  getLowestProjectedBalanceAfterSpend([
+    { date: '2026-01-02', type: 'income', amount: 50 },
+  ], 100, '2026-01-01', 120),
+  { balance: -20, date: '2026-01-01' }
+);
+console.log('✓ Spend simulator uses day-level balances verified');
 
 const recoveredDeficits = getDeficitPeriods([
   { id: 'trigger', date: '2026-09-10', amount: 2000, type: 'expense', category: 'Flexible', account: 'cash' },

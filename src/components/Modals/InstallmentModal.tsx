@@ -43,7 +43,7 @@ export const InstallmentModal: React.FC<InstallmentModalProps> = ({ isOpen, onCl
   };
 
   return (
-    <dialog open className="native-dialog" style={{ display: 'block', zIndex: 1000 }}>
+    <dialog open className="native-dialog" onClick={(e) => e.target === e.currentTarget && onClose()} style={{ display: 'block', zIndex: 1000 }}>
       <form onSubmit={handleSubmit} className="entry-form" id="installmentForm">
         <div className="dialog-heading">
           <h3>Add installment</h3>

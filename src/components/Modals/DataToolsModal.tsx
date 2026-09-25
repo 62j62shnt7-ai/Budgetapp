@@ -80,7 +80,7 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
   };
 
   return (
-    <dialog open className="native-dialog" style={{ display: 'block', zIndex: 1000 }}>
+    <dialog open className="native-dialog" onClick={(e) => e.target === e.currentTarget && onClose()} style={{ display: 'block', zIndex: 1000 }}>
       <div className="dialog-heading">
         <h3>⚙️ Data Backup &amp; System Tools</h3>
         <button className="icon-button" type="button" aria-label="Close" onClick={onClose}>

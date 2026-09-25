@@ -56,7 +56,7 @@ export const StorageModal: React.FC<StorageModalProps> = ({ isOpen, onClose }) =
   };
 
   return (
-    <dialog open className="native-dialog" style={{ display: 'block', zIndex: 1000 }}>
+    <dialog open className="native-dialog" onClick={(e) => e.target === e.currentTarget && onClose()} style={{ display: 'block', zIndex: 1000 }}>
       <form onSubmit={handleSubmit} className="entry-form" id="storageForm">
         <div className="dialog-heading">
           <h3>Add storage asset</h3>

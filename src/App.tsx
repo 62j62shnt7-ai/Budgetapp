@@ -75,6 +75,27 @@ export const App: React.FC = () => {
   }, [theme]);
 
   useEffect(() => {
+    const dismissModalOnOutsideClick = (event: PointerEvent) => {
+      const openDialogs = Array.from(document.querySelectorAll<HTMLDialogElement>('dialog.native-dialog[open]'));
+      const dialog = openDialogs.at(-1);
+      if (!dialog) return;
+
+      const bounds = dialog.getBoundingClientRect();
+      if (
+        event.clientX < bounds.left ||
+        event.clientX > bounds.right ||
+        event.clientY < bounds.top ||
+        event.clientY > bounds.bottom
+      ) {
+        dialog.querySelector<HTMLButtonElement>('button[aria-label="Close"]')?.click();
+      }
+    };
+
+    document.addEventListener('pointerdown', dismissModalOnOutsideClick);
+    return () => document.removeEventListener('pointerdown', dismissModalOnOutsideClick);
+  }, []);
+
+  useEffect(() => {
     if (!('serviceWorker' in navigator) || !/^https?:$/.test(window.location.protocol)) return;
     void navigator.serviceWorker.register('/sw.js').catch((error) => {
       console.error('Failed to register service worker:', error);

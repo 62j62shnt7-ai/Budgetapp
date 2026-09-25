@@ -5,6 +5,7 @@ import {
   getActiveForecastEntries,
   getDeficitPeriods,
   getLowestProjectedBalance,
+  getLowestProjectedBalanceAfterSpend,
 } from '../../engine/forecast';
 import { computeFinancialHealthScore, generateSmartInsights } from '../../engine/healthScore';
 import { computeAssetEgpValue, computeTotalStorageValue } from '../../engine/currency';
@@ -169,17 +170,13 @@ export const DashboardView: React.FC = () => {
     const amt = Number(simAmount);
     if (!amt || amt <= 0) return;
     const testDate = simDate || DateUtils.todayString();
-    const testMonth = DateUtils.getMonthKey(testDate);
-
-    let lowestSim = Infinity;
-    let hitDeficit = false;
-
-    forecast.forEach((f) => {
-      let bal = f.balance;
-      if (f.month >= testMonth) bal -= amt;
-      if (bal < lowestSim) lowestSim = bal;
-      if (bal < 0) hitDeficit = true;
-    });
+    const lowestSim = getLowestProjectedBalanceAfterSpend(
+      allCandidateEntries,
+      totalCash,
+      testDate,
+      amt
+    ).balance;
+    const hitDeficit = lowestSim < 0;
 
     if (hitDeficit) {
       setSimVerdict({

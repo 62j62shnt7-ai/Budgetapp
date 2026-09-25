@@ -243,6 +243,64 @@ export function getLowestProjectedBalance(
   return { balance: Math.round(lowest * 100) / 100, date: lowestDate };
 }
 
+export function getLowestProjectedBalanceAfterSpend(
+  entries: CashEntry[],
+  openingBalance: number,
+  spendDate: string,
+  spendAmount: number
+): { balance: number; date: string | null } {
+  const sorted = [...entries]
+    .filter((entry) => entry.date)
+    .sort((a, b) => {
+      if (a.date !== b.date) return a.date.localeCompare(b.date);
+      if (a.type !== b.type) return a.type === 'income' ? -1 : 1;
+      return 0;
+    });
+  let running = openingBalance;
+  let lowest = openingBalance;
+  let lowestDate: string | null = null;
+  let spendApplied = false;
+
+  sorted.forEach((entry, index) => {
+    if (!spendApplied && entry.date > spendDate) {
+      running -= spendAmount;
+      spendApplied = true;
+      if (running < lowest) {
+        lowest = running;
+        lowestDate = spendDate;
+      }
+    }
+    running += Number(entry.amount || 0) * (entry.type === 'income' ? 1 : -1);
+    const nextEntry = sorted[index + 1];
+    if (
+      entry.date === spendDate &&
+      !spendApplied &&
+      (!nextEntry || nextEntry.date !== spendDate)
+    ) {
+      running -= spendAmount;
+      spendApplied = true;
+      if (running < lowest) {
+        lowest = running;
+        lowestDate = spendDate;
+      }
+    }
+    if (running < lowest) {
+      lowest = running;
+      lowestDate = entry.date;
+    }
+  });
+
+  if (!spendApplied) {
+    running -= spendAmount;
+    if (running < lowest) {
+      lowest = running;
+      lowestDate = spendDate;
+    }
+  }
+
+  return { balance: Math.round(lowest * 100) / 100, date: lowestDate };
+}
+
 // ==========================================================================
 // detectDeficits — MONTHLY level (quick summary)
 // ==========================================================================

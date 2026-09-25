@@ -85,7 +85,7 @@ export const LoanBridgeModal: React.FC<LoanBridgeModalProps> = ({ isOpen, onClos
   };
 
   return (
-    <dialog open className="native-dialog loan-dialog" style={{ display: 'block', zIndex: 1000 }}>
+    <dialog open className="native-dialog loan-dialog" onClick={(e) => e.target === e.currentTarget && onClose()} style={{ display: 'block', zIndex: 1000 }}>
       <form onSubmit={handleSubmit} className="entry-form entry-form-modern" id="loanBridgeForm">
         <div className="dialog-heading">
           <h3>💳 Bridge Deficit with Loan</h3>
