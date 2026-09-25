@@ -51,11 +51,15 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
     setIsFetchingCurrencies(true);
     try {
       const liveRates = await fetchLiveCurrencyRates();
+      const changes: string[] = [];
       const updated = rates.currencies.map((currency) => {
         const mid = egpPerUnit(liveRates, currency.name.toUpperCase());
         if (mid === null) return currency;
         const spreadPct = computeSpreadPct(currency.sell, currency.buy);
         const next = applySpread(mid, spreadPct);
+        if (next.sell !== currency.sell || next.buy !== currency.buy) {
+          changes.push(`${currency.name}: ${currency.sell.toFixed(2)}/${currency.buy.toFixed(2)} → ${next.sell.toFixed(2)}/${next.buy.toFixed(2)}`);
+        }
         return { ...currency, ...next };
       });
 
@@ -66,6 +70,12 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
         currenciesLastFetched: now,
         lastFetched: now,
       });
+
+      if (changes.length > 0) {
+        alert(`Updated Currency Rates from live market data:\n\n${changes.join("\n")}`);
+      } else {
+        alert("Live market feed checked: All currency rates are already up to date.");
+      }
     } catch (err: any) {
       console.error("Live currency rate fetch failed:", err);
       const manual = window.confirm("Couldn't fetch live rates (offline or rate service unavailable). Enter rates manually?");
@@ -82,6 +92,8 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
       const egpPerOz = xauUsd * liveRates.EGP;
       const egpPerGram24k = egpPerOz / TROY_OUNCE_GRAMS;
 
+      const changes: string[] = [];
+      const skipped: string[] = [];
       const updated = rates.gold.map((item) => {
         let mid: number | null = null;
         const match = item.name.match(/(\d+)/);
@@ -93,12 +105,18 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
           mid = egpPerGram24k * (21 / 24) * 8;
         }
 
-        if (mid === null) return item;
+        if (mid === null) {
+          skipped.push(item.name);
+          return item;
+        }
 
         const spreadPct = computeSpreadPct(item.sell, item.buy);
         const next = applySpread(mid, spreadPct);
         next.sell = Math.round(next.sell);
         next.buy = Math.round(next.buy);
+        if (next.sell !== item.sell || next.buy !== item.buy) {
+          changes.push(`${item.name}: ${item.sell}/${item.buy} → ${next.sell}/${next.buy}`);
+        }
         return { ...item, ...next };
       });
 
@@ -109,6 +127,14 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
         goldLastFetched: now,
         lastFetched: now,
       });
+
+      if (changes.length > 0) {
+        let message = `Updated Gold Rates from live spot price ($${xauUsd.toFixed(2)}/oz):\n\n${changes.join("\n")}`;
+        if (skipped.length) message += `\n\nSkipped: ${skipped.join(", ")}`;
+        alert(message);
+      } else {
+        alert(`Live spot price checked ($${xauUsd.toFixed(2)}/oz): All gold rates are already up to date.`);
+      }
     } catch (err: any) {
       console.error("Live gold rate fetch failed:", err);
       const manual = window.confirm("Couldn't fetch live gold price. Enter rates manually?");
