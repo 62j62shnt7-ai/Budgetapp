@@ -1,0 +1,2759 @@
+{
+  "app": "budget-control",
+  "version": "2.0",
+  "exportedAt": "2026-09-25T01:03:53.176Z",
+  "seedVersion": "blank-template-v2",
+  "data": {
+    "salaryPattern": [
+      {
+        "monthOffset": 0,
+        "day": 15,
+        "amount": 32000
+      },
+      {
+        "monthOffset": 0,
+        "day": 30,
+        "amount": 16500
+      },
+      {
+        "monthOffset": 1,
+        "day": 15,
+        "amount": 20500
+      },
+      {
+        "monthOffset": 1,
+        "day": 30,
+        "amount": 16500
+      },
+      {
+        "monthOffset": 2,
+        "day": 15,
+        "amount": 20500
+      },
+      {
+        "monthOffset": 2,
+        "day": 30,
+        "amount": 21000
+      }
+    ],
+    "cashEntries": [
+      {
+        "date": "2026-07-13",
+        "category": "Salary",
+        "subcategory": "Salary",
+        "tag": "Salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 28776,
+        "currency": "EGP",
+        "actualAmount": 28776,
+        "actualDate": "2026-07-13",
+        "id": "entry-1790297304231-rx4vz"
+      },
+      {
+        "id": "e0c8bc53-2bc3-45b1-834c-37225a4cdc83",
+        "date": "2026-08-27",
+        "category": "Credit Due",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 116977,
+        "creditType": "hsbc",
+        "source": "expense",
+        "draws": [
+          {
+            "date": "2026-08-27",
+            "amount": 116977,
+            "account": "HSBC",
+            "tag": "Credit"
+          }
+        ],
+        "tag": "Credit"
+      },
+      {
+        "id": "9b4cb215-5aee-4951-951a-2db90fc9500a",
+        "date": "2026-08-13",
+        "category": "Home",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 15000,
+        "creditType": "",
+        "source": "expense",
+        "draws": [
+          {
+            "date": "2026-08-13",
+            "amount": 17637,
+            "tag": "Food",
+            "account": "HSBC"
+          }
+        ],
+        "tag": "Food",
+        "creditSettlementDate": "",
+        "actualDate": "2026-08-13"
+      },
+      {
+        "id": "bf0866da-960c-4ca1-b843-ca4ddd8e0b58",
+        "date": "2026-10-01",
+        "category": "Home",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 15000,
+        "creditType": "",
+        "source": "expense",
+        "draws": [],
+        "tag": "Food",
+        "creditSettlementDate": ""
+      },
+      {
+        "id": "2f1f70cf-8e91-4529-9c3d-6be93f0c92db",
+        "date": "2026-11-01",
+        "category": "Home",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 15000,
+        "creditType": "",
+        "source": "expense monthly",
+        "tag": "Food"
+      },
+      {
+        "id": "1e308b6e-5359-49af-866c-877df5044250",
+        "date": "2026-12-01",
+        "category": "Home",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 15000,
+        "creditType": "",
+        "source": "expense monthly",
+        "tag": "Food"
+      },
+      {
+        "id": "657704d6-93b9-4c93-90bf-6994e207c730",
+        "date": "2027-01-01",
+        "category": "Home",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 15000,
+        "creditType": "",
+        "source": "expense monthly",
+        "tag": "Food"
+      },
+      {
+        "id": "55acfa06-368f-4ea1-ac48-2bc345c814de",
+        "date": "2027-02-01",
+        "category": "Home",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 15000,
+        "creditType": "",
+        "source": "expense monthly",
+        "tag": "Food"
+      },
+      {
+        "id": "1ef67889-82a8-478f-a47a-46b6a52bb2df",
+        "date": "2027-03-01",
+        "category": "Home",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 15000,
+        "creditType": "",
+        "source": "expense monthly",
+        "tag": "Food"
+      },
+      {
+        "id": "392b4568-c6fe-4408-a412-6d994974858c",
+        "date": "2027-04-01",
+        "category": "Home",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 15000,
+        "creditType": "",
+        "source": "expense monthly",
+        "tag": "Food"
+      },
+      {
+        "id": "278f76a1-88d3-4195-8ad2-18b504676237",
+        "date": "2027-05-01",
+        "category": "Home",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 15000,
+        "creditType": "",
+        "source": "expense monthly",
+        "tag": "Food"
+      },
+      {
+        "id": "f0790ac3-e11b-405e-a84b-67f2ea4c33e7",
+        "date": "2027-06-01",
+        "category": "Home",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 15000,
+        "creditType": "",
+        "source": "expense monthly",
+        "tag": "Food"
+      },
+      {
+        "id": "2348d32c-ec9b-47aa-919d-1563655fde70",
+        "date": "2027-07-01",
+        "category": "Home",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 15000,
+        "creditType": "",
+        "source": "expense monthly",
+        "tag": "Food"
+      },
+      {
+        "id": "86417fd9-3e29-40b9-b549-8cb8d0795968",
+        "date": "2027-08-01",
+        "category": "Home",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 15000,
+        "creditType": "",
+        "source": "expense monthly",
+        "tag": "Food"
+      },
+      {
+        "id": "0e247f1e-2972-4e3c-88c5-df303565d25d",
+        "date": "2027-09-01",
+        "category": "Home",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 15000,
+        "creditType": "",
+        "source": "expense monthly",
+        "tag": "Food"
+      },
+      {
+        "id": "f6ff94a7-3e2c-48ae-9885-33d9da6ed86c",
+        "date": "2027-10-01",
+        "category": "Home",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 15000,
+        "creditType": "",
+        "source": "expense monthly",
+        "tag": "Food"
+      },
+      {
+        "id": "41578b58-34ee-484e-81e1-f0554a74cc8b",
+        "date": "2027-11-01",
+        "category": "Home",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 15000,
+        "creditType": "",
+        "source": "expense monthly",
+        "tag": "Food"
+      },
+      {
+        "id": "cce1e0a8-6adf-4130-b6ae-0bb1f36d874f",
+        "date": "2027-12-01",
+        "category": "Home",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 15000,
+        "creditType": "",
+        "source": "expense monthly",
+        "tag": "Food"
+      },
+      {
+        "id": "8d809553-46af-49a5-9111-76e43a2adeba",
+        "date": "2028-01-01",
+        "category": "Home",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 15000,
+        "creditType": "",
+        "source": "expense monthly",
+        "tag": "Food"
+      },
+      {
+        "id": "2fca80a7-a47e-4720-87b7-259cbb073178",
+        "date": "2028-02-01",
+        "category": "Home",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 15000,
+        "creditType": "",
+        "source": "expense monthly",
+        "tag": "Food"
+      },
+      {
+        "id": "18a2d3cf-4bbc-4055-825d-959fe6c6f13a",
+        "date": "2028-03-01",
+        "category": "Home",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 15000,
+        "creditType": "",
+        "source": "expense monthly",
+        "tag": "Food"
+      },
+      {
+        "id": "2e6c9aa5-2b7e-48ca-8689-2065620fd2e5",
+        "date": "2028-04-01",
+        "category": "Home",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 15000,
+        "creditType": "",
+        "source": "expense monthly",
+        "tag": "Food"
+      },
+      {
+        "id": "bdf0f436-4e36-4d18-bc4c-e1435378eba7",
+        "date": "2028-05-01",
+        "category": "Home",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 15000,
+        "creditType": "",
+        "source": "expense monthly",
+        "tag": "Food"
+      },
+      {
+        "id": "73828002-a936-4697-8648-0cbccf2160c7",
+        "date": "2028-06-01",
+        "category": "Home",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 15000,
+        "creditType": "",
+        "source": "expense monthly",
+        "tag": "Food"
+      },
+      {
+        "id": "7d2465a8-60af-4f0f-a254-0b78bef8690a",
+        "date": "2026-07-15",
+        "category": "Credit Due",
+        "account": "CIB",
+        "type": "expense",
+        "amount": 1068,
+        "creditType": "cib",
+        "source": "expense",
+        "draws": [
+          {
+            "date": "2026-07-15",
+            "amount": 1068,
+            "account": "CIB",
+            "tag": "Credit"
+          }
+        ],
+        "tag": "Credit"
+      },
+      {
+        "id": "b57ca288-1263-4237-9813-f60f719f14a0",
+        "date": "2026-08-01",
+        "category": "Garage",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 1300,
+        "creditType": "",
+        "source": "expense monthly",
+        "draws": [
+          {
+            "date": "2026-08-01",
+            "amount": 1300,
+            "tag": "Rent",
+            "account": "HSBC"
+          }
+        ],
+        "tag": "Rent",
+        "creditSettlementDate": "",
+        "actualDate": "2026-08-01"
+      },
+      {
+        "id": "322be29c-04a3-48fd-afcc-82e87a25ba12",
+        "date": "2026-09-10",
+        "category": "Profit share",
+        "account": "HSBC",
+        "type": "income",
+        "amount": 55000,
+        "creditType": "",
+        "source": "income monthly",
+        "draws": [
+          {
+            "date": "2026-09-10",
+            "amount": 60907,
+            "account": "HSBC",
+            "tag": "Salary"
+          }
+        ],
+        "actualDate": "2026-09-10",
+        "isClosed": true,
+        "keepOngoing": false,
+        "tag": "Salary"
+      },
+      {
+        "id": "427049e6-0fe8-4610-b6a5-67a1fe9b810a",
+        "date": "2026-07-29",
+        "category": "Credit Due",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 3351.66,
+        "creditType": "hsbc",
+        "source": "expense monthly",
+        "draws": [
+          {
+            "date": "2026-07-29",
+            "amount": 3352,
+            "account": "HSBC",
+            "tag": "Credit"
+          }
+        ],
+        "tag": "Credit"
+      },
+      {
+        "id": "6f0eff42-da83-4a4d-8e30-82b8a75a5663",
+        "date": "2026-08-15",
+        "category": "Credit Due",
+        "account": "CIB",
+        "type": "expense",
+        "amount": 35070,
+        "creditType": "cib",
+        "source": "expense",
+        "draws": [
+          {
+            "date": "2026-08-15",
+            "amount": 35070,
+            "account": "CIB",
+            "tag": "Credit"
+          }
+        ],
+        "tag": "Credit"
+      },
+      {
+        "id": "748568d6-49fb-4fc0-84e4-11c2ff0be9a7",
+        "date": "2026-10-01",
+        "category": "Garage",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 1300,
+        "creditType": "",
+        "source": "expense",
+        "tag": "Rent",
+        "creditSettlementDate": "",
+        "draws": []
+      },
+      {
+        "id": "c6aea3f6-e823-4461-83c4-2d0c923acc9c",
+        "date": "2026-11-01",
+        "category": "Garage",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 1300,
+        "creditType": "",
+        "source": "expense",
+        "tag": "Rent",
+        "creditSettlementDate": "",
+        "draws": []
+      },
+      {
+        "id": "bbca3204-2f6b-4954-ac8d-de60699c97e8",
+        "date": "2026-12-01",
+        "category": "Garage",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 1300,
+        "creditType": "",
+        "source": "expense",
+        "tag": "Rent",
+        "creditSettlementDate": "",
+        "draws": []
+      },
+      {
+        "id": "1e16d45e-2556-4948-ba18-e6bc20924a89",
+        "date": "2027-01-01",
+        "category": "Garage",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 1300,
+        "creditType": "",
+        "source": "expense",
+        "tag": "Rent",
+        "creditSettlementDate": "",
+        "draws": []
+      },
+      {
+        "id": "8fab568a-ca4b-4c79-98ee-1fa393f83a21",
+        "date": "2027-02-01",
+        "category": "Garage",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 1100,
+        "creditType": "",
+        "source": "expense",
+        "tag": "Rent",
+        "creditSettlementDate": "",
+        "draws": []
+      },
+      {
+        "id": "8ec5a76a-2bc3-4a85-a5e9-3ebd5319940a",
+        "date": "2027-03-01",
+        "category": "Garage",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 650,
+        "creditType": "",
+        "source": "expense monthly",
+        "tag": "Rent",
+        "creditSettlementDate": "",
+        "draws": []
+      },
+      {
+        "id": "84e9f754-a0d3-4ebf-8087-ca93a4581d42",
+        "date": "2027-04-01",
+        "category": "Garage",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 650,
+        "creditType": "",
+        "source": "expense monthly",
+        "tag": "Rent",
+        "creditSettlementDate": "",
+        "draws": []
+      },
+      {
+        "id": "7c2826a9-5c99-430d-8e52-080841ff82e4",
+        "date": "2027-05-01",
+        "category": "Garage",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 650,
+        "creditType": "",
+        "source": "expense monthly",
+        "tag": "Rent",
+        "creditSettlementDate": "",
+        "draws": []
+      },
+      {
+        "id": "77f6e9ac-5eaf-484c-9451-4cda392ed4ab",
+        "date": "2027-06-01",
+        "category": "Garage",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 650,
+        "creditType": "",
+        "source": "expense monthly",
+        "tag": "Rent",
+        "creditSettlementDate": "",
+        "draws": []
+      },
+      {
+        "id": "1bae1646-b6a4-43a9-a724-fa964254ef0a",
+        "date": "2027-07-01",
+        "category": "Garage",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 650,
+        "creditType": "",
+        "source": "expense monthly",
+        "tag": "Rent",
+        "creditSettlementDate": "",
+        "draws": []
+      },
+      {
+        "id": "7ac153f2-5eea-48b7-bd9a-11f154cd79ed",
+        "date": "2027-08-01",
+        "category": "Garage",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 650,
+        "creditType": "",
+        "source": "expense monthly",
+        "tag": "Rent",
+        "creditSettlementDate": "",
+        "draws": []
+      },
+      {
+        "id": "49b1361d-8727-405e-9233-048130252597",
+        "date": "2027-09-01",
+        "category": "Garage",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 650,
+        "creditType": "",
+        "source": "expense monthly",
+        "tag": "Rent",
+        "creditSettlementDate": "",
+        "draws": []
+      },
+      {
+        "id": "51c125b1-c60e-441c-bd47-619497ff11d9",
+        "date": "2027-10-01",
+        "category": "Garage",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 650,
+        "creditType": "",
+        "source": "expense monthly",
+        "tag": "Rent",
+        "creditSettlementDate": "",
+        "draws": []
+      },
+      {
+        "date": "2026-07-13",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 27000,
+        "source": "salary",
+        "id": "01dedb98-5e85-47d1-857f-bd0ef87324d9",
+        "creditType": "",
+        "actualDate": "2026-07-13",
+        "tag": "Salary"
+      },
+      {
+        "date": "2026-07-22",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 15500,
+        "source": "salary",
+        "id": "7001d5fb-442e-47e0-8ea7-24baec96bc09",
+        "creditType": "",
+        "actualDate": "2026-07-22",
+        "tag": "Salary"
+      },
+      {
+        "date": "2026-08-12",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 20500,
+        "source": "salary",
+        "id": "a828a70d-cdd8-407f-afcb-49a206b81a02",
+        "creditType": "",
+        "actualDate": "2026-08-12",
+        "tag": "Salary"
+      },
+      {
+        "date": "2026-09-14",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 20500,
+        "source": "salary",
+        "id": "27c6df4b-8a59-44eb-b88e-212e582c67bf",
+        "creditType": "",
+        "draws": [
+          {
+            "date": "2026-09-09",
+            "amount": 20931,
+            "account": "hsbc",
+            "tag": "Salary"
+          }
+        ],
+        "actualDate": "2026-09-09",
+        "isClosed": true,
+        "keepOngoing": false,
+        "tag": "Salary"
+      },
+      {
+        "date": "2026-09-30",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 21000,
+        "source": "salary",
+        "id": "8d7e4c4c-4d59-4813-8c12-4ac26dbaf874",
+        "actualDate": "2026-09-20",
+        "draws": [
+          {
+            "date": "2026-09-20",
+            "amount": 25263,
+            "account": "hsbc",
+            "tag": "Salary"
+          }
+        ],
+        "isClosed": true,
+        "keepOngoing": false,
+        "tag": "Salary"
+      },
+      {
+        "date": "2026-10-15",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 32000,
+        "source": "salary",
+        "id": "03a3b055-01e6-4667-9c37-e57e31d530b1",
+        "tag": "Salary"
+      },
+      {
+        "date": "2026-10-30",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 16500,
+        "source": "salary",
+        "id": "860e1f38-fe84-4b73-ac6e-6358ceef44ec",
+        "tag": "Salary"
+      },
+      {
+        "date": "2026-11-15",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 20500,
+        "source": "salary",
+        "id": "984ed485-9e9b-485f-a4d5-8b8325a6261b",
+        "tag": "Salary"
+      },
+      {
+        "date": "2026-11-30",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 16500,
+        "source": "salary",
+        "id": "018ba376-153f-48a9-9bf0-1423469875d9",
+        "tag": "Salary"
+      },
+      {
+        "date": "2026-12-15",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 20500,
+        "source": "salary",
+        "id": "25776eb1-6177-4fe5-bc0a-9ae439eda5cc",
+        "tag": "Salary"
+      },
+      {
+        "date": "2026-12-30",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 21000,
+        "source": "salary",
+        "id": "0fb0c473-e762-4602-a1f1-e4b2462e95f8",
+        "tag": "Salary"
+      },
+      {
+        "date": "2027-01-15",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 32000,
+        "source": "salary",
+        "id": "eac930b1-5ce2-4ad2-b4da-be2df27d6341",
+        "tag": "Salary"
+      },
+      {
+        "date": "2027-01-30",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 16500,
+        "source": "salary",
+        "id": "046327dc-b17c-4e81-afb0-d9224ce6fbc0",
+        "tag": "Salary"
+      },
+      {
+        "date": "2027-02-15",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 20500,
+        "source": "salary",
+        "id": "bcf97f2b-6011-444f-8434-c4f0472c6f5e",
+        "tag": "Salary"
+      },
+      {
+        "date": "2027-02-28",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 16500,
+        "source": "salary",
+        "id": "a863bb49-c0a5-4417-9038-43131f19000d",
+        "tag": "Salary"
+      },
+      {
+        "date": "2027-03-15",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 20500,
+        "source": "salary",
+        "id": "a694d02b-7b07-468d-a4a4-c3f9798b746a",
+        "tag": "Salary"
+      },
+      {
+        "date": "2027-03-30",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 21000,
+        "source": "salary",
+        "id": "cf8d4fa5-d206-4449-bfad-5f54dc6d30f8",
+        "tag": "Salary"
+      },
+      {
+        "date": "2027-04-15",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 32000,
+        "source": "salary",
+        "id": "eafa0d99-b322-45d3-bfb7-26b070067706",
+        "tag": "Salary"
+      },
+      {
+        "date": "2027-04-30",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 16500,
+        "source": "salary",
+        "id": "dbb61fdb-8644-4bed-89e0-7789a9b45378",
+        "tag": "Salary"
+      },
+      {
+        "date": "2027-05-15",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 20500,
+        "source": "salary",
+        "id": "9506e394-69d1-464d-a4ec-030c73055dea",
+        "tag": "Salary"
+      },
+      {
+        "date": "2027-05-30",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 16500,
+        "source": "salary",
+        "id": "56040e03-510e-4a64-9310-d0d78116ea4f",
+        "tag": "Salary"
+      },
+      {
+        "date": "2027-06-15",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 20500,
+        "source": "salary",
+        "id": "7024ce55-6bc9-444b-bc73-47ed108e8614",
+        "tag": "Salary"
+      },
+      {
+        "date": "2027-06-30",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 21000,
+        "source": "salary",
+        "id": "7e7da5d4-f11a-49e7-aef3-a281fe93b23e",
+        "tag": "Salary"
+      },
+      {
+        "date": "2027-07-15",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 32000,
+        "source": "salary",
+        "id": "02c7b17d-ee1d-4d4c-904b-e1fb9266007b",
+        "tag": "Salary"
+      },
+      {
+        "date": "2027-07-30",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 16500,
+        "source": "salary",
+        "id": "e9372ebf-9a17-4c79-9cfc-ab57643115cf",
+        "tag": "Salary"
+      },
+      {
+        "date": "2027-08-15",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 20500,
+        "source": "salary",
+        "id": "45a9a210-3761-436e-a46e-1fa7c9c2b35e",
+        "tag": "Salary"
+      },
+      {
+        "date": "2027-08-30",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 16500,
+        "source": "salary",
+        "id": "8bf825df-d218-48ad-8199-4a281bf7b063",
+        "tag": "Salary"
+      },
+      {
+        "date": "2027-09-15",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 20500,
+        "source": "salary",
+        "id": "863949e5-aaa2-4e11-bb39-c70e4b7643c8",
+        "tag": "Salary"
+      },
+      {
+        "date": "2027-09-30",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 21000,
+        "source": "salary",
+        "id": "7d9b7e1b-ea05-41e4-8bbc-0cb5fcb246d4",
+        "tag": "Salary"
+      },
+      {
+        "date": "2027-10-15",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 32000,
+        "source": "salary",
+        "id": "64d05075-b2a6-497b-9652-ac7bdaf0bb54",
+        "tag": "Salary"
+      },
+      {
+        "date": "2027-10-30",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 16500,
+        "source": "salary",
+        "id": "d3bec080-ec5d-443e-9cea-e5fdfff2f05b",
+        "tag": "Salary"
+      },
+      {
+        "date": "2027-11-15",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 20500,
+        "source": "salary",
+        "id": "f1e173e0-e0a1-4951-9553-d0b770ba41f8",
+        "tag": "Salary"
+      },
+      {
+        "date": "2027-11-30",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 16500,
+        "source": "salary",
+        "id": "506bc8e0-aee1-49bc-8287-4080c00e4847",
+        "tag": "Salary"
+      },
+      {
+        "date": "2027-12-15",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 20500,
+        "source": "salary",
+        "id": "24ce25db-bfbb-4b5d-b858-d5fa7d7ea408",
+        "tag": "Salary"
+      },
+      {
+        "date": "2027-12-30",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 21000,
+        "source": "salary",
+        "id": "89c54fd6-9032-43b4-a71b-fe51fa22c442",
+        "tag": "Salary"
+      },
+      {
+        "date": "2028-01-15",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 32000,
+        "source": "salary",
+        "id": "2264e188-72c1-4dc9-93f4-6012842d360d",
+        "tag": "Salary"
+      },
+      {
+        "date": "2028-01-30",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 16500,
+        "source": "salary",
+        "id": "385b69ac-fb46-484f-b16b-f677662db101",
+        "tag": "Salary"
+      },
+      {
+        "date": "2028-02-15",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 20500,
+        "source": "salary",
+        "id": "55102a46-6b2f-4908-b121-75f8925121e1",
+        "tag": "Salary"
+      },
+      {
+        "date": "2028-02-29",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 16500,
+        "source": "salary",
+        "id": "e180d04e-412e-4165-99f0-78eda1eeddd3",
+        "tag": "Salary"
+      },
+      {
+        "date": "2028-03-15",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 20500,
+        "source": "salary",
+        "id": "fd9c83df-ce18-468f-a2f6-681eb06e1510",
+        "tag": "Salary"
+      },
+      {
+        "date": "2028-03-30",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 21000,
+        "source": "salary",
+        "id": "41d4073a-e256-40f0-910f-c2200ba0f34b",
+        "tag": "Salary"
+      },
+      {
+        "date": "2028-04-15",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 32000,
+        "source": "salary",
+        "id": "abd2e4c0-632e-4c08-9997-90a3a9d7e903",
+        "tag": "Salary"
+      },
+      {
+        "date": "2028-04-30",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 16500,
+        "source": "salary",
+        "id": "a5d3def8-9ee9-4e2e-a700-7da12c87aff7",
+        "tag": "Salary"
+      },
+      {
+        "date": "2028-05-15",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 20500,
+        "source": "salary",
+        "id": "b172ab83-9a2d-4cf1-a1c2-3c2cd827491b",
+        "tag": "Salary"
+      },
+      {
+        "date": "2028-05-30",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 16500,
+        "source": "salary",
+        "id": "3dd5d00a-40e3-43c0-8604-120eca64e0d6",
+        "tag": "Salary"
+      },
+      {
+        "date": "2028-06-15",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 20500,
+        "source": "salary",
+        "id": "77b08fd3-5f66-4b4a-a50b-a76a6ff6d3f0",
+        "tag": "Salary"
+      },
+      {
+        "date": "2028-06-30",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 21000,
+        "source": "salary",
+        "id": "89868500-9b4a-4643-b880-4d9229f73683",
+        "tag": "Salary"
+      },
+      {
+        "date": "2028-07-15",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 32000,
+        "source": "salary",
+        "id": "3634028e-f3fa-4808-8a0b-0b0bfae92ffa",
+        "tag": "Salary"
+      },
+      {
+        "date": "2028-07-30",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 16500,
+        "source": "salary",
+        "id": "96725f7f-58af-4dee-8a2d-063c1246032c",
+        "tag": "Salary"
+      },
+      {
+        "id": "88440c0b-bba8-4ee8-995f-3570c8adb792",
+        "date": "2028-07-01",
+        "category": "Home",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 15000,
+        "creditType": "",
+        "source": "expense monthly",
+        "tag": "Food"
+      },
+      {
+        "id": "cf8b16f6-0ce3-4a2d-a454-88057922c2fe",
+        "date": "2026-07-12",
+        "category": "Home",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 15000,
+        "creditType": "",
+        "source": "expense monthly",
+        "draws": [
+          {
+            "date": "2026-07-12",
+            "amount": 17885,
+            "tag": "Food",
+            "account": "HSBC"
+          }
+        ],
+        "creditSettlementDate": "",
+        "actualDate": "2026-07-12",
+        "tag": "Food"
+      },
+      {
+        "id": "69ac9b1a-b763-4718-b4a5-1f47e71f83ca",
+        "date": "2026-08-24",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 15500,
+        "creditType": "",
+        "source": "income",
+        "actualDate": "2026-08-24",
+        "tag": "Salary"
+      },
+      {
+        "id": "fdaff57d-98d0-42d2-bb22-c61a00affbf6",
+        "date": "2027-09-12",
+        "category": "Profit share",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 120000,
+        "creditType": "",
+        "source": "income",
+        "tag": "Salary"
+      },
+      {
+        "id": "f25dc9b8-f747-4b97-a466-c5bb4867b585",
+        "date": "2026-09-12",
+        "category": "Transportation",
+        "account": "hsbc",
+        "type": "expense",
+        "amount": 1700,
+        "creditType": "",
+        "source": "expense",
+        "draws": [
+          {
+            "date": "2026-09-12",
+            "amount": 1700,
+            "tag": "Kids",
+            "account": "hsbc"
+          }
+        ],
+        "actualDate": "2026-09-12",
+        "isClosed": true,
+        "keepOngoing": false,
+        "tag": "Kids",
+        "creditSettlementDate": ""
+      },
+      {
+        "id": "5d56a29c-7d78-4d50-8330-8be5b9c31ce4",
+        "date": "2026-10-08",
+        "category": "Transportation",
+        "account": "hsbc",
+        "type": "expense",
+        "amount": 1700,
+        "creditType": "",
+        "source": "expense",
+        "draws": [],
+        "tag": "Kids",
+        "creditSettlementDate": ""
+      },
+      {
+        "id": "1a562886-ce0e-4376-bd20-9ac369a5753d",
+        "date": "2026-11-08",
+        "category": "Transportation",
+        "account": "hsbc",
+        "type": "expense",
+        "amount": 1700,
+        "creditType": "",
+        "source": "expense",
+        "draws": [],
+        "tag": "Kids",
+        "creditSettlementDate": ""
+      },
+      {
+        "id": "f36c34f6-d5f8-4333-8bdd-f97bd866b1a7",
+        "date": "2026-12-08",
+        "category": "Transportation",
+        "account": "hsbc",
+        "type": "expense",
+        "amount": 1700,
+        "creditType": "",
+        "source": "expense",
+        "draws": [],
+        "tag": "Kids",
+        "creditSettlementDate": ""
+      },
+      {
+        "id": "092b1541-bb09-4e90-8861-a7ae87dda3af",
+        "date": "2027-01-08",
+        "category": "Transportation",
+        "account": "hsbc",
+        "type": "expense",
+        "amount": 1700,
+        "creditType": "",
+        "source": "expense",
+        "draws": [],
+        "tag": "Kids",
+        "creditSettlementDate": ""
+      },
+      {
+        "id": "b097b4a9-7001-4488-aeaf-7c63010f9e82",
+        "date": "2027-02-08",
+        "category": "Transportation",
+        "account": "hsbc",
+        "type": "expense",
+        "amount": 1700,
+        "creditType": "",
+        "source": "expense",
+        "draws": [],
+        "tag": "Kids",
+        "creditSettlementDate": ""
+      },
+      {
+        "id": "4460d03c-04d5-4994-8a43-ffdbecc3ea48",
+        "date": "2027-03-08",
+        "category": "Transportation",
+        "account": "hsbc",
+        "type": "expense",
+        "amount": 1700,
+        "creditType": "",
+        "source": "expense",
+        "draws": [],
+        "tag": "Kids",
+        "creditSettlementDate": ""
+      },
+      {
+        "id": "5718bb84-9bb1-4983-a9d3-b23e70f30652",
+        "date": "2027-04-08",
+        "category": "Transportation",
+        "account": "hsbc",
+        "type": "expense",
+        "amount": 1700,
+        "creditType": "",
+        "source": "expense",
+        "draws": [],
+        "tag": "Kids",
+        "creditSettlementDate": ""
+      },
+      {
+        "id": "6d59a742-fcf3-4969-a968-63f0e0869cad",
+        "date": "2027-05-08",
+        "category": "Transportation",
+        "account": "hsbc",
+        "type": "expense",
+        "amount": 1700,
+        "creditType": "",
+        "source": "expense",
+        "draws": [],
+        "tag": "Kids",
+        "creditSettlementDate": ""
+      },
+      {
+        "id": "c4d4c57a-9ce9-45b1-a645-00e5d212e823",
+        "date": "2027-06-08",
+        "category": "Transportation",
+        "account": "hsbc",
+        "type": "expense",
+        "amount": 1700,
+        "creditType": "",
+        "source": "expense",
+        "draws": [],
+        "tag": "Kids",
+        "creditSettlementDate": ""
+      },
+      {
+        "id": "21d6075c-df67-48f9-bd77-736f8dcc1baa",
+        "date": "2026-08-13",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 7650,
+        "creditType": "",
+        "source": "income",
+        "tag": "Salary"
+      },
+      {
+        "id": "d3a7fd68-69d2-4ec9-a81e-2113d1191200",
+        "date": "2026-08-20",
+        "category": "Medical",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 4096,
+        "creditType": "",
+        "source": "income",
+        "tag": "Medical",
+        "creditSettlementDate": "",
+        "actualDate": "2026-08-20",
+        "draws": [
+          {
+            "date": "2026-08-20",
+            "amount": 4096,
+            "tag": "Medical",
+            "account": "hsbc"
+          }
+        ]
+      },
+      {
+        "date": "2028-08-15",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 20500,
+        "source": "salary",
+        "id": "67bf4221-a1a8-4f2e-a2f9-ab7df14eba26",
+        "tag": "Salary"
+      },
+      {
+        "date": "2028-08-30",
+        "category": "salary",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 16500,
+        "source": "salary",
+        "id": "eddc27eb-25a2-427f-abe2-e1f39d92dae3",
+        "tag": "Salary"
+      },
+      {
+        "id": "7f0f165c-eeb9-4421-bc35-91117cfdd7a5",
+        "loanId": "f146e724-315a-4d19-8dc5-2d81a0d3c2c8",
+        "date": "2026-08-24",
+        "category": "Loan Inflow: Bridge Loan \"dad\"",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 50000,
+        "source": "loan",
+        "draws": [
+          {
+            "date": "2026-08-24",
+            "amount": 50000,
+            "account": "hsbc",
+            "tag": "Loan"
+          }
+        ],
+        "tag": "Loan"
+      },
+      {
+        "id": "54d99352-bc85-48dd-bf5c-87be36eabae9",
+        "loanId": "f146e724-315a-4d19-8dc5-2d81a0d3c2c8",
+        "date": "2026-09-20",
+        "category": "Loan Repayment: Bridge Loan \"dad\"",
+        "account": "hsbc",
+        "type": "expense",
+        "amount": 50000,
+        "source": "loan",
+        "creditType": "",
+        "draws": [
+          {
+            "date": "2026-09-20",
+            "amount": 50000,
+            "account": "hsbc",
+            "tag": "Loan"
+          }
+        ],
+        "creditSettlementDate": "",
+        "actualDate": "2026-09-20",
+        "isClosed": true,
+        "keepOngoing": false,
+        "tag": "Loan"
+      },
+      {
+        "id": "b902115e-ffcd-4c1a-9894-b41d7af69ce8",
+        "loanId": "a65ac6c5-7855-4675-942e-e6de368b3650",
+        "date": "2026-08-24",
+        "category": "Loan Inflow: Bridge Loan \"nono\"",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 17013,
+        "source": "loan",
+        "actualDate": "2026-08-24",
+        "draws": [
+          {
+            "date": "2026-08-24",
+            "amount": 6500,
+            "tag": "Loan"
+          },
+          {
+            "date": "2026-08-28",
+            "amount": 1120,
+            "tag": "Loan"
+          },
+          {
+            "date": "2026-08-29",
+            "amount": 1350,
+            "tag": "Loan"
+          },
+          {
+            "date": "2026-08-29",
+            "amount": 4000,
+            "tag": "Loan"
+          },
+          {
+            "date": "2026-09-02",
+            "amount": 1300,
+            "tag": "Loan"
+          },
+          {
+            "date": "2026-09-08",
+            "amount": 2743,
+            "tag": "Loan"
+          }
+        ],
+        "creditType": "",
+        "keepOngoing": true,
+        "isClosed": true,
+        "tag": "Loan"
+      },
+      {
+        "id": "40f43465-eff7-41da-a2c3-197268f7db5e",
+        "loanId": "a65ac6c5-7855-4675-942e-e6de368b3650",
+        "date": "2026-09-30",
+        "category": "Loan Repayment: Bridge Loan \"nono\"",
+        "account": "hsbc",
+        "type": "expense",
+        "amount": 17013,
+        "source": "loan",
+        "initialAmount": 15000,
+        "creditType": "",
+        "draws": [
+          {
+            "date": "2026-09-23",
+            "amount": 20020,
+            "account": "hsbc",
+            "tag": "Loan"
+          }
+        ],
+        "actualDate": "2026-09-23",
+        "isClosed": true,
+        "keepOngoing": false,
+        "tag": "Loan"
+      },
+      {
+        "id": "3c7e0e9f-28e4-47d0-8093-8ed8a557efdf",
+        "date": "2026-09-30",
+        "category": "kamal repayment",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 5000,
+        "creditType": "",
+        "source": "income",
+        "draws": [],
+        "tag": "Loan",
+        "creditSettlementDate": ""
+      },
+      {
+        "id": "6db7ac12-6911-4713-bc45-1b02585597c5",
+        "date": "2026-09-12",
+        "category": "Kids course",
+        "account": "hsbc",
+        "type": "expense",
+        "amount": 1500,
+        "creditType": "",
+        "source": "expense",
+        "draws": [
+          {
+            "date": "2026-09-12",
+            "amount": 1500,
+            "tag": "Kids",
+            "account": "hsbc"
+          }
+        ],
+        "actualDate": "2026-09-12",
+        "isClosed": true,
+        "keepOngoing": false,
+        "tag": "Kids",
+        "creditSettlementDate": ""
+      },
+      {
+        "id": "cc81c4be-bc4b-4c36-be94-8045f4fc0c8a",
+        "date": "2026-08-29",
+        "category": "Printer fix",
+        "account": "hsbc",
+        "type": "expense",
+        "amount": 1151,
+        "creditType": "",
+        "source": "expense",
+        "actualDate": "2026-08-29",
+        "draws": [
+          {
+            "date": "2026-08-29",
+            "amount": 1151,
+            "tag": "Maintenance",
+            "account": "hsbc"
+          }
+        ],
+        "isClosed": true,
+        "keepOngoing": false,
+        "tag": "Maintenance",
+        "creditSettlementDate": ""
+      },
+      {
+        "id": "32050d99-ddd4-4087-8944-f21c7ba5efc7",
+        "date": "2026-09-02",
+        "category": "Garage",
+        "account": "hsbc",
+        "type": "expense",
+        "amount": 1300,
+        "creditType": "",
+        "source": "expense",
+        "actualDate": "2026-09-02",
+        "draws": [
+          {
+            "date": "2026-09-02",
+            "amount": 1300,
+            "tag": "Rent",
+            "account": "hsbc"
+          }
+        ],
+        "isClosed": true,
+        "keepOngoing": false,
+        "tag": "Rent",
+        "creditSettlementDate": ""
+      },
+      {
+        "id": "0679ecc9-b095-4d71-a3bc-b595a5554f66",
+        "date": "2026-09-23",
+        "category": "Profit share",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 61935,
+        "creditType": "",
+        "source": "expense",
+        "draws": [
+          {
+            "date": "2026-09-23",
+            "amount": 61935,
+            "tag": "Salary",
+            "account": "hsbc"
+          }
+        ],
+        "creditSettlementDate": "",
+        "actualDate": "2026-09-23",
+        "isClosed": true,
+        "keepOngoing": false,
+        "tag": "Salary"
+      },
+      {
+        "id": "fd4a34a4-addc-4bc5-b5d8-12a64db4f450",
+        "date": "2026-09-14",
+        "category": "School",
+        "account": "HSBC CREDIT",
+        "type": "expense",
+        "amount": 39765,
+        "creditType": "hsbc_card",
+        "source": "credit card",
+        "actualDate": "2026-09-14",
+        "draws": [
+          {
+            "date": "2026-09-14",
+            "amount": 39765,
+            "tag": "Kids",
+            "account": "HSBC CREDIT"
+          }
+        ],
+        "creditSettlementDate": "2026-10-31",
+        "tag": "Kids"
+      },
+      {
+        "id": "7048c867-0f26-4115-9b39-932d3156048d",
+        "date": "2026-09-16",
+        "category": "Barakat",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 10000,
+        "creditType": "",
+        "source": "income",
+        "actualDate": "2026-09-16",
+        "tag": "Part-Time",
+        "creditSettlementDate": "",
+        "draws": [
+          {
+            "date": "2026-09-16",
+            "amount": 10000,
+            "tag": "Part-Time",
+            "account": "hsbc"
+          }
+        ]
+      },
+      {
+        "id": "66e815e5-fe5a-46d4-80e7-fab2210c66a2",
+        "date": "2026-09-18",
+        "category": "Electricity",
+        "account": "HSBC CREDIT",
+        "type": "expense",
+        "amount": 1030,
+        "creditType": "hsbc_card",
+        "source": "credit card",
+        "actualDate": "2026-09-18",
+        "draws": [
+          {
+            "date": "2026-09-18",
+            "amount": 1030,
+            "tag": "Bills",
+            "account": "HSBC CREDIT"
+          }
+        ],
+        "creditSettlementDate": "2026-10-31",
+        "tag": "Bills"
+      },
+      {
+        "id": "4c68ced8-94c1-45c4-af5b-389777a5889e",
+        "date": "2026-09-16",
+        "category": "Mobile",
+        "account": "HSBC CREDIT",
+        "type": "expense",
+        "amount": 980,
+        "creditType": "hsbc_card",
+        "source": "credit card",
+        "actualDate": "2026-09-16",
+        "draws": [
+          {
+            "date": "2026-09-16",
+            "amount": 980,
+            "tag": "Bills",
+            "account": "HSBC CREDIT"
+          }
+        ],
+        "creditSettlementDate": "2026-10-31",
+        "tag": "Bills"
+      },
+      {
+        "id": "c7ab2f76-31cc-4fd5-9477-254b951772b7",
+        "date": "2026-09-16",
+        "category": "Accommodation",
+        "account": "HSBC Credit",
+        "type": "expense",
+        "amount": 1690,
+        "creditType": "hsbc_card",
+        "creditSettlementDate": "2026-10-31",
+        "source": "credit card",
+        "actualDate": "2026-09-16",
+        "draws": [
+          {
+            "date": "2026-09-16",
+            "amount": 1690,
+            "tag": "Expense",
+            "account": "HSBC Credit"
+          }
+        ],
+        "tag": "Expense"
+      },
+      {
+        "id": "138e8314-decb-442b-b063-9e08c848c12b",
+        "date": "2026-09-19",
+        "category": "Fuel",
+        "account": "HSBC Credit",
+        "type": "expense",
+        "amount": 1950,
+        "creditType": "hsbc_card",
+        "creditSettlementDate": "2026-10-31",
+        "source": "credit card",
+        "actualDate": "2026-09-19",
+        "draws": [
+          {
+            "date": "2026-09-19",
+            "amount": 1950,
+            "account": "HSBC Credit",
+            "tag": "Expense"
+          }
+        ],
+        "tag": "Expense"
+      },
+      {
+        "id": "c992c60a-4b72-4f7e-af32-b5687a657f64",
+        "date": "2026-09-19",
+        "category": "Food",
+        "account": "HSBC Credit",
+        "type": "expense",
+        "amount": 261,
+        "creditType": "hsbc_card",
+        "creditSettlementDate": "2026-10-31",
+        "source": "credit card",
+        "actualDate": "2026-09-19",
+        "draws": [
+          {
+            "date": "2026-09-19",
+            "amount": 261,
+            "account": "HSBC Credit",
+            "tag": "Expense"
+          }
+        ],
+        "tag": "Expense"
+      },
+      {
+        "id": "a64c6308-52a9-4c97-9027-de44606dff91",
+        "date": "2026-09-07",
+        "category": "Internet",
+        "account": "HSBC Credit",
+        "type": "expense",
+        "amount": 753,
+        "creditType": "hsbc_card",
+        "creditSettlementDate": "2026-10-31",
+        "source": "credit card",
+        "actualDate": "2026-09-07",
+        "draws": [
+          {
+            "date": "2026-09-07",
+            "amount": 753,
+            "tag": "Bills",
+            "account": "HSBC Credit"
+          }
+        ],
+        "tag": "Bills"
+      },
+      {
+        "id": "bb544b76-7f9f-43f2-9103-0e2b235379b8",
+        "date": "2026-09-09",
+        "category": "amazon",
+        "account": "HSBC Credit",
+        "type": "expense",
+        "amount": 1590,
+        "creditType": "hsbc_card",
+        "creditSettlementDate": "2026-10-31",
+        "source": "credit card",
+        "actualDate": "2026-09-09",
+        "draws": [
+          {
+            "date": "2026-09-09",
+            "amount": 1590,
+            "account": "HSBC Credit",
+            "tag": "Shopping"
+          }
+        ],
+        "tag": "Shopping"
+      },
+      {
+        "id": "d26c8bac-912f-44f6-9207-6ea4bd83c41a",
+        "date": "2026-09-01",
+        "category": "Gas",
+        "account": "HSBC Credit",
+        "type": "expense",
+        "amount": 119,
+        "creditType": "hsbc_card",
+        "creditSettlementDate": "2026-10-31",
+        "source": "credit card",
+        "actualDate": "2026-09-01",
+        "draws": [
+          {
+            "date": "2026-09-01",
+            "amount": 119,
+            "tag": "Bills",
+            "account": "HSBC Credit"
+          }
+        ],
+        "tag": "Bills"
+      },
+      {
+        "id": "72707981-cb69-4c45-8ff5-bd0d87eeed64",
+        "date": "2026-09-19",
+        "category": "Accommodation",
+        "account": "HSBC Credit",
+        "type": "expense",
+        "amount": 3380,
+        "creditType": "hsbc_card",
+        "creditSettlementDate": "2026-10-31",
+        "source": "credit card",
+        "actualDate": "2026-09-19",
+        "draws": [
+          {
+            "date": "2026-09-19",
+            "amount": 3380,
+            "tag": "Expense",
+            "account": "HSBC Credit"
+          }
+        ],
+        "isClosed": true,
+        "keepOngoing": false,
+        "tag": "Expense"
+      },
+      {
+        "id": "765cb778-5f24-42a7-9648-de7e3e574751",
+        "date": "2026-09-20",
+        "category": "Fuel",
+        "account": "HSBC Credit",
+        "type": "expense",
+        "amount": 1120,
+        "creditType": "hsbc_card",
+        "creditSettlementDate": "2026-10-31",
+        "source": "credit card",
+        "actualDate": "2026-09-20",
+        "draws": [
+          {
+            "date": "2026-09-20",
+            "amount": 1120,
+            "tag": "Expense",
+            "account": "HSBC Credit"
+          }
+        ],
+        "tag": "Expense"
+      },
+      {
+        "id": "3390de15-3535-4e39-a813-ee1dc95d4c3b",
+        "date": "2026-09-30",
+        "category": "dad repayment",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 5000,
+        "creditType": "",
+        "creditSettlementDate": "",
+        "source": "income",
+        "tag": "Loan",
+        "draws": []
+      },
+      {
+        "id": "a4b51fee-143a-4184-8f78-d4747826e8ee",
+        "date": "2026-09-21",
+        "category": "Accommodation",
+        "account": "HSBC Credit",
+        "type": "expense",
+        "amount": 1690,
+        "creditType": "hsbc_card",
+        "creditSettlementDate": "2026-10-31",
+        "source": "credit card",
+        "actualDate": "2026-09-21",
+        "draws": [
+          {
+            "date": "2026-09-21",
+            "amount": 1690,
+            "tag": "Expense",
+            "account": "HSBC Credit"
+          }
+        ],
+        "tag": "Expense"
+      },
+      {
+        "id": "242e40dd-da00-4166-8167-36622b15c708",
+        "date": "2026-09-21",
+        "category": "Food",
+        "account": "HSBC Credit",
+        "type": "expense",
+        "amount": 573,
+        "creditType": "hsbc_card",
+        "creditSettlementDate": "2026-10-31",
+        "source": "credit card",
+        "actualDate": "2026-09-21",
+        "draws": [
+          {
+            "date": "2026-09-21",
+            "amount": 573,
+            "tag": "Expense",
+            "account": "HSBC Credit"
+          }
+        ],
+        "tag": "Expense"
+      },
+      {
+        "id": "6171fb7e-756d-4f6b-aaf3-c57cfe0c1a2a",
+        "date": "2026-09-09",
+        "category": "Home",
+        "tag": "Food",
+        "account": "hsbc",
+        "type": "expense",
+        "amount": 15000,
+        "creditType": "",
+        "creditSettlementDate": "",
+        "source": "expense",
+        "actualDate": "2026-09-24",
+        "draws": [
+          {
+            "date": "2026-09-09",
+            "amount": 10000,
+            "tag": "Food",
+            "account": "hsbc"
+          },
+          {
+            "date": "2026-09-24",
+            "amount": 1413,
+            "tag": "Groceries",
+            "account": "hsbc"
+          },
+          {
+            "date": "2026-09-24",
+            "amount": 1902,
+            "tag": "Groceries",
+            "account": "hsbc"
+          },
+          {
+            "date": "2026-09-24",
+            "amount": 991,
+            "tag": "Groceries",
+            "account": "hsbc"
+          }
+        ]
+      },
+      {
+        "id": "dec10a32-403a-4651-949e-8a7f9feffab4",
+        "date": "2026-09-15",
+        "category": "CIB Credit Due",
+        "tag": "Credit",
+        "account": "cib",
+        "type": "expense",
+        "amount": 3056,
+        "creditType": "cib",
+        "creditSettlementDate": "",
+        "source": "expense",
+        "actualDate": "2026-09-15",
+        "draws": [
+          {
+            "date": "2026-09-15",
+            "amount": 3056,
+            "tag": "Credit",
+            "account": "cib"
+          }
+        ]
+      },
+      {
+        "id": "5fa82220-6017-4d57-aeba-dbb4db0f9197",
+        "date": "2026-09-24",
+        "category": "Barakat",
+        "account": "hsbc",
+        "type": "income",
+        "amount": 20800,
+        "source": "part-time job",
+        "creditType": "",
+        "tag": "Part-Time",
+        "creditSettlementDate": "",
+        "actualDate": "2026-09-24",
+        "draws": [
+          {
+            "date": "2026-09-24",
+            "amount": 20800,
+            "tag": "Part-Time",
+            "account": "hsbc"
+          }
+        ]
+      },
+      {
+        "id": "a551f4d0-bb95-4aa9-a002-2b12ba4d57cc",
+        "date": "2026-09-25",
+        "category": "Kids course",
+        "tag": "Kids",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 1500,
+        "creditType": "",
+        "creditSettlementDate": "",
+        "source": "expense"
+      },
+      {
+        "id": "180d1874-eac1-4e5b-a301-cab1d96e6146",
+        "date": "2026-10-09",
+        "category": "Kids course",
+        "tag": "Kids",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 1500,
+        "creditType": "",
+        "creditSettlementDate": "",
+        "source": "expense"
+      },
+      {
+        "id": "0ce3c2b1-e455-402b-b283-322a4e029f82",
+        "date": "2026-10-23",
+        "category": "Kids course",
+        "tag": "Kids",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 1500,
+        "creditType": "",
+        "creditSettlementDate": "",
+        "source": "expense"
+      },
+      {
+        "id": "8f42de0e-125a-44f3-a4f6-24d3e1d1fbf1",
+        "date": "2026-11-06",
+        "category": "Kids course",
+        "tag": "Kids",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 1500,
+        "creditType": "",
+        "creditSettlementDate": "",
+        "source": "expense"
+      },
+      {
+        "id": "0a1dd2ff-b830-4c28-a124-6d93a2501331",
+        "date": "2026-11-20",
+        "category": "Kids course",
+        "tag": "Kids",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 1500,
+        "creditType": "",
+        "creditSettlementDate": "",
+        "source": "expense"
+      },
+      {
+        "id": "8c52c16f-dd10-4e31-bbe8-e68b9fd4db93",
+        "date": "2026-12-04",
+        "category": "Kids course",
+        "tag": "Kids",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 1500,
+        "creditType": "",
+        "creditSettlementDate": "",
+        "source": "expense"
+      },
+      {
+        "id": "4cef5a82-556f-4f17-b18b-9c3591f316d3",
+        "date": "2026-12-18",
+        "category": "Kids course",
+        "tag": "Kids",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 1500,
+        "creditType": "",
+        "creditSettlementDate": "",
+        "source": "expense"
+      },
+      {
+        "id": "8b2b82da-3640-441e-a506-7274c4dfb8c6",
+        "date": "2027-01-01",
+        "category": "Kids course",
+        "tag": "Kids",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 1500,
+        "creditType": "",
+        "creditSettlementDate": "",
+        "source": "expense"
+      },
+      {
+        "id": "a9caafba-e6fc-415d-880a-99c70352aa4a",
+        "date": "2027-01-15",
+        "category": "Kids course",
+        "tag": "Kids",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 1500,
+        "creditType": "",
+        "creditSettlementDate": "",
+        "source": "expense"
+      },
+      {
+        "id": "40c63f43-fc28-4768-9e71-736eb6849f0a",
+        "date": "2027-01-29",
+        "category": "Kids course",
+        "tag": "Kids",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 1500,
+        "creditType": "",
+        "creditSettlementDate": "",
+        "source": "expense"
+      },
+      {
+        "id": "44280a31-084e-46a6-bb75-995b8dc14c60",
+        "date": "2027-02-12",
+        "category": "Kids course",
+        "tag": "Kids",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 1500,
+        "creditType": "",
+        "creditSettlementDate": "",
+        "source": "expense"
+      },
+      {
+        "id": "1ccecf15-2447-4755-b6b9-ab4beed24370",
+        "date": "2027-02-26",
+        "category": "Kids course",
+        "tag": "Kids",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 1500,
+        "creditType": "",
+        "creditSettlementDate": "",
+        "source": "expense"
+      },
+      {
+        "id": "08f1abd5-acde-4807-9ab7-c066aaf23a4f",
+        "date": "2027-03-12",
+        "category": "Kids course",
+        "tag": "Kids",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 1500,
+        "creditType": "",
+        "creditSettlementDate": "",
+        "source": "expense"
+      },
+      {
+        "id": "b7eb7011-54aa-4578-8056-e7e1a1d2bf76",
+        "date": "2027-03-26",
+        "category": "Kids course",
+        "tag": "Kids",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 1500,
+        "creditType": "",
+        "creditSettlementDate": "",
+        "source": "expense"
+      },
+      {
+        "id": "072fe658-54f0-46a5-ae3a-8b3e6a4de756",
+        "date": "2027-04-09",
+        "category": "Kids course",
+        "tag": "Kids",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 1500,
+        "creditType": "",
+        "creditSettlementDate": "",
+        "source": "expense"
+      },
+      {
+        "id": "3bf90bee-62b5-48b5-b0a1-d77354ccc808",
+        "date": "2027-04-23",
+        "category": "Kids course",
+        "tag": "Kids",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 1500,
+        "creditType": "",
+        "creditSettlementDate": "",
+        "source": "expense"
+      },
+      {
+        "id": "442d0c9a-7e19-4ce8-b2c3-90ad0d01414e",
+        "date": "2027-05-07",
+        "category": "Kids course",
+        "tag": "Kids",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 1500,
+        "creditType": "",
+        "creditSettlementDate": "",
+        "source": "expense"
+      },
+      {
+        "id": "d26fcf11-0dda-4f8a-b8e3-27ebd258ab3f",
+        "date": "2027-05-21",
+        "category": "Kids course",
+        "tag": "Kids",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 1500,
+        "creditType": "",
+        "creditSettlementDate": "",
+        "source": "expense"
+      },
+      {
+        "id": "c76c7f3f-ea2d-4085-9def-e951cda7a0ac",
+        "date": "2027-06-04",
+        "category": "Kids course",
+        "tag": "Kids",
+        "account": "HSBC",
+        "type": "expense",
+        "amount": 1500,
+        "creditType": "",
+        "creditSettlementDate": "",
+        "source": "expense"
+      },
+      {
+        "id": "d9690247-7716-48f9-91c9-03db8617cede",
+        "date": "2026-09-24",
+        "category": "Google one sub",
+        "tag": "Bills",
+        "account": "HSBC Credit",
+        "type": "expense",
+        "amount": 186,
+        "creditType": "hsbc_card",
+        "creditSettlementDate": "2026-10-31",
+        "source": "credit card",
+        "actualDate": "2026-09-24",
+        "draws": [
+          {
+            "date": "2026-09-24",
+            "amount": 186,
+            "tag": "Bills",
+            "account": "HSBC Credit"
+          }
+        ]
+      }
+    ],
+    "installments": [
+      {
+        "id": "b00ea1c5-e479-468e-8129-04f708303f0b",
+        "name": "Wadi Degla installment",
+        "amount": 32600,
+        "day": 7,
+        "startMonth": "2026-10",
+        "months": 8,
+        "frequency": 3,
+        "tag": "Installment",
+        "totalMonths": 8,
+        "remainingMonths": 8
+      }
+    ],
+    "storageAssets": [
+      {
+        "name": "Gold",
+        "quantity": 23.3,
+        "unit": "grams",
+        "rate": 6236,
+        "rateSource": "gold:Gold 21",
+        "id": "storage-1790290682176-0",
+        "amount": 0,
+        "buyRate": 1,
+        "buyPrice": 6236
+      },
+      {
+        "name": "USD",
+        "quantity": 2900,
+        "unit": "dollars",
+        "rate": 51.82,
+        "rateSource": "currency:USD",
+        "id": "storage-1790290682176-1",
+        "amount": 0,
+        "buyRate": 1,
+        "buyPrice": 51.82
+      },
+      {
+        "name": "EUR",
+        "quantity": 3280,
+        "unit": "euros",
+        "rate": 59.08,
+        "rateSource": "currency:EUR",
+        "id": "storage-1790290682176-2",
+        "amount": 0,
+        "buyRate": 1,
+        "buyPrice": 59.08
+      },
+      {
+        "name": "SAR",
+        "quantity": 175,
+        "unit": "SAR",
+        "rate": 13.88,
+        "rateSource": "currency:SAR",
+        "id": "storage-1790290682176-3",
+        "amount": 0,
+        "buyRate": 1,
+        "buyPrice": 13.88
+      }
+    ],
+    "accountBalances": {
+      "cib": {
+        "name": "CIB",
+        "balance": 0,
+        "maturityDay": 15
+      },
+      "hsbc": {
+        "name": "HSBC",
+        "balance": 104558,
+        "maturityDay": 30
+      }
+    },
+    "asfJobs": [
+      {
+        "date": "2024-10-01",
+        "invoice": 1320,
+        "actual": 1406.5,
+        "egp": 74544.5
+      },
+      {
+        "date": "2024-11-01",
+        "invoice": 2100,
+        "actual": 2180.74,
+        "egp": 115579.22
+      },
+      {
+        "date": "2024-11-01",
+        "invoice": 300,
+        "actual": 268.74,
+        "egp": 14243.22
+      },
+      {
+        "date": "2024-12-01",
+        "invoice": 3240,
+        "actual": 3658.74,
+        "egp": 193913.22
+      },
+      {
+        "date": "2025-01-01",
+        "invoice": 2040,
+        "actual": 2008.5,
+        "egp": 106450.5
+      }
+    ],
+    "irqJobs": [
+      {
+        "label": "Received",
+        "value": 42980,
+        "note": "EGP collected"
+      },
+      {
+        "label": "USD remaining",
+        "value": 1350,
+        "note": "Tracked separately"
+      },
+      {
+        "label": "api 570 renewal refund",
+        "value": 725,
+        "note": "usd"
+      },
+      {
+        "label": "cwi renewal",
+        "value": 753,
+        "note": "usd"
+      },
+      {
+        "label": "received from jadeela eng barakat",
+        "value": 10000,
+        "note": "advance payment"
+      },
+      {
+        "label": "expenses barakat",
+        "value": 6760,
+        "note": "accommodation"
+      }
+    ],
+    "partTimeJobs": [
+      {
+        "id": "1e161f5a-c715-4f0e-ad92-12e7d38f4eb7",
+        "title": "ASF",
+        "client": "TUV",
+        "currency": "USD",
+        "type": "lumpsum",
+        "dailyRate": 0,
+        "lumpSumAmount": 5000,
+        "daysWorked": [],
+        "expenses": [],
+        "payments": [
+          {
+            "id": "9be55e52-4793-4102-877c-b0ed8057628f",
+            "date": "2025-03-01",
+            "amount": 5000,
+            "account": "cash",
+            "paymentNote": ""
+          }
+        ],
+        "status": "paid",
+        "invoiceDate": "",
+        "paidDate": "2025-03-01",
+        "settlementAccount": "cib",
+        "actualPaidAmount": null,
+        "notes": "",
+        "startDate": "2025-02-01",
+        "endDate": "2025-03-01"
+      },
+      {
+        "id": "8115e466-7054-4ec5-b756-d1d438384d89",
+        "title": "Barakat",
+        "client": "Jadeela",
+        "currency": "EGP",
+        "type": "daily_rate",
+        "dailyRate": 4000,
+        "lumpSumAmount": 0,
+        "daysWorked": [
+          {
+            "id": "c57cde07-b828-4c4b-a819-b5268ebf04b6",
+            "date": "2026-09-16",
+            "units": 1,
+            "note": ""
+          },
+          {
+            "id": "3185444d-07be-4649-bcfe-6b30e881778d",
+            "date": "2026-09-17",
+            "units": 1,
+            "note": ""
+          },
+          {
+            "id": "2fe3c2cc-3d9f-4014-b2f2-3f4e2a470455",
+            "date": "2026-09-19",
+            "units": 1,
+            "note": ""
+          },
+          {
+            "id": "4118491f-eb12-4181-afc4-b49283cfe398",
+            "date": "2026-09-20",
+            "units": 1,
+            "note": ""
+          },
+          {
+            "id": "0ec26f9d-9bd5-424d-beea-c66d78f69cea",
+            "date": "2026-09-21",
+            "units": 1,
+            "note": ""
+          },
+          {
+            "id": "1e2b0a5a-2df6-42ba-b71b-258798f6bc5f",
+            "date": "2026-09-22",
+            "units": 1,
+            "note": ""
+          }
+        ],
+        "expenses": [
+          {
+            "id": "b87fd183-d3f4-416c-9112-0857ed38799c",
+            "date": "2026-09-21",
+            "title": "Fuel",
+            "amount": 3070,
+            "isReimbursable": false,
+            "receiptNote": ""
+          },
+          {
+            "id": "01bfc15b-6ca1-4aa8-9fcd-5e8c48b7fce7",
+            "date": "2026-09-21",
+            "title": "accommodation",
+            "amount": 1690,
+            "isReimbursable": true,
+            "receiptNote": ""
+          },
+          {
+            "id": "66a431b2-9a8e-4552-b927-ff6ab2ac1a04",
+            "date": "2026-09-19",
+            "title": "accommodation",
+            "amount": 3380,
+            "isReimbursable": true,
+            "receiptNote": ""
+          },
+          {
+            "id": "f3056809-bfa7-49c4-9329-86b0eb572d32",
+            "date": "2026-09-16",
+            "title": "accommodation",
+            "amount": 1690,
+            "isReimbursable": true,
+            "receiptNote": ""
+          }
+        ],
+        "status": "paid",
+        "invoiceDate": "2026-09-23",
+        "paidDate": "2026-09-24",
+        "settlementAccount": "cib",
+        "actualPaidAmount": null,
+        "notes": "",
+        "payments": [
+          {
+            "id": "9d49b72c-db7a-42bf-9bb2-da8a18df7a94",
+            "date": "2026-09-21",
+            "amount": 10000,
+            "account": "hsbc",
+            "paymentNote": "Down payment"
+          },
+          {
+            "id": "b5ea52ff-d9fd-4d6f-9aff-4c8aa2363921",
+            "date": "2026-09-24",
+            "amount": 20800,
+            "account": "hsbc",
+            "paymentNote": ""
+          }
+        ]
+      },
+      {
+        "id": "86eb60bd-4eba-41b7-b084-721b102ccdda",
+        "title": "IRQ Job",
+        "client": "EBS",
+        "currency": "USD",
+        "type": "daily_rate",
+        "dailyRate": 500,
+        "lumpSumAmount": 2500,
+        "daysWorked": [
+          {
+            "id": "f2a314ed-57d0-4749-908e-d1a1a4f1b6c3",
+            "date": "2026-05-03",
+            "units": 1,
+            "note": ""
+          },
+          {
+            "id": "ea462911-0bfb-43bc-ad7c-93ee4e8b0a96",
+            "date": "2026-05-02",
+            "units": 1,
+            "note": ""
+          },
+          {
+            "id": "65be6408-fd5a-49e0-815e-090ecd8f3555",
+            "date": "2026-05-01",
+            "units": 1,
+            "note": ""
+          },
+          {
+            "id": "a9ae5979-d90a-4602-bcc9-5f7a4f908a01",
+            "date": "2026-04-30",
+            "units": 1,
+            "note": ""
+          },
+          {
+            "id": "51575b5f-050a-4c62-aa5b-5ce5babb55f9",
+            "date": "2026-04-29",
+            "units": 1,
+            "note": ""
+          }
+        ],
+        "expenses": [],
+        "status": "partial",
+        "invoiceDate": "2026-09-21",
+        "paidDate": "2026-05-08",
+        "settlementAccount": "hsbc",
+        "actualPaidAmount": 900,
+        "notes": "",
+        "paymentNote": "",
+        "payments": [
+          {
+            "id": "747b9d08-cc3c-43af-acf7-ffa34961685d",
+            "date": "2026-05-08",
+            "amount": 900,
+            "account": "hsbc",
+            "paymentNote": ""
+          }
+        ]
+      },
+      {
+        "id": "4324f983-3332-4bf8-81a0-87c523f674c2",
+        "title": "ASF",
+        "client": "DEN",
+        "currency": "EUR",
+        "type": "lumpsum",
+        "dailyRate": 120,
+        "lumpSumAmount": 9523,
+        "daysWorked": [],
+        "expenses": [],
+        "status": "invoiced",
+        "invoiceDate": "2026-09-21",
+        "paidDate": "2025-01-01",
+        "settlementAccount": "cib",
+        "actualPaidAmount": null,
+        "notes": "",
+        "payments": [
+          {
+            "id": "c9360cee-ddff-46ab-bac9-03b9fca7af56",
+            "date": "2025-01-01",
+            "amount": 9523,
+            "account": "hsbc",
+            "paymentNote": ""
+          }
+        ],
+        "startDate": "2024-11-01",
+        "endDate": "2025-02-01"
+      }
+    ],
+    "ratesData": {
+      "currencies": [
+        {
+          "name": "USD",
+          "sell": 51.82,
+          "buy": 51.57
+        },
+        {
+          "name": "EUR",
+          "sell": 59.08,
+          "buy": 58.59
+        },
+        {
+          "name": "SAR",
+          "sell": 13.88,
+          "buy": 13.69
+        },
+        {
+          "name": "AED",
+          "sell": 14.17,
+          "buy": 13.98
+        },
+        {
+          "name": "GBP",
+          "sell": 68.58,
+          "buy": 68.1
+        }
+      ],
+      "gold": [
+        {
+          "name": "Gold 24",
+          "sell": 7127,
+          "buy": 7081
+        },
+        {
+          "name": "Gold 22",
+          "sell": 6533,
+          "buy": 6491
+        },
+        {
+          "name": "Gold 21",
+          "sell": 6236,
+          "buy": 6196
+        },
+        {
+          "name": "Gold 18",
+          "sell": 5346,
+          "buy": 5311
+        },
+        {
+          "name": "Gold coin",
+          "sell": 49890,
+          "buy": 49569
+        }
+      ]
+    },
+    "entryActuals": {
+      "2026-06-30-salary-20000-income-cib": 20741,
+      "2026-06-15-salary-18000-income-cib": 26358,
+      "bea6d058-6c09-43ca-a4be-4d8c303db53a": 300,
+      "321df0a1-4c80-4379-a4c2-33ee0e7ccb4a": 10,
+      "0f0b2eb3-ff1e-4e29-bce7-dbba391f5f0c": 1500,
+      "3d006cd3-ea3f-44a7-b4e5-dabed771b0f3": 12000,
+      "cf8b16f6-0ce3-4a2d-a454-88057922c2fe": 17885,
+      "01dedb98-5e85-47d1-857f-bd0ef87324d9": 28776,
+      "7d2465a8-60af-4f0f-a254-0b78bef8690a": 1068,
+      "7001d5fb-442e-47e0-8ea7-24baec96bc09": 14360,
+      "9b4cb215-5aee-4951-951a-2db90fc9500a": 17637,
+      "427049e6-0fe8-4610-b6a5-67a1fe9b810a": 3352,
+      "b57ca288-1263-4237-9813-f60f719f14a0": 1300,
+      "a828a70d-cdd8-407f-afcb-49a206b81a02": 19035,
+      "6f0eff42-da83-4a4d-8e30-82b8a75a5663": 35070,
+      "21d6075c-df67-48f9-bd77-736f8dcc1baa": 7650,
+      "d3a7fd68-69d2-4ec9-a81e-2113d1191200": 4096,
+      "69ac9b1a-b763-4718-b4a5-1f47e71f83ca": 16836,
+      "7f0f165c-eeb9-4421-bc35-91117cfdd7a5": 50000,
+      "b902115e-ffcd-4c1a-9894-b41d7af69ce8": 17013,
+      "cc81c4be-bc4b-4c36-be94-8045f4fc0c8a": 1151,
+      "e0c8bc53-2bc3-45b1-834c-37225a4cdc83": 116977,
+      "32050d99-ddd4-4087-8944-f21c7ba5efc7": 1300,
+      "27c6df4b-8a59-44eb-b88e-212e582c67bf": 20931,
+      "322be29c-04a3-48fd-afcc-82e87a25ba12": 60907,
+      "6db7ac12-6911-4713-bc45-1b02585597c5": 1500,
+      "f25dc9b8-f747-4b97-a466-c5bb4867b585": 1700,
+      "fd4a34a4-addc-4bc5-b5d8-12a64db4f450": 39765,
+      "7048c867-0f26-4115-9b39-932d3156048d": 10000,
+      "66e815e5-fe5a-46d4-80e7-fab2210c66a2": 1030,
+      "4c68ced8-94c1-45c4-af5b-389777a5889e": 980,
+      "c7ab2f76-31cc-4fd5-9477-254b951772b7": 1690,
+      "138e8314-decb-442b-b063-9e08c848c12b": 1950,
+      "c992c60a-4b72-4f7e-af32-b5687a657f64": 261,
+      "a64c6308-52a9-4c97-9027-de44606dff91": 753,
+      "bb544b76-7f9f-43f2-9103-0e2b235379b8": 1590,
+      "d26c8bac-912f-44f6-9207-6ea4bd83c41a": 119,
+      "72707981-cb69-4c45-8ff5-bd0d87eeed64": 3380,
+      "8d7e4c4c-4d59-4813-8c12-4ac26dbaf874": 25263,
+      "54d99352-bc85-48dd-bf5c-87be36eabae9": 50000,
+      "765cb778-5f24-42a7-9648-de7e3e574751": 1120,
+      "a4b51fee-143a-4184-8f78-d4747826e8ee": 1690,
+      "242e40dd-da00-4166-8167-36622b15c708": 573,
+      "0679ecc9-b095-4d71-a3bc-b595a5554f66": 61935,
+      "40f43465-eff7-41da-a2c3-197268f7db5e": 20020,
+      "6171fb7e-756d-4f6b-aaf3-c57cfe0c1a2a": 14306,
+      "dec10a32-403a-4651-949e-8a7f9feffab4": 3056,
+      "credit-settlement-cib-2026-09": 3056,
+      "5fa82220-6017-4d57-aeba-dbb4db0f9197": 20800,
+      "d9690247-7716-48f9-91c9-03db8617cede": 186
+    },
+    "entryActualDates": {
+      "32050d99-ddd4-4087-8944-f21c7ba5efc7": "2026-09-02",
+      "b902115e-ffcd-4c1a-9894-b41d7af69ce8": "2026-08-24",
+      "27c6df4b-8a59-44eb-b88e-212e582c67bf": "2026-09-09",
+      "322be29c-04a3-48fd-afcc-82e87a25ba12": "2026-09-10",
+      "6db7ac12-6911-4713-bc45-1b02585597c5": "2026-09-12",
+      "f25dc9b8-f747-4b97-a466-c5bb4867b585": "2026-09-12",
+      "fd4a34a4-addc-4bc5-b5d8-12a64db4f450": "2026-09-14",
+      "7048c867-0f26-4115-9b39-932d3156048d": "2026-09-16",
+      "66e815e5-fe5a-46d4-80e7-fab2210c66a2": "2026-09-18",
+      "4c68ced8-94c1-45c4-af5b-389777a5889e": "2026-09-16",
+      "cc81c4be-bc4b-4c36-be94-8045f4fc0c8a": "2026-08-29",
+      "c7ab2f76-31cc-4fd5-9477-254b951772b7": "2026-09-16",
+      "138e8314-decb-442b-b063-9e08c848c12b": "2026-09-19",
+      "c992c60a-4b72-4f7e-af32-b5687a657f64": "2026-09-19",
+      "a64c6308-52a9-4c97-9027-de44606dff91": "2026-09-07",
+      "bb544b76-7f9f-43f2-9103-0e2b235379b8": "2026-09-09",
+      "d26c8bac-912f-44f6-9207-6ea4bd83c41a": "2026-09-01",
+      "72707981-cb69-4c45-8ff5-bd0d87eeed64": "2026-09-19",
+      "8d7e4c4c-4d59-4813-8c12-4ac26dbaf874": "2026-09-20",
+      "54d99352-bc85-48dd-bf5c-87be36eabae9": "2026-09-20",
+      "765cb778-5f24-42a7-9648-de7e3e574751": "2026-09-20",
+      "a4b51fee-143a-4184-8f78-d4747826e8ee": "2026-09-21",
+      "242e40dd-da00-4166-8167-36622b15c708": "2026-09-21",
+      "0679ecc9-b095-4d71-a3bc-b595a5554f66": "2026-09-23",
+      "40f43465-eff7-41da-a2c3-197268f7db5e": "2026-09-23",
+      "cf8b16f6-0ce3-4a2d-a454-88057922c2fe": "2026-07-12",
+      "6171fb7e-756d-4f6b-aaf3-c57cfe0c1a2a": "2026-09-24",
+      "9b4cb215-5aee-4951-951a-2db90fc9500a": "2026-08-13",
+      "b57ca288-1263-4237-9813-f60f719f14a0": "2026-08-01",
+      "dec10a32-403a-4651-949e-8a7f9feffab4": "2026-09-15",
+      "credit-settlement-cib-2026-09": "2026-09-15",
+      "5fa82220-6017-4d57-aeba-dbb4db0f9197": "2026-09-24",
+      "d3a7fd68-69d2-4ec9-a81e-2113d1191200": "2026-08-20",
+      "d9690247-7716-48f9-91c9-03db8617cede": "2026-09-24",
+      "e0c8bc53-2bc3-45b1-834c-37225a4cdc83": "2026-08-27",
+      "01dedb98-5e85-47d1-857f-bd0ef87324d9": "2026-09-25"
+    },
+    "deletedForecasts": [
+      "credit-settlement-cib-2026-07",
+      "credit-settlement-hsbc-2026-07",
+      "credit-settlement-cib-2026-08",
+      "credit-settlement-hsbc-2026-08",
+      "eab51756-2d09-4843-aacd-f3bbb062b88c",
+      "ca8334e5-fbb4-48cc-a6c2-cd080a08d7b4",
+      "6b62492a-4e8d-4de8-bc9a-6c62b7e9948b",
+      "9e04e561-dda8-4ce0-9a35-15be3b71d991"
+    ],
+    "creditDues": {},
+    "creditDueMonths": {
+      "hsbc": "2026-10",
+      "cib": "2026-09"
+    },
+    "creditSettlementOverrides": {
+      "credit-settlement-hsbc-2026-09": {
+        "date": "2026-09-27",
+        "amount": 8227
+      },
+      "credit-settlement-cib-2026-09": {
+        "date": "2026-09-15",
+        "amount": 3056
+      },
+      "credit-settlement-hsbc-2026-10": {
+        "date": "2026-10-29",
+        "amount": 54901
+      },
+      "credit-settlement-cib-2026-10": {
+        "date": "2026-10-15",
+        "amount": 555
+      }
+    },
+    "salaryAnchorMonth": "2026-07",
+    "archivedEntries": [],
+    "categoryCaps": [],
+    "savingsGoals": []
+  }
+}

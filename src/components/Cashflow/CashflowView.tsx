@@ -601,8 +601,8 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                 <th>Type</th>
                 <th>Source</th>
                 <th className="number">Amount</th>
-                <th className="number" style={{ minWidth: '170px' }}>Actual</th>
-                <th style={{ width: '100px' }}></th>
+                <th className="number" style={{ minWidth: '190px' }}>Actual</th>
+                <th style={{ width: '120px', minWidth: '120px' }}></th>
               </tr>
             </thead>
             <tbody>
@@ -701,7 +701,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                       {isOpening ? (
                         <span>—</span>
                       ) : (
-                        <div>
+                        <div className="actual-cell-wrapper">
                           <input
                             className="inline-actual-input form-input"
                             placeholder={placeholder}
@@ -740,14 +740,13 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                         </div>
                       )}
                     </td>
-                    <td className="cell-actions number">
+                    <td className="cell-actions">
                       {isOpening ? null : (
-                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center', justifyContent: 'flex-end' }}>
+                        <div className="cell-actions-wrapper">
                           {canFinish && (
                             <button
                               className="ghost-button finish-loan-btn"
                               type="button"
-                              style={{ fontSize: '11px', padding: '2px 6px', color: 'var(--green)', borderColor: 'var(--green)' }}
                               title="Finish and close entry at current actual amount"
                               onClick={(ev) => {
                                 ev.stopPropagation();
@@ -763,7 +762,6 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                           )}
                           <button
                             className="delete-button"
-                            style={{ padding: '2px 6px', fontSize: '11px' }}
                             title="Delete entry"
                             onClick={(ev) => {
                               ev.stopPropagation();

@@ -2358,8 +2358,12 @@ dialog.modern-top-layer-dialog .dialog-actions button {
 }
 
 
-/* Desktop toolbar single-row layout */
+/* ==========================================================================
+   Comprehensive Desktop Layout & Polishing (min-width: 769px)
+   Strictly isolated to ensure zero impact on mobile UI
+   ========================================================================== */
 @media (min-width: 769px) {
+  /* --- Topbar Toolbar Single-Row Layout --- */
   .topbar {
     display: flex !important;
     flex-wrap: nowrap !important;
@@ -2389,55 +2393,70 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     flex-shrink: 0 !important;
   }
 
-  /* History Filters Desktop Layout */
-  .history-filters-bar {
-    display: flex !important;
-    flex-wrap: wrap !important;
-    gap: 10px !important;
-    align-items: center !important;
-  }
-
-  .history-filter-field {
-    flex: 1 1 140px !important;
-    min-width: 130px !important;
-  }
-
-  .history-search-field {
-    flex: 2 1 200px !important;
-    min-width: 180px !important;
-  }
-
-  .history-reset-btn {
-    flex-shrink: 0 !important;
-    width: auto !important;
-  }
-
-  /* Dialog Desktop Layout */
+  /* --- Dialog & Modal Desktop Overhaul --- */
   dialog.native-dialog,
   dialog.modern-top-layer-dialog,
   dialog[open] {
-    width: min(560px, calc(100vw - 32px)) !important;
-    max-width: 560px !important;
+    position: fixed !important;
+    inset: 0 !important;
+    margin: auto !important;
+    width: min(580px, calc(100vw - 48px)) !important;
+    max-width: 580px !important;
+    max-height: min(88vh, 850px) !important;
     padding: 24px !important;
-    border-radius: 16px !important;
+    border-radius: 18px !important;
     box-sizing: border-box !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain !important;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--border-subtle) !important;
+  }
+
+  dialog.native-dialog form,
+  dialog.modern-top-layer-dialog form {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+    width: 100% !important;
+  }
+
+  dialog.native-dialog .dialog-heading,
+  dialog.modern-top-layer-dialog .dialog-heading {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    margin-bottom: 8px !important;
+  }
+
+  dialog.native-dialog .dialog-heading h3,
+  dialog.modern-top-layer-dialog .dialog-heading h3 {
+    font-size: 1.15rem !important;
+    font-weight: 700 !important;
   }
 
   dialog.native-dialog .dialog-actions,
   dialog.modern-top-layer-dialog .dialog-actions {
+    position: sticky !important;
+    bottom: -24px !important;
+    background: var(--bg-surface, #0f1523) !important;
+    padding: 14px 0 0 !important;
+    margin: 16px -24px -24px !important;
+    padding-left: 24px !important;
+    padding-right: 24px !important;
+    padding-bottom: 24px !important;
+    border-top: 1px solid var(--border-subtle) !important;
     display: flex !important;
     justify-content: flex-end !important;
     align-items: center !important;
     gap: 10px !important;
-    margin-top: 18px !important;
+    z-index: 10 !important;
   }
 
   dialog.native-dialog .dialog-actions button,
   dialog.modern-top-layer-dialog .dialog-actions button {
     width: auto !important;
-    min-width: 100px !important;
+    min-width: 105px !important;
     flex: 0 0 auto !important;
-    min-height: 40px !important;
+    min-height: 38px !important;
   }
 
   .check-row {
@@ -2448,7 +2467,318 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     width: auto !important;
   }
 
-  /* Salary Structure Cards Desktop Layout */
+  /* --- Cashflow View Desktop Enhancements --- */
+  .cashflow-card-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 18px !important;
+    align-items: start !important;
+  }
+
+  .cashflow-table-header {
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    flex-wrap: wrap !important;
+    gap: 14px !important;
+  }
+
+  .cashflow-filters-grid {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    gap: 10px !important;
+    align-items: center !important;
+  }
+
+  .cashflow-search-input {
+    min-width: 240px !important;
+  }
+
+  /* --- Cashflow & Data Tables (Desktop) --- */
+  .table-wrap {
+    overflow-x: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    border-radius: 12px !important;
+  }
+
+  .table-wrap table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    table-layout: auto !important;
+  }
+
+  .table-wrap th,
+  .table-wrap td {
+    padding: 8px 10px !important;
+    vertical-align: middle !important;
+  }
+
+  .cell-date {
+    white-space: nowrap !important;
+  }
+
+  .cell-account,
+  .cell-type,
+  .cell-source {
+    white-space: nowrap !important;
+  }
+
+  .cell-amount {
+    white-space: nowrap !important;
+    text-align: right !important;
+  }
+
+  .cell-actual {
+    min-width: 190px !important;
+    text-align: right !important;
+    vertical-align: middle !important;
+  }
+
+  .cell-actual .actual-cell-wrapper {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-end !important;
+    gap: 4px !important;
+    width: 100% !important;
+  }
+
+  .cell-actual .inline-actual-input {
+    width: 100% !important;
+    max-width: 160px !important;
+    min-width: 120px !important;
+    box-sizing: border-box !important;
+    text-align: right !important;
+    font-size: 12px !important;
+    padding: 5px 8px !important;
+    height: 32px !important;
+    border-radius: 8px !important;
+  }
+
+  .cell-actual .actual-spend-note {
+    display: block !important;
+    font-size: 11px !important;
+    color: var(--muted) !important;
+    text-align: right !important;
+    line-height: 1.3 !important;
+    margin-top: 2px !important;
+    white-space: normal !important;
+    max-width: 220px !important;
+  }
+
+  .cell-actions {
+    min-width: 120px !important;
+    width: 120px !important;
+    white-space: nowrap !important;
+    text-align: right !important;
+    vertical-align: middle !important;
+  }
+
+  .cell-actions .cell-actions-wrapper {
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 6px !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    width: 100% !important;
+  }
+
+  .cell-actions .finish-loan-btn {
+    font-size: 11px !important;
+    padding: 3px 8px !important;
+    color: var(--green) !important;
+    border: 1px solid var(--green) !important;
+    background: rgba(34, 197, 94, 0.08) !important;
+    border-radius: 6px !important;
+    white-space: nowrap !important;
+    cursor: pointer !important;
+    line-height: 1.2 !important;
+    transition: all 0.15s ease !important;
+  }
+
+  .cell-actions .finish-loan-btn:hover {
+    background: rgba(34, 197, 94, 0.18) !important;
+    border-color: var(--green) !important;
+  }
+
+  .cell-actions .delete-button {
+    font-size: 11px !important;
+    padding: 3px 8px !important;
+    border-radius: 6px !important;
+    white-space: nowrap !important;
+    cursor: pointer !important;
+    line-height: 1.2 !important;
+  }
+
+  /* --- Forecast Trajectory & Can I Spend Simulator (Desktop) --- */
+  .forecast-toolbar {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 12px !important;
+    flex-wrap: wrap !important;
+  }
+
+  .forecast-range-group {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 8px !important;
+    flex-wrap: nowrap !important;
+  }
+
+  .forecast-sim-bar {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 16px !important;
+    flex-wrap: wrap !important;
+    padding: 10px 16px !important;
+    border-radius: 12px !important;
+    margin: 8px 0 14px 0 !important;
+  }
+
+  .forecast-sim-header {
+    display: flex !important;
+    align-items: center !important;
+    flex-shrink: 0 !important;
+  }
+
+  .forecast-sim-title {
+    font-size: 13.5px !important;
+    font-weight: 700 !important;
+    white-space: nowrap !important;
+  }
+
+  .forecast-sim-fields {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 12px !important;
+    flex: 0 0 auto !important;
+    width: auto !important;
+  }
+
+  .forecast-sim-input-group {
+    display: flex !important;
+    align-items: center !important;
+    width: 190px !important;
+    min-height: 38px !important;
+    border-radius: 8px !important;
+  }
+
+  .forecast-sim-input {
+    font-size: 13.5px !important;
+    padding: 4px 0 !important;
+    width: 100% !important;
+  }
+
+  .forecast-sim-date-wrap {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    width: auto !important;
+  }
+
+  .forecast-sim-date {
+    width: 160px !important;
+    min-height: 38px !important;
+    font-size: 13.5px !important;
+    border-radius: 8px !important;
+  }
+
+  .forecast-sim-actions {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 8px !important;
+    width: auto !important;
+    margin-top: 0 !important;
+  }
+
+  .forecast-sim-btn {
+    width: auto !important;
+    min-height: 38px !important;
+    padding: 0 16px !important;
+    border-radius: 8px !important;
+    font-size: 13px !important;
+    white-space: nowrap !important;
+  }
+
+  .forecast-sim-verdict {
+    margin-left: 10px !important;
+    margin-top: 0 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+  }
+
+  /* --- Salary Structure Section (Desktop) --- */
+  .salary-structure-controls {
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: space-between !important;
+    align-items: flex-end !important;
+    gap: 16px !important;
+    flex-wrap: wrap !important;
+    margin-bottom: 16px !important;
+  }
+
+  .salary-controls-inputs {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: flex-end !important;
+    gap: 12px !important;
+    width: auto !important;
+  }
+
+  .salary-control-field {
+    width: auto !important;
+  }
+
+  .salary-start-month {
+    width: 180px !important;
+    min-height: 38px !important;
+    font-size: 13.5px !important;
+  }
+
+  .salary-quarters-input {
+    width: 90px !important;
+    min-height: 38px !important;
+    text-align: center !important;
+    font-size: 13.5px !important;
+  }
+
+  .salary-controls-actions {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 8px !important;
+    width: auto !important;
+  }
+
+  .salary-controls-actions button {
+    width: auto !important;
+    min-height: 38px !important;
+    white-space: nowrap !important;
+  }
+
+  .salary-structure-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)) !important;
+    gap: 14px !important;
+  }
+
+  .salary-structure-card {
+    background: var(--bg-surface-elevated, #161e31) !important;
+    border: 1px solid var(--border-subtle) !important;
+    border-radius: 12px !important;
+    padding: 14px !important;
+    margin-bottom: 0 !important;
+  }
+
   .salary-card-header {
     display: flex !important;
     justify-content: space-between !important;
@@ -2484,13 +2814,130 @@ dialog.modern-top-layer-dialog .dialog-actions button {
 
   .salary-card-fields {
     display: grid !important;
-    grid-template-columns: 1.4fr 0.8fr 1fr !important;
-    gap: 12px !important;
+    grid-template-columns: 1.3fr 0.8fr 1fr !important;
+    gap: 10px !important;
     align-items: flex-end !important;
   }
 
   .salary-card-fields .salary-field-item:last-child {
     grid-column: auto !important;
   }
+
+  .salary-card-fields .form-select,
+  .salary-card-fields .form-input {
+    font-size: 13px !important;
+    min-height: 36px !important;
+    padding: 4px 8px !important;
+  }
+
+
+  /* --- Storage View Desktop Grid --- */
+  #storage .content-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 340px !important;
+    gap: 20px !important;
+    align-items: start !important;
+  }
+
+  #storage #storageCards.asset-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)) !important;
+    gap: 14px !important;
+  }
+
+  /* --- Accounts View Desktop Grid --- */
+  #accounts .content-grid {
+    display: grid !important;
+    grid-template-columns: 1.15fr 1fr !important;
+    gap: 20px !important;
+    align-items: start !important;
+  }
+
+  /* --- Rates View Desktop Grid --- */
+  #rates .content-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 20px !important;
+    align-items: start !important;
+  }
+
+  #rates .rate-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)) !important;
+    gap: 10px !important;
+  }
+
+  #rates .rate-card {
+    padding: 14px 16px !important;
+    border-radius: 12px !important;
+    background: var(--bg-surface-elevated, #161e31) !important;
+    border: 1px solid var(--border-subtle) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    transition: all var(--transition-normal) !important;
+  }
+
+  #rates .rate-card:hover {
+    border-color: var(--border-active) !important;
+    box-shadow: var(--shadow-glow) !important;
+  }
+
+  /* --- Deficits View Desktop Grid --- */
+  #deficits .content-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 20px !important;
+    align-items: start !important;
+  }
+
+  /* --- Jobs View Desktop Layout --- */
+  .jobs-kpis-grid {
+    display: grid !important;
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 14px !important;
+  }
+
+  .jobs-toolbar {
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    gap: 14px !important;
+    flex-wrap: wrap !important;
+  }
+
+  .jobs-filters-group {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 14px !important;
+    flex-wrap: wrap !important;
+  }
+
+  /* --- History Filters Desktop Layout --- */
+  .history-filters-bar {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    gap: 10px !important;
+    align-items: center !important;
+  }
+
+  .history-filter-field {
+    flex: 1 1 140px !important;
+    min-width: 130px !important;
+  }
+
+  .history-search-field {
+    flex: 2 1 200px !important;
+    min-width: 180px !important;
+  }
+
+  .history-reset-btn {
+    flex-shrink: 0 !important;
+    width: auto !important;
+  }
 }
+
 
