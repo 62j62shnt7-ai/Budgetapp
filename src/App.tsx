@@ -41,10 +41,8 @@ export const App: React.FC = () => {
     toggleSidebar, 
     closeMobileSidebar, 
     gistToken, 
-    gistId, 
     gistAutoSync, 
     setGistConfig, 
-    syncFromGist,
     updateRates
   } = useBudgetStore();
 
@@ -138,19 +136,13 @@ export const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!gistToken || !gistId || sessionStorage.getItem('gist_auto_pulled') === 'true') return;
-    sessionStorage.setItem('gist_auto_pulled', 'true');
-    void syncFromGist(gistToken, gistId);
-  }, [gistId, gistToken, syncFromGist]);
-
-  useEffect(() => {
     const gistId = new URLSearchParams(window.location.hash.slice(1)).get('gist')?.trim();
     if (!gistId) return;
     setGistConfig(gistToken, gistId, gistAutoSync);
     window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
   }, [gistAutoSync, gistToken, setGistConfig]);
 
-  // Auto-fetch live currency and gold rates & sync on launch, online, focus, or visibility change
+  // Auto-fetch live currency & gold rates and continuous multi-device sync
   useEffect(() => {
     let isMounted = true;
     const fetchRates = async () => {
@@ -166,20 +158,21 @@ export const App: React.FC = () => {
       }
     };
 
-    void fetchRates();
-
-    const handleSyncAndRates = () => {
-      if (document.visibilityState === 'visible') {
+    const handleSyncAndRates = async () => {
+      if (document.visibilityState === 'visible' && navigator.onLine) {
         const state = useBudgetStore.getState();
         if (state.gistAutoSync && state.gistToken && state.gistId) {
-          void state.syncFromGist(state.gistToken, state.gistId).then(() => {
-            void fetchRates();
-          });
-        } else {
-          void fetchRates();
+          await state.syncFromGist(state.gistToken, state.gistId);
         }
+        await fetchRates();
       }
     };
+
+    void handleSyncAndRates();
+
+    const pollInterval = setInterval(() => {
+      void handleSyncAndRates();
+    }, 60000);
 
     window.addEventListener('online', handleSyncAndRates);
     window.addEventListener('focus', handleSyncAndRates);
@@ -187,6 +180,7 @@ export const App: React.FC = () => {
 
     return () => {
       isMounted = false;
+      clearInterval(pollInterval);
       window.removeEventListener('online', handleSyncAndRates);
       window.removeEventListener('focus', handleSyncAndRates);
       document.removeEventListener('visibilitychange', handleSyncAndRates);

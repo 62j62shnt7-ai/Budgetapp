@@ -51,25 +51,13 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
     setIsFetchingCurrencies(true);
     try {
       const liveRates = await fetchLiveCurrencyRates();
-      const changes: string[] = [];
       const updated = rates.currencies.map((currency) => {
         const mid = egpPerUnit(liveRates, currency.name.toUpperCase());
         if (mid === null) return currency;
         const spreadPct = computeSpreadPct(currency.sell, currency.buy);
         const next = applySpread(mid, spreadPct);
-        changes.push(`${currency.name}: ${currency.sell.toFixed(2)}/${currency.buy.toFixed(2)} → ${next.sell.toFixed(2)}/${next.buy.toFixed(2)}`);
         return { ...currency, ...next };
       });
-
-      if (!changes.length) {
-        alert("None of the saved currencies matched the live market feed.");
-        return;
-      }
-
-      const confirmed = window.confirm(
-        `Update Currency Rates from live market data?\n\n${changes.join("\n")}`
-      );
-      if (!confirmed) return;
 
       const now = new Date().toISOString();
       updateRates({
@@ -94,8 +82,6 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
       const egpPerOz = xauUsd * liveRates.EGP;
       const egpPerGram24k = egpPerOz / TROY_OUNCE_GRAMS;
 
-      const changes: string[] = [];
-      const skipped: string[] = [];
       const updated = rates.gold.map((item) => {
         let mid: number | null = null;
         const match = item.name.match(/(\d+)/);
@@ -107,29 +93,14 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
           mid = egpPerGram24k * (21 / 24) * 8;
         }
 
-        if (mid === null) {
-          skipped.push(item.name);
-          return item;
-        }
+        if (mid === null) return item;
 
         const spreadPct = computeSpreadPct(item.sell, item.buy);
         const next = applySpread(mid, spreadPct);
         next.sell = Math.round(next.sell);
         next.buy = Math.round(next.buy);
-        changes.push(`${item.name}: ${item.sell}/${item.buy} → ${next.sell}/${next.buy}`);
         return { ...item, ...next };
       });
-
-      if (!changes.length) {
-        alert('None of the saved gold entries could be matched to a karat (e.g. "Gold 21" or "Gold coin").');
-        return;
-      }
-
-      let message = `Update Gold Rates from live spot price ($${xauUsd.toFixed(2)}/oz)?\n\n${changes.join("\n")}`;
-      if (skipped.length) message += `\n\nSkipped: ${skipped.join(", ")}`;
-
-      const confirmed = window.confirm(message);
-      if (!confirmed) return;
 
       const now = new Date().toISOString();
       updateRates({
