@@ -223,8 +223,10 @@ export const EntryModal: React.FC<EntryModalProps> = ({
     setRecalcStatus(`Recalculated from ${recalculated.cardExpenseCount || 0} card transaction(s). Click Update entry to save.`);
   };
 
+  if (!isOpen) return null;
+
   return (
-    <dialog open className="native-dialog entry-dialog" onClick={(e) => e.target === e.currentTarget && onClose()} style={{ display: 'block', zIndex: 1000 }}>
+    <dialog open className="native-dialog entry-dialog" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <form onSubmit={handleSubmit} className="entry-form entry-form-modern" id="entryForm">
         <div className="dialog-heading">
           <h3>{entryToEdit ? 'Edit budget entry' : `Add ${type === 'income' ? 'Income' : 'Expense'}`}</h3>
