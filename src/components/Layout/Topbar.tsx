@@ -8,8 +8,7 @@ import {
   RotateCw, 
   Database, 
   CreditCard, 
-  Plus,
-  MoreHorizontal
+  Plus
 } from 'lucide-react';
 
 import { executeAppRefresh } from '../../utils/appRefresh';
@@ -119,13 +118,14 @@ export const Topbar: React.FC<TopbarProps> = ({
             <span>Expense</span>
           </button>
           <button
-            className="ghost-button icon-button mobile-more-btn"
-            id="mobileMoreBtn"
+            className="ghost-button icon-button mobile-refresh-btn"
+            id="mobileRefreshBtn"
             type="button"
-            aria-label="Open tools and actions"
-            onClick={() => setActionSheetOpen(true)}
+            aria-label="Refresh application"
+            title="Check for updates, clear cache & reload app"
+            onClick={() => executeAppRefresh()}
           >
-            <MoreHorizontal size={20} />
+            <RotateCw size={17} />
           </button>
         </div>
 

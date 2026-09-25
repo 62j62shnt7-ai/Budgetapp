@@ -92,17 +92,17 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({ onBridgeDeficit }) =
       <div className="metrics-grid" style={{ marginBottom: '18px' }}>
         <article className="metric">
           <span>Forecast deficit spells</span>
-          <strong id="deficitForecastCount" style={{ color: deficitPeriods.length > 0 ? 'var(--red)' : 'var(--green)' }}>
+          <strong id="deficitForecastCount" style={{ color: deficitPeriods.length > 0 ? 'var(--red, #f43f5e)' : 'var(--green, #10b981)', fontWeight: 800 }}>
             {deficitPeriods.length}
           </strong>
           <small id="deficitForecastNote">{deficitNote}</small>
         </article>
         <article className="metric">
           <span>Overdue & unpaid</span>
-          <strong id="deficitOverdueCount" style={{ color: overdueEntries.length > 0 ? 'var(--amber)' : 'inherit' }}>
+          <strong id="deficitOverdueCount" style={{ color: overdueEntries.length > 0 ? 'var(--amber, #f59e0b)' : 'var(--green, #10b981)', fontWeight: 800 }}>
             {overdueEntries.length}
           </strong>
-          <small id="deficitOverdueNote">Past due, not yet settled</small>
+          <small id="deficitOverdueNote">{overdueEntries.length > 0 ? `${overdueEntries.length} past due obligations` : 'All scheduled entries up to date'}</small>
         </article>
       </div>
 
@@ -120,10 +120,12 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({ onBridgeDeficit }) =
 
           <div id="deficitForecastList" className="stack-list" style={{ marginTop: '12px' }}>
             {!deficits.hasDeficit ? (
-              <div style={{ padding: '24px', textAlign: 'center', color: 'var(--muted)', background: 'var(--surface-soft)', borderRadius: '8px' }}>
-                <CheckCircle size={28} color="var(--green)" style={{ margin: '0 auto 8px' }} />
-                <strong>No cashflow deficits projected</strong>
-                <p style={{ margin: '4px 0 0', fontSize: '13px' }}>Your forecast maintains positive liquidity across the projected horizon.</p>
+              <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--muted)', background: 'var(--surface-soft)', borderRadius: '12px', border: '1px solid var(--line)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                <CheckCircle size={32} color="var(--green, #10b981)" style={{ marginBottom: '10px' }} />
+                <strong style={{ fontSize: '15px', color: 'var(--ink, #f8fafc)', marginBottom: '4px' }}>No cashflow deficits projected</strong>
+                <p style={{ margin: 0, fontSize: '13px', maxWidth: '380px', lineHeight: '1.45', color: 'var(--muted)' }}>
+                  Your forecast maintains positive liquidity across the projected horizon.
+                </p>
               </div>
             ) : (
               deficits.deficitPeriods.map((period, idx) => (
@@ -186,9 +188,10 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({ onBridgeDeficit }) =
 
           <div id="deficitOverdueList" className="stack-list" style={{ marginTop: '12px' }}>
             {overdueEntries.length === 0 ? (
-              <div style={{ padding: '24px', textAlign: 'center', color: 'var(--muted)', background: 'var(--surface-soft)', borderRadius: '8px' }}>
-                <Clock size={28} color="var(--muted)" style={{ margin: '0 auto 8px' }} />
-                <span>No overdue entries found</span>
+              <div style={{ padding: '28px 20px', textAlign: 'center', color: 'var(--muted)', background: 'var(--surface-soft)', borderRadius: '12px', border: '1px solid var(--line)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                <Clock size={30} color="var(--muted)" style={{ marginBottom: '8px' }} />
+                <strong style={{ fontSize: '14px', color: 'var(--ink, #f8fafc)', marginBottom: '3px' }}>No overdue entries found</strong>
+                <p style={{ margin: 0, fontSize: '12.5px', color: 'var(--muted)' }}>All scheduled expenses and obligations are up to date.</p>
               </div>
             ) : (
               overdueEntries.slice(0, 10).map(({ entry, remaining, daysOverdue }) => (

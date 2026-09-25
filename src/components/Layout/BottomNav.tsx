@@ -1,6 +1,6 @@
 import React from 'react';
 import { useBudgetStore, type ViewTab } from '../../store/useBudgetStore';
-import { LayoutDashboard, TrendingUp, AlertTriangle, History, Menu } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, AlertTriangle, History, MoreHorizontal } from 'lucide-react';
 
 interface BottomNavProps {
   onOpenMobileMenu: () => void;
@@ -41,7 +41,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ onOpenMobileMenu }) => {
         aria-label="More views"
       >
         <div className="bottom-nav-icon">
-          <Menu size={20} />
+          <MoreHorizontal size={20} />
         </div>
         <span className="bottom-nav-label">More</span>
       </button>

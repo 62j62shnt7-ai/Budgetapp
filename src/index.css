@@ -1033,7 +1033,8 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     white-space: nowrap;
   }
 
-  .mobile-more-btn {
+  .mobile-more-btn,
+  .mobile-refresh-btn {
     width: 36px !important;
     height: 36px !important;
     min-height: 36px !important;
@@ -1043,6 +1044,12 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    color: var(--muted);
+  }
+
+  .mobile-refresh-btn:active {
+    transform: rotate(180deg);
+    transition: transform 0.25s ease;
   }
 
   /* Panel Headings on Mobile */
