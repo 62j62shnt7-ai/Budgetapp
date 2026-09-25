@@ -35,8 +35,19 @@ export const Topbar: React.FC<TopbarProps> = ({
   onOpenDataTools,
   onOpenGistSync,
 }) => {
-  const { theme, setTheme, activeTab, toggleSidebar, gistId } = useBudgetStore();
+  const { theme, setTheme, activeTab, toggleSidebar, gistId, gistAutoSync, gistSyncStatus } = useBudgetStore();
   const [updateStatus, setUpdateStatus] = useState('Latest');
+  const syncLabel = !gistId
+    ? 'Setup'
+    : !gistAutoSync
+      ? 'Manual'
+      : {
+        idle: 'Active',
+        scheduled: 'Queued',
+        syncing: 'Syncing',
+        synced: 'Synced',
+        error: 'Error',
+      }[gistSyncStatus];
 
   useEffect(() => {
     const checkStatus = async () => {
@@ -67,6 +78,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           className="ghost-button icon-button sidebar-open-btn"
           id="sidebarExpandBtn"
           type="button"
+          aria-label="Open navigation"
           title="Toggle Sidebar (Ctrl+B)"
           onClick={toggleSidebar}
         >
@@ -87,6 +99,8 @@ export const Topbar: React.FC<TopbarProps> = ({
           className="ghost-button"
           id="themeToggle"
           type="button"
+          aria-pressed={theme === 'dark'}
+          aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
           onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
         >
           {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
@@ -97,12 +111,13 @@ export const Topbar: React.FC<TopbarProps> = ({
           className="ghost-button"
           id="refreshAppBtn"
           type="button"
+          aria-label="Refresh application"
           title="Check for updates, clear cache & reload app"
           onClick={() => window.location.reload()}
         >
           <RotateCw size={14} />
           <span>Refresh</span>
-          <span className={`sync-pill ${updateStatus === 'Update ready' ? 'update-ready' : 'synced'}`} id="appUpdateStatus">
+          <span className={`sync-pill ${updateStatus === 'Update ready' ? 'update-ready' : 'synced'}`} id="appUpdateStatus" role="status" aria-live="polite">
             {updateStatus}
           </span>
         </button>
@@ -116,8 +131,8 @@ export const Topbar: React.FC<TopbarProps> = ({
         >
           <Cloud size={14} />
           <span>Sync</span>
-          <span className={`sync-pill ${gistId ? 'synced' : ''}`} id="gistSyncStatus">
-            {gistId ? 'Active' : 'Setup'}
+          <span className={`sync-pill ${gistSyncStatus === 'error' ? 'error' : gistSyncStatus === 'syncing' ? 'syncing' : gistId ? 'synced' : ''}`} id="gistSyncStatus" role="status" aria-live="polite">
+            {syncLabel}
           </span>
         </button>
 
@@ -144,7 +159,7 @@ export const Topbar: React.FC<TopbarProps> = ({
         </button>
 
         <button
-          className="ghost-button"
+          className="ghost-button topbar-income-button"
           id="addIncome"
           type="button"
           onClick={() => onOpenEntryModal('income')}
@@ -154,7 +169,7 @@ export const Topbar: React.FC<TopbarProps> = ({
         </button>
 
         <button
-          className="primary-button"
+          className="primary-button topbar-expense-button"
           id="addEntry"
           type="button"
           onClick={() => onOpenEntryModal('expense')}

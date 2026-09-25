@@ -109,7 +109,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
     <section className="view" id="jobs" style={{ display: 'block' }}>
       {/* Top Metrics Cards */}
       <div className="jobs-kpis-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '14px', marginBottom: '18px' }}>
-        <div className="job-kpi-card glass-panel" style={{ padding: '16px', borderRadius: '10px' }}>
+        <div className="job-kpi-card glass-panel jobs-kpi-pending" style={{ padding: '16px', borderRadius: '10px' }}>
           <span className="job-kpi-label" style={{ fontSize: '12px', color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>
             Pending Invoices
           </span>
@@ -125,7 +125,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
           </div>
         </div>
 
-        <div className="job-kpi-card glass-panel" style={{ padding: '16px', borderRadius: '10px' }}>
+        <div className="job-kpi-card glass-panel jobs-kpi-paid" style={{ padding: '16px', borderRadius: '10px' }}>
           <span className="job-kpi-label" style={{ fontSize: '12px', color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>
             Collected / Paid
           </span>
@@ -137,7 +137,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
           </div>
         </div>
 
-        <div className="job-kpi-card glass-panel" style={{ padding: '16px', borderRadius: '10px' }}>
+        <div className="job-kpi-card glass-panel jobs-kpi-active" style={{ padding: '16px', borderRadius: '10px' }}>
           <span className="job-kpi-label" style={{ fontSize: '12px', color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>
             Active Work
           </span>
@@ -149,7 +149,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
           </div>
         </div>
 
-        <div className="job-kpi-card glass-panel" style={{ padding: '16px', borderRadius: '10px' }}>
+        <div className="job-kpi-card glass-panel jobs-kpi-expenses" style={{ padding: '16px', borderRadius: '10px' }}>
           <span className="job-kpi-label" style={{ fontSize: '12px', color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>
             Reimbursable Expenses
           </span>
@@ -245,7 +245,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
             return (
               <article
                 key={job.id}
-                className="job-card glass-panel"
+                className="job-card glass-panel jobs-job-card"
                 style={{
                   borderRadius: '12px',
                   padding: '18px',
@@ -254,7 +254,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
                 }}
               >
                 {/* Header Row */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
+                <div className="jobs-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                       <span className={`badge ${fin.computedStatus === 'paid' ? 'badge-income' : fin.computedStatus === 'invoiced' ? 'badge-warning' : 'badge-neutral'}`}>
@@ -272,7 +272,11 @@ export const JobsView: React.FC<JobsViewProps> = ({
                         <span>📅 {DateUtils.formatDisplayDate(job.startDate)} {job.endDate ? `to ${DateUtils.formatDisplayDate(job.endDate)}` : '– Ongoing'}</span>
                       )}
                       <span>
-                        💰 {job.type === 'lumpsum' ? `Fixed ${formatJobCurrency(job.lumpSumAmount || 0, job.currency)}` : `${formatJobCurrency(job.dailyRate || 0, job.currency)} / day`}
+                        💰 {job.type === 'lumpsum'
+                          ? `Fixed ${formatJobCurrency(job.lumpSumAmount || 0, job.currency)}`
+                          : job.type === 'hourly' || job.rateType === 'hourly'
+                            ? `${formatJobCurrency(job.rateAmount || 0, job.currency)} / hour`
+                            : `${formatJobCurrency(job.dailyRate || job.rateAmount || 0, job.currency)} / day`}
                       </span>
                       <span>⏱️ {fin.totalDays} days worked</span>
                     </div>
@@ -307,7 +311,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
                 </div>
 
                 {/* Progress Bar */}
-                <div style={{ marginTop: '14px', marginBottom: '8px' }}>
+                <div className="jobs-progress" style={{ marginTop: '14px', marginBottom: '8px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', marginBottom: '4px' }}>
                     <span>Paid: {formatJobCurrency(fin.totalPaid, job.currency)} ({fin.percentPaid}%)</span>
                     <span style={{ color: fin.remainingBalance > 0 ? 'var(--amber)' : 'var(--green)' }}>
@@ -328,9 +332,9 @@ export const JobsView: React.FC<JobsViewProps> = ({
 
                 {/* Expanded Sections */}
                 {isExpanded && (
-                  <div style={{ marginTop: '18px', paddingTop: '16px', borderTop: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div className="jobs-expanded-details">
                     {/* Days Worked Section */}
-                    <div>
+                    <div className="jobs-detail-section">
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                         <strong style={{ fontSize: '13px' }}>📅 Days / Shifts Worked ({days.length})</strong>
                         <button
@@ -347,7 +351,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
                           No shifts logged yet. Click "+ Log Day" to track days worked.
                         </div>
                       ) : (
-                        <div className="table-wrap compact" style={{ maxHeight: '160px', overflowY: 'auto' }}>
+                        <div className="table-wrap compact jobs-detail-table">
                           <table>
                             <thead>
                               <tr>
@@ -381,7 +385,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
                     </div>
 
                     {/* Expenses Section */}
-                    <div>
+                    <div className="jobs-detail-section">
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                         <strong style={{ fontSize: '13px' }}>🧾 Project Expenses ({expenses.length})</strong>
                         <button
@@ -398,7 +402,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
                           No expenses recorded for this project.
                         </div>
                       ) : (
-                        <div className="table-wrap compact" style={{ maxHeight: '160px', overflowY: 'auto' }}>
+                        <div className="table-wrap compact jobs-detail-table">
                           <table>
                             <thead>
                               <tr>
@@ -434,7 +438,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
                     </div>
 
                     {/* Payments Section */}
-                    <div>
+                    <div className="jobs-detail-section">
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                         <strong style={{ fontSize: '13px' }}>💵 Payments Received ({payments.length})</strong>
                         <button
@@ -451,7 +455,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
                           No payments recorded yet. Click "+ Record Payment" when client pays.
                         </div>
                       ) : (
-                        <div className="table-wrap compact" style={{ maxHeight: '160px', overflowY: 'auto' }}>
+                        <div className="table-wrap compact jobs-detail-table">
                           <table>
                             <thead>
                               <tr>
@@ -488,7 +492,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
                       )}
                     </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '10px', borderTop: '1px dashed var(--line)' }}>
+                    <div className="jobs-detail-actions">
                       <button
                         className="delete-button"
                         type="button"

@@ -58,6 +58,7 @@ export const Sidebar: React.FC = () => {
               className={`nav-item ${activeTab === tab.id ? 'active' : ''}`}
               data-view={tab.id}
               type="button"
+              aria-current={activeTab === tab.id ? 'page' : undefined}
               onClick={() => handleTabClick(tab.id)}
             >
               {tab.label}

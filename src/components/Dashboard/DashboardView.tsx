@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import {
   calculateForecast,
@@ -20,6 +20,7 @@ export const DashboardView: React.FC = () => {
     accounts,
     entries,
     salaryPattern,
+    salaryAnchorMonth,
     installments,
     rates,
     storageAssets,
@@ -38,6 +39,13 @@ export const DashboardView: React.FC = () => {
   const [simAmount, setSimAmount] = useState<string>('');
   const [simDate, setSimDate] = useState<string>(DateUtils.todayString());
   const [simVerdict, setSimVerdict] = useState<{ text: string; isDanger: boolean } | null>(null);
+  const [dashboardDensity, setDashboardDensity] = useState<'comfortable' | 'compact'>(() =>
+    localStorage.getItem('budget-control-dashboard-density') === 'compact' ? 'compact' : 'comfortable'
+  );
+
+  useEffect(() => {
+    localStorage.setItem('budget-control-dashboard-density', dashboardDensity);
+  }, [dashboardDensity]);
 
   // Financial calculations
   const totalCash = Object.values(accounts).reduce((sum, acc) => sum + (acc.balance || 0), 0);
@@ -89,7 +97,7 @@ export const DashboardView: React.FC = () => {
 
   // Forecast & Deficits
   const hasMaterializedSalary = entries.some((entry) => entry.source === 'salary');
-  const salaryEntries = hasMaterializedSalary ? [] : buildSalaryEntries(salaryPattern, currentYm, 4);
+  const salaryEntries = hasMaterializedSalary ? [] : buildSalaryEntries(salaryPattern, currentYm, 12, salaryAnchorMonth);
   const installmentEntries = buildInstallmentEntries(installments);
   const allCandidateEntries = getActiveForecastEntries(
     [...entries, ...salaryEntries],
@@ -134,6 +142,9 @@ export const DashboardView: React.FC = () => {
     (entry) => entry.date >= DateUtils.todayString() && entry.date <= plottedCutoff
   ).sort((a, b) => a.date.localeCompare(b.date));
   const plottedEntryCount = plottedEntryRows.length;
+  const nextUpcomingEntries = plottedEntryRows.slice(0, 3);
+  const nextUpcomingExpense = plottedEntryRows.find((entry) => entry.type === 'expense');
+  const nextUpcomingIncome = plottedEntryRows.find((entry) => entry.type === 'income');
   const categoryTotals = allCandidateEntries
     .filter((entry) => entry.type === 'expense')
     .reduce<Record<string, number>>((totals, entry) => {
@@ -207,7 +218,7 @@ export const DashboardView: React.FC = () => {
     : '';
 
   return (
-    <section className="view" id="dashboard" style={{ display: 'block' }}>
+    <section className={`view dashboard-view dashboard-density-${dashboardDensity}`} id="dashboard" style={{ display: 'block' }}>
       {/* Deficit Alert Banner */}
       {deficits.hasDeficit && (
         <div className="alert-banner" id="deficitBanner">
@@ -320,9 +331,9 @@ export const DashboardView: React.FC = () => {
       </div>
 
       {/* Advisory & Health Score */}
-      <div className="content-grid dashboard-advisory-grid" style={{ marginTop: '18px' }}>
+      <div className="content-grid dashboard-advisory-grid dashboard-section-block">
         <section className="panel health-score-panel">
-          <div className="panel-heading" style={{ marginBottom: '10px' }}>
+          <div className="panel-heading panel-heading-compact">
             <h3>Financial Health Score</h3>
             <span id="healthScoreBadge" className="health-badge">
               {health.label?.toUpperCase() ?? `GRADE ${health.grade}`}
@@ -341,7 +352,7 @@ export const DashboardView: React.FC = () => {
                     style={{ width: `${health.score}%` }}
                   />
                 </div>
-                <small id="healthScoreSummary" style={{ color: 'var(--muted)', display: 'block', marginTop: '8px', lineHeight: 1.4 }}>
+                <small id="healthScoreSummary" className="health-score-summary">
                   {health.summaryNote}
                 </small>
               </div>
@@ -350,33 +361,76 @@ export const DashboardView: React.FC = () => {
         </section>
 
         <section className="panel insights-panel">
-          <div className="panel-heading" style={{ marginBottom: '10px' }}>
+          <div className="panel-heading panel-heading-compact">
             <h3>Smart Financial Insights</h3>
-            <span style={{ fontSize: '11px', color: 'var(--muted)' }}>Real-time Advisory</span>
+            <span className="panel-kicker">Real-time Advisory</span>
           </div>
           <div id="smartInsightsList" className="smart-insights-list">
             {insights.map((insight) => (
               <div
                 key={insight.id}
-                className="insight-item"
-                style={{
-                  padding: '8px 12px',
-                  borderRadius: '6px',
-                  background: 'var(--surface-soft)',
-                  marginBottom: '6px',
-                  borderLeft: `3px solid ${insight.type === 'critical' ? 'var(--red)' : insight.type === 'warning' ? 'var(--amber)' : 'var(--green)'}`,
-                }}
+                className={`insight-item insight-item--${insight.type}`}
               >
-                <strong style={{ fontSize: '12px', display: 'block' }}>{insight.title}</strong>
-                <span style={{ fontSize: '12px', color: 'var(--muted)' }}>{insight.message}</span>
+                <strong>{insight.title}</strong>
+                <span>{insight.message}</span>
               </div>
             ))}
           </div>
         </section>
       </div>
 
+      <section className="panel dashboard-focus-panel dashboard-section-block" aria-labelledby="dashboardFocusHeading">
+        <div className="panel-heading panel-heading-compact">
+          <div>
+            <h3 id="dashboardFocusHeading">Today at a glance</h3>
+            <span className="panel-kicker">Your next useful actions</span>
+          </div>
+          <button
+            type="button"
+            className="ghost-button dashboard-density-toggle"
+            aria-pressed={dashboardDensity === 'compact'}
+            onClick={() => setDashboardDensity((current) => current === 'compact' ? 'comfortable' : 'compact')}
+          >
+            {dashboardDensity === 'compact' ? 'Comfortable view' : 'Compact view'}
+          </button>
+        </div>
+        <div className="dashboard-focus-grid">
+          <div className="dashboard-focus-card dashboard-focus-card--safe">
+            <span className="dashboard-focus-label">Safe to spend</span>
+            <strong>{formatMoney(safeToSpend)}</strong>
+            <small>Protected by your lowest projected floor</small>
+          </div>
+          <div className={`dashboard-focus-card ${deficits.hasDeficit ? 'dashboard-focus-card--danger' : 'dashboard-focus-card--safe'}`}>
+            <span className="dashboard-focus-label">{deficits.hasDeficit ? 'Deficit watch' : 'Forecast status'}</span>
+            <strong>{deficits.hasDeficit ? formatMoney(deficits.worstDeficit) : 'Covered'}</strong>
+            <small>{deficits.hasDeficit ? 'Review the remediation plan above' : 'No negative balance in the forecast'}</small>
+          </div>
+          <div className="dashboard-focus-card">
+            <span className="dashboard-focus-label">Next expense</span>
+            <strong>{nextUpcomingExpense ? formatMoney(nextUpcomingExpense.amount) : 'None'}</strong>
+            <small>{nextUpcomingExpense ? `${nextUpcomingExpense.category} · ${DateUtils.formatDisplayDate(nextUpcomingExpense.date)}` : 'No upcoming expense in range'}</small>
+          </div>
+          <div className="dashboard-focus-card">
+            <span className="dashboard-focus-label">Next income</span>
+            <strong>{nextUpcomingIncome ? formatMoney(nextUpcomingIncome.amount) : 'None'}</strong>
+            <small>{nextUpcomingIncome ? `${nextUpcomingIncome.category} · ${DateUtils.formatDisplayDate(nextUpcomingIncome.date)}` : 'No upcoming income in range'}</small>
+          </div>
+        </div>
+        {nextUpcomingEntries.length > 0 && (
+          <div className="dashboard-upcoming-list" aria-label="Next upcoming entries">
+            {nextUpcomingEntries.map((entry) => (
+              <div key={entry.id} className="dashboard-upcoming-row">
+                <span>{DateUtils.formatDisplayDate(entry.date)}</span>
+                <strong>{entry.category}</strong>
+                <span className={`pill ${entry.type}`}>{entry.type === 'income' ? '+' : '-'}{formatMoney(entry.amount)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
       {/* Forecast Line Trajectory Section */}
-      <div style={{ marginTop: '18px' }}>
+      <div className="dashboard-section-block">
         <section className="panel panel-full-width forecast-line-panel">
           <div className="panel-heading forecast-line-heading">
             <div className="forecast-heading-left">
@@ -444,6 +498,7 @@ export const DashboardView: React.FC = () => {
                   <input
                     type="range"
                     id="forecastRangeSlider"
+                    aria-label="Forecast month range"
                     min="1"
                     max="36"
                     value={forecastRangeMonths}
@@ -477,6 +532,7 @@ export const DashboardView: React.FC = () => {
               <input
                 type="date"
                 id="forecastSimDate"
+                aria-label="Spend simulation date"
                 className="forecast-sim-date"
                 value={simDate}
                 onChange={(e) => setSimDate(e.target.value)}

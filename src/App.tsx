@@ -33,7 +33,7 @@ import { DeductAccountModal } from './components/Modals/DeductAccountModal';
 import type { CashEntry, JobItem } from './types';
 
 export const App: React.FC = () => {
-  const { activeTab, theme, sidebarCollapsed, toggleSidebar, closeMobileSidebar, gistToken, gistAutoSync, setGistConfig } = useBudgetStore();
+  const { activeTab, theme, sidebarCollapsed, toggleSidebar, closeMobileSidebar, gistToken, gistId, gistAutoSync, setGistConfig, syncFromGist } = useBudgetStore();
 
   // Modals state
   const [entryModalOpen, setEntryModalOpen] = useState(false);
@@ -80,6 +80,12 @@ export const App: React.FC = () => {
       console.error('Failed to register service worker:', error);
     });
   }, []);
+
+  useEffect(() => {
+    if (!gistToken || !gistId || sessionStorage.getItem('gist_auto_pulled') === 'true') return;
+    sessionStorage.setItem('gist_auto_pulled', 'true');
+    void syncFromGist(gistToken, gistId);
+  }, [gistId, gistToken, syncFromGist]);
 
   useEffect(() => {
     const gistId = new URLSearchParams(window.location.hash.slice(1)).get('gist')?.trim();
@@ -180,8 +186,6 @@ export const App: React.FC = () => {
               setEntryModalOpen(true);
             }}
             onDeductPrompt={handleDeductPrompt}
-            onOpenCapModal={() => setCapModalOpen(true)}
-            onOpenGoalModal={() => setGoalModalOpen(true)}
             onOpenInstallmentModal={() => setInstallmentModalOpen(true)}
           />
         );

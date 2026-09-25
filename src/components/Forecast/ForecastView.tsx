@@ -8,12 +8,12 @@ import { SpendSimulator } from './SpendSimulator';
 import { TrendingUp, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 
 export const ForecastView: React.FC = () => {
-  const { accounts, entries, salaryPattern, installments, entryActuals, deletedForecasts } = useBudgetStore();
+  const { accounts, entries, salaryPattern, salaryAnchorMonth, installments, entryActuals, deletedForecasts } = useBudgetStore();
 
   const totalCash = Object.values(accounts).reduce((sum, acc) => sum + (acc.balance || 0), 0);
   const currentYm = DateUtils.currentYearMonth();
   const hasMaterializedSalary = entries.some((entry) => entry.source === 'salary');
-  const salaryEntries = hasMaterializedSalary ? [] : buildSalaryEntries(salaryPattern, currentYm, 4);
+  const salaryEntries = hasMaterializedSalary ? [] : buildSalaryEntries(salaryPattern, currentYm, 12, salaryAnchorMonth);
   const installmentEntries = buildInstallmentEntries(installments);
   const allCandidateEntries = getActiveForecastEntries(
     [...entries, ...salaryEntries],

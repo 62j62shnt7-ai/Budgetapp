@@ -294,6 +294,7 @@ export function buildCreditDueEntries(params: {
             : calculatedPlannedDue > 0
             ? calculatedPlannedDue
             : actualPaid,
+        calculatedAmount: calculatedPlannedDue,
         actualAmount: actualPaid,
         source: 'recurring credit',
         tag: 'Credit',

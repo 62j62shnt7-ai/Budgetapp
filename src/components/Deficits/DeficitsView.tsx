@@ -24,6 +24,7 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({ onBridgeDeficit }) =
     accounts,
     entries,
     salaryPattern,
+    salaryAnchorMonth,
     installments,
     creditDues,
     archivedEntries,
@@ -36,7 +37,7 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({ onBridgeDeficit }) =
   const totalCash = Object.values(accounts).reduce((sum, acc) => sum + (acc.balance || 0), 0);
   const currentYm = DateUtils.currentYearMonth();
   const hasMaterializedSalary = entries.some((entry) => entry.source === 'salary');
-  const salaryEntries = hasMaterializedSalary ? [] : buildSalaryEntries(salaryPattern, currentYm, 4);
+  const salaryEntries = hasMaterializedSalary ? [] : buildSalaryEntries(salaryPattern, currentYm, 12, salaryAnchorMonth);
   const installmentEntries = buildInstallmentEntries(installments);
   const creditDueEntries = buildCreditDueEntries({
     accounts,

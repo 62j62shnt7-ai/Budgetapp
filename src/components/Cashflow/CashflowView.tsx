@@ -1,6 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useBudgetStore } from '../../store/useBudgetStore';
-import { buildSalaryEntries, buildInstallmentEntries } from '../../engine/salaryAndInstallments';
+import {
+  buildSalaryEntries,
+  buildInstallmentEntries,
+  groupPhaseForMonthIndex,
+  monthIndexFromYearMonth,
+} from '../../engine/salaryAndInstallments';
 import {
   buildCreditDueEntries,
   calculateCreditSettlementDate,
@@ -25,8 +30,6 @@ interface CashflowViewProps {
   onOpenEntryModal: (type: 'expense' | 'income') => void;
   onEditEntry?: (entry: CashEntry) => void;
   onDeductPrompt?: (entry: CashEntry, actualAmount: number) => void;
-  onOpenCapModal: () => void;
-  onOpenGoalModal: () => void;
   onOpenInstallmentModal: () => void;
 }
 
@@ -34,8 +37,6 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
   onOpenEntryModal,
   onEditEntry,
   onDeductPrompt,
-  onOpenCapModal,
-  onOpenGoalModal,
   onOpenInstallmentModal,
 }) => {
   const {
@@ -44,13 +45,12 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     updateEntry,
     deleteEntry,
     salaryPattern,
+    salaryAnchorMonth,
     updateSalaryPattern,
+    populateSalaryForecast,
+    clearSalaryForecast,
     installments,
     deleteInstallment,
-    categoryCaps,
-    deleteCategoryCap,
-    savingsGoals,
-    deleteSavingsGoal,
     creditDues,
     creditSettlementOverrides,
     entryActuals,
@@ -89,11 +89,24 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
 
   // Salary matrix inputs
   const currentYm = DateUtils.currentYearMonth();
-  const [startMonth, setStartMonth] = useState(currentYm);
-  const [quarters, setQuarters] = useState(8);
+  const [startMonth, setStartMonth] = useState(() =>
+    localStorage.getItem('budget-control-forecast-start-month') || currentYm
+  );
+  const [quarters, setQuarters] = useState(() => {
+    const stored = Number(localStorage.getItem('budget-control-forecast-quarters'));
+    return Number.isFinite(stored) && stored > 0 ? Math.min(24, Math.max(1, stored)) : 12;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('budget-control-forecast-start-month', startMonth || currentYm);
+  }, [startMonth, currentYm]);
+
+  useEffect(() => {
+    localStorage.setItem('budget-control-forecast-quarters', String(quarters));
+  }, [quarters]);
 
   const hasMaterializedSalary = entries.some((e) => e.source === 'salary');
-  const salaryEntries = hasMaterializedSalary ? [] : buildSalaryEntries(salaryPattern, startMonth, quarters);
+  const salaryEntries = hasMaterializedSalary ? [] : buildSalaryEntries(salaryPattern, startMonth, quarters, salaryAnchorMonth);
   const installmentEntries = buildInstallmentEntries(installments);
   const creditEntries = buildCreditDueEntries({
     accounts,
@@ -219,6 +232,15 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     });
 
   const salaryQuarterTotal = salaryPattern.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+  const salaryGroupMonths = (offset: number) => {
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const anchorIndex = monthIndexFromYearMonth(salaryAnchorMonth || currentYm);
+    let firstMatch = anchorIndex;
+    while (groupPhaseForMonthIndex(firstMatch, salaryAnchorMonth) !== offset) firstMatch += 1;
+    return [0, 1, 2, 3]
+      .map((quarter) => monthNames[((firstMatch + quarter * 3) % 12 + 12) % 12])
+      .join(', ');
+  };
 
   const handleUpdateSalaryAmount = (index: number, newAmount: number) => {
     const copy = [...salaryPattern];
@@ -226,15 +248,82 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     updateSalaryPattern(copy);
   };
 
+  const handleUpdateSalaryPayment = (index: number, updates: Partial<typeof salaryPattern[number]>) => {
+    const copy = [...salaryPattern];
+    copy[index] = { ...copy[index], ...updates };
+    updateSalaryPattern(copy);
+  };
+
+  const handleAddSalaryPayment = () => {
+    updateSalaryPattern([
+      ...salaryPattern,
+      { monthOffset: 0, day: 1, amount: 0 },
+    ]);
+  };
+
+  const handleDeleteSalaryPayment = (index: number) => {
+    updateSalaryPattern(salaryPattern.filter((_, paymentIndex) => paymentIndex !== index));
+  };
+
+  const getInstallmentProgress = (installment: (typeof installments)[number]) => {
+    const total = Math.max(0, Number(installment.remainingMonths) || Number(installment.totalMonths) || 0);
+    const paid = Array.from({ length: total }, (_, index) => {
+      const actual = Number(entryActuals[`installment-${installment.id}-${index}`]) || 0;
+      return actual >= (Number(installment.amount) || 0) && actual > 0;
+    }).filter(Boolean).length;
+    return { total, paid, remaining: Math.max(0, total - paid) };
+  };
+
+  const installmentMonthlyTotal = installments.reduce((sum, installment) => sum + (Number(installment.amount) || 0), 0);
+  const installmentOutstandingTotal = installments.reduce((sum, installment) => {
+    const progress = getInstallmentProgress(installment);
+    return sum + (Number(installment.amount) || 0) * progress.remaining;
+  }, 0);
+  const installmentProgressSummary = installments.reduce(
+    (summary, installment) => {
+      const progress = getInstallmentProgress(installment);
+      return {
+        paid: summary.paid + progress.paid,
+        total: summary.total + progress.total,
+        remaining: summary.remaining + progress.remaining,
+      };
+    },
+    { paid: 0, total: 0, remaining: 0 },
+  );
+
+  const handlePopulateSalaryForecast = () => {
+    const added = populateSalaryForecast(startMonth, quarters, salaryAnchorMonth);
+    if (typeof window !== 'undefined') {
+      window.alert(
+        added > 0
+          ? `Salary forecast populated with ${added} new entr${added === 1 ? 'y' : 'ies'}.`
+          : 'Salary forecast refreshed for the selected period.',
+      );
+    }
+  };
+
+  const handleClearSalaryForecast = (full: boolean) => {
+    const scope = full
+      ? 'all unactualized salary forecast entries'
+      : `salary forecast entries from ${startMonth} for ${quarters} quarter${quarters === 1 ? '' : 's'}`;
+    if (typeof window !== 'undefined' && !window.confirm(`Clear ${scope}? Actualized salary history will be preserved.`)) return;
+    const removed = full
+      ? clearSalaryForecast()
+      : clearSalaryForecast(startMonth, quarters);
+    if (typeof window !== 'undefined') {
+      window.alert(removed > 0 ? `Cleared ${removed} salary forecast entr${removed === 1 ? 'y' : 'ies'}.` : 'No unactualized salary forecast entries matched this scope.');
+    }
+  };
+
   return (
-    <section className="view" id="cashflow" style={{ display: 'block' }}>
+    <section className="view cashflow-view" id="cashflow" style={{ display: 'block' }}>
       {/* Summary Period Filter Bar */}
-      <div className="panel" style={{ marginBottom: '18px' }}>
+      <div className="panel cashflow-top-panel" style={{ marginBottom: '18px' }}>
         <div className="panel-heading">
           <h3 style={{ margin: 0 }}>Summary period</h3>
           <span style={{ fontSize: '13px', color: 'var(--muted)' }}>Forecast candidate entries list</span>
         </div>
-        <div className="salary-controls" style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '10px', flexWrap: 'wrap' }}>
+        <div className="salary-controls cashflow-filters" style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '10px', flexWrap: 'wrap' }}>
           <label style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
             From:
             <input
@@ -272,137 +361,33 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
       </div>
 
       {/* Metrics Row */}
-      <div className="metrics-grid" id="cashflowSummary">
-        <article className="metric">
+      <div className="metrics-grid cashflow-summary-grid" id="cashflowSummary">
+        <article className="metric cashflow-metric">
           <span>Forecast income</span>
           <strong style={{ color: 'var(--green)' }}>{formatMoney(totalIncome)}</strong>
           <small>Total across the selected period</small>
         </article>
-        <article className="metric">
+        <article className="metric cashflow-metric">
           <span>Forecast expenses</span>
           <strong style={{ color: 'var(--red)' }}>{formatMoney(totalExpenses)}</strong>
           <small>Includes installments &amp; credit dues</small>
         </article>
-        <article className="metric">
+        <article className="metric cashflow-metric">
           <span>Net</span>
           <strong style={{ color: netPeriod >= 0 ? 'var(--green)' : 'var(--red)' }}>
             {netPeriod >= 0 ? '+' : ''}{formatMoney(netPeriod)}
           </strong>
           <small>Income minus expenses</small>
         </article>
-        <article className="metric">
+        <article className="metric cashflow-metric">
           <span>Entries</span>
           <strong>{summaryRows.length}</strong>
           <small>{summaryRange}</small>
         </article>
       </div>
 
-      {/* Category Caps & Savings Goals */}
-      <div className="content-grid salary-layout" style={{ marginTop: '18px' }}>
-        <section className="panel">
-          <div className="panel-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 style={{ margin: 0 }}>Category budget caps</h3>
-            <button className="ghost-button" type="button" onClick={onOpenCapModal}>
-              <Plus size={14} />
-              <span>Set cap</span>
-            </button>
-          </div>
-          <p style={{ color: 'var(--muted)', fontSize: '13px', margin: '4px 0 12px' }}>
-            Monthly spending limits per category with progress tracking.
-          </p>
-          <div id="categoryCapsList" className="stack-list">
-            {categoryCaps.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '16px', color: 'var(--muted)', fontSize: '13px' }}>
-                No category caps set.
-              </div>
-            ) : (
-              categoryCaps.map((cap) => (
-                <div
-                  key={cap.category}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '8px 12px',
-                    borderRadius: '6px',
-                    background: 'var(--surface-soft)',
-                    marginBottom: '6px',
-                  }}
-                >
-                  <div>
-                    <strong>{cap.category}</strong>
-                    <span style={{ fontSize: '12px', color: 'var(--muted)', display: 'block' }}>
-                      Cap: {formatMoney(cap.cap)}
-                    </span>
-                  </div>
-                  <button
-                    className="ghost-button"
-                    style={{ padding: '4px' }}
-                    onClick={() => deleteCategoryCap(cap.category)}
-                  >
-                    <Trash2 size={13} color="var(--red)" />
-                  </button>
-                </div>
-              ))
-            )}
-          </div>
-        </section>
-
-        <section className="panel">
-          <div className="panel-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 style={{ margin: 0 }}>Savings goals</h3>
-            <button className="ghost-button" type="button" onClick={onOpenGoalModal}>
-              <Plus size={14} />
-              <span>Add goal</span>
-            </button>
-          </div>
-          <p style={{ color: 'var(--muted)', fontSize: '13px', margin: '4px 0 12px' }}>
-            Track target funds and emergency reserve savings goals.
-          </p>
-          <div id="savingsGoalsList" className="stack-list">
-            {savingsGoals.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '16px', color: 'var(--muted)', fontSize: '13px' }}>
-                No savings goals created.
-              </div>
-            ) : (
-              savingsGoals.map((g) => {
-                const pct = Math.min(100, Math.round(((g.current || 0) / (g.target || 1)) * 100));
-                return (
-                  <div
-                    key={g.id}
-                    style={{
-                      padding: '10px 12px',
-                      borderRadius: '6px',
-                      background: 'var(--surface-soft)',
-                      marginBottom: '8px',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                      <strong>{g.name}</strong>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '12px', fontWeight: 600 }}>{formatMoney(g.current)} / {formatMoney(g.target)}</span>
-                        <button
-                          className="ghost-button"
-                          style={{ padding: '2px' }}
-                          onClick={() => deleteSavingsGoal(g.id)}
-                        >
-                          <Trash2 size={12} color="var(--red)" />
-                        </button>
-                      </div>
-                    </div>
-                    <div style={{ height: '5px', background: 'rgba(0,0,0,0.1)', borderRadius: '3px', overflow: 'hidden' }}>
-                      <div style={{ width: `${pct}%`, height: '100%', background: 'var(--green)' }} />
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </section>
-      </div>
-
       {/* Salary Structure Collapsible */}
-      <section className="panel collapsible-panel" style={{ marginTop: '18px' }}>
+      <section className="panel collapsible-panel cashflow-collapsible-panel" style={{ marginTop: '18px' }}>
         <div
           className="panel-heading"
           style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
@@ -421,18 +406,18 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
 
         {salaryOpen && (
           <div className="collapsible-content" style={{ marginTop: '12px' }}>
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap' }}>
-              <label style={{ fontSize: '13px' }}>
+            <div className="salary-structure-controls" style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap' }}>
+              <label>
                 Start month:
                 <input
                   type="month"
-                  className="form-input"
-                  style={{ width: '140px', marginLeft: '6px', padding: '4px 8px' }}
+                  className="form-input salary-start-month"
+                  style={{ marginLeft: '6px', padding: '4px 8px' }}
                   value={startMonth}
                   onChange={(e) => setStartMonth(e.target.value)}
                 />
               </label>
-              <label style={{ fontSize: '13px' }}>
+              <label>
                 Quarters:
                 <input
                   type="number"
@@ -441,36 +426,86 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                   className="form-input"
                   style={{ width: '70px', marginLeft: '6px', padding: '4px 8px' }}
                   value={quarters}
-                  onChange={(e) => setQuarters(Number(e.target.value))}
+                  onChange={(e) => setQuarters(Math.min(24, Math.max(1, Number(e.target.value) || 1)))}
                 />
               </label>
+              <button className="ghost-button" type="button" onClick={handleAddSalaryPayment}>
+                <Plus size={15} /> Add payment
+              </button>
+              <button className="primary-button salary-populate-button" type="button" onClick={handlePopulateSalaryForecast}>
+                Populate forecast
+              </button>
+              <button className="ghost-button salary-clear-button" type="button" onClick={() => handleClearSalaryForecast(false)}>
+                Clear period
+              </button>
+              <button className="ghost-button salary-clear-all-button" type="button" onClick={() => handleClearSalaryForecast(true)}>
+                Clear all
+              </button>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
+            <div className="salary-structure-grid">
               {salaryPattern.map((p, idx) => (
                 <div
                   key={idx}
+                  className="salary-structure-card"
                   style={{
-                    padding: '8px 12px',
-                    borderRadius: '6px',
+                    padding: '14px',
+                    borderRadius: '10px',
                     background: 'var(--surface-soft)',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
                   }}
                 >
-                  <div>
-                    <strong style={{ fontSize: '12px', display: 'block' }}>
-                      Month +{p.monthOffset} (Day {p.day})
+                  <div className="salary-structure-card-label">
+                    <strong>
+                      Payment {idx + 1} · {salaryGroupMonths(Number(p.monthOffset) || 0)}
                     </strong>
+                    <span>Repeats every three months in the selected group</span>
                   </div>
-                  <input
-                    type="number"
-                    className="form-input"
-                    style={{ width: '90px', padding: '3px 6px', fontSize: '12px' }}
-                    value={p.amount || ''}
-                    onChange={(e) => handleUpdateSalaryAmount(idx, Number(e.target.value))}
-                  />
+                  <div className="salary-structure-card-fields">
+                    <label>
+                      <span>Group</span>
+                      <select
+                        className="form-input"
+                        aria-label={`Salary payment group for payment ${idx + 1}`}
+                        value={Number(p.monthOffset) || 0}
+                        onChange={(e) => handleUpdateSalaryPayment(idx, { monthOffset: Number(e.target.value) })}
+                      >
+                        <option value={0}>Group 1</option>
+                        <option value={1}>Group 2</option>
+                        <option value={2}>Group 3</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>Day</span>
+                      <input
+                        type="number"
+                        min="1"
+                        max="31"
+                        className="form-input"
+                        aria-label={`Salary payment day for payment ${idx + 1}`}
+                        value={p.day || ''}
+                        onChange={(e) => handleUpdateSalaryPayment(idx, { day: Math.min(31, Math.max(1, Number(e.target.value) || 1)) })}
+                      />
+                    </label>
+                    <label>
+                      <span>Amount</span>
+                      <input
+                        type="number"
+                        min="0"
+                        className="form-input"
+                        aria-label={`Salary amount for payment ${idx + 1}`}
+                        value={p.amount || ''}
+                        onChange={(e) => handleUpdateSalaryAmount(idx, Number(e.target.value))}
+                      />
+                    </label>
+                    <button
+                      className="icon-button salary-delete-button"
+                      type="button"
+                      aria-label={`Delete salary payment ${idx + 1}`}
+                      onClick={() => handleDeleteSalaryPayment(idx)}
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -479,8 +514,8 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
       </section>
 
       {/* Installments & Expense Mix */}
-      <div className="content-grid salary-layout" style={{ marginTop: '18px' }}>
-        <section className="panel collapsible-panel">
+      <div className="content-grid salary-layout cashflow-card-grid" style={{ marginTop: '18px' }}>
+        <section className="panel collapsible-panel cashflow-collapsible-panel">
           <div
             className="panel-heading"
             style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
@@ -489,6 +524,22 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
               <h3 style={{ margin: 0 }}>Installments</h3>
               <span style={{ fontSize: '12px', color: 'var(--muted)' }}>({installments.length})</span>
+              {!installmentsOpen && installments.length > 0 && (
+                <span className="collapsed-installment-summary">
+                  <strong>{formatMoney(installmentMonthlyTotal)}/mo</strong>
+                  <span className="collapsed-installment-total">
+                    Total: {formatMoney(installmentOutstandingTotal)}
+                  </span>
+                  <span>
+                    {installmentProgressSummary.paid > 0
+                      ? `${installmentProgressSummary.paid} of ${installmentProgressSummary.total} paid`
+                      : `${installmentProgressSummary.total} scheduled`}
+                  </span>
+                  <span className="collapsed-installment-remaining">
+                    {installmentProgressSummary.remaining} remaining
+                  </span>
+                </span>
+              )}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <button
@@ -514,8 +565,12 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                 </div>
               ) : (
                 installments.map((inst) => (
+                  (() => {
+                    const progress = getInstallmentProgress(inst);
+                    return (
                   <div
                     key={inst.id}
+                    className="installment-summary-card"
                     style={{
                       display: 'flex',
                       justifyContent: 'space-between',
@@ -529,7 +584,15 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                     <div>
                       <strong>{inst.name}</strong>
                       <span style={{ fontSize: '12px', color: 'var(--muted)', display: 'block' }}>
-                        {formatMoney(inst.amount)}/mo · {inst.remainingMonths || inst.totalMonths} months left
+                        {formatMoney(inst.amount)}/mo · Total: {formatMoney((Number(inst.amount) || 0) * progress.total)}
+                      </span>
+                      <span style={{ fontSize: '12px', color: 'var(--muted)', display: 'block' }}>
+                        {progress.paid > 0 ? `Paid ${progress.paid} of ${progress.total}` : `${progress.total} scheduled`}
+                      </span>
+                      <span className={`installment-progress-label ${progress.remaining === 0 ? 'complete' : ''}`}>
+                        {progress.remaining === 0
+                          ? 'Completed · Remaining: 0'
+                          : `${progress.remaining} remaining · ${formatMoney((Number(inst.amount) || 0) * progress.remaining)} outstanding`}
                       </span>
                     </div>
                     <button
@@ -540,13 +603,15 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                       <Trash2 size={13} color="var(--red)" />
                     </button>
                   </div>
+                    );
+                  })()
                 ))
               )}
             </div>
           )}
         </section>
 
-        <section className="panel collapsible-panel">
+        <section className="panel collapsible-panel cashflow-collapsible-panel">
           <div
             className="panel-heading"
             style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
@@ -558,28 +623,30 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
 
           {expenseMixOpen && (
             <div className="collapsible-content" style={{ marginTop: '12px' }}>
-              {Object.entries(expensesByCategory).map(([cat, amt]) => {
-                const pct = totalExpenses > 0 ? Math.round((amt / totalExpenses) * 100) : 0;
-                return (
-                  <div key={cat} style={{ marginBottom: '8px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '2px' }}>
-                      <span>{cat}</span>
-                      <strong>{formatMoney(amt)} ({pct}%)</strong>
+              {Object.entries(expensesByCategory)
+                .sort(([, amountA], [, amountB]) => amountB - amountA)
+                .map(([cat, amt]) => {
+                  const pct = totalExpenses > 0 ? Math.round((amt / totalExpenses) * 100) : 0;
+                  return (
+                    <div key={cat} style={{ marginBottom: '8px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '2px' }}>
+                        <span>{cat}</span>
+                        <strong>{formatMoney(amt)} ({pct}%)</strong>
+                      </div>
+                      <div style={{ height: '4px', background: 'rgba(0,0,0,0.08)', borderRadius: '2px', overflow: 'hidden' }}>
+                        <div style={{ width: `${pct}%`, height: '100%', background: 'var(--red)' }} />
+                      </div>
                     </div>
-                    <div style={{ height: '4px', background: 'rgba(0,0,0,0.08)', borderRadius: '2px', overflow: 'hidden' }}>
-                      <div style={{ width: `${pct}%`, height: '100%', background: 'var(--red)' }} />
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
             </div>
           )}
         </section>
       </div>
 
       {/* Forecast Entries Table */}
-      <section className="panel" style={{ marginTop: '18px' }}>
-        <div className="panel-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+      <section className="panel cashflow-table-panel" style={{ marginTop: '18px' }}>
+        <div className="panel-heading cashflow-table-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <h3 style={{ margin: 0 }}>Forecast entries</h3>
             <button
@@ -592,7 +659,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
               <span>Add entry</span>
             </button>
           </div>
-          <div className="filters" style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div className="filters cashflow-filters" style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
             <select
               id="typeFilter"
               className="form-select"
@@ -699,8 +766,8 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                       {[e.tag, ...(e.draws || []).map((draw) => draw.tag)]
                         .filter((tag, index, tags): tag is string => Boolean(tag) && tags.indexOf(tag) === index)
                         .map((tag) => (
-                        <span key={`${e.id}-${tag}`} className="source-pill" style={{ marginLeft: '4px', fontSize: '10px' }}>
-                          #{tag}
+                        <span key={`${e.id}-${tag}`} className="cashflow-tag-pill">
+                          <span aria-hidden="true">#</span>{tag}
                         </span>
                         ))}
                       {e.creditType && (
@@ -709,9 +776,12 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                         </span>
                       )}
                       {isCreditSettlement && (
-                        <small style={{ display: 'block', color: 'var(--muted)', fontSize: '10.5px', marginTop: '2px' }}>
-                          Settlement due
-                        </small>
+                        <div className="credit-due-summary">
+                          <small>Settlement due</small>
+                          <small>
+                            Calculated: <strong>{formatMoney(Number(e.calculatedAmount ?? e.amount) || 0)}</strong>
+                          </small>
+                        </div>
                       )}
                     </td>
                     <td className="cell-account">{e.account.toUpperCase()}</td>

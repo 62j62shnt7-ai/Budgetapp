@@ -133,7 +133,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
       : type === 'income' ? 'Income' : 'Other');
     const chosenAccount = isCardExpense && (!account.trim() || account.toLowerCase() === 'cash')
       ? (creditType.includes('hsbc') ? 'HSBC Credit' : 'CIB Credit')
-      : account.toLowerCase().trim() || 'cash';
+      : account.toLowerCase().trim() || 'cib';
     const settlementDate = isCardExpense
       ? creditSettlementDate || calculateCreditSettlementDate(date, creditType.includes('hsbc') ? 'hsbc' : 'cib')
       : '';
@@ -224,8 +224,8 @@ export const EntryModal: React.FC<EntryModalProps> = ({
   };
 
   return (
-    <dialog open className="native-dialog" style={{ display: 'block', zIndex: 1000 }}>
-      <form onSubmit={handleSubmit} className="entry-form" id="entryForm">
+    <dialog open className="native-dialog entry-dialog" style={{ display: 'block', zIndex: 1000 }}>
+      <form onSubmit={handleSubmit} className="entry-form entry-form-modern" id="entryForm">
         <div className="dialog-heading">
           <h3>{entryToEdit ? 'Edit budget entry' : `Add ${type === 'income' ? 'Income' : 'Expense'}`}</h3>
           <button className="icon-button" type="button" aria-label="Close" onClick={onClose}>

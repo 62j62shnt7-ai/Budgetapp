@@ -26,7 +26,8 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddModal }) => {
     setTheme, 
     accounts, 
     entries, 
-    salaryPattern, 
+    salaryPattern,
+    salaryAnchorMonth,
     installments, 
     rates, 
     storageAssets,
@@ -45,7 +46,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddModal }) => {
   // Dynamic forecast & health calculation
   const currentYm = DateUtils.currentYearMonth();
   const hasMaterializedSalary = entries.some((entry) => entry.source === 'salary');
-  const salaryEntries = hasMaterializedSalary ? [] : buildSalaryEntries(salaryPattern, currentYm, 4);
+  const salaryEntries = hasMaterializedSalary ? [] : buildSalaryEntries(salaryPattern, currentYm, 12, salaryAnchorMonth);
   const installmentEntries = buildInstallmentEntries(installments);
   const creditEntries = buildCreditDueEntries({
     accounts,

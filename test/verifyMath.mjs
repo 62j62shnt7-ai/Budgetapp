@@ -43,6 +43,17 @@ const pattern = [
 const salaryEntries = buildSalaryEntries(pattern, currentYm, 1);
 assert.strictEqual(salaryEntries.length >= 2, true);
 assert.strictEqual(salaryEntries[0].amount, 20000);
+
+const anchoredSalary = buildSalaryEntries(
+  [{ monthOffset: 0, day: 31, amount: 1000 }, { monthOffset: 1, day: 15, amount: 2000 }],
+  '2026-01',
+  1,
+  '2026-01',
+);
+assert.deepStrictEqual(
+  anchoredSalary.map((entry) => [entry.date, entry.amount]),
+  [['2026-01-31', 1000], ['2026-02-15', 2000]],
+);
 console.log('✓ Salary matrix schedule generation verified');
 
 // 4. Forecast Engine & Deficits

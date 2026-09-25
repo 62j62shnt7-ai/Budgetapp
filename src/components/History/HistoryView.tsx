@@ -67,6 +67,10 @@ export const HistoryView: React.FC = () => {
     setSearchTerm('');
   };
 
+  const handleTagFilter = (tag: string) => {
+    setSelectedTag((current) => current.toLowerCase() === tag.toLowerCase() ? 'all' : tag);
+  };
+
   const handleClearActual = (id: string) => {
     if (window.confirm('Clear recorded actual for this entry? It will revert back to its planned forecast.')) {
       clearActual(id);
@@ -397,13 +401,15 @@ export const HistoryView: React.FC = () => {
   const totalAnalyticsAmount = sortedGroups.reduce((s, g) => s + g[1].total, 0);
 
   return (
-    <section className="view" id="history" style={{ display: 'block' }}>
+    <section className="view history-view" id="history" style={{ display: 'block' }}>
       {/* Subnav Tabs */}
-      <div className="subnav-tabs" role="tablist" aria-label="History tabs" style={{ marginBottom: '20px' }}>
+      <div className="subnav-tabs history-main-tabs" role="tablist" aria-label="History tabs" style={{ marginBottom: '20px' }}>
         <button
           className={`subnav-tab ${activeHistoryTab === 'summary' ? 'active' : ''}`}
           type="button"
           role="tab"
+          aria-selected={activeHistoryTab === 'summary'}
+          aria-controls="historySummaryPane"
           onClick={() => setActiveHistoryTab('summary')}
         >
           📊 Monthly Summary
@@ -412,6 +418,8 @@ export const HistoryView: React.FC = () => {
           className={`subnav-tab ${activeHistoryTab === 'transactions' ? 'active' : ''}`}
           type="button"
           role="tab"
+          aria-selected={activeHistoryTab === 'transactions'}
+          aria-controls="historyTransactionsPane"
           onClick={() => setActiveHistoryTab('transactions')}
         >
           📋 Individual Validations
@@ -421,36 +429,36 @@ export const HistoryView: React.FC = () => {
       {/* Tab 1: Monthly Summary */}
       {activeHistoryTab === 'summary' && (
         <div className="history-tab-pane active" id="historySummaryPane">
-          <div className="metrics-grid" id="historyLifetimeSummary" style={{ marginBottom: '18px' }}>
-            <article className="metric">
+          <div className="metrics-grid history-summary-grid" id="historyLifetimeSummary" style={{ marginBottom: '18px' }}>
+            <article className="metric history-metric">
               <span>Lifetime Income</span>
               <strong id="historyLifetimeIncome" style={{ color: 'var(--green)' }}>
                 {formatMoney(totalLifetimeIncome)}
               </strong>
               <small>Total realized income</small>
             </article>
-            <article className="metric">
+            <article className="metric history-metric">
               <span>Lifetime Expenses</span>
               <strong id="historyLifetimeExpenses" style={{ color: 'var(--red)' }}>
                 {formatMoney(totalLifetimeExpenses)}
               </strong>
               <small>Total realized expenses</small>
             </article>
-            <article className="metric">
+            <article className="metric history-metric">
               <span>Lifetime Net</span>
               <strong id="historyLifetimeNet" style={{ color: lifetimeNet >= 0 ? 'var(--green)' : 'var(--red)' }}>
                 {lifetimeNet >= 0 ? '+' : ''}{formatMoney(lifetimeNet)}
               </strong>
               <small>Realized cash surplus</small>
             </article>
-            <article className="metric">
+            <article className="metric history-metric">
               <span>Savings Rate</span>
               <strong id="historySavingsRate">{lifetimeSavingsRate}%</strong>
               <small>Net / Income ratio</small>
             </article>
           </div>
 
-          <section className="panel">
+          <section className="panel history-table-panel">
             <div className="panel-heading">
               <h3 style={{ margin: 0 }}>Monthly income and expenses</h3>
             </div>
@@ -514,7 +522,7 @@ export const HistoryView: React.FC = () => {
       {/* Tab 2: Individual Validations */}
       {activeHistoryTab === 'transactions' && (
         <div className="history-tab-pane" id="historyTransactionsPane">
-          <div className="panel" style={{ marginBottom: '18px' }}>
+          <div className="panel history-filter-panel" style={{ marginBottom: '18px' }}>
             <div className="panel-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ margin: 0 }}>Filter Validated Entries</h3>
               <span id="historyFilteredCount" style={{ fontSize: '13px', color: 'var(--muted)' }}>
@@ -578,18 +586,18 @@ export const HistoryView: React.FC = () => {
             </div>
           </div>
 
-          <div className="metrics-grid" id="historyFilteredSummary" style={{ marginBottom: '18px' }}>
-            <article className="metric">
+          <div className="metrics-grid history-summary-grid" id="historyFilteredSummary" style={{ marginBottom: '18px' }}>
+            <article className="metric history-metric">
               <span>Filtered Income</span>
               <strong style={{ color: 'var(--green)' }}>{formatMoney(filteredIncome)}</strong>
               <small>Total for selected criteria</small>
             </article>
-            <article className="metric">
+            <article className="metric history-metric">
               <span>Filtered Expenses</span>
               <strong style={{ color: 'var(--red)' }}>{formatMoney(filteredExpenses)}</strong>
               <small>Total for selected criteria</small>
             </article>
-            <article className="metric">
+            <article className="metric history-metric">
               <span>Filtered Net</span>
               <strong style={{ color: filteredNet >= 0 ? 'var(--green)' : 'var(--red)' }}>
                 {filteredNet >= 0 ? '+' : ''}{formatMoney(filteredNet)}
@@ -599,7 +607,7 @@ export const HistoryView: React.FC = () => {
           </div>
 
           {/* Collapsible Spending Analytics */}
-          <section className="panel collapsible-panel" style={{ marginBottom: '18px' }}>
+          <section className="panel collapsible-panel history-analytics-panel" style={{ marginBottom: '18px' }}>
             <div
               className="panel-heading"
               style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
@@ -874,9 +882,15 @@ export const HistoryView: React.FC = () => {
                           <td>
                             <strong>{entry.category}</strong>
                             {getEntryTags(entry).map((tag) => (
-                              <span key={`${entry.id}-${tag}`} style={{ fontSize: '11px', color: 'var(--muted)', display: 'block' }}>
+                              <button
+                                key={`${entry.id}-${tag}`}
+                                type="button"
+                                className={`history-tag-filter ${selectedTag.toLowerCase() === tag.toLowerCase() ? 'active' : ''}`}
+                                onClick={() => handleTagFilter(tag)}
+                                aria-pressed={selectedTag.toLowerCase() === tag.toLowerCase()}
+                              >
                                 🏷️ {tag}
-                              </span>
+                              </button>
                             ))}
                           </td>
                           <td><span className="account-pill">{entry.account?.toUpperCase() || 'CASH'}</span></td>
@@ -965,7 +979,18 @@ export const HistoryView: React.FC = () => {
                                       {entry.draws?.map((draw, index) => (
                                         <tr key={`${entryId}-draw-${index}`}>
                                           <td>{DateUtils.formatDisplayDate(draw.date)}</td>
-                                          <td>{draw.tag ? `🏷️ ${draw.tag}` : '—'}</td>
+                                          <td>
+                                            {draw.tag ? (
+                                              <button
+                                                type="button"
+                                                className={`history-tag-filter ${selectedTag.toLowerCase() === draw.tag.toLowerCase() ? 'active' : ''}`}
+                                                onClick={() => handleTagFilter(draw.tag as string)}
+                                                aria-pressed={selectedTag.toLowerCase() === draw.tag.toLowerCase()}
+                                              >
+                                                🏷️ {draw.tag}
+                                              </button>
+                                            ) : '—'}
+                                          </td>
                                           <td>{(entry.account || 'cash').toUpperCase()}</td>
                                           <td className="number">{formatMoney(Number(draw.amount) || 0)}</td>
                                         </tr>

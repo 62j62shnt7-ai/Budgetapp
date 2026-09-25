@@ -3,15 +3,20 @@ import { useBudgetStore } from '../../store/useBudgetStore';
 import { formatMoney } from '../../engine/dateUtils';
 import { ArrowRightLeft } from 'lucide-react';
 
+const accountOrder = ['cib', 'hsbc'] as const;
+
 export const AccountsView: React.FC = () => {
   const { accounts, updateAccountBalance } = useBudgetStore();
 
   const [transferFrom, setTransferFrom] = useState<string>('cib');
-  const [transferTo, setTransferTo] = useState<string>('cash');
+  const [transferTo, setTransferTo] = useState<string>('hsbc');
   const [transferAmount, setTransferAmount] = useState<string>('');
   const [transferSuccess, setTransferSuccess] = useState<string | null>(null);
 
   const totalOpening = Object.values(accounts).reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
+  const displayedAccounts = accountOrder.flatMap((id) =>
+    accounts[id] ? [[id, accounts[id]] as const] : []
+  );
 
   const handleBalanceChange = (id: string, newBalance: number) => {
     updateAccountBalance(id, newBalance);
@@ -44,7 +49,7 @@ export const AccountsView: React.FC = () => {
             <h3 style={{ margin: 0 }}>Account Settings</h3>
           </div>
           <div id="accountsList" className="stack-list" style={{ marginTop: '12px' }}>
-            {Object.entries(accounts).map(([id, acc]) => (
+            {displayedAccounts.map(([id, acc]) => (
               <div
                 key={id}
                 className="list-row"
@@ -60,12 +65,8 @@ export const AccountsView: React.FC = () => {
               >
                 <div>
                   <strong style={{ fontSize: '15px' }}>{acc.name}</strong>
-                  <br />
-                  <small style={{ color: 'var(--muted)', fontSize: '12px' }}>
-                    Maturity Day: {acc.maturityDay}
-                  </small>
                 </div>
-                <div className="inline-fields" style={{ display: 'grid', gridTemplateColumns: '130px 90px', gap: '10px', margin: 0 }}>
+                <div className="inline-fields" style={{ display: 'grid', gridTemplateColumns: '130px', gap: '10px', margin: 0 }}>
                   <label style={{ margin: 0, fontSize: '12px' }}>
                     Balance
                     <input
@@ -73,17 +74,6 @@ export const AccountsView: React.FC = () => {
                       value={acc.balance}
                       onChange={(e) => handleBalanceChange(id, Number(e.target.value) || 0)}
                       style={{ marginTop: '2px', fontWeight: 600 }}
-                    />
-                  </label>
-                  <label style={{ margin: 0, fontSize: '12px' }}>
-                    Day
-                    <input
-                      type="number"
-                      min={1}
-                      max={31}
-                      defaultValue={acc.maturityDay}
-                      readOnly
-                      style={{ marginTop: '2px', opacity: 0.8 }}
                     />
                   </label>
                 </div>

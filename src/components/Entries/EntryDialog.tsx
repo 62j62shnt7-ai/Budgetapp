@@ -18,7 +18,7 @@ export const EntryDialog: React.FC<EntryDialogProps> = ({ isOpen, onClose }) => 
   const [date, setDate] = useState<string>(DateUtils.todayString());
   const [category, setCategory] = useState<string>('Home');
   const [subcategory, setSubcategory] = useState<string>('');
-  const [account, setAccount] = useState<string>('cash');
+  const [account, setAccount] = useState<string>('cib');
   const [tag, setTag] = useState<string>('');
   const [note, setNote] = useState<string>('');
 
@@ -132,7 +132,6 @@ export const EntryDialog: React.FC<EntryDialogProps> = ({ isOpen, onClose }) => 
                   value={account}
                   onChange={(e) => setAccount(e.target.value)}
                 >
-                  <option value="cash">Cash</option>
                   <option value="cib">CIB (Credit Card)</option>
                   <option value="hsbc">HSBC (Credit Card)</option>
                 </select>

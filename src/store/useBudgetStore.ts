@@ -20,6 +20,7 @@ import {
   isCardExpenseForAccount,
   isLumpCreditDueForAccount,
 } from '../engine/creditCards';
+import { buildSalaryEntries } from '../engine/salaryAndInstallments';
 
 let gistSyncTimer: ReturnType<typeof setTimeout> | null = null;
 let gistSyncInFlight = false;
@@ -52,6 +53,8 @@ export const STORAGE_KEYS = {
   creditDueMonths: 'budget-control-credit-due-months',
   creditSettlementOverrides: 'budget-control-credit-settlement-overrides',
   salaryAnchor: 'budget-control-salary-anchor',
+  forecastStartMonth: 'budget-control-forecast-start-month',
+  forecastQuarters: 'budget-control-forecast-quarters',
 };
 
 function loadStorage<T>(key: string, fallback: T): T {
@@ -126,6 +129,7 @@ export interface BudgetStoreState {
   gistToken: string;
   gistId: string;
   gistAutoSync: boolean;
+  gistSyncStatus: 'idle' | 'scheduled' | 'syncing' | 'synced' | 'error';
   historyAdminUnlocked: boolean;
 
   // Actions
@@ -144,6 +148,8 @@ export interface BudgetStoreState {
 
   updateAccountBalance: (accountKey: string, newBalance: number) => void;
   updateSalaryPattern: (pattern: SalaryPayment[]) => void;
+  populateSalaryForecast: (startMonth: string, quarters: number, anchorMonth?: string) => number;
+  clearSalaryForecast: (startMonth?: string, quarters?: number) => number;
 
   addInstallment: (installment: Omit<Installment, 'id'>) => void;
   updateInstallment: (id: string, updates: Partial<Installment>) => void;
@@ -168,6 +174,7 @@ export interface BudgetStoreState {
   deleteJob: (jobType: 'asf' | 'irq' | 'partTime', jobId: string) => void;
 
   setGistConfig: (token: string, gistId: string, autoSync: boolean) => void;
+  syncFromGist: (token?: string, gistId?: string) => Promise<boolean>;
   autoTagEntries: () => number;
   resetData: () => void;
   restoreResetBackup: () => boolean;
@@ -179,15 +186,20 @@ export interface BudgetStoreState {
 
 function scheduleAutoGistSync(getState: () => BudgetStoreState): void {
   if (gistSyncTimer) clearTimeout(gistSyncTimer);
+  useBudgetStore.setState({ gistSyncStatus: 'scheduled' });
   gistSyncTimer = setTimeout(async () => {
     gistSyncTimer = null;
     const state = getState();
-    if (!state.gistAutoSync || !state.gistToken || !state.gistId) return;
+    if (!state.gistAutoSync || !state.gistToken || !state.gistId) {
+      useBudgetStore.setState({ gistSyncStatus: 'idle' });
+      return;
+    }
     if (gistSyncInFlight) {
       scheduleAutoGistSync(getState);
       return;
     }
     gistSyncInFlight = true;
+    useBudgetStore.setState({ gistSyncStatus: 'syncing' });
     try {
       const response = await fetch(`https://api.github.com/gists/${state.gistId}`, {
         method: 'PATCH',
@@ -206,8 +218,10 @@ function scheduleAutoGistSync(getState: () => BudgetStoreState): void {
       if (!response.ok) {
         throw new Error(`Gist auto-sync failed: ${response.status} ${response.statusText}`);
       }
+      useBudgetStore.setState({ gistSyncStatus: 'synced' });
     } catch (error) {
       console.error(error);
+      useBudgetStore.setState({ gistSyncStatus: 'error' });
     } finally {
       gistSyncInFlight = false;
     }
@@ -217,8 +231,12 @@ function scheduleAutoGistSync(getState: () => BudgetStoreState): void {
 const defaultAccounts: Record<string, AccountBalance> = {
   cib: { name: 'CIB', balance: 0, maturityDay: 15 },
   hsbc: { name: 'HSBC', balance: 0, maturityDay: 30 },
-  cash: { name: 'Cash', balance: 0, maturityDay: 1 },
 };
+
+function withoutCashAccount(accounts: Record<string, AccountBalance>): Record<string, AccountBalance> {
+  const { cash: _cash, ...remaining } = accounts;
+  return remaining;
+}
 
 const defaultSalaryPattern: SalaryPayment[] = [
   { monthOffset: 0, day: 15, amount: 0 },
@@ -264,7 +282,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
   entries: loadStorage<CashEntry[]>(STORAGE_KEYS.entries, []),
   archivedEntries: loadStorage<CashEntry[]>(STORAGE_KEYS.archivedEntries, []),
   deletedForecasts: loadStorage<string[]>(STORAGE_KEYS.deletedForecasts, []),
-  accounts: loadStorage<Record<string, AccountBalance>>(STORAGE_KEYS.accounts, defaultAccounts),
+  accounts: withoutCashAccount(loadStorage<Record<string, AccountBalance>>(STORAGE_KEYS.accounts, defaultAccounts)),
   salaryPattern: loadStorage<SalaryPayment[]>(STORAGE_KEYS.salary, defaultSalaryPattern),
   installments: loadStorage<Installment[]>(STORAGE_KEYS.installments, []),
   rates: loadStorage<RatesData>(STORAGE_KEYS.rates, defaultRates),
@@ -289,6 +307,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
   gistAutoSync: localStorage.getItem(STORAGE_KEYS.gistAutoSync) === null
     ? true
     : localStorage.getItem(STORAGE_KEYS.gistAutoSync) === 'true',
+  gistSyncStatus: 'idle',
   historyAdminUnlocked: localStorage.getItem(STORAGE_KEYS.historyAdminUnlocked) === 'true',
 
   setTheme: (theme) => {
@@ -505,6 +524,65 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     scheduleAutoGistSync(get);
   },
 
+  populateSalaryForecast: (startMonth, quarters, anchorMonth) => {
+    const templates = buildSalaryEntries(
+      get().salaryPattern,
+      startMonth,
+      Math.max(1, Number(quarters) || 1),
+      anchorMonth || get().salaryAnchorMonth,
+    );
+    const currentEntries = [...get().entries];
+    let added = 0;
+    templates.forEach((template) => {
+      const existing = currentEntries.find(
+        (entry) =>
+          entry.source === 'salary' &&
+          entry.date === template.date &&
+          entry.account === template.account &&
+          entry.type === template.type,
+      );
+      if (existing) {
+        existing.amount = template.amount;
+        existing.category = template.category;
+      } else {
+        currentEntries.push({
+          ...template,
+          id: `salary-${Date.now()}-${Math.random().toString(36).substring(2, 7)}-${added}`,
+        });
+        added += 1;
+      }
+    });
+    saveStorage(STORAGE_KEYS.entries, currentEntries);
+    set({ entries: currentEntries });
+    scheduleAutoGistSync(get);
+    return added;
+  },
+
+  clearSalaryForecast: (startMonth, quarters) => {
+    const hasActual = (entry: CashEntry) =>
+      Number(get().entryActuals[entry.id] ?? entry.actualAmount ?? 0) > 0 ||
+      Boolean(get().entryActualDates[entry.id] || entry.actualDate);
+    const hasPeriod = Boolean(startMonth && quarters);
+    const periodStart = hasPeriod ? `${startMonth}-01` : '';
+    const [year, month] = hasPeriod ? (startMonth as string).split('-').map(Number) : [0, 0];
+    const endMonthIndex = hasPeriod ? year * 12 + (month - 1) + Math.max(1, Number(quarters) || 1) * 3 : 0;
+    const shouldRemove = (entry: CashEntry) => {
+      if (entry.source !== 'salary' || hasActual(entry)) return false;
+      if (!hasPeriod) return true;
+      const entryMonth = entry.date.slice(0, 7);
+      const [entryYear, entryMonthNumber] = entryMonth.split('-').map(Number);
+      const entryMonthIndex = entryYear * 12 + (entryMonthNumber - 1);
+      return entry.date >= periodStart && entryMonthIndex < endMonthIndex;
+    };
+    const removedIds = new Set(get().entries.filter(shouldRemove).map((entry) => entry.id));
+    if (removedIds.size === 0) return 0;
+    const updated = get().entries.filter((entry) => !removedIds.has(entry.id));
+    saveStorage(STORAGE_KEYS.entries, updated);
+    set({ entries: updated });
+    scheduleAutoGistSync(get);
+    return removedIds.size;
+  },
+
   addInstallment: (instData) => {
     const newInst: Installment = {
       ...instData,
@@ -666,7 +744,44 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     localStorage.setItem(STORAGE_KEYS.gistToken, token);
     localStorage.setItem(STORAGE_KEYS.gistId, gistId);
     localStorage.setItem(STORAGE_KEYS.gistAutoSync, String(autoSync));
-    set({ gistToken: token, gistId, gistAutoSync: autoSync });
+    set({ gistToken: token, gistId, gistAutoSync: autoSync, gistSyncStatus: 'idle' });
+  },
+
+  syncFromGist: async (tokenOverride, gistIdOverride) => {
+    const state = get();
+    const token = tokenOverride?.trim() || state.gistToken;
+    const gistId = gistIdOverride?.trim() || state.gistId;
+    if (!gistId) {
+      set({ gistSyncStatus: 'error' });
+      return false;
+    }
+
+    set({ gistSyncStatus: 'syncing' });
+    try {
+      const headers: Record<string, string> = {
+        Accept: 'application/vnd.github.v3+json',
+      };
+      if (token) headers.Authorization = `token ${token}`;
+      const response = await fetch(`https://api.github.com/gists/${gistId}`, { headers });
+      if (!response.ok) {
+        throw new Error(`Gist download failed: ${response.status} ${response.statusText}`);
+      }
+      const data = await response.json() as {
+        files?: Record<string, { content?: string }>;
+      };
+      const file = data.files?.['budget-data.json']
+        || data.files?.['budget-control-backup.json']
+        || Object.values(data.files || {})[0];
+      if (!file?.content || !get().importJSON(file.content)) {
+        throw new Error('No valid budget JSON file found in this Gist');
+      }
+      set({ gistSyncStatus: 'synced' });
+      return true;
+    } catch (error) {
+      console.error('Gist download failed:', error);
+      set({ gistSyncStatus: 'error' });
+      return false;
+    }
   },
 
   autoTagEntries: () => {
@@ -775,7 +890,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         entries: backup.cashEntries || [],
         installments: backup.installments || [],
         storageAssets: backup.storageAssets || [],
-        accounts: backup.accountBalances || defaultAccounts,
+        accounts: withoutCashAccount(backup.accountBalances || defaultAccounts),
         asfJobs: backup.asfJobs || [],
         irqJobs: backup.irqJobs || [],
         partTimeJobs: backup.partTimeJobs || [],
@@ -954,7 +1069,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
           }
         }
         if (Object.keys(accMap).length > 0) {
-          newAccounts = accMap;
+          newAccounts = withoutCashAccount(accMap);
           saveStorage(STORAGE_KEYS.accounts, newAccounts);
         }
       }

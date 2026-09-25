@@ -9,14 +9,16 @@ export function monthIndexFromYearMonth(ymString: string): number {
   return year * 12 + (month - 1);
 }
 
-export function groupPhaseForMonthIndex(absoluteMonthIndex: number): number {
-  return ((absoluteMonthIndex % 3) + 3) % 3;
+export function groupPhaseForMonthIndex(absoluteMonthIndex: number, anchorMonth?: string): number {
+  const anchorIndex = monthIndexFromYearMonth(anchorMonth || DateUtils.currentYearMonth());
+  return (((absoluteMonthIndex - anchorIndex) % 3) + 3) % 3;
 }
 
 export function buildSalaryEntries(
   salaryPattern: SalaryPayment[],
   startYearMonth: string,
-  quarters: number = 4
+  quarters: number = 4,
+  anchorMonth?: string
 ): CashEntry[] {
   const startIndex = monthIndexFromYearMonth(startYearMonth);
   const totalMonths = Math.max(1, quarters) * 3;
@@ -24,7 +26,7 @@ export function buildSalaryEntries(
 
   for (let offset = 0; offset < totalMonths; offset += 1) {
     const absoluteMonthIndex = startIndex + offset;
-    const phase = groupPhaseForMonthIndex(absoluteMonthIndex);
+    const phase = groupPhaseForMonthIndex(absoluteMonthIndex, anchorMonth);
     const year = Math.floor(absoluteMonthIndex / 12);
     const month = ((absoluteMonthIndex % 12) + 12) % 12;
 
