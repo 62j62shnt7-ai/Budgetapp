@@ -190,7 +190,15 @@ export const App: React.FC = () => {
           />
         );
       case 'history':
-        return <HistoryView />;
+        return (
+          <HistoryView
+            onEditEntry={(entry) => {
+              setEntryToEdit(entry);
+              setEntryModalType(entry.type);
+              setEntryModalOpen(true);
+            }}
+          />
+        );
       case 'accounts':
         return <AccountsView />;
       case 'storage':

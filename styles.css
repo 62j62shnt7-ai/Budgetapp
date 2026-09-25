@@ -4541,6 +4541,20 @@ label {
 .text-amber { color: var(--amber) !important; }
 .text-red { color: var(--red) !important; }
 
+.history-entry-editable {
+  cursor: pointer;
+}
+
+.history-entry-editable:hover td,
+.history-entry-editable:focus-visible td {
+  background: color-mix(in srgb, var(--amber) 8%, transparent);
+}
+
+.history-entry-editable:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: -2px;
+}
+
 /* Jobs Filter Toolbar */
 .jobs-toolbar {
   display: flex;

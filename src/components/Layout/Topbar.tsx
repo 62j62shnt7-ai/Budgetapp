@@ -42,12 +42,19 @@ export const Topbar: React.FC<TopbarProps> = ({
     : !gistAutoSync
       ? 'Manual'
       : {
-        idle: 'Active',
+        idle: 'Ready',
         scheduled: 'Queued',
         syncing: 'Syncing',
         synced: 'Synced',
         error: 'Error',
       }[gistSyncStatus];
+  const syncPillClass = gistSyncStatus === 'error'
+    ? 'error'
+    : gistSyncStatus === 'syncing' || gistSyncStatus === 'scheduled'
+      ? 'syncing'
+      : gistSyncStatus === 'synced'
+        ? 'synced'
+        : '';
 
   useEffect(() => {
     const checkStatus = async () => {
@@ -131,7 +138,13 @@ export const Topbar: React.FC<TopbarProps> = ({
         >
           <Cloud size={14} />
           <span>Sync</span>
-          <span className={`sync-pill ${gistSyncStatus === 'error' ? 'error' : gistSyncStatus === 'syncing' ? 'syncing' : gistId ? 'synced' : ''}`} id="gistSyncStatus" role="status" aria-live="polite">
+          <span
+            className={`sync-pill ${syncPillClass}`}
+            id="gistSyncStatus"
+            role="status"
+            aria-live="polite"
+            title={gistSyncStatus === 'idle' && gistAutoSync ? 'Automatic sync is enabled and waiting for a data change.' : undefined}
+          >
             {syncLabel}
           </span>
         </button>

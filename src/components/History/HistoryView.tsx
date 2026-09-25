@@ -6,7 +6,11 @@ import { buildInstallmentEntries } from '../../engine/salaryAndInstallments';
 import type { CashEntry } from '../../types';
 import { Lock, Unlock, Trash2, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react';
 
-export const HistoryView: React.FC = () => {
+interface HistoryViewProps {
+  onEditEntry?: (entry: CashEntry) => void;
+}
+
+export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
   const {
     entries,
     archivedEntries,
@@ -787,7 +791,7 @@ export const HistoryView: React.FC = () => {
 
             {isAdminUnlocked && (
               <div style={{ background: 'rgba(217,142,43,0.12)', border: '1px solid rgba(217,142,43,0.35)', borderRadius: '6px', padding: '8px 12px', fontSize: '12.5px', color: 'var(--ink)', margin: '10px 0' }}>
-                🔓 <strong>Admin Mode Active:</strong> You can clear actual amounts or delete entries directly from this table.
+                🔓 <strong>Admin Mode Active:</strong> Click an entry to edit it, or clear actual amounts and delete entries directly from this table.
               </div>
             )}
 
@@ -860,7 +864,23 @@ export const HistoryView: React.FC = () => {
 
                       return (
                         <React.Fragment key={entryId}>
-                        <tr>
+                        <tr
+                          className={isAdminUnlocked && onEditEntry ? 'history-entry-editable' : undefined}
+                          onClick={(event) => {
+                            if (!isAdminUnlocked || !onEditEntry) return;
+                            const target = event.target as HTMLElement;
+                            if (target.closest('button, input, select, textarea, a')) return;
+                            onEditEntry(entry);
+                          }}
+                          onKeyDown={(event) => {
+                            if (!isAdminUnlocked || !onEditEntry || (event.key !== 'Enter' && event.key !== ' ')) return;
+                            event.preventDefault();
+                            onEditEntry(entry);
+                          }}
+                          tabIndex={isAdminUnlocked && onEditEntry ? 0 : undefined}
+                          role={isAdminUnlocked && onEditEntry ? 'button' : undefined}
+                          title={isAdminUnlocked && onEditEntry ? 'Click to edit this entry' : undefined}
+                        >
                           <td>
                             <strong>{DateUtils.formatDisplayDate(actDate)}</strong>
                             {hasMultipleDraws && (
