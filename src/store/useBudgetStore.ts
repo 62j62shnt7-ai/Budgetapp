@@ -11,7 +11,7 @@ import type {
   SalaryPayment,
   StorageAsset,
 } from '../types';
-import { defaultRates, resolveRateSourceValue } from '../engine/currency';
+import { defaultRates, resolveRateSourceValue, computeTotalStorageValue } from '../engine/currency';
 import {
   buildCreditDueEntries,
   getCreditSettlementMonth,
@@ -675,11 +675,21 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     }
   },
 
-  updateRates: (rates) => {
-    saveStorage(STORAGE_KEYS.rates, rates);
+  updateRates: (newRates) => {
+    const currentStorageTotal = computeTotalStorageValue(get().storageAssets, get().rates);
+    const nextStorageTotal = computeTotalStorageValue(get().storageAssets, newRates);
+
+    let ratesToSave: RatesData = { ...newRates };
+    if (currentStorageTotal > 0 && Math.round(nextStorageTotal) !== Math.round(currentStorageTotal)) {
+      ratesToSave.previousStorageTotal = currentStorageTotal;
+    } else if (newRates.previousStorageTotal === undefined && get().rates.previousStorageTotal) {
+      ratesToSave.previousStorageTotal = get().rates.previousStorageTotal;
+    }
+
+    saveStorage(STORAGE_KEYS.rates, ratesToSave);
     let changed = false;
     const updatedStorage = get().storageAssets.map((item) => {
-      const resolved = resolveRateSourceValue((item as any).rateSource, rates);
+      const resolved = resolveRateSourceValue((item as any).rateSource, ratesToSave);
       if (resolved !== null && resolved !== (item as any).rate) {
         changed = true;
         return { ...item, rate: resolved, buyPrice: resolved };
@@ -688,9 +698,9 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     });
     if (changed) {
       saveStorage(STORAGE_KEYS.storage, updatedStorage);
-      set({ rates, storageAssets: updatedStorage });
+      set({ rates: ratesToSave, storageAssets: updatedStorage });
     } else {
-      set({ rates });
+      set({ rates: ratesToSave });
     }
   },
 

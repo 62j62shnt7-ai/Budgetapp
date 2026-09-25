@@ -116,7 +116,20 @@ export async function fetchLiveGoldSpotUsd(): Promise<number> {
   }
 }
 
-export async function autoFetchLatestRates(currentRates: RatesData): Promise<RatesData | null> {
+export const RATE_AUTO_FETCH_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+
+export async function autoFetchLatestRates(
+  currentRates: RatesData,
+  minIntervalMs: number = RATE_AUTO_FETCH_INTERVAL_MS
+): Promise<RatesData | null> {
+  // Do not pull automatically unless an hour has passed since the last fetch
+  if (currentRates.lastFetched) {
+    const lastTime = new Date(currentRates.lastFetched).getTime();
+    if (!isNaN(lastTime) && Date.now() - lastTime < minIntervalMs) {
+      return null;
+    }
+  }
+
   try {
     const [liveRates, xauUsd] = await Promise.all([
       fetchLiveCurrencyRates(),
@@ -153,10 +166,13 @@ export async function autoFetchLatestRates(currentRates: RatesData): Promise<Rat
       });
     }
 
+    const nowIso = new Date().toISOString();
     return {
       currencies: updatedCurrencies,
       gold: updatedGold,
-      lastFetched: new Date().toISOString(),
+      lastFetched: nowIso,
+      currenciesLastFetched: nowIso,
+      goldLastFetched: xauUsd ? nowIso : currentRates.goldLastFetched,
     };
   } catch (err) {
     console.warn('Silent live rate auto-fetch skipped (network offline or unreachable):', err);

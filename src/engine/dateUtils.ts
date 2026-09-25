@@ -107,3 +107,18 @@ export const formatLastUpdated = (isoString?: string): string => {
   if (diffHrs < 24 && date.getDate() === now.getDate()) return `Today ${timeStr}`;
   return `${date.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${timeStr}`;
 };
+
+export const formatFullDateTime = (isoString?: string): string => {
+  if (!isoString) return '';
+  const date = new Date(isoString);
+  if (isNaN(date.getTime())) return '';
+  return date.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+};
+

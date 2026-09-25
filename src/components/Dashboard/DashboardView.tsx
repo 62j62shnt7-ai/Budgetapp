@@ -51,6 +51,25 @@ export const DashboardView: React.FC = () => {
   const storageTotal = computeTotalStorageValue(storageAssets, rates);
   const netWorth = totalCash + storageTotal;
 
+  const storageChange = (() => {
+    if (
+      rates.previousStorageTotal &&
+      rates.previousStorageTotal > 0 &&
+      Math.round(storageTotal) !== Math.round(rates.previousStorageTotal)
+    ) {
+      const diff = storageTotal - rates.previousStorageTotal;
+      const pct = (diff / rates.previousStorageTotal) * 100;
+      return {
+        pct,
+        diff,
+        isPositive: diff > 0,
+        text: `${diff > 0 ? '+' : ''}${pct.toFixed(1)}%`,
+        title: `${diff > 0 ? '+' : ''}${formatMoney(diff)} (${diff > 0 ? '+' : ''}${pct.toFixed(2)}%) since last rate update`,
+      };
+    }
+    return null;
+  })();
+
   // Credit dues with this month / next month breakdown
   const currentYm = DateUtils.currentYearMonth();
   const nextYm = DateUtils.addMonths(currentYm, 1);
@@ -332,9 +351,27 @@ export const DashboardView: React.FC = () => {
               </span>
             )}
           </div>
-          <strong id="storageTotal" style={{ color: '#fbbf24', fontWeight: 800 }}>
-            {formatMoney(storageTotal)}
-          </strong>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
+            <strong id="storageTotal" style={{ color: '#fbbf24', fontWeight: 800 }}>
+              {formatMoney(storageTotal)}
+            </strong>
+            {storageChange && (
+              <span
+                id="storageChangePct"
+                style={{
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  padding: '1px 6px',
+                  borderRadius: '4px',
+                  background: storageChange.isPositive ? 'rgba(16, 185, 129, 0.15)' : 'rgba(244, 63, 94, 0.15)',
+                  color: storageChange.isPositive ? 'var(--green, #10b981)' : 'var(--red, #f43f5e)',
+                }}
+                title={storageChange.title}
+              >
+                {storageChange.text}
+              </span>
+            )}
+          </div>
           <small>Gold, USD, EUR</small>
         </article>
 

@@ -11,7 +11,7 @@ import {
   isOngoingEntry,
   simulateSpend,
 } from '../src/engine/forecast.ts';
-import { computeSpreadPct, computeAssetEgpValue, defaultRates } from '../src/engine/currency.ts';
+import { computeSpreadPct, computeAssetEgpValue, defaultRates, autoFetchLatestRates } from '../src/engine/currency.ts';
 import { computeFinancialHealthScore } from '../src/engine/healthScore.ts';
 import { DateUtils } from '../src/engine/dateUtils.ts';
 
@@ -138,7 +138,15 @@ const goldAsset = {
 };
 const goldVal = computeAssetEgpValue(goldAsset, defaultRates);
 assert.strictEqual(goldVal, 10 * 3600); // 10 grams * 3600 sell rate
-console.log('✓ Gold & currency valuation formulas verified');
+
+const recentRates = {
+  ...defaultRates,
+  lastFetched: new Date(Date.now() - 10 * 60 * 1000).toISOString(), // 10 minutes ago
+};
+const throttleResult = await autoFetchLatestRates(recentRates);
+assert.strictEqual(throttleResult, null, 'Should skip auto-fetch when last fetched within 1 hour');
+
+console.log('✓ Gold & currency valuation formulas and 1h throttle verified');
 
 // 6. Financial Health Score
 const health = computeFinancialHealthScore(forecast, deficits, 1000, 35800);

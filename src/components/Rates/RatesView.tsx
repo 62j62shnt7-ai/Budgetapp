@@ -8,6 +8,7 @@ import {
   egpPerUnit,
   TROY_OUNCE_GRAMS,
 } from '../../engine/currency';
+import { formatFullDateTime } from '../../engine/dateUtils';
 import type { RatesData } from '../../types';
 import { Edit2, Check, X } from 'lucide-react';
 
@@ -29,7 +30,13 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
 
   const handleSave = () => {
     if (draftRates) {
-      updateRates({ ...draftRates, lastFetched: new Date().toISOString() });
+      const now = new Date().toISOString();
+      updateRates({
+        ...draftRates,
+        currenciesLastFetched: now,
+        goldLastFetched: now,
+        lastFetched: now,
+      });
       setIsEditing(false);
       setDraftRates(null);
     }
@@ -64,7 +71,13 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
       );
       if (!confirmed) return;
 
-      updateRates({ ...rates, currencies: updated, lastFetched: new Date().toISOString() });
+      const now = new Date().toISOString();
+      updateRates({
+        ...rates,
+        currencies: updated,
+        currenciesLastFetched: now,
+        lastFetched: now,
+      });
     } catch (err: any) {
       console.error("Live currency rate fetch failed:", err);
       const manual = window.confirm("Couldn't fetch live rates (offline or rate service unavailable). Enter rates manually?");
@@ -118,7 +131,13 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
       const confirmed = window.confirm(message);
       if (!confirmed) return;
 
-      updateRates({ ...rates, gold: updated, lastFetched: new Date().toISOString() });
+      const now = new Date().toISOString();
+      updateRates({
+        ...rates,
+        gold: updated,
+        goldLastFetched: now,
+        lastFetched: now,
+      });
     } catch (err: any) {
       console.error("Live gold rate fetch failed:", err);
       const manual = window.confirm("Couldn't fetch live gold price. Enter rates manually?");
@@ -136,7 +155,14 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
         {/* Currencies Panel */}
         <section className="panel">
           <div className="panel-heading rates-panel-heading">
-            <h3 style={{ margin: 0 }}>Currency rates</h3>
+            <div>
+              <h3 style={{ margin: 0 }}>Currency rates</h3>
+              {(rates.currenciesLastFetched || rates.lastFetched) && (
+                <div style={{ fontSize: '0.75rem', color: 'var(--muted, #94a3b8)', marginTop: '3px' }}>
+                  Last updated: {formatFullDateTime(rates.currenciesLastFetched || rates.lastFetched)}
+                </div>
+              )}
+            </div>
             <div className="rates-heading-actions">
               {isEditing ? (
                 <>
@@ -219,7 +245,14 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
         {/* Gold Rates Panel */}
         <section className="panel">
           <div className="panel-heading rates-panel-heading">
-            <h3 style={{ margin: 0 }}>Gold rates</h3>
+            <div>
+              <h3 style={{ margin: 0 }}>Gold rates</h3>
+              {(rates.goldLastFetched || rates.lastFetched) && (
+                <div style={{ fontSize: '0.75rem', color: 'var(--muted, #94a3b8)', marginTop: '3px' }}>
+                  Last updated: {formatFullDateTime(rates.goldLastFetched || rates.lastFetched)}
+                </div>
+              )}
+            </div>
             <div className="rates-heading-actions">
               {isEditing ? (
                 <>

@@ -42,19 +42,23 @@ export const RateModal: React.FC<RateModalProps> = ({ isOpen, rateType = 'curren
     if (!selectedItemName || !sellVal || !buyVal) return;
 
     const copy = JSON.parse(JSON.stringify(rates));
+    const now = new Date().toISOString();
     if (rateType === 'currency') {
       const idx = copy.currencies.findIndex((c: any) => c.name === selectedItemName);
       if (idx !== -1) {
         copy.currencies[idx].sell = sellVal;
         copy.currencies[idx].buy = buyVal;
+        copy.currenciesLastFetched = now;
       }
     } else {
       const idx = copy.gold.findIndex((g: any) => g.name === selectedItemName);
       if (idx !== -1) {
         copy.gold[idx].sell = sellVal;
         copy.gold[idx].buy = buyVal;
+        copy.goldLastFetched = now;
       }
     }
+    copy.lastFetched = now;
 
     updateRates(copy);
     onClose();
