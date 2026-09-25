@@ -51,8 +51,9 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
     setIsFetchingCurrencies(true);
     try {
       const liveRates = await fetchLiveCurrencyRates();
+      const currentRates = useBudgetStore.getState().rates;
       const changes: string[] = [];
-      const updated = rates.currencies.map((currency) => {
+      const updated = currentRates.currencies.map((currency) => {
         const mid = egpPerUnit(liveRates, currency.name.toUpperCase());
         if (mid === null) return currency;
         const spreadPct = computeSpreadPct(currency.sell, currency.buy);
@@ -65,7 +66,7 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
 
       const now = new Date().toISOString();
       updateRates({
-        ...rates,
+        ...currentRates,
         currencies: updated,
         currenciesLastFetched: now,
         lastFetched: now,
@@ -89,12 +90,13 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
     setIsFetchingGold(true);
     try {
       const [liveRates, xauUsd] = await Promise.all([fetchLiveCurrencyRates(), fetchLiveGoldSpotUsd()]);
+      const currentRates = useBudgetStore.getState().rates;
       const egpPerOz = xauUsd * liveRates.EGP;
       const egpPerGram24k = egpPerOz / TROY_OUNCE_GRAMS;
 
       const changes: string[] = [];
       const skipped: string[] = [];
-      const updated = rates.gold.map((item) => {
+      const updated = currentRates.gold.map((item) => {
         let mid: number | null = null;
         const match = item.name.match(/(\d+)/);
         if (match) {
@@ -122,7 +124,7 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
 
       const now = new Date().toISOString();
       updateRates({
-        ...rates,
+        ...currentRates,
         gold: updated,
         goldLastFetched: now,
         lastFetched: now,
