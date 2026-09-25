@@ -1,6 +1,7 @@
 import React from 'react';
 import type { CashEntry, Installment } from '../../types';
 import { formatMoney } from '../../engine/dateUtils';
+import { Modal } from '../Common/Modal';
 
 export type LinkedRepaymentInfo =
   | {
@@ -44,17 +45,14 @@ export const AdjustLoanRepaymentModal: React.FC<AdjustLoanRepaymentModalProps> =
     : `Scale to ${formatMoney(linkedInfo.scaledAmount)}/mo`;
 
   return (
-    <dialog
-      open
-      className="native-dialog"
+    <Modal
+      isOpen={isOpen}
+      onClose={onKeep}
       id="adjustLoanRepaymentDialog"
-      onClick={(e) => e.target === e.currentTarget && onKeep()}
-      style={{ display: 'block', zIndex: 1100, maxWidth: '500px' }}
+      maxWidth="500px"
+      title="💳 Scale Linked Loan Repayment?"
     >
-      <div className="entry-form entry-form-modern" style={{ padding: '20px' }}>
-        <div className="dialog-heading" style={{ marginBottom: '12px' }}>
-          <h3 style={{ margin: 0 }}>💳 Scale Linked Loan Repayment?</h3>
-        </div>
+      <div className="entry-form entry-form-modern" style={{ padding: '4px 0 0' }}>
 
         <p id="adjustLoanRepaymentMessage" style={{ fontSize: '13.5px', margin: '0 0 10px', lineHeight: '1.5' }}>
           You recorded a draw of <strong>{formatMoney(totalDrawn)}</strong> (out of{' '}
@@ -134,6 +132,6 @@ export const AdjustLoanRepaymentModal: React.FC<AdjustLoanRepaymentModalProps> =
           </button>
         </div>
       </div>
-    </dialog>
+    </Modal>
   );
 };

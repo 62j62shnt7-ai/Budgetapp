@@ -3,8 +3,6 @@ import { useBudgetStore } from '../../store/useBudgetStore';
 import {
   buildSalaryEntries,
   buildInstallmentEntries,
-  groupPhaseForMonthIndex,
-  monthIndexFromYearMonth,
 } from '../../engine/salaryAndInstallments';
 import {
   buildCreditDueEntries,
@@ -25,11 +23,14 @@ import {
   calculateLoanRepaymentScale,
 } from '../../engine/forecast';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
-import { Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus } from 'lucide-react';
 
 import type { CashEntry } from '../../types';
 import { ExactAmountDecisionModal } from '../Modals/ExactAmountDecisionModal';
 import { AdjustLoanRepaymentModal, type LinkedRepaymentInfo } from '../Modals/AdjustLoanRepaymentModal';
+import { SalaryStructureSection } from './SalaryStructureSection';
+import { InstallmentsSection } from './InstallmentsSection';
+import { ExpenseMixSection } from './ExpenseMixSection';
 
 interface CashflowViewProps {
   onOpenEntryModal: (type: 'expense' | 'income') => void;
@@ -360,21 +361,6 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     });
 
   const salaryQuarterTotal = salaryPattern.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-  const salaryGroupMonths = (offset: number) => {
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const anchorIndex = monthIndexFromYearMonth(salaryAnchorMonth || currentYm);
-    let firstMatch = anchorIndex;
-    while (groupPhaseForMonthIndex(firstMatch, salaryAnchorMonth) !== offset) firstMatch += 1;
-    return [0, 1, 2, 3]
-      .map((quarter) => monthNames[((firstMatch + quarter * 3) % 12 + 12) % 12])
-      .join(', ');
-  };
-
-  const handleUpdateSalaryAmount = (index: number, newAmount: number) => {
-    const copy = [...salaryPattern];
-    copy[index] = { ...copy[index], amount: Math.max(0, newAmount) };
-    updateSalaryPattern(copy);
-  };
 
   const handleUpdateSalaryPayment = (index: number, updates: Partial<typeof salaryPattern[number]>) => {
     const copy = [...salaryPattern];
@@ -515,261 +501,43 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
       </div>
 
       {/* Salary Structure Collapsible */}
-      <section className="panel collapsible-panel cashflow-collapsible-panel" style={{ marginTop: '18px' }}>
-        <div
-          className="panel-heading"
-          style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-          onClick={() => setSalaryOpen(!salaryOpen)}
-        >
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px', flexWrap: 'wrap' }}>
-            <h3 style={{ margin: 0 }}>Salary structure</h3>
-            <span style={{ fontSize: '13px', color: 'var(--muted)' }}>
-              Quarter total: <strong style={{ color: 'var(--green)' }}>{formatMoney(salaryQuarterTotal)}</strong>
-            </span>
-          </div>
-          <button className="ghost-button" type="button">
-            {salaryOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-          </button>
-        </div>
-
-        {salaryOpen && (
-          <div className="collapsible-content" style={{ marginTop: '12px' }}>
-            <div className="salary-structure-controls" style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap' }}>
-              <label>
-                Start month:
-                <input
-                  type="month"
-                  className="form-input salary-start-month"
-                  style={{ marginLeft: '6px', padding: '4px 8px' }}
-                  value={startMonth}
-                  onChange={(e) => setStartMonth(e.target.value)}
-                />
-              </label>
-              <label>
-                Quarters:
-                <input
-                  type="number"
-                  min="1"
-                  max="24"
-                  className="form-input"
-                  style={{ width: '70px', marginLeft: '6px', padding: '4px 8px' }}
-                  value={quarters}
-                  onChange={(e) => setQuarters(Math.min(24, Math.max(1, Number(e.target.value) || 1)))}
-                />
-              </label>
-              <button className="ghost-button" type="button" onClick={handleAddSalaryPayment}>
-                <Plus size={15} /> Add payment
-              </button>
-              <button className="primary-button salary-populate-button" type="button" onClick={handlePopulateSalaryForecast}>
-                Populate forecast
-              </button>
-              <button className="ghost-button salary-clear-button" type="button" onClick={() => handleClearSalaryForecast(false)}>
-                Clear period
-              </button>
-              <button className="ghost-button salary-clear-all-button" type="button" onClick={() => handleClearSalaryForecast(true)}>
-                Clear all
-              </button>
-            </div>
-
-            <div className="salary-structure-grid">
-              {salaryPattern.map((p, idx) => (
-                <div
-                  key={idx}
-                  className="salary-structure-card"
-                  style={{
-                    padding: '14px',
-                    borderRadius: '10px',
-                    background: 'var(--surface-soft)',
-                  }}
-                >
-                  <div className="salary-structure-card-label">
-                    <strong>
-                      Payment {idx + 1} · {salaryGroupMonths(Number(p.monthOffset) || 0)}
-                    </strong>
-                    <span>Repeats every three months in the selected group</span>
-                  </div>
-                  <div className="salary-structure-card-fields">
-                    <label>
-                      <span>Group</span>
-                      <select
-                        className="form-input"
-                        aria-label={`Salary payment group for payment ${idx + 1}`}
-                        value={Number(p.monthOffset) || 0}
-                        onChange={(e) => handleUpdateSalaryPayment(idx, { monthOffset: Number(e.target.value) })}
-                      >
-                        <option value={0}>Group 1</option>
-                        <option value={1}>Group 2</option>
-                        <option value={2}>Group 3</option>
-                      </select>
-                    </label>
-                    <label>
-                      <span>Day</span>
-                      <input
-                        type="number"
-                        min="1"
-                        max="31"
-                        className="form-input"
-                        aria-label={`Salary payment day for payment ${idx + 1}`}
-                        value={p.day || ''}
-                        onChange={(e) => handleUpdateSalaryPayment(idx, { day: Math.min(31, Math.max(1, Number(e.target.value) || 1)) })}
-                      />
-                    </label>
-                    <label>
-                      <span>Amount</span>
-                      <input
-                        type="number"
-                        min="0"
-                        className="form-input"
-                        aria-label={`Salary amount for payment ${idx + 1}`}
-                        value={p.amount || ''}
-                        onChange={(e) => handleUpdateSalaryAmount(idx, Number(e.target.value))}
-                      />
-                    </label>
-                    <button
-                      className="icon-button salary-delete-button"
-                      type="button"
-                      aria-label={`Delete salary payment ${idx + 1}`}
-                      onClick={() => handleDeleteSalaryPayment(idx)}
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </section>
+      <SalaryStructureSection
+        salaryOpen={salaryOpen}
+        setSalaryOpen={setSalaryOpen}
+        salaryQuarterTotal={salaryQuarterTotal}
+        startMonth={startMonth}
+        setStartMonth={setStartMonth}
+        quarters={quarters}
+        setQuarters={setQuarters}
+        salaryPattern={salaryPattern}
+        onAddPayment={handleAddSalaryPayment}
+        onPopulate={handlePopulateSalaryForecast}
+        onClearPeriod={() => handleClearSalaryForecast(false)}
+        onClearAll={() => handleClearSalaryForecast(true)}
+        onUpdatePayment={(idx, field, value) => handleUpdateSalaryPayment(idx, { [field]: value })}
+        onRemovePayment={handleDeleteSalaryPayment}
+      />
 
       {/* Installments & Expense Mix */}
       <div className="content-grid salary-layout cashflow-card-grid" style={{ marginTop: '18px' }}>
-        <section className="panel collapsible-panel cashflow-collapsible-panel">
-          <div
-            className="panel-heading"
-            style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-            onClick={() => setInstallmentsOpen(!installmentsOpen)}
-          >
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-              <h3 style={{ margin: 0 }}>Installments</h3>
-              <span style={{ fontSize: '12px', color: 'var(--muted)' }}>({installments.length})</span>
-              {!installmentsOpen && installments.length > 0 && (
-                <span className="collapsed-installment-summary">
-                  <strong>{formatMoney(installmentMonthlyTotal)}/mo</strong>
-                  <span className="collapsed-installment-total">
-                    Total: {formatMoney(installmentOutstandingTotal)}
-                  </span>
-                  <span>
-                    {installmentProgressSummary.paid > 0
-                      ? `${installmentProgressSummary.paid} of ${installmentProgressSummary.total} paid`
-                      : `${installmentProgressSummary.total} scheduled`}
-                  </span>
-                  <span className="collapsed-installment-remaining">
-                    {installmentProgressSummary.remaining} remaining
-                  </span>
-                </span>
-              )}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <button
-                className="ghost-button"
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onOpenInstallmentModal();
-                }}
-              >
-                <Plus size={14} />
-                <span>Installment</span>
-              </button>
-              {installmentsOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-            </div>
-          </div>
+        <InstallmentsSection
+          installmentsOpen={installmentsOpen}
+          setInstallmentsOpen={setInstallmentsOpen}
+          installments={installments}
+          installmentMonthlyTotal={installmentMonthlyTotal}
+          installmentOutstandingTotal={installmentOutstandingTotal}
+          installmentProgressSummary={installmentProgressSummary}
+          onOpenInstallmentModal={onOpenInstallmentModal}
+          getInstallmentProgress={getInstallmentProgress}
+          onDeleteInstallment={deleteInstallment}
+        />
 
-          {installmentsOpen && (
-            <div className="collapsible-content" style={{ marginTop: '12px' }}>
-              {installments.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '16px', color: 'var(--muted)', fontSize: '13px' }}>
-                  No installments recorded.
-                </div>
-              ) : (
-                installments.map((inst) => (
-                  (() => {
-                    const progress = getInstallmentProgress(inst);
-                    return (
-                  <div
-                    key={inst.id}
-                    className="installment-summary-card"
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      padding: '8px 12px',
-                      borderRadius: '6px',
-                      background: 'var(--surface-soft)',
-                      marginBottom: '6px',
-                    }}
-                  >
-                    <div>
-                      <strong>{inst.name}</strong>
-                      <span style={{ fontSize: '12px', color: 'var(--muted)', display: 'block' }}>
-                        {formatMoney(inst.amount)}/mo · Total: {formatMoney((Number(inst.amount) || 0) * progress.total)}
-                      </span>
-                      <span style={{ fontSize: '12px', color: 'var(--muted)', display: 'block' }}>
-                        {progress.paid > 0 ? `Paid ${progress.paid} of ${progress.total}` : `${progress.total} scheduled`}
-                      </span>
-                      <span className={`installment-progress-label ${progress.remaining === 0 ? 'complete' : ''}`}>
-                        {progress.remaining === 0
-                          ? 'Completed · Remaining: 0'
-                          : `${progress.remaining} remaining · ${formatMoney((Number(inst.amount) || 0) * progress.remaining)} outstanding`}
-                      </span>
-                    </div>
-                    <button
-                      className="ghost-button"
-                      style={{ padding: '4px' }}
-                      onClick={() => deleteInstallment(inst.id)}
-                    >
-                      <Trash2 size={13} color="var(--red)" />
-                    </button>
-                  </div>
-                    );
-                  })()
-                ))
-              )}
-            </div>
-          )}
-        </section>
-
-        <section className="panel collapsible-panel cashflow-collapsible-panel">
-          <div
-            className="panel-heading"
-            style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-            onClick={() => setExpenseMixOpen(!expenseMixOpen)}
-          >
-            <h3 style={{ margin: 0 }}>Expense mix</h3>
-            {expenseMixOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-          </div>
-
-          {expenseMixOpen && (
-            <div className="collapsible-content" style={{ marginTop: '12px' }}>
-              {Object.entries(expensesByCategory)
-                .sort(([, amountA], [, amountB]) => amountB - amountA)
-                .map(([cat, amt]) => {
-                  const pct = totalExpenses > 0 ? Math.round((amt / totalExpenses) * 100) : 0;
-                  return (
-                    <div key={cat} style={{ marginBottom: '8px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '2px' }}>
-                        <span>{cat}</span>
-                        <strong>{formatMoney(amt)} ({pct}%)</strong>
-                      </div>
-                      <div style={{ height: '4px', background: 'rgba(0,0,0,0.08)', borderRadius: '2px', overflow: 'hidden' }}>
-                        <div style={{ width: `${pct}%`, height: '100%', background: 'var(--red)' }} />
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
-          )}
-        </section>
+        <ExpenseMixSection
+          expenseMixOpen={expenseMixOpen}
+          setExpenseMixOpen={setExpenseMixOpen}
+          expensesByCategory={expensesByCategory}
+          totalExpenses={totalExpenses}
+        />
       </div>
 
       {/* Forecast Entries Table */}

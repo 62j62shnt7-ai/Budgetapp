@@ -1,6 +1,7 @@
 import React from 'react';
 import type { CashEntry } from '../../types';
 import { formatMoney } from '../../engine/dateUtils';
+import { Modal } from '../Common/Modal';
 
 interface ExactAmountDecisionModalProps {
   isOpen: boolean;
@@ -45,19 +46,15 @@ export const ExactAmountDecisionModal: React.FC<ExactAmountDecisionModalProps> =
   const finishBtnText = isLoan ? 'Finish & Close Facility' : 'Finish & Fulfill';
 
   return (
-    <dialog
-      open
-      className="native-dialog"
+    <Modal
+      isOpen={isOpen}
+      onClose={onKeep}
       id="exactAmountDecisionDialog"
-      onClick={(e) => e.target === e.currentTarget && onKeep()}
-      style={{ display: 'block', zIndex: 1100, maxWidth: '480px' }}
+      maxWidth="480px"
+      title={<span id="exactAmountDecisionTitle">{title}</span>}
+      subtitle={subtitle}
     >
-      <div className="entry-form entry-form-modern" style={{ padding: '20px' }}>
-        <div className="dialog-heading" style={{ marginBottom: '12px' }}>
-          <h3 id="exactAmountDecisionTitle" style={{ margin: 0 }}>
-            {title}
-          </h3>
-        </div>
+      <div className="entry-form entry-form-modern" style={{ padding: '4px 0 0' }}>
 
         <p id="exactAmountDecisionMessage" style={{ fontSize: '13.5px', margin: '0 0 8px', lineHeight: '1.5' }}>
           You recorded {verb} of <strong>{formatMoney(actualAmount)}</strong> (100% of planned{' '}
@@ -118,6 +115,6 @@ export const ExactAmountDecisionModal: React.FC<ExactAmountDecisionModalProps> =
           </button>
         </div>
       </div>
-    </dialog>
+    </Modal>
   );
 };

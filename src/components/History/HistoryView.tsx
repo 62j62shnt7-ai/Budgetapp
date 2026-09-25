@@ -4,7 +4,9 @@ import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { isCreditCardExpense, calculateCreditSettlementDate, buildCreditDueEntries, isLumpCreditDueForAccount } from '../../engine/creditCards';
 import { buildInstallmentEntries } from '../../engine/salaryAndInstallments';
 import type { CashEntry } from '../../types';
-import { Lock, Unlock, Trash2, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react';
+import { Lock, Unlock, Trash2, RotateCcw } from 'lucide-react';
+import { HistorySummaryTab } from './HistorySummaryTab';
+import { HistoryAnalyticsSection } from './HistoryAnalyticsSection';
 
 interface HistoryViewProps {
   onEditEntry?: (entry: CashEntry) => void;
@@ -432,95 +434,13 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
 
       {/* Tab 1: Monthly Summary */}
       {activeHistoryTab === 'summary' && (
-        <div className="history-tab-pane active" id="historySummaryPane">
-          <div className="metrics-grid history-summary-grid" id="historyLifetimeSummary" style={{ marginBottom: '18px' }}>
-            <article className="metric history-metric">
-              <span>Lifetime Income</span>
-              <strong id="historyLifetimeIncome" style={{ color: 'var(--green)' }}>
-                {formatMoney(totalLifetimeIncome)}
-              </strong>
-              <small>Total realized income</small>
-            </article>
-            <article className="metric history-metric">
-              <span>Lifetime Expenses</span>
-              <strong id="historyLifetimeExpenses" style={{ color: 'var(--red)' }}>
-                {formatMoney(totalLifetimeExpenses)}
-              </strong>
-              <small>Total realized expenses</small>
-            </article>
-            <article className="metric history-metric">
-              <span>Lifetime Net</span>
-              <strong id="historyLifetimeNet" style={{ color: lifetimeNet >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                {lifetimeNet >= 0 ? '+' : ''}{formatMoney(lifetimeNet)}
-              </strong>
-              <small>Realized cash surplus</small>
-            </article>
-            <article className="metric history-metric">
-              <span>Savings Rate</span>
-              <strong id="historySavingsRate">{lifetimeSavingsRate}%</strong>
-              <small>Net / Income ratio</small>
-            </article>
-          </div>
-
-          <section className="panel history-table-panel">
-            <div className="panel-heading">
-              <h3 style={{ margin: 0 }}>Monthly income and expenses</h3>
-            </div>
-            <p style={{ color: 'var(--muted)', fontSize: '13px', margin: '4px 0 12px' }}>
-              Monthly aggregated totals of all confirmed income and actual expenses.
-            </p>
-            <div className="table-wrap compact">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Month</th>
-                    <th className="number">Income</th>
-                    <th className="number">Expenses</th>
-                    <th className="number">Net</th>
-                    <th className="number">Savings Rate</th>
-                  </tr>
-                </thead>
-                <tbody id="historyTable">
-                  {monthlySummaryRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} style={{ textAlign: 'center', padding: '24px', color: 'var(--muted)' }}>
-                        No actual activity recorded yet. Actualize entries in Cash Flow to populate history.
-                      </td>
-                    </tr>
-                  ) : (
-                    monthlySummaryRows.map((row) => {
-                      const rateBadgeClass =
-                        row.savingsRate >= 20 ? 'favorable' : row.savingsRate >= 0 ? 'neutral' : 'unfavorable';
-                      return (
-                        <tr key={row.month}>
-                          <td><strong>{row.month}</strong></td>
-                          <td className="number" style={{ color: 'var(--green)', fontWeight: 600 }}>
-                            +{formatMoney(row.income)}
-                          </td>
-                          <td className="number" style={{ color: 'var(--red)', fontWeight: 600 }}>
-                            -{formatMoney(row.expenses)}
-                          </td>
-                          <td
-                            className="number"
-                            style={{
-                              fontWeight: 700,
-                              color: row.net >= 0 ? 'var(--green)' : 'var(--red)',
-                            }}
-                          >
-                            {row.net >= 0 ? '+' : ''}{formatMoney(row.net)}
-                          </td>
-                          <td className="number">
-                            <span className={`variance-pill ${rateBadgeClass}`}>{row.savingsRate}%</span>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        </div>
+        <HistorySummaryTab
+          totalLifetimeIncome={totalLifetimeIncome}
+          totalLifetimeExpenses={totalLifetimeExpenses}
+          lifetimeNet={lifetimeNet}
+          lifetimeSavingsRate={lifetimeSavingsRate}
+          monthlySummaryRows={monthlySummaryRows}
+        />
       )}
 
       {/* Tab 2: Individual Validations */}
@@ -612,168 +532,16 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
           </div>
 
           {/* Collapsible Spending Analytics */}
-          <section className="panel collapsible-panel history-analytics-panel" style={{ marginBottom: '18px' }}>
-            <div
-              className="panel-heading"
-              style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-              onClick={() => setAnalyticsCollapsed(!analyticsCollapsed)}
-            >
-              <div>
-                <h3 style={{ margin: 0 }}>Spending Analytics &amp; Grouped Sources</h3>
-                <span style={{ fontSize: '11.5px', color: 'var(--muted)' }}>
-                  Filtered actuals · {sortedGroups.length} groups
-                </span>
-              </div>
-              <div
-                className="history-analytics-actions"
-                style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="subnav-tabs history-groupby-tabs" style={{ padding: '2px' }}>
-                  <button
-                    type="button"
-                    className={`subnav-tab ${groupBy === 'category' ? 'active' : ''}`}
-                    style={{ padding: '4px 9px', fontSize: '11.5px' }}
-                    onClick={() => setGroupBy('category')}
-                  >
-                    📁 Category
-                  </button>
-                  <button
-                    type="button"
-                    className={`subnav-tab ${groupBy === 'tag' ? 'active' : ''}`}
-                    style={{ padding: '4px 9px', fontSize: '11.5px' }}
-                    onClick={() => setGroupBy('tag')}
-                  >
-                    🏷️ Tag
-                  </button>
-                </div>
-                <div className="subnav-tabs history-view-tabs" style={{ padding: '2px' }}>
-                  <button
-                    type="button"
-                    className={`subnav-tab ${viewMode === 'chart' ? 'active' : ''}`}
-                    style={{ padding: '4px 10px', fontSize: '12px' }}
-                    onClick={() => setViewMode('chart')}
-                  >
-                    📊 Breakdown
-                  </button>
-                  <button
-                    type="button"
-                    className={`subnav-tab ${viewMode === 'table' ? 'active' : ''}`}
-                    style={{ padding: '4px 10px', fontSize: '12px' }}
-                    onClick={() => setViewMode('table')}
-                  >
-                    📋 Table
-                  </button>
-                  <button
-                    type="button"
-                    className={`subnav-tab ${viewMode === 'both' ? 'active' : ''}`}
-                    style={{ padding: '4px 10px', fontSize: '12px' }}
-                    onClick={() => setViewMode('both')}
-                  >
-                    📑 Both
-                  </button>
-                </div>
-                <button
-                  className="ghost-button collapse-toggle-btn"
-                  type="button"
-                  onClick={() => setAnalyticsCollapsed(!analyticsCollapsed)}
-                >
-                  {analyticsCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
-                </button>
-              </div>
-            </div>
-
-            {!analyticsCollapsed && (
-              <div className="collapsible-content" style={{ marginTop: '12px' }}>
-                {(viewMode === 'chart' || viewMode === 'both') && (
-                  <div className="history-chart-layout" style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginBottom: '16px' }}>
-                    <div className="donut-chart-container" style={{ width: '160px', height: '160px', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <svg width="150" height="150" viewBox="0 0 100 100" style={{ transform: 'rotate(-90deg)' }}>
-                        <circle cx="50" cy="50" r="38" fill="transparent" stroke="var(--line)" strokeWidth="16" />
-                        {sortedGroups.reduce<{ offset: number; elements: React.ReactNode[] }>((acc, [name, data], idx) => {
-                          const percent = totalAnalyticsAmount > 0 ? (data.total / totalAnalyticsAmount) * 100 : 0;
-                          const circumference = 2 * Math.PI * 38;
-                          const strokeDash = (percent / 100) * circumference;
-                          const strokeOffset = -acc.offset;
-                          const colors = ['#0ea5e9', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#6366f1', '#14b8a6', '#f43f5e'];
-                          const color = colors[idx % colors.length];
-
-                          acc.elements.push(
-                            <circle
-                              key={name}
-                              cx="50"
-                              cy="50"
-                              r="38"
-                              fill="transparent"
-                              stroke={color}
-                              strokeWidth="16"
-                              strokeDasharray={`${strokeDash} ${circumference - strokeDash}`}
-                              strokeDashoffset={strokeOffset}
-                            />
-                          );
-                          acc.offset += strokeDash;
-                          return acc;
-                        }, { offset: 0, elements: [] }).elements}
-                      </svg>
-                      <div className="donut-center-label" style={{ position: 'absolute', textAlign: 'center' }}>
-                        <span style={{ fontSize: '10px', color: 'var(--muted)', display: 'block' }}>Total</span>
-                        <strong style={{ fontSize: '13px' }}>{formatMoney(totalAnalyticsAmount)}</strong>
-                      </div>
-                    </div>
-                    <div className="stack-list history-scroll-list" style={{ flex: 1, minWidth: '260px', maxHeight: '200px', overflowY: 'auto' }}>
-                      {sortedGroups.map(([name, data], idx) => {
-                        const percent = totalAnalyticsAmount > 0 ? Math.round((data.total / totalAnalyticsAmount) * 100) : 0;
-                        const colors = ['#0ea5e9', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#6366f1', '#14b8a6', '#f43f5e'];
-                        return (
-                          <div key={name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', borderRadius: '6px', background: 'var(--surface-soft)', marginBottom: '4px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: colors[idx % colors.length] }} />
-                              <span style={{ fontSize: '13px', fontWeight: 600 }}>{name}</span>
-                              <span style={{ fontSize: '11px', color: 'var(--muted)' }}>({data.count})</span>
-                            </div>
-                            <div style={{ textAlign: 'right' }}>
-                              <strong style={{ fontSize: '13px' }}>{formatMoney(data.total)}</strong>
-                              <span style={{ fontSize: '11px', color: 'var(--muted)', marginLeft: '6px' }}>{percent}%</span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {(viewMode === 'table' || viewMode === 'both') && (
-                  <div className="table-wrap compact history-scroll-table" style={{ maxHeight: '250px', overflowY: 'auto' }}>
-                    <table>
-                      <thead style={{ position: 'sticky', top: 0, background: 'var(--surface)', zIndex: 1 }}>
-                        <tr>
-                          <th>Group / Category</th>
-                          <th>Type</th>
-                          <th className="number">Entries</th>
-                          <th className="number">Total Actual</th>
-                          <th className="number">Share</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {sortedGroups.map(([name, data]) => {
-                          const percent = totalAnalyticsAmount > 0 ? Math.round((data.total / totalAnalyticsAmount) * 100) : 0;
-                          return (
-                            <tr key={name}>
-                              <td><strong>{name}</strong></td>
-                              <td><span className={`badge ${data.type === 'income' ? 'badge-income' : 'badge-expense'}`}>{data.type}</span></td>
-                              <td className="number">{data.count}</td>
-                              <td className="number"><strong>{formatMoney(data.total)}</strong></td>
-                              <td className="number">{percent}%</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            )}
-          </section>
+          <HistoryAnalyticsSection
+            groupBy={groupBy}
+            setGroupBy={setGroupBy}
+            viewMode={viewMode}
+            setViewMode={setViewMode}
+            analyticsCollapsed={analyticsCollapsed}
+            setAnalyticsCollapsed={setAnalyticsCollapsed}
+            sortedGroups={sortedGroups}
+            totalAnalyticsAmount={totalAnalyticsAmount}
+          />
 
           {/* Validated Entries Table */}
           <section className="panel">
