@@ -301,6 +301,43 @@ export function getLowestProjectedBalanceAfterSpend(
   return { balance: Math.round(lowest * 100) / 100, date: lowestDate };
 }
 
+export function simulateSpend(
+  entries: CashEntry[],
+  openingBalance: number,
+  spendDate: string,
+  spendAmount: number
+): {
+  lowestBalance: number;
+  lowestDate: string | null;
+  triggerDate: string | null;
+  triggerBalance: number | null;
+} {
+  const simulatedEntry: CashEntry = {
+    id: `simulation-${spendDate}`,
+    date: spendDate,
+    amount: spendAmount,
+    type: 'expense',
+    category: 'Simulated spending',
+    account: 'simulation',
+    source: 'simulation',
+  };
+  const periods = getDeficitPeriods([...entries, simulatedEntry], openingBalance);
+  const firstDeficit = periods[0];
+  const lowest = getLowestProjectedBalanceAfterSpend(
+    entries,
+    openingBalance,
+    spendDate,
+    spendAmount
+  );
+
+  return {
+    lowestBalance: lowest.balance,
+    lowestDate: lowest.date,
+    triggerDate: firstDeficit?.startDate || null,
+    triggerBalance: firstDeficit ? firstDeficit.startAmount : null,
+  };
+}
+
 // ==========================================================================
 // detectDeficits — MONTHLY level (quick summary)
 // ==========================================================================

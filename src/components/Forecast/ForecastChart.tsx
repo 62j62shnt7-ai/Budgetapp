@@ -240,6 +240,16 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
   const zeroY = getY(0);
   const points = series.map((s, idx) => ({ x: getX(idx), y: getY(s.balance) }));
   const simPoints = isSimActive ? series.map((s, idx) => ({ x: getX(idx), y: getY(s.simulatedBalance) })) : [];
+  const simulatedPostIndices = isSimActive
+    ? series.map((point, index) => point.isPostSim ? index : -1).filter((index) => index >= 0)
+    : [];
+  const simulatedLowestIndex = simulatedPostIndices.length > 0
+    ? simulatedPostIndices.reduce((lowestIndex, index) =>
+        series[index].simulatedBalance < series[lowestIndex].simulatedBalance ? index : lowestIndex)
+    : null;
+  const simulatedLowestPoint = simulatedLowestIndex === null
+    ? null
+    : { series: series[simulatedLowestIndex], coordinate: simPoints[simulatedLowestIndex] };
 
   // Bezier curve generator
   const buildSmoothPath = (pts: { x: number; y: number }[]) => {
@@ -378,6 +388,38 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
             strokeLinecap="round"
             strokeLinejoin="round"
           />
+        )}
+
+        {simulatedLowestPoint && (
+          <g pointerEvents="none">
+            <line
+              x1={simulatedLowestPoint.coordinate.x}
+              y1={padT}
+              x2={simulatedLowestPoint.coordinate.x}
+              y2={padT + chartH}
+              stroke="#f59e0b"
+              strokeWidth="1.5"
+              strokeDasharray="3 3"
+              opacity="0.8"
+            />
+            <circle
+              cx={simulatedLowestPoint.coordinate.x}
+              cy={simulatedLowestPoint.coordinate.y}
+              r="8"
+              fill="#f59e0b"
+              stroke="var(--surface)"
+              strokeWidth="3"
+            />
+            <g transform={`translate(${Math.min(Math.max(simulatedLowestPoint.coordinate.x - 78, padL), padL + chartW - 156)}, ${Math.max(simulatedLowestPoint.coordinate.y - 42, padT + 4)})`}>
+              <rect width="156" height="32" rx="6" fill="#92400e" opacity="0.96" />
+              <text x="78" y="13" textAnchor="middle" fontSize="10" fill="#fff" fontFamily="var(--font-main)">
+                Simulated lowest point
+              </text>
+              <text x="78" y="25" textAnchor="middle" fontSize="10" fill="#fef3c7" fontFamily="var(--font-main)">
+                {formatMoney(simulatedLowestPoint.series.simulatedBalance)} · {simulatedLowestPoint.series.shortLabel}
+              </text>
+            </g>
+          </g>
         )}
 
         {/* Hover vertical crosshair line */}

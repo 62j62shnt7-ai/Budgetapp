@@ -9,6 +9,7 @@ import {
   getLowestProjectedBalanceAfterSpend,
   getRemainingForecastAmount,
   isOngoingEntry,
+  simulateSpend,
 } from '../src/engine/forecast.ts';
 import { computeSpreadPct, computeAssetEgpValue, defaultRates } from '../src/engine/currency.ts';
 import { computeFinancialHealthScore } from '../src/engine/healthScore.ts';
@@ -86,6 +87,13 @@ assert.deepStrictEqual(
   { balance: -20, date: '2026-01-01' }
 );
 console.log('✓ Spend simulator uses day-level balances verified');
+assert.deepStrictEqual(
+  simulateSpend([
+    { date: '2026-01-01', type: 'expense', amount: 120 },
+  ], 100, '2026-01-01', 20),
+  { lowestBalance: -40, lowestDate: '2026-01-01', triggerDate: '2026-01-01', triggerBalance: -20 }
+);
+console.log('✓ Spend simulator reports deficit trigger details verified');
 
 const recoveredDeficits = getDeficitPeriods([
   { id: 'trigger', date: '2026-09-10', amount: 2000, type: 'expense', category: 'Flexible', account: 'cash' },

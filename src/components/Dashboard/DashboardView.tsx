@@ -5,7 +5,7 @@ import {
   getActiveForecastEntries,
   getDeficitPeriods,
   getLowestProjectedBalance,
-  getLowestProjectedBalanceAfterSpend,
+  simulateSpend,
 } from '../../engine/forecast';
 import { computeFinancialHealthScore, generateSmartInsights } from '../../engine/healthScore';
 import { computeAssetEgpValue, computeTotalStorageValue } from '../../engine/currency';
@@ -170,22 +170,22 @@ export const DashboardView: React.FC = () => {
     const amt = Number(simAmount);
     if (!amt || amt <= 0) return;
     const testDate = simDate || DateUtils.todayString();
-    const lowestSim = getLowestProjectedBalanceAfterSpend(
+    const simulation = simulateSpend(
       allCandidateEntries,
       totalCash,
       testDate,
       amt
-    ).balance;
-    const hitDeficit = lowestSim < 0;
+    );
+    const hitDeficit = simulation.lowestBalance < 0;
 
     if (hitDeficit) {
       setSimVerdict({
-        text: `Spending ${formatMoney(amt)} triggers a deficit! Lowest balance drops to ${formatMoney(lowestSim)}.`,
+        text: `Deficit Triggered: Spending ${formatMoney(amt)} on ${DateUtils.formatDisplayDate(testDate)} causes balance to turn negative on ${DateUtils.formatDisplayDate(simulation.triggerDate || testDate)} (${formatMoney(simulation.triggerBalance || 0)}), dropping to a low of ${formatMoney(simulation.lowestBalance)} on ${DateUtils.formatDisplayDate(simulation.lowestDate || testDate)}.`,
         isDanger: true,
       });
     } else {
       setSimVerdict({
-        text: `Safe to spend ${formatMoney(amt)}! Balance remains positive (lowest floor: ${formatMoney(lowestSim)}).`,
+        text: `Safe to spend ${formatMoney(amt)}! Balance remains positive (lowest floor: ${formatMoney(simulation.lowestBalance)} on ${DateUtils.formatDisplayDate(simulation.lowestDate || testDate)}).`,
         isDanger: false,
       });
     }
