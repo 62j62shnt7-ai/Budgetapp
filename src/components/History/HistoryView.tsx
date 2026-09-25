@@ -690,16 +690,17 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                             </span>
                           </td>
                           <td className="cell-source" style={{ fontSize: '12px', color: 'var(--muted)' }}>
-                            {entry.source && entry.source.toLowerCase() !== 'manual' && entry.source.toLowerCase() !== entry.type.toLowerCase() ? (
+                            {entry.source && !['manual', 'expense', 'income', 'direct', 'starting balance', 'cash', 'default'].includes(entry.source.toLowerCase()) ? (
                               <span className={`source-pill ${entry.source === 'loan' ? 'loan' : ''}`}>
                                 {entry.source}
                               </span>
                             ) : null}
                           </td>
-                          <td className="cell-planned number" style={{ color: entry.type === 'income' ? 'var(--green)' : 'var(--red)', fontWeight: 700 }}>
-                            {entry.type === 'income' ? '+' : '-'}{formatMoney(entry.amount)}
+                          <td className="cell-planned number" style={{ color: 'var(--muted)', fontWeight: 600 }}>
+                            <span className="mobile-cell-label">Planned: </span>
+                            <span>{formatMoney(entry.amount)}</span>
                           </td>
-                          <td className="cell-actual number" style={{ fontWeight: 700 }}>
+                          <td className="cell-actual number" style={{ color: entry.type === 'income' ? 'var(--green)' : 'var(--red)', fontWeight: 800 }}>
                             {isAdminUnlocked ? (
                               <div className="history-admin-input-wrap">
                                 <span className="mobile-cell-label">Actual:</span>
@@ -720,9 +721,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                                 />
                               </div>
                             ) : (
-                              <span className="history-actual-display">
-                                <span className="mobile-cell-label">Actual: </span>
-                                {formatMoney(actual)}
+                              <span className="history-actual-display" style={{ color: entry.type === 'income' ? 'var(--green)' : 'var(--red)' }}>
+                                {entry.type === 'income' ? '+' : '-'}{formatMoney(actual)}
                               </span>
                             )}
                           </td>

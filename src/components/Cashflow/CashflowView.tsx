@@ -688,7 +688,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                         </span>
                       ) : isCreditSettlement || isCreditDueLumpSum(e) ? (
                         <span className="source-pill credit-due-pill">🏛️ Credit Due</span>
-                      ) : e.source && e.source.toLowerCase() !== 'manual' && e.source.toLowerCase() !== (e.type || '').toLowerCase() ? (
+                      ) : e.source && !['manual', 'expense', 'income', 'direct', 'starting balance', 'cash', 'default'].includes(e.source.toLowerCase()) ? (
                         <span className={`source-pill ${e.source === 'loan' ? 'loan' : ''}`}>
                           {e.source}
                         </span>
