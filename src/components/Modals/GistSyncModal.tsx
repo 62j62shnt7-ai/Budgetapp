@@ -45,6 +45,11 @@ export const GistSyncModal: React.FC<GistSyncModalProps> = ({ isOpen, onClose })
     setStatusMessage({ text, isError });
   };
 
+  const handleAutoSyncChange = (enabled: boolean) => {
+    setAutoSync(enabled);
+    setGistConfig(tokenInput.trim() || gistToken, idInput.trim() || gistId, enabled);
+  };
+
   // Find user's existing budget gist
   const handleFindGist = async () => {
     const token = tokenInput.trim();
@@ -327,7 +332,7 @@ export const GistSyncModal: React.FC<GistSyncModalProps> = ({ isOpen, onClose })
             <span>{autoSync ? 'Enabled' : 'Manual only'}</span>
           </div>
           <label className="gist-sync-checkbox">
-            <input type="checkbox" checked={autoSync} onChange={(e) => setAutoSync(e.target.checked)} />
+            <input type="checkbox" checked={autoSync} onChange={(e) => handleAutoSyncChange(e.target.checked)} />
             <span>Sync changes to the cloud automatically in the background.</span>
           </label>
         </section>
