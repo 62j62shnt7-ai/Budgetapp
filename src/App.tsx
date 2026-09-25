@@ -16,8 +16,6 @@ import { RatesView } from './components/Rates/RatesView';
 // Modals
 import { EntryModal } from './components/Modals/EntryModal';
 import { LoanBridgeModal } from './components/Modals/LoanBridgeModal';
-import { CapModal } from './components/Modals/CapModal';
-import { GoalModal } from './components/Modals/GoalModal';
 import { StorageModal } from './components/Modals/StorageModal';
 import { InstallmentModal } from './components/Modals/InstallmentModal';
 import {
@@ -41,8 +39,6 @@ export const App: React.FC = () => {
   const [entryToEdit, setEntryToEdit] = useState<CashEntry | null>(null);
 
   const [loanModalOpen, setLoanModalOpen] = useState(false);
-  const [capModalOpen, setCapModalOpen] = useState(false);
-  const [goalModalOpen, setGoalModalOpen] = useState(false);
   const [storageModalOpen, setStorageModalOpen] = useState(false);
   const [installmentModalOpen, setInstallmentModalOpen] = useState(false);
 
@@ -147,12 +143,27 @@ export const App: React.FC = () => {
       } else if (e.key.toLowerCase() === 'l') {
         e.preventDefault();
         setLoanModalOpen(true);
+      } else if (e.key === '/') {
+        e.preventDefault();
+        if (activeTab === 'history') {
+          const s = document.getElementById('historySearch') as HTMLInputElement | null;
+          if (s) {
+            s.focus();
+            s.select?.();
+          }
+        } else {
+          const s = (document.getElementById('searchEntries') || document.getElementById('cfSearch')) as HTMLInputElement | null;
+          if (s) {
+            s.focus();
+            s.select?.();
+          }
+        }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [toggleSidebar, closeMobileSidebar]);
+  }, [toggleSidebar, closeMobileSidebar, activeTab]);
 
   const handleOpenEntryModal = (type: 'expense' | 'income') => {
     setEntryModalType(type);
@@ -267,15 +278,6 @@ export const App: React.FC = () => {
         onClose={() => setLoanModalOpen(false)}
       />
 
-      <CapModal
-        isOpen={capModalOpen}
-        onClose={() => setCapModalOpen(false)}
-      />
-
-      <GoalModal
-        isOpen={goalModalOpen}
-        onClose={() => setGoalModalOpen(false)}
-      />
 
       <StorageModal
         isOpen={storageModalOpen}

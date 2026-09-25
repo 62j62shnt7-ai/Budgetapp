@@ -28,8 +28,6 @@ export const DashboardView: React.FC = () => {
     creditDues,
     archivedEntries,
     creditSettlementOverrides,
-    categoryCaps,
-    savingsGoals,
     entryActuals,
     deletedForecasts,
     setActiveTab,
@@ -117,8 +115,6 @@ export const DashboardView: React.FC = () => {
     deficitPeriods,
     actualCashNow: totalCash,
     storageTotal,
-    categoryCaps,
-    savingsGoals,
     entryActuals,
   });
   const insights = generateSmartInsights({
@@ -127,7 +123,6 @@ export const DashboardView: React.FC = () => {
     deficitPeriods,
     actualCashNow: totalCash,
     storageTotal,
-    savingsGoals,
   });
   const deficits = {
     hasDeficit: deficitPeriods.length > 0 || forecast.some((item) => item.balance < 0),

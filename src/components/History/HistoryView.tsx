@@ -573,6 +573,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
               <label style={{ flex: '1 1 180px' }}>
                 Search
                 <input
+                  id="historySearch"
                   type="search"
                   placeholder="Search category, tag..."
                   value={searchTerm}
@@ -1011,7 +1012,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                                               </button>
                                             ) : '—'}
                                           </td>
-                                          <td>{(entry.account || 'cash').toUpperCase()}</td>
+                                          <td>{(draw.account || entry.account || 'cash').toUpperCase()}</td>
                                           <td className="number">{formatMoney(Number(draw.amount) || 0)}</td>
                                         </tr>
                                       ))}

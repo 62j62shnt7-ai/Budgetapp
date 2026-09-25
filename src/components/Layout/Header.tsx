@@ -34,8 +34,6 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddModal }) => {
     creditDues,
     archivedEntries,
     creditSettlementOverrides,
-    categoryCaps,
-    savingsGoals,
     entryActuals,
     deletedForecasts,
   } = useBudgetStore();
@@ -72,8 +70,6 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddModal }) => {
     deficitPeriods,
     actualCashNow: totalCash,
     storageTotal,
-    categoryCaps,
-    savingsGoals,
     entryActuals,
   });
   const hasDeficit = deficitPeriods.length > 0 || forecast.some((item) => item.balance < 0);

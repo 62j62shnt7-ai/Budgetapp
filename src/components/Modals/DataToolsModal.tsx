@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
 import { useBudgetStore } from '../../store/useBudgetStore';
+import { executeAppRefresh } from '../../utils/appRefresh';
 
 interface DataToolsModalProps {
   isOpen: boolean;
@@ -137,7 +138,7 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
             Reload the application or reset template records.
           </p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-            <button className="ghost-button" type="button" onClick={() => window.location.reload()}>
+            <button className="ghost-button" type="button" onClick={() => executeAppRefresh()}>
               🔄 Refresh App
             </button>
             <button

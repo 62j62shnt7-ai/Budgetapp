@@ -9,6 +9,7 @@ export interface EntryDraw {
   amount: number;
   note?: string;
   tag?: string;
+  account?: string;
 }
 
 export interface CashEntry {
@@ -27,6 +28,7 @@ export interface CashEntry {
   source?: string;
   isDraw?: boolean;
   isClosed?: boolean;
+  keepOngoing?: boolean;
   draws?: EntryDraw[];
   settlementDate?: string;
   creditSettlementDate?: string;
@@ -103,18 +105,6 @@ export interface StorageAsset {
   rateSource?: string;
 }
 
-export interface CategoryCap {
-  category: string;
-  cap: number;
-}
-
-export interface SavingsGoal {
-  id: string;
-  name: string;
-  target: number;
-  current: number;
-  deadline?: string;
-}
 
 export interface JobDayLog {
   id?: string;

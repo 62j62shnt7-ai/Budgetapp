@@ -20,11 +20,16 @@ import {
   getRemainingForecastAmount,
   isPartialTracked,
   isOngoingEntry,
+  isLoanInflow,
+  findLinkedLoanRepayment,
+  calculateLoanRepaymentScale,
 } from '../../engine/forecast';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 
 import type { CashEntry } from '../../types';
+import { ExactAmountDecisionModal } from '../Modals/ExactAmountDecisionModal';
+import { AdjustLoanRepaymentModal, type LinkedRepaymentInfo } from '../Modals/AdjustLoanRepaymentModal';
 
 interface CashflowViewProps {
   onOpenEntryModal: (type: 'expense' | 'income') => void;
@@ -50,6 +55,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     populateSalaryForecast,
     clearSalaryForecast,
     installments,
+    updateInstallment,
     deleteInstallment,
     creditDues,
     creditSettlementOverrides,
@@ -65,6 +71,128 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
   const [typeFilter, setTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Decision Modals state
+  const [loanAdjustmentData, setLoanAdjustmentData] = useState<{
+    inflowEntry: CashEntry;
+    linkedInfo: LinkedRepaymentInfo;
+    totalDrawn: number;
+    plannedLoan: number;
+  } | null>(null);
+
+  const [exactDecisionData, setExactDecisionData] = useState<{
+    entry: CashEntry;
+    actualAmount: number;
+    plannedAmount: number;
+  } | null>(null);
+
+  const handleActualSpend = (entry: CashEntry, addedAmount: number, currentActual: number) => {
+    const newActual = currentActual + addedAmount;
+    recordActual(entry.id, newActual, DateUtils.todayString());
+    if (onDeductPrompt) onDeductPrompt(entry, addedAmount);
+
+    const plannedAmount = Number(entry.amount || 0);
+
+    if (isLoanInflow(entry)) {
+      const linked = findLinkedLoanRepayment(entry, entries, installments);
+      if (linked) {
+        const scaleCalc = calculateLoanRepaymentScale(entry, linked, newActual);
+        if (scaleCalc) {
+          setLoanAdjustmentData({
+            inflowEntry: entry,
+            linkedInfo:
+              linked.type === 'single'
+                ? {
+                    type: 'single',
+                    target: linked.target,
+                    scaledAmount: scaleCalc.scaledAmount,
+                    currentAmount: scaleCalc.currentAmount,
+                  }
+                : {
+                    type: 'installment',
+                    target: linked.target,
+                    scaledAmount: scaleCalc.scaledAmount,
+                    currentAmount: scaleCalc.currentAmount,
+                    months: scaleCalc.months || 1,
+                  },
+            totalDrawn: newActual,
+            plannedLoan: plannedAmount,
+          });
+          return;
+        }
+      }
+    }
+
+    if (newActual >= plannedAmount && plannedAmount > 0 && !entry.isClosed) {
+      setExactDecisionData({
+        entry,
+        actualAmount: newActual,
+        plannedAmount,
+      });
+    }
+  };
+
+  const handleScaleLoanRepayment = (scaledAmount: number) => {
+    if (!loanAdjustmentData) return;
+    const { inflowEntry, linkedInfo, totalDrawn, plannedLoan } = loanAdjustmentData;
+    if (linkedInfo.type === 'single') {
+      updateEntry(linkedInfo.target.id, { amount: scaledAmount });
+    } else {
+      updateInstallment(linkedInfo.target.id, { amount: scaledAmount });
+    }
+    setLoanAdjustmentData(null);
+
+    if (totalDrawn >= plannedLoan && plannedLoan > 0 && !inflowEntry.isClosed) {
+      setExactDecisionData({
+        entry: inflowEntry,
+        actualAmount: totalDrawn,
+        plannedAmount: plannedLoan,
+      });
+    }
+  };
+
+  const handleKeepLoanRepayment = () => {
+    if (!loanAdjustmentData) return;
+    const { inflowEntry, totalDrawn, plannedLoan } = loanAdjustmentData;
+    setLoanAdjustmentData(null);
+
+    if (totalDrawn >= plannedLoan && plannedLoan > 0 && !inflowEntry.isClosed) {
+      setExactDecisionData({
+        entry: inflowEntry,
+        actualAmount: totalDrawn,
+        plannedAmount: plannedLoan,
+      });
+    }
+  };
+
+  const handleFinishEntry = () => {
+    if (!exactDecisionData) return;
+    const { entry, actualAmount } = exactDecisionData;
+    updateEntry(entry.id, { isClosed: true, keepOngoing: false, amount: actualAmount });
+
+    if (isLoanInflow(entry)) {
+      const linked = findLinkedLoanRepayment(entry, entries, installments);
+      if (linked) {
+        const scaleCalc = calculateLoanRepaymentScale(entry, linked, actualAmount);
+        if (scaleCalc) {
+          if (linked.type === 'single') {
+            updateEntry(linked.target.id, { amount: scaleCalc.scaledAmount });
+          } else {
+            updateInstallment(linked.target.id, { amount: scaleCalc.scaledAmount });
+          }
+        }
+      }
+    }
+
+    setExactDecisionData(null);
+  };
+
+  const handleKeepEntry = () => {
+    if (!exactDecisionData) return;
+    const { entry } = exactDecisionData;
+    updateEntry(entry.id, { keepOngoing: true, isClosed: false });
+    setExactDecisionData(null);
+  };
 
   // Collapsible sections
   const [salaryOpen, setSalaryOpen] = useState<boolean>(() =>
@@ -822,9 +950,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                                 const input = ev.currentTarget;
                                 const val = Math.round(Number(input.value) || 0);
                                 if (val > 0) {
-                                  const newActual = actualValue + val;
-                                  recordActual(e.id, newActual, DateUtils.todayString());
-                                  if (onDeductPrompt) onDeductPrompt(e, val);
+                                  handleActualSpend(e, val, actualValue);
                                 }
                                 input.value = '';
                               }
@@ -833,9 +959,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                               const input = ev.currentTarget;
                               const val = Math.round(Number(input.value) || 0);
                               if (val > 0) {
-                                const newActual = actualValue + val;
-                                recordActual(e.id, newActual, DateUtils.todayString());
-                                if (onDeductPrompt) onDeductPrompt(e, val);
+                                handleActualSpend(e, val, actualValue);
                               }
                               input.value = '';
                             }}
@@ -863,9 +987,11 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                               title="Finish and close entry at current actual amount"
                               onClick={(ev) => {
                                 ev.stopPropagation();
-                                if (window.confirm(`Finish and close "${e.category}" at current actual amount (${formatMoney(actualValue)})?\n\nRemaining budget will be closed and removed from future forecast.`)) {
-                                  updateEntry(e.id, { isClosed: true, amount: actualValue });
-                                }
+                                setExactDecisionData({
+                                  entry: e,
+                                  actualAmount: actualValue,
+                                  plannedAmount: Number(e.amount || 0),
+                                });
                               }}
                             >
                               ✓ Finish
@@ -894,6 +1020,26 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
           </table>
         </div>
       </section>
+
+      {/* Decision & Repayment Modals */}
+      <AdjustLoanRepaymentModal
+        isOpen={Boolean(loanAdjustmentData)}
+        inflowEntry={loanAdjustmentData?.inflowEntry || null}
+        linkedInfo={loanAdjustmentData?.linkedInfo || null}
+        totalDrawn={loanAdjustmentData?.totalDrawn || 0}
+        plannedLoan={loanAdjustmentData?.plannedLoan || 0}
+        onKeep={handleKeepLoanRepayment}
+        onScale={handleScaleLoanRepayment}
+      />
+
+      <ExactAmountDecisionModal
+        isOpen={Boolean(exactDecisionData)}
+        entry={exactDecisionData?.entry || null}
+        actualAmount={exactDecisionData?.actualAmount || 0}
+        plannedAmount={exactDecisionData?.plannedAmount || 0}
+        onKeep={handleKeepEntry}
+        onFinish={handleFinishEntry}
+      />
     </section>
   );
 };

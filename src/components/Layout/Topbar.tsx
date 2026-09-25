@@ -11,6 +11,8 @@ import {
   Plus 
 } from 'lucide-react';
 
+import { executeAppRefresh } from '../../utils/appRefresh';
+
 interface TopbarProps {
   onOpenEntryModal: (type: 'expense' | 'income') => void;
   onOpenLoanModal: () => void;
@@ -120,7 +122,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           type="button"
           aria-label="Refresh application"
           title="Check for updates, clear cache & reload app"
-          onClick={() => window.location.reload()}
+          onClick={() => executeAppRefresh()}
         >
           <RotateCw size={14} />
           <span>Refresh</span>

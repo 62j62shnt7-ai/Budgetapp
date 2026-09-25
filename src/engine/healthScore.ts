@@ -9,7 +9,7 @@
 // ==========================================================================
 import { DateUtils } from './dateUtils';
 import { groupByMonth } from './forecast';
-import type { CashEntry, CategoryCap, SavingsGoal, DeficitSummary, MonthlyForecast, HealthScoreResult, SmartInsight } from '../types';
+import type { CashEntry, DeficitSummary, MonthlyForecast, HealthScoreResult, SmartInsight } from '../types';
 import type { DailyDeficitPeriod } from './forecast';
 
 export function computeFinancialHealthScore(params: {
@@ -18,8 +18,6 @@ export function computeFinancialHealthScore(params: {
   deficitPeriods: DailyDeficitPeriod[];
   actualCashNow: number;
   storageTotal: number;
-  categoryCaps: CategoryCap[];
-  savingsGoals: SavingsGoal[];
   entryActuals: Record<string, number>;
 }): HealthScoreResult;
 /** Backward-compatible adapter for the original positional engine API. */
@@ -36,8 +34,6 @@ export function computeFinancialHealthScore(
     deficitPeriods: DailyDeficitPeriod[];
     actualCashNow: number;
     storageTotal: number;
-    categoryCaps: CategoryCap[];
-    savingsGoals: SavingsGoal[];
     entryActuals: Record<string, number>;
   } | MonthlyForecast[],
   legacyDeficits?: DeficitSummary,
@@ -51,8 +47,6 @@ export function computeFinancialHealthScore(
         deficitPeriods: [],
         actualCashNow: legacyActualCashNow || 0,
         storageTotal: legacyStorageTotal || 0,
-        categoryCaps: [],
-        savingsGoals: [],
         entryActuals: {},
       }
     : paramsOrForecast;
@@ -62,8 +56,6 @@ export function computeFinancialHealthScore(
     deficitPeriods,
     actualCashNow,
     storageTotal,
-    categoryCaps,
-    savingsGoals,
   } = params;
   const effectiveDeficitPeriods = Array.isArray(paramsOrForecast)
     ? (legacyDeficits?.deficitPeriods || []).map((period) => ({
@@ -147,40 +139,11 @@ export function computeFinancialHealthScore(
     }
   }
 
-  // 3. Budget Adherence (0 - 25 pts) — matches legacy exactly
-  let budgetScore = 20; // Default neutral if no caps
-  if (categoryCaps && categoryCaps.length > 0) {
-    let exceededCount = 0;
-    categoryCaps.forEach((item) => {
-      const spent = entries
-        .filter(
-          (e) =>
-            e.type === 'expense' &&
-            DateUtils.getMonthKey(e.date) === currentMonth &&
-            (e.category || '').toLowerCase() === (item.category || '').toLowerCase()
-        )
-        .reduce((sum, e) => sum + Number(e.amount || 0), 0);
-      const cap = Number(item.cap || 0);
-      if (cap > 0 && spent > cap) exceededCount++;
-    });
-    if (exceededCount === 0) budgetScore = 25;
-    else if (exceededCount === 1) budgetScore = 14;
-    else budgetScore = 6;
-  }
+  // 3. Budget Adherence (0 - 25 pts) — neutral default
+  const budgetScore = 20;
 
-  // 4. Savings & Reserve Target (0 - 25 pts) — matches legacy exactly
-  let savingsScore = 15;
-  if (savingsGoals && savingsGoals.length > 0) {
-    const totalTarget = savingsGoals.reduce((s, g) => s + Number(g.target || 0), 0);
-    const totalCurrent = savingsGoals.reduce((s, g) => s + Number(g.current || 0), 0);
-    if (totalTarget > 0) {
-      const pct = totalCurrent / totalTarget;
-      if (pct >= 0.8) savingsScore = 25;
-      else if (pct >= 0.5) savingsScore = 20;
-      else if (pct >= 0.25) savingsScore = 15;
-      else savingsScore = 10;
-    }
-  }
+  // 4. Savings & Reserve Target (0 - 25 pts) — neutral default
+  const savingsScore = 15;
 
   const rawScore = Math.round(deficitScore + runwayScore + budgetScore + savingsScore);
   const score = Math.min(hardScoreCap, Math.max(0, rawScore));
@@ -225,9 +188,8 @@ export function generateSmartInsights(params: {
   deficitPeriods: DailyDeficitPeriod[];
   actualCashNow: number;
   storageTotal: number;
-  savingsGoals: SavingsGoal[];
 }): SmartInsight[] {
-  const { entries, forecast, deficitPeriods, actualCashNow, storageTotal, savingsGoals } = params;
+  const { entries, forecast, deficitPeriods, actualCashNow, storageTotal } = params;
   const insights: SmartInsight[] = [];
   const currentMonth = DateUtils.currentYearMonth();
   const today = DateUtils.todayString();
@@ -312,20 +274,6 @@ export function generateSmartInsights(params: {
     });
   }
 
-  // 4. Savings Goal Progress
-  if (savingsGoals && savingsGoals.length > 0) {
-    const totalTarget = savingsGoals.reduce((s, g) => s + Number(g.target || 0), 0);
-    const totalCurrent = savingsGoals.reduce((s, g) => s + Number(g.current || 0), 0);
-    if (totalTarget > 0) {
-      const pct = Math.round((totalCurrent / totalTarget) * 100);
-      insights.push({
-        id: 'savings-progress',
-        type: pct >= 80 ? 'positive' : pct >= 50 ? 'tip' : 'warning',
-        title: 'Savings Progress',
-        message: `${formatMoney(totalCurrent)} of ${formatMoney(totalTarget)} saved (${pct}% of target across ${savingsGoals.length} goal(s)).`,
-      });
-    }
-  }
 
   // 5. Low Cash Buffer
   if (actualCashNow < 10000 && deficitPeriods.length === 0) {

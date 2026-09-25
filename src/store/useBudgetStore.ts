@@ -5,12 +5,10 @@ import { create } from 'zustand';
 import type {
   AccountBalance,
   CashEntry,
-  CategoryCap,
   Installment,
   JobItem,
   RatesData,
   SalaryPayment,
-  SavingsGoal,
   StorageAsset,
 } from '../types';
 import { defaultRates, resolveRateSourceValue } from '../engine/currency';
@@ -36,8 +34,6 @@ export const STORAGE_KEYS = {
   irq: 'budget-control-irq-jobs',
   partTimeJobs: 'budget-control-part-time-jobs',
   rates: 'budget-control-rates',
-  categoryCaps: 'budget-control-category-caps',
-  savingsGoals: 'budget-control-savings-goals',
   entryActuals: 'budget-control-entry-actuals',
   entryActualDates: 'budget-control-entry-actual-dates',
   deletedForecasts: 'budget-control-deleted-forecasts',
@@ -109,8 +105,6 @@ export interface BudgetStoreState {
   installments: Installment[];
   rates: RatesData;
   storageAssets: StorageAsset[];
-  categoryCaps: CategoryCap[];
-  savingsGoals: SavingsGoal[];
   asfJobs: JobItem[];
   irqJobs: JobItem[];
   partTimeJobs: JobItem[];
@@ -141,7 +135,7 @@ export interface BudgetStoreState {
   addEntry: (entry: Omit<CashEntry, 'id'>) => void;
   updateEntry: (id: string, updates: Partial<CashEntry>) => void;
   deleteEntry: (id: string) => void;
-  recordActual: (entryId: string, amount: number, date?: string) => void;
+  recordActual: (entryId: string, amount: number, date?: string, drawMeta?: { note?: string; tag?: string; account?: string }) => void;
   clearActual: (entryId: string) => void;
   updateCreditSettlementOverride: (id: string, override: { amount?: number; date?: string }) => void;
   recalculateCreditSettlement: (id: string) => CashEntry | undefined;
@@ -154,13 +148,6 @@ export interface BudgetStoreState {
   addInstallment: (installment: Omit<Installment, 'id'>) => void;
   updateInstallment: (id: string, updates: Partial<Installment>) => void;
   deleteInstallment: (id: string) => void;
-
-  setCategoryCap: (category: string, cap: number) => void;
-  deleteCategoryCap: (category: string) => void;
-
-  addSavingsGoal: (goal: Omit<SavingsGoal, 'id'>) => void;
-  updateSavingsGoal: (id: string, updates: Partial<SavingsGoal>) => void;
-  deleteSavingsGoal: (id: string) => void;
 
   updateRates: (rates: RatesData) => void;
   syncStorageRates: (rates?: RatesData) => void;
@@ -247,15 +234,6 @@ const defaultSalaryPattern: SalaryPayment[] = [
   { monthOffset: 2, day: 30, amount: 0 },
 ];
 
-const defaultCategoryCaps: CategoryCap[] = [
-  { category: 'Home', cap: 15000 },
-  { category: 'Bills', cap: 5000 },
-];
-
-const defaultSavingsGoals: SavingsGoal[] = [
-  { id: 'g1', name: 'Emergency Reserve', target: 50000, current: 15000 },
-];
-
 export function inferTag(entry: Partial<CashEntry>): string {
   const category = (entry.category || '').toLowerCase();
   const source = (entry.source || '').toLowerCase();
@@ -287,8 +265,6 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
   installments: loadStorage<Installment[]>(STORAGE_KEYS.installments, []),
   rates: loadStorage<RatesData>(STORAGE_KEYS.rates, defaultRates),
   storageAssets: loadStorage<StorageAsset[]>(STORAGE_KEYS.storage, []),
-  categoryCaps: loadStorage<CategoryCap[]>(STORAGE_KEYS.categoryCaps, defaultCategoryCaps),
-  savingsGoals: loadStorage<SavingsGoal[]>(STORAGE_KEYS.savingsGoals, defaultSavingsGoals),
 
   asfJobs: loadStorage<JobItem[]>(STORAGE_KEYS.asf, []),
   irqJobs: loadStorage<JobItem[]>(STORAGE_KEYS.irq, []),
@@ -401,13 +377,53 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     scheduleAutoGistSync(get);
   },
 
-  recordActual: (entryId, amount, date) => {
+  recordActual: (entryId, amount, date, drawMeta) => {
+    const actDate = date || new Date().toISOString().slice(0, 10);
     const actuals = { ...get().entryActuals, [entryId]: amount };
     const dates = { ...get().entryActualDates };
     if (date) dates[entryId] = date;
+
+    const existingIndex = get().entries.findIndex((e) => e.id === entryId);
+    let updatedEntries = get().entries;
+    if (existingIndex !== -1) {
+      const entry = get().entries[existingIndex];
+      const prevActual = Number(get().entryActuals[entryId] ?? entry.actualAmount ?? 0);
+      const tranche = amount > prevActual ? amount - prevActual : amount;
+
+      let draws = Array.isArray(entry.draws) ? [...entry.draws] : [];
+      if (draws.length === 0 && prevActual > 0) {
+        draws.push({
+          date: entry.actualDate || entry.date || actDate,
+          amount: prevActual,
+          tag: entry.tag || '',
+          account: entry.account || 'cash',
+        });
+      }
+
+      if (tranche > 0 && amount > prevActual) {
+        draws.push({
+          date: actDate,
+          amount: tranche,
+          tag: drawMeta?.tag || entry.tag || '',
+          account: drawMeta?.account || entry.account || 'cash',
+          note: drawMeta?.note,
+        });
+      }
+
+      const updatedEntry: CashEntry = {
+        ...entry,
+        actualAmount: amount,
+        actualDate: actDate,
+        draws,
+      };
+      updatedEntries = [...get().entries];
+      updatedEntries[existingIndex] = updatedEntry;
+      saveStorage(STORAGE_KEYS.entries, updatedEntries);
+    }
+
     saveStorage(STORAGE_KEYS.entryActuals, actuals);
     saveStorage(STORAGE_KEYS.entryActualDates, dates);
-    set({ entryActuals: actuals, entryActualDates: dates });
+    set({ entries: updatedEntries, entryActuals: actuals, entryActualDates: dates });
     scheduleAutoGistSync(get);
   },
 
@@ -416,9 +432,27 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     delete actuals[entryId];
     const dates = { ...get().entryActualDates };
     delete dates[entryId];
+
+    const existingIndex = get().entries.findIndex((e) => e.id === entryId);
+    let updatedEntries = get().entries;
+    if (existingIndex !== -1) {
+      const entry = get().entries[existingIndex];
+      const updatedEntry: CashEntry = {
+        ...entry,
+        actualAmount: undefined,
+        actualDate: undefined,
+        draws: [],
+        isClosed: false,
+      };
+      delete (updatedEntry as any).keepOngoing;
+      updatedEntries = [...get().entries];
+      updatedEntries[existingIndex] = updatedEntry;
+      saveStorage(STORAGE_KEYS.entries, updatedEntries);
+    }
+
     saveStorage(STORAGE_KEYS.entryActuals, actuals);
     saveStorage(STORAGE_KEYS.entryActualDates, dates);
-    set({ entryActuals: actuals, entryActualDates: dates });
+    set({ entries: updatedEntries, entryActuals: actuals, entryActualDates: dates });
     scheduleAutoGistSync(get);
   },
 
@@ -624,41 +658,6 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     scheduleAutoGistSync(get);
   },
 
-  setCategoryCap: (category, cap) => {
-    const filtered = get().categoryCaps.filter((c) => c.category !== category);
-    const updated = [...filtered, { category, cap }];
-    saveStorage(STORAGE_KEYS.categoryCaps, updated);
-    set({ categoryCaps: updated });
-  },
-
-  deleteCategoryCap: (category) => {
-    const updated = get().categoryCaps.filter((c) => c.category !== category);
-    saveStorage(STORAGE_KEYS.categoryCaps, updated);
-    set({ categoryCaps: updated });
-  },
-
-  addSavingsGoal: (goalData) => {
-    const newGoal: SavingsGoal = {
-      ...goalData,
-      id: `goal-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-    };
-    const updated = [...get().savingsGoals, newGoal];
-    saveStorage(STORAGE_KEYS.savingsGoals, updated);
-    set({ savingsGoals: updated });
-  },
-
-  updateSavingsGoal: (id, updates) => {
-    const updated = get().savingsGoals.map((g) => (g.id === id ? { ...g, ...updates } : g));
-    saveStorage(STORAGE_KEYS.savingsGoals, updated);
-    set({ savingsGoals: updated });
-  },
-
-  deleteSavingsGoal: (id) => {
-    const updated = get().savingsGoals.filter((g) => g.id !== id);
-    saveStorage(STORAGE_KEYS.savingsGoals, updated);
-    set({ savingsGoals: updated });
-  },
-
   syncStorageRates: (customRates) => {
     const activeRates = customRates || get().rates;
     let changed = false;
@@ -827,8 +826,6 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       deletedForecasts: state.deletedForecasts,
       creditSettlementOverrides: state.creditSettlementOverrides,
       archivedEntries: state.archivedEntries,
-      categoryCaps: state.categoryCaps,
-      savingsGoals: state.savingsGoals,
     }));
     const emptyEntries: CashEntry[] = [];
     const emptyInstallments: Installment[] = [];
@@ -847,8 +844,6 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     saveStorage(STORAGE_KEYS.accounts, resetAccounts);
     saveStorage(STORAGE_KEYS.salary, resetSalary);
     saveStorage(STORAGE_KEYS.rates, resetRates);
-    saveStorage(STORAGE_KEYS.categoryCaps, defaultCategoryCaps);
-    saveStorage(STORAGE_KEYS.savingsGoals, defaultSavingsGoals);
     saveStorage(STORAGE_KEYS.entryActuals, {});
     saveStorage(STORAGE_KEYS.entryActualDates, {});
     saveStorage(STORAGE_KEYS.deletedForecasts, []);
@@ -862,8 +857,6 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       accounts: resetAccounts,
       salaryPattern: resetSalary,
       rates: resetRates,
-      categoryCaps: defaultCategoryCaps,
-      savingsGoals: defaultSavingsGoals,
       creditDues: {},
       creditDueMonths: {},
       creditSettlementOverrides: {},
@@ -902,8 +895,6 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         deletedForecasts: backup.deletedForecasts || [],
         creditSettlementOverrides: backup.creditSettlementOverrides || {},
         archivedEntries: backup.archivedEntries || [],
-        categoryCaps: backup.categoryCaps || defaultCategoryCaps,
-        savingsGoals: backup.savingsGoals || defaultSavingsGoals,
       };
       saveStorage(STORAGE_KEYS.salary, restored.salaryPattern);
       saveStorage(STORAGE_KEYS.salaryAnchor, restored.salaryAnchorMonth);
@@ -922,8 +913,6 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       saveStorage(STORAGE_KEYS.deletedForecasts, restored.deletedForecasts);
       saveStorage(STORAGE_KEYS.creditSettlementOverrides, restored.creditSettlementOverrides);
       saveStorage(STORAGE_KEYS.archivedEntries, restored.archivedEntries);
-      saveStorage(STORAGE_KEYS.categoryCaps, restored.categoryCaps);
-      saveStorage(STORAGE_KEYS.savingsGoals, restored.savingsGoals);
       localStorage.removeItem(STORAGE_KEYS.resetBackup);
       set(restored);
       scheduleAutoGistSync(get);
@@ -964,8 +953,6 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         creditSettlementOverrides: state.creditSettlementOverrides,
         salaryAnchorMonth: state.salaryAnchorMonth,
         archivedEntries: state.archivedEntries,
-        categoryCaps: state.categoryCaps,
-        savingsGoals: state.savingsGoals,
         // Aliases inside data:
         entries: state.entries,
         accounts: state.accounts,
@@ -981,8 +968,6 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       rates: state.rates,
       ratesData: state.rates,
       storageAssets: state.storageAssets,
-      categoryCaps: state.categoryCaps,
-      savingsGoals: state.savingsGoals,
       asfJobs: state.asfJobs,
       irqJobs: state.irqJobs,
       partTimeJobs: state.partTimeJobs,
@@ -1146,30 +1131,6 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         saveStorage(STORAGE_KEYS.storage, newStorage);
       }
 
-      // 7. Category Caps
-      const rawCaps = data.categoryCaps || parsed.categoryCaps;
-      let newCaps: CategoryCap[] = get().categoryCaps;
-      if (Array.isArray(rawCaps)) {
-        newCaps = rawCaps.map((c: any) => ({
-          category: c.category || '',
-          cap: Number(c.cap) || 0,
-        }));
-        saveStorage(STORAGE_KEYS.categoryCaps, newCaps);
-      }
-
-      // 8. Savings Goals
-      const rawGoals = data.savingsGoals || parsed.savingsGoals;
-      let newGoals: SavingsGoal[] = get().savingsGoals;
-      if (Array.isArray(rawGoals)) {
-        newGoals = rawGoals.map((g: any, idx: number) => ({
-          ...g,
-          id: g.id || `goal-${Date.now()}-${idx}`,
-          targetAmount: Number(g.targetAmount) || 0,
-          currentAmount: Number(g.currentAmount) || 0,
-        }));
-        saveStorage(STORAGE_KEYS.savingsGoals, newGoals);
-      }
-
       // 9. ASF Jobs
       const rawAsf = data.asfJobs || data.asf || parsed.asfJobs || parsed.asf;
       let newAsf: JobItem[] = get().asfJobs;
@@ -1254,8 +1215,6 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         creditSettlementOverrides: newSettlementOverrides,
         salaryAnchorMonth: newSalaryAnchor,
         storageAssets: newStorage,
-        categoryCaps: newCaps,
-        savingsGoals: newGoals,
         asfJobs: newAsf,
         irqJobs: newIrq,
         partTimeJobs: newPartTime,
@@ -1282,8 +1241,6 @@ const syncedDataKeys: Array<keyof BudgetStoreState> = [
   'installments',
   'rates',
   'storageAssets',
-  'categoryCaps',
-  'savingsGoals',
   'asfJobs',
   'irqJobs',
   'partTimeJobs',

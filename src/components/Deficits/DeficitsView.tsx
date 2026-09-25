@@ -82,10 +82,30 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({ onBridgeDeficit }) =
       return { entry, remaining, settled, daysOverdue: DateUtils.daysBetween(entry.date, today) };
     })
     .filter((item) => !item.settled && item.remaining > 0)
-    .sort((a, b) => b.entry.date.localeCompare(a.entry.date));
+  const totalDaysInDeficit = deficitPeriods.reduce((sum, p) => sum + (p.daysInDeficit || 0), 0);
+  const deficitNote = deficitPeriods.length > 0
+    ? `${deficitPeriods.length} spell${deficitPeriods.length === 1 ? '' : 's'} (${totalDaysInDeficit} days in deficit)`
+    : 'Balance stays positive';
 
   return (
     <section className="view" id="deficits" style={{ display: 'block' }}>
+      <div className="metrics-grid" style={{ marginBottom: '18px' }}>
+        <article className="metric">
+          <span>Forecast deficit spells</span>
+          <strong id="deficitForecastCount" style={{ color: deficitPeriods.length > 0 ? 'var(--red)' : 'var(--green)' }}>
+            {deficitPeriods.length}
+          </strong>
+          <small id="deficitForecastNote">{deficitNote}</small>
+        </article>
+        <article className="metric">
+          <span>Overdue & unpaid</span>
+          <strong id="deficitOverdueCount" style={{ color: overdueEntries.length > 0 ? 'var(--amber)' : 'inherit' }}>
+            {overdueEntries.length}
+          </strong>
+          <small id="deficitOverdueNote">Past due, not yet settled</small>
+        </article>
+      </div>
+
       <div className="content-grid salary-layout">
         {/* Forecast Deficit Timeline */}
         <section className="panel">

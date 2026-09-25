@@ -5,7 +5,7 @@
 // ==========================================================================
 import { DateUtils } from './dateUtils';
 import { isCreditCardExpense, isCreditDueLumpSum } from './creditCards';
-import type { CashEntry, DeficitPeriod, DeficitSummary, MonthlyForecast } from '../types';
+import type { CashEntry, DeficitPeriod, DeficitSummary, Installment, MonthlyForecast } from '../types';
 
 // --- Helper: resolve actual amount from entryActuals map (matches legacy getEntryActualAmount) ---
 export function getEntryActualAmount(
@@ -95,6 +95,98 @@ export function isOngoingEntry(
     return true;
   }
   return false;
+}
+
+// --- findLinkedLoanRepayment (matches legacy lines 6974-7014) ---
+export function findLinkedLoanRepayment(
+  inflowEntry: CashEntry,
+  entries: CashEntry[],
+  installments: Installment[]
+): { type: 'single'; target: CashEntry } | { type: 'installment'; target: Installment } | null {
+  if (!inflowEntry) return null;
+
+  // 1. Check by explicit loanId
+  if (inflowEntry.loanId) {
+    const singleRepayment = entries.find(
+      (e) => e.loanId === inflowEntry.loanId && e.type === 'expense'
+    );
+    if (singleRepayment) {
+      return { type: 'single', target: singleRepayment };
+    }
+    const installmentRepayment = installments.find(
+      (inst) => inst.loanId === inflowEntry.loanId
+    );
+    if (installmentRepayment) {
+      return { type: 'installment', target: installmentRepayment };
+    }
+  }
+
+  // 2. Fallback check by name: "Loan Inflow: <Name>" <-> "Loan Repayment: <Name>"
+  const inflowCat = (inflowEntry.category || '').trim();
+  if (inflowCat.toLowerCase().startsWith('loan inflow:')) {
+    const loanName = inflowCat.replace(/^loan inflow:\s*/i, '').trim();
+    if (loanName) {
+      const expectedRepaymentCat = `loan repayment: ${loanName}`.toLowerCase();
+      const singleRepayment = entries.find(
+        (e) => (e.category || '').trim().toLowerCase() === expectedRepaymentCat && e.type === 'expense'
+      );
+      if (singleRepayment) {
+        return { type: 'single', target: singleRepayment };
+      }
+      const installmentRepayment = installments.find(
+        (inst) =>
+          (inst.name || '').trim().toLowerCase() === expectedRepaymentCat ||
+          (inst.name || '').trim().toLowerCase() === `${loanName} repayment`.toLowerCase()
+      );
+      if (installmentRepayment) {
+        return { type: 'installment', target: installmentRepayment };
+      }
+    }
+  }
+
+  return null;
+}
+
+// --- calculateLoanRepaymentScale (matches legacy lines 7035-7071) ---
+export function calculateLoanRepaymentScale(
+  inflowEntry: CashEntry,
+  linked: { type: 'single'; target: CashEntry } | { type: 'installment'; target: Installment },
+  totalDrawn: number
+): { scaledAmount: number; currentAmount: number; months?: number } | null {
+  const plannedLoan = Number(inflowEntry.amount || 0);
+  if (plannedLoan <= 0 || totalDrawn <= 0) return null;
+
+  const isSingle = linked.type === 'single';
+  const currentRepAmount = Number(linked.target.amount || 0);
+  let baselineTotal = 0;
+  let months = 1;
+
+  if (isSingle) {
+    const storedInitial = Number(linked.target.initialAmount || 0);
+    if (storedInitial > 0) {
+      baselineTotal = storedInitial;
+    } else {
+      baselineTotal = Math.max(currentRepAmount, plannedLoan);
+    }
+  } else {
+    months = Number(linked.target.totalMonths || linked.target.remainingMonths || 1);
+    const storedInitial = Number(linked.target.initialAmount || 0);
+    if (storedInitial > 0) {
+      baselineTotal = storedInitial * months;
+    } else {
+      baselineTotal = Math.max(currentRepAmount * months, plannedLoan);
+    }
+  }
+
+  const markup = Math.max(1, baselineTotal / plannedLoan);
+  const scaledTotal = Math.round(totalDrawn * markup);
+  const scaledAmount = isSingle ? scaledTotal : Math.max(1, Math.round(scaledTotal / months));
+
+  if (scaledAmount === currentRepAmount) {
+    return null;
+  }
+
+  return { scaledAmount, currentAmount: currentRepAmount, months: isSingle ? undefined : months };
 }
 
 // --- groupByMonth (matches legacy) ---
