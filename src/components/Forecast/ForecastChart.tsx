@@ -215,6 +215,7 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
   const baseValues = series.map((s) => s.balance);
   const simValues = isSimActive ? series.map((s) => s.simulatedBalance) : [];
   const allValues = [...baseValues, ...simValues];
+  const hasDeficit = allValues.some((value) => value < 0);
 
   let rawMin = Math.min(...allValues);
   let rawMax = Math.max(...allValues);
@@ -314,7 +315,7 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
         </defs>
 
         {/* Deficit hazard area if balance drops below zero */}
-        {minVal < 0 && zeroY < padT + chartH && (
+        {hasDeficit && zeroY < padT + chartH && (
           <rect
             x={padL}
             y={Math.max(padT, zeroY)}
@@ -351,17 +352,30 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
         ))}
 
         {/* Zero line */}
-        {minVal < 0 && zeroY >= padT && zeroY <= padT + chartH && (
-          <line
-            x1={padL}
-            y1={zeroY}
-            x2={padL + chartW}
-            y2={zeroY}
-            stroke="#ef4444"
-            strokeDasharray="4 3"
-            strokeWidth="1.5"
-            opacity="0.85"
-          />
+        {hasDeficit && zeroY >= padT && zeroY <= padT + chartH && (
+          <g>
+            <line
+              x1={padL}
+              y1={zeroY}
+              x2={padL + chartW}
+              y2={zeroY}
+              stroke="#ef4444"
+              strokeDasharray="4 3"
+              strokeWidth="1.5"
+              opacity="0.95"
+            />
+            <text
+              x={padL - 10}
+              y={zeroY + 4}
+              textAnchor="end"
+              fontSize="10"
+              fontWeight="700"
+              fill="#ef4444"
+              fontFamily="var(--font-main)"
+            >
+              0
+            </text>
+          </g>
         )}
 
         {/* Area fill */}
@@ -410,13 +424,10 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
               stroke="var(--surface)"
               strokeWidth="3"
             />
-            <g transform={`translate(${Math.min(Math.max(simulatedLowestPoint.coordinate.x - 78, padL), padL + chartW - 156)}, ${Math.max(simulatedLowestPoint.coordinate.y - 42, padT + 4)})`}>
-              <rect width="156" height="32" rx="6" fill="#92400e" opacity="0.96" />
-              <text x="78" y="13" textAnchor="middle" fontSize="10" fill="#fff" fontFamily="var(--font-main)">
-                Simulated lowest point
-              </text>
-              <text x="78" y="25" textAnchor="middle" fontSize="10" fill="#fef3c7" fontFamily="var(--font-main)">
-                {formatMoney(simulatedLowestPoint.series.simulatedBalance)} · {simulatedLowestPoint.series.shortLabel}
+            <g transform={`translate(${Math.min(Math.max(simulatedLowestPoint.coordinate.x - 78, padL), padL + chartW - 156)}, 2)`}>
+              <rect width="156" height="22" rx="6" fill="#92400e" opacity="0.88" />
+              <text x="78" y="15" textAnchor="middle" fontSize="10" fill="#fff" fontFamily="var(--font-main)">
+                Low: {formatMoney(simulatedLowestPoint.series.simulatedBalance)} · {simulatedLowestPoint.series.shortLabel}
               </text>
             </g>
           </g>
