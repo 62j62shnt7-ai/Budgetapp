@@ -172,7 +172,7 @@ export async function autoFetchLatestRates(
       gold: updatedGold,
       lastFetched: nowIso,
       currenciesLastFetched: nowIso,
-      goldLastFetched: xauUsd ? nowIso : currentRates.goldLastFetched,
+      goldLastFetched: xauUsd ? nowIso : (currentRates.goldLastFetched || currentRates.lastFetched),
     };
   } catch (err) {
     console.warn('Silent live rate auto-fetch skipped (network offline or unreachable):', err);

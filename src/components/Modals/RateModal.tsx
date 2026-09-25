@@ -49,6 +49,9 @@ export const RateModal: React.FC<RateModalProps> = ({ isOpen, rateType = 'curren
         copy.currencies[idx].sell = sellVal;
         copy.currencies[idx].buy = buyVal;
         copy.currenciesLastFetched = now;
+        if (!copy.goldLastFetched && copy.lastFetched) {
+          copy.goldLastFetched = copy.lastFetched;
+        }
       }
     } else {
       const idx = copy.gold.findIndex((g: any) => g.name === selectedItemName);
@@ -56,6 +59,9 @@ export const RateModal: React.FC<RateModalProps> = ({ isOpen, rateType = 'curren
         copy.gold[idx].sell = sellVal;
         copy.gold[idx].buy = buyVal;
         copy.goldLastFetched = now;
+        if (!copy.currenciesLastFetched && copy.lastFetched) {
+          copy.currenciesLastFetched = copy.lastFetched;
+        }
       }
     }
     copy.lastFetched = now;

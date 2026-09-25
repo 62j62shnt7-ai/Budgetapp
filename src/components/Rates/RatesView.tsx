@@ -10,7 +10,7 @@ import {
 } from '../../engine/currency';
 import { formatFullDateTime } from '../../engine/dateUtils';
 import type { RatesData } from '../../types';
-import { Edit2, Check, X } from 'lucide-react';
+import { Edit2, Check, X, RefreshCw } from 'lucide-react';
 
 interface RatesViewProps {
   onOpenRateModal?: (type: 'currency' | 'gold') => void;
@@ -20,8 +20,7 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
   const { rates, updateRates } = useBudgetStore();
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [draftRates, setDraftRates] = useState<RatesData | null>(null);
-  const [isFetchingCurrencies, setIsFetchingCurrencies] = useState<boolean>(false);
-  const [isFetchingGold, setIsFetchingGold] = useState<boolean>(false);
+  const [isFetching, setIsFetching] = useState<boolean>(false);
 
   const handleStartEdit = () => {
     setDraftRates(JSON.parse(JSON.stringify(rates)));
@@ -47,102 +46,92 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
     setDraftRates(null);
   };
 
-  const handleFetchLiveCurrencies = async () => {
-    setIsFetchingCurrencies(true);
+  const handleFetchAllLiveRates = async () => {
+    setIsFetching(true);
     try {
-      const liveRates = await fetchLiveCurrencyRates();
+      const [liveRatesResult, goldSpotResult] = await Promise.allSettled([
+        fetchLiveCurrencyRates(),
+        fetchLiveGoldSpotUsd(),
+      ]);
+
+      if (liveRatesResult.status === 'rejected' && goldSpotResult.status === 'rejected') {
+        throw new Error('Both currency and gold rate services failed.');
+      }
+
       const currentRates = useBudgetStore.getState().rates;
       const changes: string[] = [];
-      const updated = currentRates.currencies.map((currency) => {
-        const mid = egpPerUnit(liveRates, currency.name.toUpperCase());
-        if (mid === null) return currency;
-        const spreadPct = computeSpreadPct(currency.sell, currency.buy);
-        const next = applySpread(mid, spreadPct);
-        if (next.sell !== currency.sell || next.buy !== currency.buy) {
-          changes.push(`${currency.name}: ${currency.sell.toFixed(2)}/${currency.buy.toFixed(2)} → ${next.sell.toFixed(2)}/${next.buy.toFixed(2)}`);
-        }
-        return { ...currency, ...next };
-      });
-
       const now = new Date().toISOString();
+      let updatedCurrencies = currentRates.currencies;
+      let currenciesFetched = false;
+
+      if (liveRatesResult.status === 'fulfilled') {
+        const liveRates = liveRatesResult.value;
+        updatedCurrencies = currentRates.currencies.map((currency) => {
+          const mid = egpPerUnit(liveRates, currency.name.toUpperCase());
+          if (mid === null) return currency;
+          const spreadPct = computeSpreadPct(currency.sell, currency.buy);
+          const next = applySpread(mid, spreadPct);
+          if (next.sell !== currency.sell || next.buy !== currency.buy) {
+            changes.push(`• ${currency.name}: ${currency.sell.toFixed(2)}/${currency.buy.toFixed(2)} → ${next.sell.toFixed(2)}/${next.buy.toFixed(2)}`);
+          }
+          return { ...currency, ...next };
+        });
+        currenciesFetched = true;
+      }
+
+      let updatedGold = currentRates.gold;
+      let goldFetched = false;
+
+      if (goldSpotResult.status === 'fulfilled' && liveRatesResult.status === 'fulfilled') {
+        const xauUsd = goldSpotResult.value;
+        const liveRates = liveRatesResult.value;
+        const egpPerOz = xauUsd * liveRates.EGP;
+        const egpPerGram24k = egpPerOz / TROY_OUNCE_GRAMS;
+
+        updatedGold = currentRates.gold.map((item) => {
+          let mid: number | null = null;
+          const match = item.name.match(/(\d+)/);
+          if (match) {
+            const karat = Number(match[1]);
+            mid = egpPerGram24k * (karat / 24);
+          } else if (item.name.toLowerCase().includes('coin') || item.name.toLowerCase().includes('pound')) {
+            mid = egpPerGram24k * (21 / 24) * 8;
+          }
+
+          if (mid === null) return item;
+
+          const spreadPct = computeSpreadPct(item.sell, item.buy);
+          const next = applySpread(mid, spreadPct);
+          next.sell = Math.round(next.sell);
+          next.buy = Math.round(next.buy);
+          if (next.sell !== item.sell || next.buy !== item.buy) {
+            changes.push(`• ${item.name}: ${item.sell}/${item.buy} → ${next.sell}/${next.buy}`);
+          }
+          return { ...item, ...next };
+        });
+        goldFetched = true;
+      }
+
       updateRates({
         ...currentRates,
-        currencies: updated,
-        currenciesLastFetched: now,
+        currencies: updatedCurrencies,
+        gold: updatedGold,
+        currenciesLastFetched: currenciesFetched ? now : (currentRates.currenciesLastFetched || currentRates.lastFetched),
+        goldLastFetched: goldFetched ? now : (currentRates.goldLastFetched || currentRates.lastFetched),
         lastFetched: now,
       });
 
       if (changes.length > 0) {
-        alert(`Updated Currency Rates from live market data:\n\n${changes.join("\n")}`);
+        alert(`Updated Live Market Rates:\n\n${changes.join("\n")}`);
       } else {
-        alert("Live market feed checked: All currency rates are already up to date.");
+        alert("Live market feed checked: All currency and gold rates are already up to date.");
       }
     } catch (err: any) {
-      console.error("Live currency rate fetch failed:", err);
+      console.error("Live rates fetch failed:", err);
       const manual = window.confirm("Couldn't fetch live rates (offline or rate service unavailable). Enter rates manually?");
       if (manual) handleStartEdit();
     } finally {
-      setIsFetchingCurrencies(false);
-    }
-  };
-
-  const handleFetchLiveGold = async () => {
-    setIsFetchingGold(true);
-    try {
-      const [liveRates, xauUsd] = await Promise.all([fetchLiveCurrencyRates(), fetchLiveGoldSpotUsd()]);
-      const currentRates = useBudgetStore.getState().rates;
-      const egpPerOz = xauUsd * liveRates.EGP;
-      const egpPerGram24k = egpPerOz / TROY_OUNCE_GRAMS;
-
-      const changes: string[] = [];
-      const skipped: string[] = [];
-      const updated = currentRates.gold.map((item) => {
-        let mid: number | null = null;
-        const match = item.name.match(/(\d+)/);
-        if (match) {
-          const karat = Number(match[1]);
-          mid = egpPerGram24k * (karat / 24);
-        } else if (item.name.toLowerCase().includes('coin') || item.name.toLowerCase().includes('pound')) {
-          // A Gold Coin (جنيه ذهب) is 8 grams of 21k gold
-          mid = egpPerGram24k * (21 / 24) * 8;
-        }
-
-        if (mid === null) {
-          skipped.push(item.name);
-          return item;
-        }
-
-        const spreadPct = computeSpreadPct(item.sell, item.buy);
-        const next = applySpread(mid, spreadPct);
-        next.sell = Math.round(next.sell);
-        next.buy = Math.round(next.buy);
-        if (next.sell !== item.sell || next.buy !== item.buy) {
-          changes.push(`${item.name}: ${item.sell}/${item.buy} → ${next.sell}/${next.buy}`);
-        }
-        return { ...item, ...next };
-      });
-
-      const now = new Date().toISOString();
-      updateRates({
-        ...currentRates,
-        gold: updated,
-        goldLastFetched: now,
-        lastFetched: now,
-      });
-
-      if (changes.length > 0) {
-        let message = `Updated Gold Rates from live spot price ($${xauUsd.toFixed(2)}/oz):\n\n${changes.join("\n")}`;
-        if (skipped.length) message += `\n\nSkipped: ${skipped.join(", ")}`;
-        alert(message);
-      } else {
-        alert(`Live spot price checked ($${xauUsd.toFixed(2)}/oz): All gold rates are already up to date.`);
-      }
-    } catch (err: any) {
-      console.error("Live gold rate fetch failed:", err);
-      const manual = window.confirm("Couldn't fetch live gold price. Enter rates manually?");
-      if (manual) handleStartEdit();
-    } finally {
-      setIsFetchingGold(false);
+      setIsFetching(false);
     }
   };
 
@@ -150,6 +139,43 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
 
   return (
     <section className="view" id="rates" style={{ display: 'block' }}>
+      {/* Unified Rates Action Bar */}
+      <div className="panel" style={{ marginBottom: '16px' }}>
+        <div className="panel-heading rates-panel-heading">
+          <div>
+            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>Exchange & Gold Rates</h3>
+            {(rates.lastFetched || rates.currenciesLastFetched || rates.goldLastFetched) && (
+              <div style={{ fontSize: '0.75rem', color: 'var(--muted, #94a3b8)', marginTop: '3px' }}>
+                Last updated: {formatFullDateTime(rates.lastFetched || rates.currenciesLastFetched || rates.goldLastFetched)}
+              </div>
+            )}
+          </div>
+          <div className="rates-heading-actions">
+            {isEditing ? (
+              <>
+                <button className="primary-button" type="button" onClick={handleSave}>
+                  <Check size={14} style={{ marginRight: '4px' }} /> Save
+                </button>
+                <button className="ghost-button" type="button" onClick={handleCancel}>
+                  <X size={14} style={{ marginRight: '4px' }} /> Cancel
+                </button>
+              </>
+            ) : (
+              <button
+                className="primary-button"
+                id="updateAllRates"
+                type="button"
+                disabled={isFetching}
+                onClick={handleFetchAllLiveRates}
+              >
+                <RefreshCw size={14} className={isFetching ? 'spin' : ''} style={{ marginRight: '6px' }} />
+                {isFetching ? 'Fetching Live Rates…' : 'Update from Live'}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
       <div className="content-grid">
         {/* Currencies Panel */}
         <section className="panel">
@@ -163,34 +189,14 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
               )}
             </div>
             <div className="rates-heading-actions">
-              {isEditing ? (
-                <>
-                  <button className="primary-button" type="button" onClick={handleSave}>
-                    <Check size={14} style={{ marginRight: '4px' }} /> Save
-                  </button>
-                  <button className="ghost-button" type="button" onClick={handleCancel}>
-                    <X size={14} style={{ marginRight: '4px' }} /> Cancel
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    className="primary-button"
-                    id="editCurrencies"
-                    type="button"
-                    disabled={isFetchingCurrencies}
-                    onClick={handleFetchLiveCurrencies}
-                  >
-                    {isFetchingCurrencies ? 'Fetching…' : 'Update from Live'}
-                  </button>
-                  <button
-                    className="ghost-button"
-                    type="button"
-                    onClick={onOpenRateModal ? () => onOpenRateModal('currency') : handleStartEdit}
-                  >
-                    <Edit2 size={14} style={{ marginRight: '4px' }} /> Edit
-                  </button>
-                </>
+              {!isEditing && (
+                <button
+                  className="ghost-button"
+                  type="button"
+                  onClick={onOpenRateModal ? () => onOpenRateModal('currency') : handleStartEdit}
+                >
+                  <Edit2 size={14} style={{ marginRight: '4px' }} /> Edit
+                </button>
               )}
             </div>
           </div>
@@ -253,34 +259,14 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
               )}
             </div>
             <div className="rates-heading-actions">
-              {isEditing ? (
-                <>
-                  <button className="primary-button" type="button" onClick={handleSave}>
-                    <Check size={14} style={{ marginRight: '4px' }} /> Save
-                  </button>
-                  <button className="ghost-button" type="button" onClick={handleCancel}>
-                    <X size={14} style={{ marginRight: '4px' }} /> Cancel
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    className="primary-button"
-                    id="editGold"
-                    type="button"
-                    disabled={isFetchingGold}
-                    onClick={handleFetchLiveGold}
-                  >
-                    {isFetchingGold ? 'Fetching…' : 'Update from Live'}
-                  </button>
-                  <button
-                    className="ghost-button"
-                    type="button"
-                    onClick={onOpenRateModal ? () => onOpenRateModal('gold') : handleStartEdit}
-                  >
-                    <Edit2 size={14} style={{ marginRight: '4px' }} /> Edit
-                  </button>
-                </>
+              {!isEditing && (
+                <button
+                  className="ghost-button"
+                  type="button"
+                  onClick={onOpenRateModal ? () => onOpenRateModal('gold') : handleStartEdit}
+                >
+                  <Edit2 size={14} style={{ marginRight: '4px' }} /> Edit
+                </button>
               )}
             </div>
           </div>
