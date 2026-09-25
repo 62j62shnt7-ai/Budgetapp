@@ -702,6 +702,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     } else {
       set({ rates: ratesToSave });
     }
+    scheduleAutoGistSync(get);
   },
 
   addStorageAsset: (assetData) => {
@@ -1124,6 +1125,10 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         newRates = {
           currencies: Array.isArray(rawRates.currencies) && rawRates.currencies.length > 0 ? rawRates.currencies : defaultRates.currencies,
           gold: Array.isArray(rawRates.gold) && rawRates.gold.length > 0 ? rawRates.gold : defaultRates.gold,
+          lastFetched: typeof rawRates.lastFetched === 'string' ? rawRates.lastFetched : get().rates.lastFetched,
+          currenciesLastFetched: typeof rawRates.currenciesLastFetched === 'string' ? rawRates.currenciesLastFetched : get().rates.currenciesLastFetched,
+          goldLastFetched: typeof rawRates.goldLastFetched === 'string' ? rawRates.goldLastFetched : get().rates.goldLastFetched,
+          previousStorageTotal: typeof rawRates.previousStorageTotal === 'number' ? rawRates.previousStorageTotal : get().rates.previousStorageTotal,
         };
         saveStorage(STORAGE_KEYS.rates, newRates);
       }

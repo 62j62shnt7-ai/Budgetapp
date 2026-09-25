@@ -46,6 +46,13 @@ export const DashboardView: React.FC = () => {
     localStorage.setItem('budget-control-dashboard-density', dashboardDensity);
   }, [dashboardDensity]);
 
+  // Periodic ticker so relative timestamps ("Just now", "5m ago") stay fresh in real-time
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setTick((t) => t + 1), 30000);
+    return () => clearInterval(timer);
+  }, []);
+
   // Financial calculations
   const totalCash = Object.values(accounts).reduce((sum, acc) => sum + (acc.balance || 0), 0);
   const storageTotal = computeTotalStorageValue(storageAssets, rates);

@@ -150,7 +150,7 @@ export const App: React.FC = () => {
     window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
   }, [gistAutoSync, gistToken, setGistConfig]);
 
-  // Auto-fetch live currency and gold rates on launch / online
+  // Auto-fetch live currency and gold rates & sync on launch, online, focus, or visibility change
   useEffect(() => {
     let isMounted = true;
     const fetchRates = async () => {
@@ -168,14 +168,28 @@ export const App: React.FC = () => {
 
     void fetchRates();
 
-    const handleOnline = () => {
-      void fetchRates();
+    const handleSyncAndRates = () => {
+      if (document.visibilityState === 'visible') {
+        const state = useBudgetStore.getState();
+        if (state.gistAutoSync && state.gistToken && state.gistId) {
+          void state.syncFromGist(state.gistToken, state.gistId).then(() => {
+            void fetchRates();
+          });
+        } else {
+          void fetchRates();
+        }
+      }
     };
 
-    window.addEventListener('online', handleOnline);
+    window.addEventListener('online', handleSyncAndRates);
+    window.addEventListener('focus', handleSyncAndRates);
+    document.addEventListener('visibilitychange', handleSyncAndRates);
+
     return () => {
       isMounted = false;
-      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('online', handleSyncAndRates);
+      window.removeEventListener('focus', handleSyncAndRates);
+      document.removeEventListener('visibilitychange', handleSyncAndRates);
     };
   }, [updateRates]);
 
