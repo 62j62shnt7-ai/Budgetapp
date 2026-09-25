@@ -1374,19 +1374,23 @@ tr.history-admin-row:hover {
 }
 
 .history-tag-filter {
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   max-width: 100%;
-  margin-top: 3px;
-  padding: 1px 5px;
-  border: 1px solid transparent;
+  margin-top: 2px;
+  padding: 2px 7px;
+  border: 1px solid var(--line);
   border-radius: 999px;
-  background: transparent;
+  background: var(--surface-soft, rgba(0, 0, 0, 0.03));
   color: var(--muted);
   font: inherit;
   font-size: 11px;
-  line-height: 1.4;
+  font-weight: 500;
+  line-height: 1.3;
   text-align: left;
   cursor: pointer;
+  transition: all 0.15s ease;
 }
 
 .history-tag-filter:hover,
@@ -4048,6 +4052,17 @@ label {
    ========================================================================== */
 
 @media (max-width: 768px) {
+  .mobile-cell-label,
+  .mobile-cell-sublabel {
+    display: none;
+  }
+
+  .history-admin-input-wrap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+  }
+
   .table-wrap.responsive-cards {
     overflow: visible;
   }
@@ -4069,27 +4084,71 @@ label {
     width: 100%;
   }
 
-  .table-wrap.responsive-cards tr {
+  .table-wrap.responsive-cards tr:not(.history-draws-subrow) {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     row-gap: 8px;
     column-gap: 12px;
-    padding: 14px;
-    background: var(--glass-bg);
+    padding: 14px 16px;
+    background: var(--glass-bg, var(--surface));
     backdrop-filter: var(--glass-blur);
     -webkit-backdrop-filter: var(--glass-blur);
-    border: 1px solid var(--glass-border);
-    border-radius: 14px;
-    box-shadow: var(--glass-rim), 0 4px 14px rgba(0, 0, 0, 0.04);
+    border: 1px solid var(--glass-border, var(--line));
+    border-radius: 16px;
+    box-shadow: var(--glass-rim), 0 2px 10px rgba(0, 0, 0, 0.04);
     box-sizing: border-box;
     width: 100%;
     align-items: center;
+    position: relative;
+    transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+                border-color 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+                background-color 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Fix desktop row highlight quirk in mobile card view */
+  .table-wrap.responsive-cards tr:hover td,
+  .table-wrap.responsive-cards tr:focus td,
+  .table-wrap.responsive-cards tr:active td,
+  .table-wrap.responsive-cards .history-entry-editable:hover td,
+  .table-wrap.responsive-cards .history-entry-editable:focus-visible td {
+    background: transparent !important;
+  }
+
+  .table-wrap.responsive-cards tr:not(.history-draws-subrow):hover {
+    background: var(--surface-soft, var(--bg-surface-hover));
+    border-color: var(--line-strong, var(--line));
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+    transform: translateY(-1px);
+  }
+
+  .table-wrap.responsive-cards tr:not(.history-draws-subrow):active {
+    transform: scale(0.985);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+  }
+
+  .table-wrap.responsive-cards tr.history-entry-editable {
+    cursor: pointer;
+  }
+
+  .table-wrap.responsive-cards tr.history-entry-editable:hover,
+  .table-wrap.responsive-cards tr.history-entry-editable:focus-visible {
+    background: color-mix(in srgb, var(--amber) 6%, var(--surface));
+    border-color: color-mix(in srgb, var(--amber) 45%, var(--line));
+    box-shadow: 0 4px 16px color-mix(in srgb, var(--amber) 14%, transparent);
+    outline: none;
+  }
+
+  .table-wrap.responsive-cards tr.history-entry-editable:focus-visible {
+    box-shadow: 0 0 0 2px var(--amber), 0 4px 16px color-mix(in srgb, var(--amber) 18%, transparent);
   }
 
   .table-wrap.responsive-cards td {
     padding: 0 !important;
     border: none !important;
     min-width: 0;
+    background: transparent !important;
   }
 
   /* Row 1: Category on left, Amount/Forecast on right */
@@ -4097,7 +4156,7 @@ label {
     grid-column: 1;
     grid-row: 1;
     font-weight: 700;
-    font-size: 14.5px;
+    font-size: 15px;
     color: var(--ink);
     word-break: break-word;
     display: flex;
@@ -4112,12 +4171,12 @@ label {
     grid-column: 2;
     grid-row: 1;
     font-weight: 800;
-    font-size: 15px;
+    font-size: 16px;
     text-align: right;
     color: var(--ink);
+    font-variant-numeric: tabular-nums;
     white-space: nowrap;
     justify-self: end;
-    margin-left: 8px;
     flex-shrink: 0;
   }
 
@@ -4127,12 +4186,18 @@ label {
     grid-row: 2;
     font-size: 12.5px;
     color: var(--muted);
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
   }
 
   .table-wrap.responsive-cards .cell-type {
     grid-column: 2;
     grid-row: 2;
     text-align: right;
+    justify-self: end;
   }
 
   /* Row 3: Account on left, Source on right */
@@ -4141,32 +4206,64 @@ label {
     grid-row: 3;
     font-size: 11.5px;
     color: var(--muted);
-    letter-spacing: 0.3px;
+    font-weight: 600;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
   }
 
   .table-wrap.responsive-cards .cell-source {
     grid-column: 2;
     grid-row: 3;
     text-align: right;
+    justify-self: end;
+    font-size: 11.5px;
+    color: var(--muted);
   }
 
-  /* Row 4: Actual Input & Progress Line */
+  /* Row 4: Actual Execution */
   .table-wrap.responsive-cards .cell-actual {
-    grid-column: 1 / -1;
+    grid-column: 1;
     grid-row: 4;
-    padding-top: 8px !important;
-    margin-top: 4px;
+    padding-top: 10px !important;
+    margin-top: 2px;
     border-top: 1px dashed var(--line) !important;
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--ink);
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
 
-  .table-wrap.responsive-cards .cell-actual input {
+  .table-wrap.responsive-cards .mobile-cell-label {
+    display: inline !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    color: var(--muted) !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.04em !important;
+    margin-right: 4px !important;
+  }
+
+  .table-wrap.responsive-cards .history-admin-input-wrap {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
     width: 100% !important;
-    box-sizing: border-box;
+  }
+
+  .table-wrap.responsive-cards .history-admin-input {
+    max-width: 120px !important;
+    min-height: 32px !important;
+    padding: 4px 8px !important;
+    font-size: 13px !important;
+    border-radius: 8px !important;
   }
 
   /* Row 5: Variance Pill (History Table) */
   .table-wrap.responsive-cards .cell-variance {
-    grid-column: 1 / -1;
+    grid-column: 1;
     grid-row: 5;
     display: flex;
     align-items: center;
@@ -4174,15 +4271,105 @@ label {
     padding-top: 2px;
   }
 
-  /* Row 6 / Action Row */
+  /* Row 4 & 5 Right Column: Action Row */
   .table-wrap.responsive-cards .cell-actions {
-    grid-column: 1 / -1;
-    text-align: right;
+    grid-column: 2;
+    grid-row: 4 / span 2;
     display: flex;
     justify-content: flex-end;
     align-items: center;
-    gap: 8px;
-    padding-top: 4px !important;
+    gap: 6px;
+    border-top: 1px dashed var(--line) !important;
+    padding-top: 10px !important;
+    margin-top: 2px;
+    justify-self: end;
+    align-self: center;
+  }
+
+  /* Opening Balance rows on mobile: hide redundant empty actual/actions footer */
+  .table-wrap.responsive-cards tr.opening-balance-row .cell-actual,
+  .table-wrap.responsive-cards tr.opening-balance-row .cell-actions {
+    display: none !important;
+  }
+
+  /* Cashflow inline tags, credit badges & summaries */
+  .table-wrap.responsive-cards .cashflow-tag-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    min-height: 20px;
+    padding: 1px 7px;
+    font-size: 10.5px;
+    font-weight: 600;
+    border-radius: 999px;
+    margin: 2px 2px 0 0;
+    vertical-align: middle;
+  }
+
+  .table-wrap.responsive-cards .credit-due-summary {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 4px;
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    align-items: center;
+  }
+
+  /* Cashflow Actual Spend Cell & Notes */
+  .table-wrap.responsive-cards .actual-cell-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 100%;
+  }
+
+  .table-wrap.responsive-cards .inline-actual-input {
+    width: 100%;
+    max-width: 150px;
+    min-height: 34px;
+    padding: 4px 10px;
+    font-size: 13px;
+    border-radius: 8px;
+  }
+
+  .table-wrap.responsive-cards .actual-spend-note {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--muted);
+    line-height: 1.35;
+    margin-top: 2px;
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  /* Subspends Accordion Row */
+  .table-wrap.responsive-cards tr.history-draws-subrow {
+    display: block;
+    background: var(--surface-soft);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 12px 14px;
+    margin-top: -6px;
+    margin-bottom: 6px;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.02);
+  }
+
+  .table-wrap.responsive-cards tr.history-draws-subrow td.cell-draws-details {
+    display: block;
+    width: 100%;
+    padding: 0 !important;
+  }
+
+  /* Installment Summary Cards in Cashflow */
+  .installment-summary-card {
+    border-radius: 14px;
+    padding: 12px 14px;
+    background: var(--surface-soft);
+    border: 1px solid var(--line);
+    margin-bottom: 8px;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
   }
 }
 

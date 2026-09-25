@@ -653,8 +653,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                             {hasMultipleDraws && (
                               <button
                                 type="button"
-                                className="ghost-button"
-                                style={{ display: 'block', marginTop: '4px', padding: '2px 6px', fontSize: '11px' }}
+                                className="ghost-button history-draws-toggle-btn"
+                                style={{ display: 'inline-flex', alignItems: 'center', marginTop: '4px', padding: '2px 8px', fontSize: '11px', borderRadius: '6px' }}
                                 onClick={() => setExpandedDraws((current) => {
                                   const next = new Set(current);
                                   if (next.has(entryId)) next.delete(entryId);
@@ -690,22 +690,30 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                           <td className="cell-planned number">{formatMoney(entry.amount)}</td>
                           <td className="cell-actual number" style={{ fontWeight: 700 }}>
                             {isAdminUnlocked ? (
-                              <input
-                                type="number"
-                                min="0"
-                                step="1"
-                                defaultValue={actual || ''}
-                                className="history-admin-input form-input"
-                                onKeyDown={(event) => {
-                                  if (event.key === 'Enter') {
-                                    const value = Math.round(Number(event.currentTarget.value) || 0);
-                                    if (value <= 0) clearActual(entry.id);
-                                    else recordActual(entry.id, value, actDate);
-                                    event.currentTarget.blur();
-                                  }
-                                }}
-                              />
-                            ) : formatMoney(actual)}
+                              <div className="history-admin-input-wrap">
+                                <span className="mobile-cell-label">Actual:</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="1"
+                                  defaultValue={actual || ''}
+                                  className="history-admin-input form-input"
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Enter') {
+                                      const value = Math.round(Number(event.currentTarget.value) || 0);
+                                      if (value <= 0) clearActual(entry.id);
+                                      else recordActual(entry.id, value, actDate);
+                                      event.currentTarget.blur();
+                                    }
+                                  }}
+                                />
+                              </div>
+                            ) : (
+                              <span className="history-actual-display">
+                                <span className="mobile-cell-label">Actual: </span>
+                                {formatMoney(actual)}
+                              </span>
+                            )}
                           </td>
                           <td className="cell-variance number">
                             <span className={`variance-pill ${varianceClass}`}>
