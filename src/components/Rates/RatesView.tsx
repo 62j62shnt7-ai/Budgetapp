@@ -29,7 +29,7 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
 
   const handleSave = () => {
     if (draftRates) {
-      updateRates(draftRates);
+      updateRates({ ...draftRates, lastFetched: new Date().toISOString() });
       setIsEditing(false);
       setDraftRates(null);
     }
@@ -64,7 +64,7 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
       );
       if (!confirmed) return;
 
-      updateRates({ ...rates, currencies: updated });
+      updateRates({ ...rates, currencies: updated, lastFetched: new Date().toISOString() });
     } catch (err: any) {
       console.error("Live currency rate fetch failed:", err);
       const manual = window.confirm("Couldn't fetch live rates (offline or rate service unavailable). Enter rates manually?");
@@ -118,7 +118,7 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
       const confirmed = window.confirm(message);
       if (!confirmed) return;
 
-      updateRates({ ...rates, gold: updated });
+      updateRates({ ...rates, gold: updated, lastFetched: new Date().toISOString() });
     } catch (err: any) {
       console.error("Live gold rate fetch failed:", err);
       const manual = window.confirm("Couldn't fetch live gold price. Enter rates manually?");

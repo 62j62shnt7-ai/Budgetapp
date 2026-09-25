@@ -116,3 +116,51 @@ export async function fetchLiveGoldSpotUsd(): Promise<number> {
   }
 }
 
+export async function autoFetchLatestRates(currentRates: RatesData): Promise<RatesData | null> {
+  try {
+    const [liveRates, xauUsd] = await Promise.all([
+      fetchLiveCurrencyRates(),
+      fetchLiveGoldSpotUsd().catch(() => null),
+    ]);
+
+    const updatedCurrencies = (currentRates.currencies || []).map((currency) => {
+      const mid = egpPerUnit(liveRates, currency.name.toUpperCase());
+      if (mid === null) return currency;
+      const spreadPct = computeSpreadPct(currency.sell, currency.buy);
+      const next = applySpread(mid, spreadPct);
+      return { ...currency, ...next };
+    });
+
+    let updatedGold = currentRates.gold || [];
+    if (xauUsd && liveRates.EGP) {
+      const egpPerOz = xauUsd * liveRates.EGP;
+      const egpPerGram24k = egpPerOz / TROY_OUNCE_GRAMS;
+      updatedGold = (currentRates.gold || []).map((item) => {
+        let mid: number | null = null;
+        const match = item.name.match(/(\d+)/);
+        if (match) {
+          const karat = Number(match[1]);
+          mid = egpPerGram24k * (karat / 24);
+        } else if (item.name.toLowerCase().includes('coin') || item.name.toLowerCase().includes('pound')) {
+          mid = egpPerGram24k * (21 / 24) * 8;
+        }
+        if (mid === null) return item;
+        const spreadPct = computeSpreadPct(item.sell, item.buy);
+        const next = applySpread(mid, spreadPct);
+        next.sell = Math.round(next.sell);
+        next.buy = Math.round(next.buy);
+        return { ...item, ...next };
+      });
+    }
+
+    return {
+      currencies: updatedCurrencies,
+      gold: updatedGold,
+      lastFetched: new Date().toISOString(),
+    };
+  } catch (err) {
+    console.warn('Silent live rate auto-fetch skipped (network offline or unreachable):', err);
+    return null;
+  }
+}
+

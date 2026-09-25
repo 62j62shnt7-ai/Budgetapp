@@ -74,6 +74,7 @@ export interface GoldRate {
 export interface RatesData {
   currencies: CurrencyRate[];
   gold: GoldRate[];
+  lastFetched?: string;
 }
 
 export interface Installment {

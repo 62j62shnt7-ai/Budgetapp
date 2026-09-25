@@ -30,10 +30,23 @@ import { GistSyncModal } from './components/Modals/GistSyncModal';
 import { DataToolsModal } from './components/Modals/DataToolsModal';
 import { DeductAccountModal } from './components/Modals/DeductAccountModal';
 import { MobileActionSheet } from './components/Layout/MobileActionSheet';
+import { autoFetchLatestRates } from './engine/currency';
 import type { CashEntry, JobItem } from './types';
 
 export const App: React.FC = () => {
-  const { activeTab, theme, sidebarCollapsed, toggleSidebar, closeMobileSidebar, gistToken, gistId, gistAutoSync, setGistConfig, syncFromGist } = useBudgetStore();
+  const { 
+    activeTab, 
+    theme, 
+    sidebarCollapsed, 
+    toggleSidebar, 
+    closeMobileSidebar, 
+    gistToken, 
+    gistId, 
+    gistAutoSync, 
+    setGistConfig, 
+    syncFromGist,
+    updateRates
+  } = useBudgetStore();
 
   // Modals state
   const [actionSheetOpen, setActionSheetOpen] = useState(false);
@@ -136,6 +149,35 @@ export const App: React.FC = () => {
     setGistConfig(gistToken, gistId, gistAutoSync);
     window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
   }, [gistAutoSync, gistToken, setGistConfig]);
+
+  // Auto-fetch live currency and gold rates on launch / online
+  useEffect(() => {
+    let isMounted = true;
+    const fetchRates = async () => {
+      if (!navigator.onLine) return;
+      try {
+        const currentRates = useBudgetStore.getState().rates;
+        const updated = await autoFetchLatestRates(currentRates);
+        if (updated && isMounted) {
+          updateRates(updated);
+        }
+      } catch (err) {
+        console.warn('Auto fetch rates skipped:', err);
+      }
+    };
+
+    void fetchRates();
+
+    const handleOnline = () => {
+      void fetchRates();
+    };
+
+    window.addEventListener('online', handleOnline);
+    return () => {
+      isMounted = false;
+      window.removeEventListener('online', handleOnline);
+    };
+  }, [updateRates]);
 
   // Synchronize sidebar collapsed state to body class
   useEffect(() => {

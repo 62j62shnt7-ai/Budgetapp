@@ -89,3 +89,21 @@ export const formatMoney = (value: number | string): string =>
 
 export const formatUSD = (value: number | string): string =>
   `$${usdFormatter.format(Number(value) || 0)}`;
+
+export const formatLastUpdated = (isoString?: string): string => {
+  if (!isoString) return '';
+  const date = new Date(isoString);
+  if (isNaN(date.getTime())) return '';
+  const now = new Date();
+  const diffMs = Math.max(0, now.getTime() - date.getTime());
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHrs = Math.floor(diffMin / 60);
+
+  const timeStr = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+  if (diffMin < 1) return 'Just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  if (diffHrs < 24 && date.getDate() === now.getDate()) return `Today ${timeStr}`;
+  return `${date.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${timeStr}`;
+};

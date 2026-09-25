@@ -13,7 +13,7 @@ import { buildSalaryEntries, buildInstallmentEntries } from '../../engine/salary
 import {
   buildCreditDueEntries,
 } from '../../engine/creditCards';
-import { DateUtils, formatMoney } from '../../engine/dateUtils';
+import { DateUtils, formatMoney, formatLastUpdated } from '../../engine/dateUtils';
 import { ForecastChart } from '../Forecast/ForecastChart';
 
 export const DashboardView: React.FC = () => {
@@ -316,7 +316,22 @@ export const DashboardView: React.FC = () => {
         </article>
 
         <article className="metric">
-          <span>Stored assets</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+            <span>Stored assets</span>
+            {rates.lastFetched && (
+              <span
+                id="storageLastPulled"
+                style={{
+                  fontSize: '0.6875rem',
+                  color: 'var(--muted, #94a3b8)',
+                  fontWeight: 500,
+                }}
+                title={`Last pulled: ${new Date(rates.lastFetched).toLocaleString()}`}
+              >
+                {formatLastUpdated(rates.lastFetched)}
+              </span>
+            )}
+          </div>
           <strong id="storageTotal" style={{ color: '#fbbf24', fontWeight: 800 }}>
             {formatMoney(storageTotal)}
           </strong>
