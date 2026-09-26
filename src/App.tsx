@@ -164,7 +164,9 @@ export const App: React.FC = () => {
       if (document.visibilityState === 'visible' && navigator.onLine) {
         const state = useBudgetStore.getState();
         if (state.gistAutoSync && state.gistToken && state.gistId) {
-          await state.syncFromGist(state.gistToken, state.gistId);
+          if (state.gistSyncStatus !== 'scheduled' && state.gistSyncStatus !== 'syncing') {
+            await state.syncFromGist(state.gistToken, state.gistId);
+          }
         }
         await fetchRates();
       }

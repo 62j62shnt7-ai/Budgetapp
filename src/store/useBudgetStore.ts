@@ -184,7 +184,11 @@ export interface BudgetStoreState {
   importJSON: (jsonString: string) => boolean;
 }
 
+let lastLocalMutationTimestamp = 0;
+let lastGistUploadTimestamp = 0;
+
 function scheduleAutoGistSync(getState: () => BudgetStoreState, immediate = false): void {
+  lastLocalMutationTimestamp = Date.now();
   if (gistSyncTimer) {
     clearTimeout(gistSyncTimer);
     gistSyncTimer = null;
@@ -222,6 +226,7 @@ function scheduleAutoGistSync(getState: () => BudgetStoreState, immediate = fals
       if (!response.ok) {
         throw new Error(`Gist auto-sync failed: ${response.status} ${response.statusText}`);
       }
+      lastGistUploadTimestamp = Date.now();
       useBudgetStore.setState({ gistSyncStatus: 'synced' });
     } catch (error) {
       console.error(error);
@@ -973,7 +978,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     saveStorage(STORAGE_KEYS.entries, remaining);
     saveStorage(STORAGE_KEYS.archivedEntries, updatedArchived);
     set({ entries: remaining, archivedEntries: updatedArchived });
-    scheduleAutoGistSync(get);
+    scheduleAutoGistSync(get, true);
     return toArchive.length;
   },
 
@@ -987,7 +992,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     saveStorage(STORAGE_KEYS.entries, updatedEntries);
     saveStorage(STORAGE_KEYS.archivedEntries, updatedArchived);
     set({ entries: updatedEntries, archivedEntries: updatedArchived });
-    scheduleAutoGistSync(get);
+    scheduleAutoGistSync(get, true);
   },
 
   setGistConfig: (token, gistId, autoSync) => {
@@ -1004,6 +1009,12 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     if (!gistId) {
       set({ gistSyncStatus: 'error' });
       return false;
+    }
+
+    // If local modifications exist that haven't finished uploading to Gist yet, upload first instead of overwriting with old remote data
+    if (lastLocalMutationTimestamp > lastGistUploadTimestamp || state.gistSyncStatus === 'scheduled' || state.gistSyncStatus === 'syncing') {
+      scheduleAutoGistSync(get, true);
+      return true;
     }
 
     set({ gistSyncStatus: 'syncing' });

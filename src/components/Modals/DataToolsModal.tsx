@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { executeAppRefresh } from '../../utils/appRefresh';
 
@@ -29,6 +29,7 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
     archiveSettledEntries,
   } = useBudgetStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [feedbackMsg, setFeedbackMsg] = useState<string>('');
 
   if (!isOpen) return null;
   const hasResetBackup = Boolean(localStorage.getItem('budget-control-reset-backup'));
@@ -150,13 +151,14 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
           <p style={{ fontSize: '13px', color: 'var(--muted)', margin: '0 0 10px' }}>
             Archive fully settled past entries to keep active calculations and memory fast.
           </p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
             <button
               className="ghost-button"
               type="button"
               onClick={() => {
                 const count = archiveSettledEntries();
-                alert(count > 0 ? `✓ Archived ${count} settled entries to storage.` : 'No past settled entries need archiving.');
+                setFeedbackMsg(count > 0 ? `✓ Archived ${count} settled entries to cold storage.` : 'ℹ️ No past settled entries need archiving.');
+                setTimeout(() => setFeedbackMsg(''), 4500);
               }}
             >
               📦 Archive Settled Entries ({archivedEntries.length} currently archived)
@@ -165,11 +167,20 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
               className="ghost-button"
               type="button"
               style={{ borderColor: 'var(--blue)', color: 'var(--blue)' }}
-              onClick={onAutoTagPrompt ? onAutoTagPrompt : () => alert(`${autoTagEntries()} item(s) tagged.`)}
+              onClick={onAutoTagPrompt ? onAutoTagPrompt : () => {
+                const count = autoTagEntries();
+                setFeedbackMsg(count > 0 ? `✓ Tagged ${count} untagged item(s).` : 'ℹ️ All entries and installments already tagged.');
+                setTimeout(() => setFeedbackMsg(''), 4500);
+              }}
             >
               🏷️ Auto-Tag Untagged Items
             </button>
           </div>
+          {feedbackMsg && (
+            <div style={{ marginTop: '10px', fontSize: '12px', color: 'var(--green, #22c55e)', fontWeight: 500, background: 'rgba(34, 197, 94, 0.1)', padding: '6px 10px', borderRadius: '6px' }}>
+              {feedbackMsg}
+            </div>
+          )}
         </div>
 
         <div className="data-tools-card" style={{ background: 'var(--surface-soft)', padding: '14px', borderRadius: '8px', border: '1px solid var(--line)' }}>
