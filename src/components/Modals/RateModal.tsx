@@ -22,7 +22,7 @@ export const RateModal: React.FC<RateModalProps> = ({ isOpen, rateType = 'curren
       setSell(String(items[0].sell));
       setBuy(String(items[0].buy));
     }
-  }, [rateType, isOpen]);
+  }, [rateType, isOpen, items]);
 
   const handleItemSelect = (name: string) => {
     setSelectedItemName(name);

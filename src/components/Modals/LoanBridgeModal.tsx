@@ -12,17 +12,17 @@ export const LoanBridgeModal: React.FC<LoanBridgeModalProps> = ({ isOpen, onClos
 
   const [name, setName] = useState<string>('Bridge Loan');
   const [amount, setAmount] = useState<string>('');
-  const [disbursementDate, setDisbursementDate] = useState<string>(DateUtils.todayString());
+  const [disbursementDate, setDisbursementDate] = useState<string>(() => DateUtils.todayString());
   const [account, setAccount] = useState<string>('cib');
   const [repaymentType, setRepaymentType] = useState<'single' | 'installments'>('single');
 
   // Single repayment fields
-  const [dueDate, setDueDate] = useState<string>(DateUtils.formatDateObj(new Date(Date.now() + 30 * 86400000)));
+  const [dueDate, setDueDate] = useState<string>(() => DateUtils.formatDateObj(new Date(Date.now() + 30 * 86400000)));
   const [repaymentAmount, setRepaymentAmount] = useState<string>('');
 
   // Installment repayment fields
   const [installmentMonths, setInstallmentMonths] = useState<number>(6);
-  const [installmentStartMonth, setInstallmentStartMonth] = useState<string>(DateUtils.addMonths(DateUtils.currentYearMonth(), 1));
+  const [installmentStartMonth, setInstallmentStartMonth] = useState<string>(() => DateUtils.addMonths(DateUtils.currentYearMonth(), 1));
   const [installmentAmount, setInstallmentAmount] = useState<string>('');
   const [installmentDay, setInstallmentDay] = useState<number>(15);
 

@@ -33,7 +33,6 @@ import {
   getRemainingForecastAmount,
   isOngoingEntry,
   simulateSpend,
-  getActiveForecastEntries,
 } from '../src/engine/forecast.ts';
 import { computeSpreadPct, computeAssetEgpValue, defaultRates, autoFetchLatestRates } from '../src/engine/currency.ts';
 import { computeFinancialHealthScore } from '../src/engine/healthScore.ts';

@@ -13,7 +13,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenStorageModal }) 
 
   useEffect(() => {
     syncStorageRates();
-  }, [rates]);
+  }, [rates, syncStorageRates]);
 
   const getAssetValue = (asset: any) => {
     return storageValue(asset, rates);

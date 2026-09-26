@@ -89,19 +89,19 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
     }
   };
 
-  const getEntryActualAmount = (entry: CashEntry): number => {
+  const getEntryActualAmount = React.useCallback((entry: CashEntry): number => {
     if (!entry) return 0;
     if (entryActuals[entry.id] !== undefined) return Math.round(Number(entryActuals[entry.id]) || 0);
     const legacyId = `${entry.date}-${entry.category}-${entry.amount}-${entry.type}-${entry.account || 'cash'}`;
     if (entryActuals[legacyId] !== undefined) return Math.round(Number(entryActuals[legacyId]) || 0);
     if (entry.actualAmount !== undefined && entry.actualAmount !== null) return Math.round(Number(entry.actualAmount) || 0);
     return 0;
-  };
+  }, [entryActuals]);
 
-  const getEntryActualDate = (entry: CashEntry): string => {
+  const getEntryActualDate = React.useCallback((entry: CashEntry): string => {
     if (!entry) return DateUtils.todayString();
     return entryActualDates[entry.id] || (entry as any).actualDate || entry.date || DateUtils.todayString();
-  };
+  }, [entryActualDates]);
 
   // Actualized entries: matching legacy actualizedEntries() 1:1
   const actualEntries = React.useMemo(() => {
@@ -154,7 +154,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
     );
 
     return [...dedupedActive, ...archivedWithActuals];
-  }, [entries, archivedEntries, installments, accounts, creditDues, creditSettlementOverrides, entryActuals, entryActualDates]);
+  }, [entries, archivedEntries, installments, accounts, creditDues, creditSettlementOverrides, entryActuals, entryActualDates, getEntryActualAmount]);
 
   // 1. Monthly Summary Calculation
   const monthsSet = new Set<string>();
@@ -231,7 +231,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
         savingsRate,
       };
     });
-  }, [orderedMonths, actualEntries, entryActuals, entryActualDates]);
+  }, [orderedMonths, actualEntries, getEntryActualAmount, getEntryActualDate]);
 
   const totalLifetimeIncome = monthlySummaryRows.reduce((sum, r) => sum + r.income, 0);
   const totalLifetimeExpenses = monthlySummaryRows.reduce((sum, r) => sum + r.expenses, 0);

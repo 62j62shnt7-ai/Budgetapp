@@ -88,7 +88,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
       setIsRecurring(false);
       setRecalcStatus('');
     }
-  }, [entryToEdit, initialType, isOpen]);
+  }, [entryToEdit, initialType, isOpen, entryActuals]);
 
   // Recalculate settlement date when credit card or date changes
   useEffect(() => {

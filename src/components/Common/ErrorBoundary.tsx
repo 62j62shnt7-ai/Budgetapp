@@ -59,7 +59,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         localStorage.clear();
         sessionStorage.clear();
         window.location.reload();
-      } catch (e) {
+      } catch (_e) {
         window.location.reload();
       }
     }
