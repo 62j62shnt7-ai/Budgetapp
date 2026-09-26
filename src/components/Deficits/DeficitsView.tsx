@@ -1,19 +1,14 @@
 import React from 'react';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import {
-  calculateForecast,
-  getActiveForecastEntries,
-  getDeficitPeriods,
   getEntryActualAmount,
-  getForecastCandidateEntries,
   isPartialTracked,
   getRemainingForecastAmount,
   isOngoingEntry,
 } from '../../engine/forecast';
-import { buildSalaryEntries, buildInstallmentEntries } from '../../engine/salaryAndInstallments';
-import { buildCreditDueEntries } from '../../engine/creditCards';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { AlertCircle, Clock, CheckCircle } from 'lucide-react';
+import { useForecastCandidates } from '../../hooks/useForecastCandidates';
 
 interface DeficitsViewProps {
   onBridgeDeficit?: () => void;
@@ -21,54 +16,23 @@ interface DeficitsViewProps {
 
 export const DeficitsView: React.FC<DeficitsViewProps> = ({ onBridgeDeficit }) => {
   const {
-    accounts,
-    entries,
-    salaryPattern,
-    salaryAnchorMonth,
-    installments,
-    creditDues,
-    archivedEntries,
-    creditSettlementOverrides,
     entryActuals,
-    deletedForecasts,
     recordActual,
   } = useBudgetStore();
 
-  const totalCash = Object.values(accounts).reduce((sum, acc) => sum + (acc.balance || 0), 0);
-  const currentYm = DateUtils.currentYearMonth();
-  const hasMaterializedSalary = entries.some((entry) => entry.source === 'salary');
-  const salaryEntries = hasMaterializedSalary ? [] : buildSalaryEntries(salaryPattern, currentYm, 12, salaryAnchorMonth);
-  const installmentEntries = buildInstallmentEntries(installments);
-  const creditDueEntries = buildCreditDueEntries({
-    accounts,
-    creditDues,
-    cashEntries: entries,
-    archivedEntries,
-    entryActuals,
-    creditSettlementOverrides,
-  });
-  const allCandidateEntries = getActiveForecastEntries(
-    [...entries, ...salaryEntries],
-    installmentEntries,
-    creditDueEntries,
-    deletedForecasts,
-    entryActuals
-  );
+  const {
+    allCandidateEntries,
+    deficitPeriods,
+    hasDeficit,
+  } = useForecastCandidates(12);
 
-  const forecast = calculateForecast(allCandidateEntries, totalCash, 12);
-  const deficitPeriods = getDeficitPeriods(allCandidateEntries, totalCash);
   const deficits = {
-    hasDeficit: deficitPeriods.length > 0 || forecast.some((item) => item.balance < 0),
+    hasDeficit,
     deficitPeriods,
   };
 
   const today = DateUtils.todayString();
-  const overdueEntries = getForecastCandidateEntries(
-    [...entries, ...salaryEntries],
-    installmentEntries,
-    creditDueEntries,
-    deletedForecasts
-  )
+  const overdueEntries = allCandidateEntries
     .filter((entry) => entry.date && entry.date < today)
     .filter((entry) => !isOngoingEntry(entry, entryActuals))
     .map((entry) => {

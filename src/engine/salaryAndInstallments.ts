@@ -51,6 +51,16 @@ export function buildSalaryEntries(
   return result;
 }
 
+export function getInstallmentDateId(installmentId: string, yearOrYm: number | string, month?: number): string {
+  if (typeof yearOrYm === 'string') {
+    const [y, m] = DateUtils.parseYearMonth(yearOrYm);
+    const mm = String(m).padStart(2, '0');
+    return `installment-${installmentId}-${y}-${mm}`;
+  }
+  const mm = String(month ?? 1).padStart(2, '0');
+  return `installment-${installmentId}-${yearOrYm}-${mm}`;
+}
+
 export function buildInstallmentEntries(installments: Installment[]): CashEntry[] {
   return installments.flatMap((installment) => {
     const [startYear, startMonth] = DateUtils.parseYearMonth(installment.startMonth);
@@ -64,9 +74,10 @@ export function buildInstallmentEntries(installments: Installment[]): CashEntry[
       const m = (totalMonthIndex % 12) + 1;
       const lastDay = DateUtils.getLastDayOfMonth(y, m);
       const day = Math.min(Number(installment.day) || 30, lastDay);
+      const dateId = getInstallmentDateId(installment.id, y, m);
 
       entries.push({
-        id: `installment-${installment.id}-${i}`,
+        id: dateId,
         date: DateUtils.formatDate(y, m, day),
         category: installment.name,
         subcategory: installment.name,

@@ -1,7 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
-import { isCreditCardExpense, calculateCreditSettlementDate, buildCreditDueEntries, isLumpCreditDueForAccount } from '../../engine/creditCards';
+import {
+  isCreditCardExpense,
+  calculateCreditSettlementDate,
+  buildCreditDueEntries,
+  isLumpCreditDueForAccount,
+  getCoveredCreditSettlementKeys,
+} from '../../engine/creditCards';
 import { buildInstallmentEntries } from '../../engine/salaryAndInstallments';
 import type { CashEntry } from '../../types';
 import { Lock, Unlock, Trash2, RotateCcw } from 'lucide-react';
@@ -106,22 +112,16 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
       cashEntries: entries || [],
       archivedEntries: archivedEntries || [],
       entryActuals: entryActuals || {},
+      entryActualDates: entryActualDates || {},
       creditSettlementOverrides: creditSettlementOverrides || {},
     });
 
-    // Track accounts and months already covered by manual credit due payments in entries
-    const coveredSettlementKeys = new Set<string>();
-    (entries || []).forEach((entry) => {
-      if (getEntryActualAmount(entry) > 0) {
-        ['cib', 'hsbc'].forEach((accKey) => {
-          if (isLumpCreditDueForAccount(entry, accKey)) {
-            const actDate = getEntryActualDate(entry);
-            const mKey = DateUtils.getMonthKey(actDate);
-            if (mKey) coveredSettlementKeys.add(`${accKey}-${mKey}`);
-          }
-        });
-      }
-    });
+    const coveredSettlementKeys = getCoveredCreditSettlementKeys(
+      entries || [],
+      entryActuals || {},
+      entryActualDates || {},
+      creditSettlementOverrides || {}
+    );
 
     const validCreditDues = creditEntries.filter((entry) => {
       if (getEntryActualAmount(entry) <= 0) return false;
@@ -172,71 +172,69 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
   });
   const orderedMonths = Array.from(monthsSet).sort();
 
-  let totalLifetimeIncome = 0;
-  let totalLifetimeExpenses = 0;
+  const monthlySummaryRows = React.useMemo(() => {
+    return orderedMonths.map((month) => {
+      let income = 0;
+      let expenses = 0;
 
-  const monthlySummaryRows = orderedMonths.map((month) => {
-    let income = 0;
-    let expenses = 0;
+      // Track credit card actuals maturing in this settlement month to prevent double counting
+      let cibOffset = actualEntries
+        .filter((e) => isCreditCardExpense(e) && (e.account || e.creditType || '').toLowerCase().includes('cib') && DateUtils.getMonthKey(calculateCreditSettlementDate(e.actualDate || e.date, 'cib')) === month)
+        .reduce((sum, e) => sum + getEntryActualAmount(e), 0);
 
-    // Track credit card actuals maturing in this settlement month to prevent double counting
-    let cibOffset = actualEntries
-      .filter((e) => isCreditCardExpense(e) && (e.account || e.creditType || '').toLowerCase().includes('cib') && DateUtils.getMonthKey(calculateCreditSettlementDate(e.date, 'cib')) === month)
-      .reduce((sum, e) => sum + getEntryActualAmount(e), 0);
+      let hsbcOffset = actualEntries
+        .filter((e) => isCreditCardExpense(e) && (e.account || e.creditType || '').toLowerCase().includes('hsbc') && DateUtils.getMonthKey(calculateCreditSettlementDate(e.actualDate || e.date, 'hsbc')) === month)
+        .reduce((sum, e) => sum + getEntryActualAmount(e), 0);
 
-    let hsbcOffset = actualEntries
-      .filter((e) => isCreditCardExpense(e) && (e.account || e.creditType || '').toLowerCase().includes('hsbc') && DateUtils.getMonthKey(calculateCreditSettlementDate(e.date, 'hsbc')) === month)
-      .reduce((sum, e) => sum + getEntryActualAmount(e), 0);
-
-    actualEntries.forEach((entry) => {
-      if (entry.draws && entry.draws.length > 0) {
-        const monthDraws = entry.draws.filter((d) => DateUtils.getMonthKey(d.date) === month);
-        const monthTotal = monthDraws.reduce((sum, d) => sum + Number(d.amount || 0), 0);
-        if (entry.type === 'income') income += monthTotal;
-        else expenses += monthTotal;
-      } else {
-        const actDate = getEntryActualDate(entry);
-        if (DateUtils.getMonthKey(actDate) === month) {
-          const amt = getEntryActualAmount(entry);
-          if (entry.type === 'income') {
-            income += amt;
-          } else {
-            if (entry.source === 'recurring credit' || (entry.category || '').toLowerCase().includes('credit due')) {
-              const acc = (entry.account || entry.creditType || '').toLowerCase();
-              if (acc.includes('cib')) {
-                const ded = Math.min(amt, cibOffset);
-                cibOffset = Math.max(0, cibOffset - ded);
-                expenses += (amt - ded);
-              } else if (acc.includes('hsbc')) {
-                const ded = Math.min(amt, hsbcOffset);
-                hsbcOffset = Math.max(0, hsbcOffset - ded);
-                expenses += (amt - ded);
+      actualEntries.forEach((entry) => {
+        if (entry.draws && entry.draws.length > 0) {
+          const monthDraws = entry.draws.filter((d) => DateUtils.getMonthKey(d.date) === month);
+          const monthTotal = monthDraws.reduce((sum, d) => sum + Number(d.amount || 0), 0);
+          if (entry.type === 'income') income += monthTotal;
+          else expenses += monthTotal;
+        } else {
+          const actDate = getEntryActualDate(entry);
+          if (DateUtils.getMonthKey(actDate) === month) {
+            const amt = getEntryActualAmount(entry);
+            if (entry.type === 'income') {
+              income += amt;
+            } else {
+              if (entry.source === 'recurring credit' || (entry.category || '').toLowerCase().includes('credit due')) {
+                const acc = (entry.account || entry.creditType || '').toLowerCase();
+                if (acc.includes('cib')) {
+                  const ded = Math.min(amt, cibOffset);
+                  cibOffset = Math.max(0, cibOffset - ded);
+                  expenses += (amt - ded);
+                } else if (acc.includes('hsbc')) {
+                  const ded = Math.min(amt, hsbcOffset);
+                  hsbcOffset = Math.max(0, hsbcOffset - ded);
+                  expenses += (amt - ded);
+                } else {
+                  expenses += amt;
+                }
               } else {
                 expenses += amt;
               }
-            } else {
-              expenses += amt;
             }
           }
         }
-      }
+      });
+
+      const net = income - expenses;
+      const savingsRate = income > 0 ? Math.round((net / income) * 100) : 0;
+
+      return {
+        month,
+        income,
+        expenses,
+        net,
+        savingsRate,
+      };
     });
+  }, [orderedMonths, actualEntries, entryActuals, entryActualDates]);
 
-    const net = income - expenses;
-    const savingsRate = income > 0 ? Math.round((net / income) * 100) : 0;
-
-    totalLifetimeIncome += income;
-    totalLifetimeExpenses += expenses;
-
-    return {
-      month,
-      income,
-      expenses,
-      net,
-      savingsRate,
-    };
-  });
-
+  const totalLifetimeIncome = monthlySummaryRows.reduce((sum, r) => sum + r.income, 0);
+  const totalLifetimeExpenses = monthlySummaryRows.reduce((sum, r) => sum + r.expenses, 0);
   const lifetimeNet = totalLifetimeIncome - totalLifetimeExpenses;
   const lifetimeSavingsRate = totalLifetimeIncome > 0 ? Math.round((lifetimeNet / totalLifetimeIncome) * 100) : 0;
 

@@ -131,7 +131,8 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     if (!('serviceWorker' in navigator) || !/^https?:$/.test(window.location.protocol)) return;
-    void navigator.serviceWorker.register('/sw.js').catch((error) => {
+    const swUrl = `${import.meta.env.BASE_URL}sw.js`;
+    void navigator.serviceWorker.register(swUrl).catch((error) => {
       console.error('Failed to register service worker:', error);
     });
   }, []);

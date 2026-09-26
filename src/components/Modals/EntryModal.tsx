@@ -28,6 +28,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
     clearActual,
     updateCreditSettlementOverride,
     recalculateCreditSettlement,
+    deleteDraw,
     rates,
     entryActuals,
   } = useBudgetStore();
@@ -44,6 +45,8 @@ export const EntryModal: React.FC<EntryModalProps> = ({
   const [amount, setAmount] = useState<string>('');
   const [actualAmount, setActualAmount] = useState<string>('');
   const [recalcStatus, setRecalcStatus] = useState<string>('');
+  const [statementNote, setStatementNote] = useState<string>('');
+  const [seriesEditMode, setSeriesEditMode] = useState<'single' | 'future'>('single');
 
   // Recurring options
   const [isRecurring, setIsRecurring] = useState<boolean>(false);
@@ -64,6 +67,8 @@ export const EntryModal: React.FC<EntryModalProps> = ({
       const existingActual = getEntryActualAmount(entryToEdit, entryActuals);
       setActualAmount(existingActual > 0 ? String(existingActual) : '');
       setCreditSettlementDate(entryToEdit.creditSettlementDate || entryToEdit.settlementDate || '');
+      setStatementNote(entryToEdit.statementNote || '');
+      setSeriesEditMode('single');
       setIsRecurring(false);
       setRecalcStatus('');
     } else {
@@ -77,6 +82,8 @@ export const EntryModal: React.FC<EntryModalProps> = ({
       setAmount('');
       setActualAmount('');
       setCreditSettlementDate('');
+      setStatementNote('');
+      setSeriesEditMode('single');
       setRecurringDayOfWeek(new Date(`${DateUtils.todayString()}T00:00:00`).getDay());
       setIsRecurring(false);
       setRecalcStatus('');
@@ -120,7 +127,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
   // Currency conversion calculation note
   const numericAmount = Number(amount) || 0;
   const fxRate = currency === 'EGP' ? 1 : getCurrencyRate(rates, currency);
-  const egpEquivalent = numericAmount * fxRate;
+  const egpEquivalent = Math.round(numericAmount * fxRate);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -146,6 +153,8 @@ export const EntryModal: React.FC<EntryModalProps> = ({
       type,
       amount: egpEquivalent,
       currency,
+      originalAmount: numericAmount,
+      fxRateAtEntry: fxRate,
       creditType: creditType || undefined,
       creditSettlementDate: settlementDate || undefined,
       source: isCardExpense ? 'credit card' : undefined,
@@ -160,21 +169,25 @@ export const EntryModal: React.FC<EntryModalProps> = ({
         updateCreditSettlementOverride(entryToEdit.id, {
           amount: egpEquivalent,
           date,
+          note: statementNote.trim() || undefined,
         });
       } else {
-        updateEntry(entryToEdit.id, baseEntry);
+        updateEntry(entryToEdit.id, baseEntry, seriesEditMode);
       }
       if (newActual > 0) {
         recordActual(entryToEdit.id, newActual, date);
-        if (onDeductPrompt && newActual !== previousActual) {
+        // Only prompt for account deduction if NOT a credit card purchase
+        if (onDeductPrompt && !isCardExpense && newActual !== previousActual) {
           onDeductPrompt({ ...baseEntry, id: entryToEdit.id }, newActual - previousActual);
         }
       } else if (previousActual > 0) {
         clearActual(entryToEdit.id);
       }
     } else {
+      const newActual = actualAmount ? Math.round(Number(actualAmount) * fxRate) : 0;
       if (isRecurring && recurringCount > 1) {
-        // Generate repeating entries
+        const seriesId = `series-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        let firstCreatedId = '';
         for (let i = 0; i < recurringCount; i++) {
           let recDate = date;
           if (recurringFrequency === 'monthly') {
@@ -194,15 +207,25 @@ export const EntryModal: React.FC<EntryModalProps> = ({
             recDate = DateUtils.formatDateObj(dObj);
           }
 
-          addEntry({
+          const createdId = addEntry({
             ...baseEntry,
             date: recDate,
-            actualAmount: i === 0 && actualAmount ? Number(actualAmount) : undefined,
+            isRecurring: true,
+            seriesId,
+            actualAmount: i === 0 && newActual > 0 ? newActual : undefined,
+            actualDate: i === 0 && newActual > 0 ? recDate : undefined,
             source: 'recurring',
           });
+          if (i === 0) firstCreatedId = createdId;
+        }
+        if (newActual > 0 && !isCardExpense && onDeductPrompt) {
+          onDeductPrompt({ ...baseEntry, id: firstCreatedId }, newActual);
         }
       } else {
-        addEntry(baseEntry);
+        const createdId = addEntry(baseEntry);
+        if (newActual > 0 && !isCardExpense && onDeductPrompt) {
+          onDeductPrompt({ ...baseEntry, id: createdId }, newActual);
+        }
       }
     }
 
@@ -247,15 +270,92 @@ export const EntryModal: React.FC<EntryModalProps> = ({
         </label>
 
         {entryToEdit?.id.startsWith('credit-settlement-') && (
-          <div style={{ marginTop: '8px' }}>
-            <button className="ghost-button" type="button" onClick={handleRecalculateCreditDue}>
-              Recalculate from card history
-            </button>
+          <div style={{ padding: '10px 12px', background: 'var(--bg-card)', borderRadius: '8px', border: '1px solid var(--border)', marginTop: '8px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <span style={{ fontSize: '12px', fontWeight: 600 }}>🏛️ Credit Statement Reconciliation</span>
+              <button className="ghost-button" style={{ fontSize: '11px', padding: '2px 8px' }} type="button" onClick={handleRecalculateCreditDue}>
+                Reset to calculated
+              </button>
+            </div>
+            {entryToEdit.calculatedAmount !== undefined && (
+              <div style={{ fontSize: '12px', color: 'var(--muted)', display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                <span>Calculated: <strong>{formatMoney(entryToEdit.calculatedAmount)}</strong></span>
+                <span>Statement: <strong>{formatMoney(egpEquivalent)}</strong></span>
+                <span style={{ color: (egpEquivalent - entryToEdit.calculatedAmount) > 0 ? '#f43f5e' : (egpEquivalent - entryToEdit.calculatedAmount) < 0 ? '#10b981' : 'inherit' }}>
+                  Variance: <strong>{(egpEquivalent - entryToEdit.calculatedAmount) > 0 ? `+${formatMoney(egpEquivalent - entryToEdit.calculatedAmount)}` : formatMoney(egpEquivalent - entryToEdit.calculatedAmount)}</strong>
+                </span>
+              </div>
+            )}
+            <label style={{ fontSize: '12px', margin: 0 }}>
+              Reconciliation note (optional)
+              <input
+                type="text"
+                placeholder="e.g. Bank refund, pending purchase, statement fee"
+                value={statementNote}
+                onChange={(e) => setStatementNote(e.target.value)}
+                style={{ marginTop: '4px', fontSize: '12px' }}
+              />
+            </label>
             {recalcStatus && (
               <small style={{ display: 'block', color: 'var(--muted)', marginTop: '6px' }}>
                 {recalcStatus}
               </small>
             )}
+          </div>
+        )}
+
+        {entryToEdit && (entryToEdit.seriesId || entryToEdit.isRecurring) && (
+          <div style={{ padding: '10px 12px', background: 'rgba(99, 102, 241, 0.08)', borderRadius: '8px', border: '1px solid rgba(99, 102, 241, 0.2)', marginTop: '8px' }}>
+            <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '6px' }}>🔄 Recurring Entry Scope</div>
+            <div style={{ display: 'flex', gap: '16px', fontSize: '13px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', margin: 0 }}>
+                <input
+                  type="radio"
+                  name="seriesEditMode"
+                  value="single"
+                  checked={seriesEditMode === 'single'}
+                  onChange={() => setSeriesEditMode('single')}
+                />
+                <span>This occurrence only</span>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', margin: 0 }}>
+                <input
+                  type="radio"
+                  name="seriesEditMode"
+                  value="future"
+                  checked={seriesEditMode === 'future'}
+                  onChange={() => setSeriesEditMode('future')}
+                />
+                <span>All future occurrences</span>
+              </label>
+            </div>
+          </div>
+        )}
+
+        {/* Existing Draws List if Editing */}
+        {entryToEdit && Array.isArray(entryToEdit.draws) && entryToEdit.draws.length > 0 && (
+          <div style={{ padding: '10px 12px', background: 'var(--bg-card)', borderRadius: '8px', border: '1px solid var(--border)', marginTop: '8px' }}>
+            <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '6px' }}>📋 Recorded Draws / Tranches ({entryToEdit.draws.length})</div>
+            <div style={{ maxHeight: '120px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              {entryToEdit.draws.map((d, dIdx) => (
+                <div key={d.id || dIdx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', padding: '3px 6px', background: 'var(--bg-card-hover)', borderRadius: '4px' }}>
+                  <span>{DateUtils.formatDisplayDate(d.date)}: <strong>{formatMoney(d.amount)}</strong> {d.note ? `(${d.note})` : ''}</span>
+                  <button
+                    type="button"
+                    className="icon-button"
+                    style={{ color: '#f43f5e', padding: '2px', height: 'auto' }}
+                    title="Delete this draw"
+                    onClick={() => {
+                      if (window.confirm(`Delete draw of ${formatMoney(d.amount)} on ${d.date}?`)) {
+                        deleteDraw(entryToEdit.id, dIdx);
+                      }
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

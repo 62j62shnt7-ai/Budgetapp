@@ -1,36 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import {
-  calculateForecast,
-  getActiveForecastEntries,
-  getDeficitPeriods,
   getLowestProjectedBalance,
   simulateSpend,
 } from '../../engine/forecast';
 import { computeFinancialHealthScore, generateSmartInsights } from '../../engine/healthScore';
 import { computeAssetEgpValue, computeTotalStorageValue } from '../../engine/currency';
-import { buildSalaryEntries, buildInstallmentEntries } from '../../engine/salaryAndInstallments';
-import {
-  buildCreditDueEntries,
-} from '../../engine/creditCards';
 import { DateUtils, formatMoney, formatLastUpdated } from '../../engine/dateUtils';
 import { ForecastChart } from '../Forecast/ForecastChart';
 import { CreditCard, CheckCircle2, Clock } from 'lucide-react';
 
+import { useForecastCandidates } from '../../hooks/useForecastCandidates';
+
 export const DashboardView: React.FC = () => {
   const {
-    accounts,
-    entries,
-    salaryPattern,
-    salaryAnchorMonth,
-    installments,
     rates,
     storageAssets,
-    creditDues,
-    archivedEntries,
-    creditSettlementOverrides,
     entryActuals,
-    deletedForecasts,
     setActiveTab,
   } = useBudgetStore();
 
@@ -42,6 +28,15 @@ export const DashboardView: React.FC = () => {
   const [dashboardDensity, setDashboardDensity] = useState<'comfortable' | 'compact'>(() =>
     localStorage.getItem('budget-control-dashboard-density') === 'compact' ? 'compact' : 'comfortable'
   );
+
+  const {
+    totalCash,
+    creditDueEntries,
+    allCandidateEntries,
+    forecast,
+    deficitPeriods,
+    hasDeficit,
+  } = useForecastCandidates(forecastRangeMonths);
 
   useEffect(() => {
     localStorage.setItem('budget-control-dashboard-density', dashboardDensity);
@@ -55,7 +50,6 @@ export const DashboardView: React.FC = () => {
   }, []);
 
   // Financial calculations
-  const totalCash = Object.values(accounts).reduce((sum, acc) => sum + (acc.balance || 0), 0);
   const storageTotal = computeTotalStorageValue(storageAssets, rates);
   const netWorth = totalCash + storageTotal;
 
@@ -81,14 +75,6 @@ export const DashboardView: React.FC = () => {
   // Credit dues with this month / next month breakdown
   const currentYm = DateUtils.currentYearMonth();
   const nextYm = DateUtils.addMonths(currentYm, 1);
-  const creditDueEntries = buildCreditDueEntries({
-    accounts,
-    creditDues,
-    cashEntries: entries,
-    archivedEntries,
-    entryActuals,
-    creditSettlementOverrides,
-  });
   const remainingDue = (entry: (typeof creditDueEntries)[number]) =>
     Math.max(0, Number(entry.amount || 0) - Number(entry.actualAmount || 0));
   const dueFor = (account: string, month: string) =>
@@ -122,20 +108,7 @@ export const DashboardView: React.FC = () => {
   )?.date;
 
   // Forecast & Deficits
-  const hasMaterializedSalary = entries.some((entry) => entry.source === 'salary');
-  const salaryEntries = hasMaterializedSalary ? [] : buildSalaryEntries(salaryPattern, currentYm, 12, salaryAnchorMonth);
-  const installmentEntries = buildInstallmentEntries(installments);
-  const allCandidateEntries = getActiveForecastEntries(
-    [...entries, ...salaryEntries],
-    installmentEntries,
-    creditDueEntries,
-    deletedForecasts,
-    entryActuals
-  );
-
-  const forecast = calculateForecast(allCandidateEntries, totalCash, forecastRangeMonths);
   const visibleForecast = forecast.slice(0, forecastRangeMonths);
-  const deficitPeriods = getDeficitPeriods(allCandidateEntries, totalCash);
   const health = computeFinancialHealthScore({
     entries: allCandidateEntries,
     forecast,
@@ -152,7 +125,7 @@ export const DashboardView: React.FC = () => {
     storageTotal,
   });
   const deficits = {
-    hasDeficit: deficitPeriods.length > 0 || forecast.some((item) => item.balance < 0),
+    hasDeficit,
     worstDeficit: Math.max(0, ...deficitPeriods.map((item) => Math.abs(item.lowestBalance))),
   };
 

@@ -484,8 +484,26 @@ export const JobPaymentModal: React.FC<JobPaymentModalProps> = ({ isOpen, jobId,
     const amt = Number(actualPaidAmount);
     if (!amt || amt <= 0) return;
 
+    let linkedEntryId: string | undefined;
+    if (syncToBudget) {
+      const egpAmount = Math.round(amt * fin.fxRate);
+      linkedEntryId = addEntry({
+        date: paidDate,
+        category: 'Job Income',
+        subcategory: job.client || 'Part-Time',
+        tag: 'Part-Time',
+        account: settlementAccount,
+        type: 'income',
+        amount: egpAmount,
+        actualAmount: egpAmount,
+        currency: job.currency,
+        source: `Job: ${job.title}`,
+      });
+    }
+
     const newPayment: JobPayment = {
       id: `pay-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      entryId: linkedEntryId,
       date: paidDate,
       amount: amt,
       currency: job.currency,
@@ -511,23 +529,6 @@ export const JobPaymentModal: React.FC<JobPaymentModalProps> = ({ isOpen, jobId,
       payments: updatedPayments,
       status: newStatus,
     });
-
-    // If syncToBudget is enabled, add an Income entry into Cashflow!
-    if (syncToBudget) {
-      const egpAmount = Math.round(amt * fin.fxRate);
-      addEntry({
-        date: paidDate,
-        category: 'Job Income',
-        subcategory: job.client || 'Part-Time',
-        tag: 'Part-Time',
-        account: settlementAccount,
-        type: 'income',
-        amount: egpAmount,
-        actualAmount: egpAmount,
-        currency: job.currency,
-        source: `Job: ${job.title}`,
-      });
-    }
 
     setActualPaidAmount('');
     setPaymentNote('');

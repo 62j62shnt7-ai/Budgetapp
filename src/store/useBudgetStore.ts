@@ -19,6 +19,7 @@ import {
   isLumpCreditDueForAccount,
 } from '../engine/creditCards';
 import { buildSalaryEntries } from '../engine/salaryAndInstallments';
+import { DateUtils } from '../engine/dateUtils';
 
 let gistSyncTimer: ReturnType<typeof setTimeout> | null = null;
 let gistSyncInFlight = false;
@@ -51,10 +52,13 @@ export const STORAGE_KEYS = {
   salaryAnchor: 'budget-control-salary-anchor',
   forecastStartMonth: 'budget-control-forecast-start-month',
   forecastQuarters: 'budget-control-forecast-quarters',
+  importUndoBackup: 'budget-control-import-undo-backup',
+  lastLocalModified: 'budget-control-last-local-modified',
 };
 
 function loadStorage<T>(key: string, fallback: T): T {
   try {
+    if (typeof localStorage === 'undefined') return fallback;
     const raw = localStorage.getItem(key);
     if (!raw) return fallback;
     return JSON.parse(raw);
@@ -66,12 +70,13 @@ function loadStorage<T>(key: string, fallback: T): T {
 
 function saveStorage<T>(key: string, value: T): void {
   try {
+    if (typeof localStorage === 'undefined') return;
     localStorage.setItem(key, JSON.stringify(value));
   } catch (err) {
     console.error(`Error saving ${key} to localStorage:`, err);
-    const isQuotaError = err instanceof DOMException &&
+    const isQuotaError = typeof DOMException !== 'undefined' && err instanceof DOMException &&
       (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED');
-    if (isQuotaError && !quotaAlertShown) {
+    if (isQuotaError && !quotaAlertShown && typeof window !== 'undefined') {
       quotaAlertShown = true;
       window.alert(
         'Browser storage quota reached.\n\n' +
@@ -132,12 +137,15 @@ export interface BudgetStoreState {
   toggleSidebar: () => void;
   closeMobileSidebar: () => void;
 
-  addEntry: (entry: Omit<CashEntry, 'id'>) => void;
-  updateEntry: (id: string, updates: Partial<CashEntry>) => void;
-  deleteEntry: (id: string) => void;
+  addEntry: (entry: Omit<CashEntry, 'id'>) => string;
+  updateEntry: (id: string, updates: Partial<CashEntry>, seriesMode?: 'single' | 'future') => void;
+  deleteEntry: (id: string, seriesMode?: 'single' | 'future') => void;
   recordActual: (entryId: string, amount: number, date?: string, drawMeta?: { note?: string; tag?: string; account?: string }) => void;
   clearActual: (entryId: string) => void;
-  updateCreditSettlementOverride: (id: string, override: { amount?: number; date?: string }) => void;
+  addDraw: (entryId: string, draw: { id?: string; date: string; amount: number; note?: string; tag?: string; account?: string }) => void;
+  updateDraw: (entryId: string, drawIndex: number, draw: { date: string; amount: number; note?: string; tag?: string; account?: string }) => void;
+  deleteDraw: (entryId: string, drawIndex: number) => void;
+  updateCreditSettlementOverride: (id: string, override: { amount?: number; date?: string; note?: string }) => void;
   recalculateCreditSettlement: (id: string) => CashEntry | undefined;
 
   updateAccountBalance: (accountKey: string, newBalance: number) => void;
@@ -158,13 +166,18 @@ export interface BudgetStoreState {
 
   // Jobs Actions
   saveJob: (jobType: 'asf' | 'irq' | 'partTime', job: JobItem) => void;
-  deleteJob: (jobType: 'asf' | 'irq' | 'partTime', jobId: string) => void;
+  deleteJob: (jobType: 'asf' | 'irq' | 'partTime', jobId: string, options?: { deleteCashEntries?: boolean }) => void;
+  deleteJobPayment: (jobType: 'asf' | 'irq' | 'partTime', jobId: string, paymentId: string, options?: { deleteCashEntry?: boolean }) => void;
+
+  archiveSettledEntries: () => number;
+  unarchiveEntry: (id: string) => void;
 
   setGistConfig: (token: string, gistId: string, autoSync: boolean) => void;
   syncFromGist: (token?: string, gistId?: string) => Promise<boolean>;
   autoTagEntries: () => number;
   resetData: () => void;
   restoreResetBackup: () => boolean;
+  undoImport: () => boolean;
   setHistoryAdminUnlocked: (unlocked: boolean) => void;
 
   exportJSON: () => string;
@@ -263,7 +276,7 @@ export function inferTag(entry: Partial<CashEntry>): string {
 }
 
 export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
-  theme: (localStorage.getItem(STORAGE_KEYS.theme) as 'dark' | 'light') || 'light',
+  theme: loadStorage<'dark' | 'light'>(STORAGE_KEYS.theme, 'light'),
   activeTab: 'dashboard',
   sidebarCollapsed: loadStorage<boolean>(STORAGE_KEYS.sidebarCollapsed, false),
 
@@ -288,17 +301,21 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
   creditSettlementOverrides: loadStorage<Record<string, { amount?: number; date?: string }>>(STORAGE_KEYS.creditSettlementOverrides, {}),
   salaryAnchorMonth: loadStorage<string>(STORAGE_KEYS.salaryAnchor, new Date().toISOString().slice(0, 7)),
 
-  gistToken: localStorage.getItem(STORAGE_KEYS.gistToken) || '',
-  gistId: localStorage.getItem(STORAGE_KEYS.gistId) || '',
-  gistAutoSync: localStorage.getItem(STORAGE_KEYS.gistAutoSync) === null
-    ? true
-    : localStorage.getItem(STORAGE_KEYS.gistAutoSync) === 'true',
+  gistToken: typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.gistToken) || '' : '',
+  gistId: typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.gistId) || '' : '',
+  gistAutoSync: typeof localStorage !== 'undefined'
+    ? (localStorage.getItem(STORAGE_KEYS.gistAutoSync) === null ? true : localStorage.getItem(STORAGE_KEYS.gistAutoSync) === 'true')
+    : true,
   gistSyncStatus: 'idle',
-  historyAdminUnlocked: localStorage.getItem(STORAGE_KEYS.historyAdminUnlocked) === 'true',
+  historyAdminUnlocked: typeof localStorage !== 'undefined'
+    ? localStorage.getItem(STORAGE_KEYS.historyAdminUnlocked) === 'true'
+    : false,
 
   setTheme: (theme) => {
-    localStorage.setItem(STORAGE_KEYS.theme, theme);
-    document.documentElement.setAttribute('data-theme', theme);
+    saveStorage(STORAGE_KEYS.theme, theme);
+    if (typeof document !== 'undefined') {
+      document.documentElement.setAttribute('data-theme', theme);
+    }
     set({ theme });
   },
 
@@ -324,18 +341,46 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
   },
 
   addEntry: (entryData) => {
+    const id = `entry-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const newEntry: CashEntry = {
       ...entryData,
-      id: `entry-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      id,
     };
     const updated = [newEntry, ...get().entries];
     saveStorage(STORAGE_KEYS.entries, updated);
     set({ entries: updated });
     scheduleAutoGistSync(get);
+    return id;
   },
 
-  updateEntry: (id, updates) => {
+  updateEntry: (id, updates, seriesMode = 'single') => {
     const current = get().entries.find((e) => e.id === id);
+    if (!current) return;
+
+    if (seriesMode === 'future' && (current.seriesId || current.isRecurring)) {
+      const seriesId = current.seriesId || id;
+      const targetDate = current.date;
+      const updated = get().entries.map((e) => {
+        const matchesSeries = (e.seriesId && e.seriesId === seriesId) || (e.id === id);
+        const isFutureOrCurrent = e.date >= targetDate;
+        const isActualized = Number(get().entryActuals[e.id] ?? e.actualAmount ?? 0) > 0;
+        if (matchesSeries && isFutureOrCurrent && !isActualized) {
+          return {
+            ...e,
+            ...updates,
+            id: e.id,
+            date: e.date, // keep original scheduled date
+            seriesId,
+          };
+        }
+        return e;
+      });
+      saveStorage(STORAGE_KEYS.entries, updated);
+      set({ entries: updated });
+      scheduleAutoGistSync(get);
+      return;
+    }
+
     const updated = get().entries.map((e) => (e.id === id ? { ...e, ...updates } : e));
     const updatedEntry = updated.find((e) => e.id === id);
     if (
@@ -365,8 +410,28 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     scheduleAutoGistSync(get);
   },
 
-  deleteEntry: (id) => {
+  deleteEntry: (id, seriesMode = 'single') => {
     const target = get().entries.find((e) => e.id === id);
+    if (!target) return;
+
+    if (seriesMode === 'future' && (target.seriesId || target.isRecurring)) {
+      const seriesId = target.seriesId || id;
+      const targetDate = target.date;
+      const updated = get().entries.filter((e) => {
+        const matchesSeries = (e.seriesId && e.seriesId === seriesId) || (e.id === id);
+        const isFutureOrCurrent = e.date >= targetDate;
+        const isActualized = Number(get().entryActuals[e.id] ?? e.actualAmount ?? 0) > 0;
+        if (matchesSeries && isFutureOrCurrent && !isActualized) {
+          return false;
+        }
+        return true;
+      });
+      saveStorage(STORAGE_KEYS.entries, updated);
+      set({ entries: updated });
+      scheduleAutoGistSync(get);
+      return;
+    }
+
     const linkedLoanId = target?.type === 'income' ? target.loanId : undefined;
     const shouldDeleteLinked = Boolean(
       linkedLoanId &&
@@ -388,7 +453,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
   },
 
   recordActual: (entryId, amount, date, drawMeta) => {
-    const actDate = date || new Date().toISOString().slice(0, 10);
+    const actDate = date || DateUtils.todayString();
     const actuals = { ...get().entryActuals, [entryId]: amount };
     const dates = { ...get().entryActualDates };
     if (date) dates[entryId] = date;
@@ -403,6 +468,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       let draws = Array.isArray(entry.draws) ? [...entry.draws] : [];
       if (draws.length === 0 && prevActual > 0) {
         draws.push({
+          id: `draw-${Date.now()}-0`,
           date: entry.actualDate || entry.date || actDate,
           amount: prevActual,
           tag: entry.tag || '',
@@ -412,6 +478,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
 
       if (tranche > 0 && amount > prevActual) {
         draws.push({
+          id: `draw-${Date.now()}-${draws.length}`,
           date: actDate,
           amount: tranche,
           tag: drawMeta?.tag || entry.tag || '',
@@ -460,6 +527,94 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       saveStorage(STORAGE_KEYS.entries, updatedEntries);
     }
 
+    saveStorage(STORAGE_KEYS.entryActuals, actuals);
+    saveStorage(STORAGE_KEYS.entryActualDates, dates);
+    set({ entries: updatedEntries, entryActuals: actuals, entryActualDates: dates });
+    scheduleAutoGistSync(get);
+  },
+
+  addDraw: (entryId, draw) => {
+    const existingIndex = get().entries.findIndex((e) => e.id === entryId);
+    if (existingIndex === -1) return;
+    const entry = get().entries[existingIndex];
+    const newDraws = [
+      ...(entry.draws || []),
+      { ...draw, id: draw.id || `draw-${Date.now()}-${(entry.draws || []).length}` },
+    ];
+    const totalAmount = newDraws.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+    const lastDate = draw.date || DateUtils.todayString();
+    const updatedEntry: CashEntry = {
+      ...entry,
+      actualAmount: totalAmount,
+      actualDate: lastDate,
+      draws: newDraws,
+    };
+    const updatedEntries = [...get().entries];
+    updatedEntries[existingIndex] = updatedEntry;
+    const actuals = { ...get().entryActuals, [entryId]: totalAmount };
+    const dates = { ...get().entryActualDates, [entryId]: lastDate };
+    saveStorage(STORAGE_KEYS.entries, updatedEntries);
+    saveStorage(STORAGE_KEYS.entryActuals, actuals);
+    saveStorage(STORAGE_KEYS.entryActualDates, dates);
+    set({ entries: updatedEntries, entryActuals: actuals, entryActualDates: dates });
+    scheduleAutoGistSync(get);
+  },
+
+  updateDraw: (entryId, drawIndex, draw) => {
+    const existingIndex = get().entries.findIndex((e) => e.id === entryId);
+    if (existingIndex === -1) return;
+    const entry = get().entries[existingIndex];
+    const newDraws = [...(entry.draws || [])];
+    if (drawIndex >= 0 && drawIndex < newDraws.length) {
+      newDraws[drawIndex] = { ...newDraws[drawIndex], ...draw };
+    }
+    const totalAmount = newDraws.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+    const lastDate = newDraws.length > 0 ? newDraws[newDraws.length - 1].date : DateUtils.todayString();
+    const updatedEntry: CashEntry = {
+      ...entry,
+      actualAmount: totalAmount,
+      actualDate: lastDate,
+      draws: newDraws,
+    };
+    const updatedEntries = [...get().entries];
+    updatedEntries[existingIndex] = updatedEntry;
+    const actuals = { ...get().entryActuals, [entryId]: totalAmount };
+    const dates = { ...get().entryActualDates, [entryId]: lastDate };
+    saveStorage(STORAGE_KEYS.entries, updatedEntries);
+    saveStorage(STORAGE_KEYS.entryActuals, actuals);
+    saveStorage(STORAGE_KEYS.entryActualDates, dates);
+    set({ entries: updatedEntries, entryActuals: actuals, entryActualDates: dates });
+    scheduleAutoGistSync(get);
+  },
+
+  deleteDraw: (entryId, drawIndex) => {
+    const existingIndex = get().entries.findIndex((e) => e.id === entryId);
+    if (existingIndex === -1) return;
+    const entry = get().entries[existingIndex];
+    const newDraws = [...(entry.draws || [])];
+    if (drawIndex >= 0 && drawIndex < newDraws.length) {
+      newDraws.splice(drawIndex, 1);
+    }
+    const totalAmount = newDraws.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+    const lastDate = newDraws.length > 0 ? newDraws[newDraws.length - 1].date : entry.date;
+    const updatedEntry: CashEntry = {
+      ...entry,
+      actualAmount: totalAmount > 0 ? totalAmount : undefined,
+      actualDate: totalAmount > 0 ? lastDate : undefined,
+      draws: newDraws,
+    };
+    const updatedEntries = [...get().entries];
+    updatedEntries[existingIndex] = updatedEntry;
+    const actuals = { ...get().entryActuals };
+    const dates = { ...get().entryActualDates };
+    if (totalAmount > 0) {
+      actuals[entryId] = totalAmount;
+      dates[entryId] = lastDate;
+    } else {
+      delete actuals[entryId];
+      delete dates[entryId];
+    }
+    saveStorage(STORAGE_KEYS.entries, updatedEntries);
     saveStorage(STORAGE_KEYS.entryActuals, actuals);
     saveStorage(STORAGE_KEYS.entryActualDates, dates);
     set({ entries: updatedEntries, entryActuals: actuals, entryActualDates: dates });
@@ -747,17 +902,92 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     if (jobType === 'asf') set({ asfJobs: updated });
     else if (jobType === 'irq') set({ irqJobs: updated });
     else set({ partTimeJobs: updated });
+    scheduleAutoGistSync(get);
   },
 
-  deleteJob: (jobType, jobId) => {
+  deleteJob: (jobType, jobId, options) => {
     const key = jobType === 'asf' ? STORAGE_KEYS.asf : jobType === 'irq' ? STORAGE_KEYS.irq : STORAGE_KEYS.partTimeJobs;
     const currentList = jobType === 'asf' ? get().asfJobs : jobType === 'irq' ? get().irqJobs : get().partTimeJobs;
+    const targetJob = currentList.find((j) => j.id === jobId);
     const updated = currentList.filter((j) => j.id !== jobId);
 
+    // Optionally remove linked cashflow entries if explicitly requested
+    const shouldDeleteCashEntries = options?.deleteCashEntries === true;
+    const linkedEntryIds = new Set(
+      (targetJob?.payments || []).map((p) => p.entryId).filter(Boolean) as string[]
+    );
+    let updatedEntries = get().entries;
+    if (shouldDeleteCashEntries && linkedEntryIds.size > 0) {
+      updatedEntries = get().entries.filter((e) => !linkedEntryIds.has(e.id));
+      saveStorage(STORAGE_KEYS.entries, updatedEntries);
+    }
+
     saveStorage(key, updated);
-    if (jobType === 'asf') set({ asfJobs: updated });
-    else if (jobType === 'irq') set({ irqJobs: updated });
-    else set({ partTimeJobs: updated });
+    if (jobType === 'asf') set({ asfJobs: updated, entries: updatedEntries });
+    else if (jobType === 'irq') set({ irqJobs: updated, entries: updatedEntries });
+    else set({ partTimeJobs: updated, entries: updatedEntries });
+    scheduleAutoGistSync(get);
+  },
+
+  deleteJobPayment: (jobType, jobId, paymentId, options) => {
+    const currentList = jobType === 'asf' ? get().asfJobs : jobType === 'irq' ? get().irqJobs : get().partTimeJobs;
+    const targetJob = currentList.find((j) => j.id === jobId);
+    if (!targetJob) return;
+
+    const payment = (targetJob.payments || []).find((p) => p.id === paymentId);
+    const remainingPayments = (targetJob.payments || []).filter((p) => p.id !== paymentId);
+    const updatedJob = { ...targetJob, payments: remainingPayments };
+
+    get().saveJob(jobType, updatedJob);
+
+    const shouldDeleteCashEntry = options?.deleteCashEntry === true;
+    if (shouldDeleteCashEntry && payment?.entryId) {
+      get().deleteEntry(payment.entryId);
+    }
+  },
+
+  archiveSettledEntries: () => {
+    const currentYm = DateUtils.currentYearMonth();
+    const toArchive: CashEntry[] = [];
+    const remaining: CashEntry[] = [];
+
+    get().entries.forEach((entry) => {
+      const actAmount = Number(get().entryActuals[entry.id] ?? entry.actualAmount ?? 0);
+      const effDate = entry.actualDate || entry.date || '';
+      const entryMonth = effDate.slice(0, 7);
+
+      // Settle condition: past month and has recorded actual payment
+      if (actAmount > 0 && entryMonth < currentYm) {
+        toArchive.push({
+          ...entry,
+          archivedAt: new Date().toISOString(),
+        });
+      } else {
+        remaining.push(entry);
+      }
+    });
+
+    if (toArchive.length === 0) return 0;
+
+    const updatedArchived = [...get().archivedEntries, ...toArchive];
+    saveStorage(STORAGE_KEYS.entries, remaining);
+    saveStorage(STORAGE_KEYS.archivedEntries, updatedArchived);
+    set({ entries: remaining, archivedEntries: updatedArchived });
+    scheduleAutoGistSync(get);
+    return toArchive.length;
+  },
+
+  unarchiveEntry: (id) => {
+    const target = get().archivedEntries.find((e) => e.id === id);
+    if (!target) return;
+    const updatedArchived = get().archivedEntries.filter((e) => e.id !== id);
+    const restoredEntry: CashEntry = { ...target };
+    delete restoredEntry.archivedAt;
+    const updatedEntries = [restoredEntry, ...get().entries];
+    saveStorage(STORAGE_KEYS.entries, updatedEntries);
+    saveStorage(STORAGE_KEYS.archivedEntries, updatedArchived);
+    set({ entries: updatedEntries, archivedEntries: updatedArchived });
+    scheduleAutoGistSync(get);
   },
 
   setGistConfig: (token, gistId, autoSync) => {
@@ -787,13 +1017,27 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         throw new Error(`Gist download failed: ${response.status} ${response.statusText}`);
       }
       const data = await response.json() as {
-        files?: Record<string, { content?: string }>;
+        files?: Record<string, { content?: string; truncated?: boolean; raw_url?: string }>;
       };
       const file = data.files?.['budget-data.json']
         || data.files?.['budget-control-backup.json']
         || Object.values(data.files || {})[0];
-      if (!file?.content || !get().importJSON(file.content)) {
-        throw new Error('No valid budget JSON file found in this Gist');
+
+      if (!file) {
+        throw new Error('No budget JSON file found in this Gist');
+      }
+
+      let content = file.content;
+      // Handle truncated Gist content
+      if ((file.truncated || !content) && file.raw_url) {
+        const rawRes = await fetch(file.raw_url, { headers });
+        if (rawRes.ok) {
+          content = await rawRes.text();
+        }
+      }
+
+      if (!content || !get().importJSON(content)) {
+        throw new Error('No valid budget JSON content could be restored from this Gist');
       }
       set({ gistSyncStatus: 'synced' });
       return true;
@@ -823,6 +1067,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       saveStorage(STORAGE_KEYS.entries, updatedEntries);
       saveStorage(STORAGE_KEYS.installments, updatedInstallments);
       set({ entries: updatedEntries, installments: updatedInstallments });
+      scheduleAutoGistSync(get);
     }
     return count;
   },
@@ -871,7 +1116,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     saveStorage(STORAGE_KEYS.creditDues, {});
     saveStorage(STORAGE_KEYS.creditDueMonths, {});
     saveStorage(STORAGE_KEYS.creditSettlementOverrides, {});
-    saveStorage(STORAGE_KEYS.salaryAnchor, new Date().toISOString().slice(0, 7));
+    saveStorage(STORAGE_KEYS.salaryAnchor, DateUtils.currentYearMonth());
     set({
       entries: emptyEntries,
       archivedEntries: emptyEntries,
@@ -881,7 +1126,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       creditDues: {},
       creditDueMonths: {},
       creditSettlementOverrides: {},
-      salaryAnchorMonth: new Date().toISOString().slice(0, 7),
+      salaryAnchorMonth: DateUtils.currentYearMonth(),
       installments: emptyInstallments,
       storageAssets: emptyStorage,
       asfJobs: emptyJobs,
@@ -891,6 +1136,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       entryActualDates: {},
       deletedForecasts: [],
     });
+    scheduleAutoGistSync(get);
   },
 
   restoreResetBackup: () => {
@@ -900,7 +1146,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       const backup = JSON.parse(raw);
       const restored = {
         salaryPattern: backup.salaryPattern || defaultSalaryPattern,
-        salaryAnchorMonth: backup.salaryAnchorMonth || new Date().toISOString().slice(0, 7),
+        salaryAnchorMonth: backup.salaryAnchorMonth || DateUtils.currentYearMonth(),
         entries: backup.cashEntries || [],
         installments: backup.installments || [],
         storageAssets: backup.storageAssets || [],
@@ -944,6 +1190,57 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     }
   },
 
+  undoImport: () => {
+    const raw = localStorage.getItem(STORAGE_KEYS.importUndoBackup);
+    if (!raw) return false;
+    try {
+      const backup = JSON.parse(raw);
+      const restored = {
+        salaryPattern: backup.salaryPattern || defaultSalaryPattern,
+        salaryAnchorMonth: backup.salaryAnchorMonth || DateUtils.currentYearMonth(),
+        entries: backup.entries || [],
+        installments: backup.installments || [],
+        storageAssets: backup.storageAssets || [],
+        accounts: withoutCashAccount(backup.accounts || defaultAccounts),
+        asfJobs: backup.asfJobs || [],
+        irqJobs: backup.irqJobs || [],
+        partTimeJobs: backup.partTimeJobs || [],
+        rates: backup.rates || defaultRates,
+        creditDues: backup.creditDues || {},
+        creditDueMonths: backup.creditDueMonths || {},
+        entryActuals: backup.entryActuals || {},
+        entryActualDates: backup.entryActualDates || {},
+        deletedForecasts: backup.deletedForecasts || [],
+        creditSettlementOverrides: backup.creditSettlementOverrides || {},
+        archivedEntries: backup.archivedEntries || [],
+      };
+      saveStorage(STORAGE_KEYS.salary, restored.salaryPattern);
+      saveStorage(STORAGE_KEYS.salaryAnchor, restored.salaryAnchorMonth);
+      saveStorage(STORAGE_KEYS.entries, restored.entries);
+      saveStorage(STORAGE_KEYS.installments, restored.installments);
+      saveStorage(STORAGE_KEYS.storage, restored.storageAssets);
+      saveStorage(STORAGE_KEYS.accounts, restored.accounts);
+      saveStorage(STORAGE_KEYS.asf, restored.asfJobs);
+      saveStorage(STORAGE_KEYS.irq, restored.irqJobs);
+      saveStorage(STORAGE_KEYS.partTimeJobs, restored.partTimeJobs);
+      saveStorage(STORAGE_KEYS.rates, restored.rates);
+      saveStorage(STORAGE_KEYS.creditDues, restored.creditDues);
+      saveStorage(STORAGE_KEYS.creditDueMonths, restored.creditDueMonths);
+      saveStorage(STORAGE_KEYS.entryActuals, restored.entryActuals);
+      saveStorage(STORAGE_KEYS.entryActualDates, restored.entryActualDates);
+      saveStorage(STORAGE_KEYS.deletedForecasts, restored.deletedForecasts);
+      saveStorage(STORAGE_KEYS.creditSettlementOverrides, restored.creditSettlementOverrides);
+      saveStorage(STORAGE_KEYS.archivedEntries, restored.archivedEntries);
+      localStorage.removeItem(STORAGE_KEYS.importUndoBackup);
+      set(restored);
+      scheduleAutoGistSync(get);
+      return true;
+    } catch (err) {
+      console.error('Failed to undo import:', err);
+      return false;
+    }
+  },
+
   setHistoryAdminUnlocked: (unlocked) => {
     localStorage.setItem(STORAGE_KEYS.historyAdminUnlocked, String(unlocked));
     set({ historyAdminUnlocked: unlocked });
@@ -953,7 +1250,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     const state = get();
     const payload = {
       app: 'budget-control',
-      version: '2.0',
+      version: '2.1',
       exportedAt: new Date().toISOString(),
       seedVersion: 'blank-template-v2',
       data: {
@@ -974,32 +1271,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         creditSettlementOverrides: state.creditSettlementOverrides,
         salaryAnchorMonth: state.salaryAnchorMonth,
         archivedEntries: state.archivedEntries,
-        // Aliases inside data:
-        entries: state.entries,
-        accounts: state.accounts,
-        rates: state.rates,
       },
-      // Root-level aliases for direct access:
-      entries: state.entries,
-      cashEntries: state.entries,
-      accounts: state.accounts,
-      accountBalances: state.accounts,
-      salaryPattern: state.salaryPattern,
-      installments: state.installments,
-      rates: state.rates,
-      ratesData: state.rates,
-      storageAssets: state.storageAssets,
-      asfJobs: state.asfJobs,
-      irqJobs: state.irqJobs,
-      partTimeJobs: state.partTimeJobs,
-      entryActuals: state.entryActuals,
-      entryActualDates: state.entryActualDates,
-      deletedForecasts: state.deletedForecasts,
-      creditDues: state.creditDues,
-      creditDueMonths: state.creditDueMonths,
-      creditSettlementOverrides: state.creditSettlementOverrides,
-      salaryAnchorMonth: state.salaryAnchorMonth,
-      archivedEntries: state.archivedEntries,
     };
     return JSON.stringify(payload, null, 2);
   },
@@ -1012,7 +1284,29 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         return false;
       }
 
-      // 1. Direct array of cash entries
+      // 1. Create a full snapshot before mutating state (for Undo Import)
+      const currentSnapshot = {
+        entries: get().entries,
+        archivedEntries: get().archivedEntries,
+        deletedForecasts: get().deletedForecasts,
+        accounts: get().accounts,
+        salaryPattern: get().salaryPattern,
+        installments: get().installments,
+        rates: get().rates,
+        storageAssets: get().storageAssets,
+        asfJobs: get().asfJobs,
+        irqJobs: get().irqJobs,
+        partTimeJobs: get().partTimeJobs,
+        entryActuals: get().entryActuals,
+        entryActualDates: get().entryActualDates,
+        creditDues: get().creditDues,
+        creditDueMonths: get().creditDueMonths,
+        creditSettlementOverrides: get().creditSettlementOverrides,
+        salaryAnchorMonth: get().salaryAnchorMonth,
+      };
+      saveStorage(STORAGE_KEYS.importUndoBackup, currentSnapshot);
+
+      // Handle raw array import
       if (Array.isArray(parsed)) {
         const normalized: CashEntry[] = parsed.map((e, idx) => ({
           ...e,
@@ -1022,28 +1316,18 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         }));
         saveStorage(STORAGE_KEYS.entries, normalized);
         set({ entries: normalized });
+        scheduleAutoGistSync(get);
         return true;
       }
 
-      // 2. Direct raw localStorage dump format: { "budget-control-cash-entries": [...] }
-      if (parsed['budget-control-cash-entries'] || parsed['budget-control-account-balances']) {
-        for (const [k, v] of Object.entries(parsed)) {
-          if (k.startsWith('budget-control-')) {
-            try {
-              localStorage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v));
-            } catch (_) {}
-          }
-        }
-      }
-
-      // Standard budget export format (may be nested in .data or at root)
+      // Standard budget export format (data payload or root)
       const data = (parsed.data && typeof parsed.data === 'object' && !Array.isArray(parsed.data))
         ? parsed.data
         : parsed;
 
-      // 1. Cash entries: check cashEntries, entries, items
+      // 1. Cash entries: Full replacement
       const rawEntries = data.cashEntries || data.entries || data.items || parsed.cashEntries || parsed.entries;
-      let newEntries: CashEntry[] = get().entries;
+      let newEntries: CashEntry[] = [];
       if (Array.isArray(rawEntries)) {
         newEntries = rawEntries.map((e: any, idx: number) => ({
           ...e,
@@ -1051,12 +1335,11 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
           amount: Number(e.amount) || 0,
           actualAmount: e.actualAmount !== undefined && e.actualAmount !== '' ? Number(e.actualAmount) : undefined,
         }));
-        saveStorage(STORAGE_KEYS.entries, newEntries);
       }
 
-      // 2. Accounts: check accountBalances, accounts
+      // 2. Accounts
       const rawAccounts = data.accountBalances || data.accounts || parsed.accountBalances || parsed.accounts;
-      let newAccounts: Record<string, AccountBalance> = get().accounts;
+      let newAccounts: Record<string, AccountBalance> = defaultAccounts;
       if (rawAccounts && typeof rawAccounts === 'object') {
         const accMap: Record<string, AccountBalance> = {};
         for (const [k, v] of Object.entries(rawAccounts)) {
@@ -1076,20 +1359,18 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         }
         if (Object.keys(accMap).length > 0) {
           newAccounts = withoutCashAccount(accMap);
-          saveStorage(STORAGE_KEYS.accounts, newAccounts);
         }
       }
 
       // 3. Salary pattern
       const rawSalary = data.salaryPattern || parsed.salaryPattern;
-      let newSalary: SalaryPayment[] = get().salaryPattern;
+      let newSalary: SalaryPayment[] = defaultSalaryPattern;
       if (Array.isArray(rawSalary) && rawSalary.length > 0) {
         newSalary = rawSalary.map((s: any) => ({
           monthOffset: Number(s.monthOffset) || 0,
           day: Number(s.day) || 15,
           amount: Number(s.amount) || 0,
         }));
-        saveStorage(STORAGE_KEYS.salary, newSalary);
       }
 
       const rawCreditDues = data.creditDues || parsed.creditDues;
@@ -1098,22 +1379,18 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       const rawSalaryAnchor = data.salaryAnchorMonth || parsed.salaryAnchorMonth;
       const newCreditDues = rawCreditDues && typeof rawCreditDues === 'object'
         ? rawCreditDues as Record<string, Record<string, number>>
-        : get().creditDues;
+        : {};
       const newCreditDueMonths = rawCreditDueMonths && typeof rawCreditDueMonths === 'object'
         ? rawCreditDueMonths as Record<string, string[]>
-        : get().creditDueMonths;
+        : {};
       const newSettlementOverrides = rawSettlementOverrides && typeof rawSettlementOverrides === 'object'
-        ? rawSettlementOverrides as Record<string, { amount?: number; date?: string }>
-        : get().creditSettlementOverrides;
-      const newSalaryAnchor = typeof rawSalaryAnchor === 'string' ? rawSalaryAnchor : get().salaryAnchorMonth;
-      saveStorage(STORAGE_KEYS.creditDues, newCreditDues);
-      saveStorage(STORAGE_KEYS.creditDueMonths, newCreditDueMonths);
-      saveStorage(STORAGE_KEYS.creditSettlementOverrides, newSettlementOverrides);
-      saveStorage(STORAGE_KEYS.salaryAnchor, newSalaryAnchor);
+        ? rawSettlementOverrides as Record<string, { amount?: number; date?: string; note?: string }>
+        : {};
+      const newSalaryAnchor = typeof rawSalaryAnchor === 'string' ? rawSalaryAnchor : DateUtils.currentYearMonth();
 
       // 4. Installments
       const rawInstallments = data.installments || parsed.installments;
-      let newInstallments: Installment[] = get().installments;
+      let newInstallments: Installment[] = [];
       if (Array.isArray(rawInstallments)) {
         newInstallments = rawInstallments.map((inst: any, idx: number) => ({
           ...inst,
@@ -1122,39 +1399,28 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
           amount: Number(inst.amount) || Number(inst.monthlyAmount) || 0,
           totalMonths: Number(inst.totalMonths) || Number(inst.months) || Number(inst.installmentsCount) || 1,
           remainingMonths: Number(inst.remainingMonths) || Number(inst.totalMonths) || Number(inst.months) || 1,
-          startMonth: inst.startMonth || new Date().toISOString().slice(0, 7),
+          startMonth: inst.startMonth || DateUtils.currentYearMonth(),
           day: Number(inst.day) || 10,
         }));
-        saveStorage(STORAGE_KEYS.installments, newInstallments);
       }
 
       // 5. Rates
       const rawRates = data.ratesData || data.rates || parsed.ratesData || parsed.rates;
-      let newRates: RatesData = get().rates;
+      let newRates: RatesData = defaultRates;
       if (rawRates && typeof rawRates === 'object') {
-        const localRates = get().rates;
-        const localLast = localRates.lastFetched ? new Date(localRates.lastFetched).getTime() : 0;
-        const rawLast = typeof rawRates.lastFetched === 'string' ? new Date(rawRates.lastFetched).getTime() : 0;
-
-        // If local rates were updated more recently than the incoming backup/Gist, retain newer local rates
-        if (localLast > 0 && rawLast > 0 && localLast > rawLast) {
-          newRates = localRates;
-        } else {
-          newRates = {
-            currencies: Array.isArray(rawRates.currencies) && rawRates.currencies.length > 0 ? rawRates.currencies : (localRates.currencies || defaultRates.currencies),
-            gold: Array.isArray(rawRates.gold) && rawRates.gold.length > 0 ? rawRates.gold : (localRates.gold || defaultRates.gold),
-            lastFetched: typeof rawRates.lastFetched === 'string' ? rawRates.lastFetched : localRates.lastFetched,
-            currenciesLastFetched: typeof rawRates.currenciesLastFetched === 'string' ? rawRates.currenciesLastFetched : localRates.currenciesLastFetched,
-            goldLastFetched: typeof rawRates.goldLastFetched === 'string' ? rawRates.goldLastFetched : localRates.goldLastFetched,
-            previousStorageTotal: typeof rawRates.previousStorageTotal === 'number' ? rawRates.previousStorageTotal : localRates.previousStorageTotal,
-          };
-          saveStorage(STORAGE_KEYS.rates, newRates);
-        }
+        newRates = {
+          currencies: Array.isArray(rawRates.currencies) && rawRates.currencies.length > 0 ? rawRates.currencies : defaultRates.currencies,
+          gold: Array.isArray(rawRates.gold) && rawRates.gold.length > 0 ? rawRates.gold : defaultRates.gold,
+          lastFetched: typeof rawRates.lastFetched === 'string' ? rawRates.lastFetched : undefined,
+          currenciesLastFetched: typeof rawRates.currenciesLastFetched === 'string' ? rawRates.currenciesLastFetched : undefined,
+          goldLastFetched: typeof rawRates.goldLastFetched === 'string' ? rawRates.goldLastFetched : undefined,
+          previousStorageTotal: typeof rawRates.previousStorageTotal === 'number' ? rawRates.previousStorageTotal : undefined,
+        };
       }
 
       // 6. Storage assets
       const rawStorage = data.storageAssets || data.storage || parsed.storageAssets || parsed.storage;
-      let newStorage: StorageAsset[] = get().storageAssets;
+      let newStorage: StorageAsset[] = [];
       if (Array.isArray(rawStorage)) {
         newStorage = rawStorage.map((asset: any, idx: number) => ({
           ...asset,
@@ -1162,82 +1428,63 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
           amount: Number(asset.amount) || 0,
           buyRate: Number(asset.buyRate) || 1,
         }));
-        saveStorage(STORAGE_KEYS.storage, newStorage);
       }
 
-      // 9. ASF Jobs
-      const rawAsf = data.asfJobs || data.asf || parsed.asfJobs || parsed.asf;
-      let newAsf: JobItem[] = get().asfJobs;
-      if (Array.isArray(rawAsf)) {
-        newAsf = rawAsf;
-        saveStorage(STORAGE_KEYS.asf, newAsf);
-      }
+      // 7. Jobs
+      const newAsf: JobItem[] = Array.isArray(data.asfJobs || parsed.asfJobs) ? (data.asfJobs || parsed.asfJobs) : [];
+      const newIrq: JobItem[] = Array.isArray(data.irqJobs || parsed.irqJobs) ? (data.irqJobs || parsed.irqJobs) : [];
+      const newPartTime: JobItem[] = Array.isArray(data.partTimeJobs || parsed.partTimeJobs) ? (data.partTimeJobs || parsed.partTimeJobs) : [];
 
-      // 10. IRQ Jobs
-      const rawIrq = data.irqJobs || data.irq || parsed.irqJobs || parsed.irq;
-      let newIrq: JobItem[] = get().irqJobs;
-      if (Array.isArray(rawIrq)) {
-        newIrq = rawIrq;
-        saveStorage(STORAGE_KEYS.irq, newIrq);
-      }
-
-      // 11. Part Time Jobs
-      const rawPartTime = data.partTimeJobs || parsed.partTimeJobs;
-      let newPartTime: JobItem[] = get().partTimeJobs;
-      if (Array.isArray(rawPartTime)) {
-        newPartTime = rawPartTime;
-        saveStorage(STORAGE_KEYS.partTimeJobs, newPartTime);
-      }
-
-      // 12. Actuals Tracking
-      const rawActuals = data.entryActuals || parsed.entryActuals;
-      let newActuals: Record<string, number> = get().entryActuals;
-      if (rawActuals && typeof rawActuals === 'object') {
-        newActuals = { ...get().entryActuals, ...rawActuals };
-        saveStorage(STORAGE_KEYS.entryActuals, newActuals);
-      }
-
-      const rawActualDates = data.entryActualDates || parsed.entryActualDates;
-      let newActualDates: Record<string, string> = get().entryActualDates;
-      if (rawActualDates && typeof rawActualDates === 'object') {
-        newActualDates = { ...get().entryActualDates, ...rawActualDates };
-        saveStorage(STORAGE_KEYS.entryActualDates, newActualDates);
-      }
-
-      // 13. Deleted forecasts & archived entries
-      const rawDeleted = data.deletedForecasts || parsed.deletedForecasts;
-      let newDeleted: string[] = get().deletedForecasts;
-      if (Array.isArray(rawDeleted)) {
-        newDeleted = rawDeleted;
-        saveStorage(STORAGE_KEYS.deletedForecasts, newDeleted);
-      }
-
-      const rawArchived = data.archivedEntries || parsed.archivedEntries;
-      let newArchived: CashEntry[] = get().archivedEntries;
-      if (Array.isArray(rawArchived)) {
-        newArchived = rawArchived;
-        saveStorage(STORAGE_KEYS.archivedEntries, newArchived);
-      }
-
-      // 14. Preserve auxiliary legacy localStorage keys
-      try {
-        if (data.creditDues || parsed.creditDues) {
-          localStorage.setItem('budget-control-credit-dues', JSON.stringify(data.creditDues || parsed.creditDues));
+      // 8. Actuals Tracking: Clean replace, no spread merge of stale values
+      const rawActuals = data.entryActuals || parsed.entryActuals || {};
+      const newActuals: Record<string, number> = {};
+      if (typeof rawActuals === 'object') {
+        for (const [k, v] of Object.entries(rawActuals)) {
+          if (v !== undefined && v !== null && !isNaN(Number(v))) {
+            newActuals[k] = Number(v);
+          }
         }
-        if (data.creditDueMonths || parsed.creditDueMonths) {
-          localStorage.setItem('budget-control-credit-due-months', JSON.stringify(data.creditDueMonths || parsed.creditDueMonths));
-        }
-        if (data.creditSettlementOverrides || parsed.creditSettlementOverrides) {
-          localStorage.setItem('budget-control-credit-settlement-overrides', JSON.stringify(data.creditSettlementOverrides || parsed.creditSettlementOverrides));
-        }
-        if (data.salaryAnchorMonth || parsed.salaryAnchorMonth) {
-          localStorage.setItem('budget-control-salary-anchor', JSON.stringify(data.salaryAnchorMonth || parsed.salaryAnchorMonth));
-        }
-        localStorage.setItem('budget-control-salary-materialized', 'true');
-        localStorage.setItem('budget-control-seed-version', 'blank-template-v2');
-      } catch (_) {}
+      }
 
-      // Update Zustand state
+      const rawActualDates = data.entryActualDates || parsed.entryActualDates || {};
+      const newActualDates: Record<string, string> = {};
+      if (typeof rawActualDates === 'object') {
+        for (const [k, v] of Object.entries(rawActualDates)) {
+          if (typeof v === 'string') {
+            newActualDates[k] = v;
+          }
+        }
+      }
+
+      // 9. Deleted forecasts & archived entries
+      const newDeleted: string[] = Array.isArray(data.deletedForecasts || parsed.deletedForecasts)
+        ? (data.deletedForecasts || parsed.deletedForecasts)
+        : [];
+
+      const newArchived: CashEntry[] = Array.isArray(data.archivedEntries || parsed.archivedEntries)
+        ? (data.archivedEntries || parsed.archivedEntries)
+        : [];
+
+      // Commit all storage changes atomically
+      saveStorage(STORAGE_KEYS.entries, newEntries);
+      saveStorage(STORAGE_KEYS.accounts, newAccounts);
+      saveStorage(STORAGE_KEYS.salary, newSalary);
+      saveStorage(STORAGE_KEYS.creditDues, newCreditDues);
+      saveStorage(STORAGE_KEYS.creditDueMonths, newCreditDueMonths);
+      saveStorage(STORAGE_KEYS.creditSettlementOverrides, newSettlementOverrides);
+      saveStorage(STORAGE_KEYS.salaryAnchor, newSalaryAnchor);
+      saveStorage(STORAGE_KEYS.installments, newInstallments);
+      saveStorage(STORAGE_KEYS.rates, newRates);
+      saveStorage(STORAGE_KEYS.storage, newStorage);
+      saveStorage(STORAGE_KEYS.asf, newAsf);
+      saveStorage(STORAGE_KEYS.irq, newIrq);
+      saveStorage(STORAGE_KEYS.partTimeJobs, newPartTime);
+      saveStorage(STORAGE_KEYS.entryActuals, newActuals);
+      saveStorage(STORAGE_KEYS.entryActualDates, newActualDates);
+      saveStorage(STORAGE_KEYS.deletedForecasts, newDeleted);
+      saveStorage(STORAGE_KEYS.archivedEntries, newArchived);
+
+      // Update state
       set({
         entries: newEntries,
         accounts: newAccounts,
@@ -1258,6 +1505,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         archivedEntries: newArchived,
       });
 
+      scheduleAutoGistSync(get);
       return true;
     } catch (e) {
       console.error('Failed to import JSON data:', e);

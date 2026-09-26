@@ -5,11 +5,18 @@
 export type EntryType = 'income' | 'expense';
 
 export interface EntryDraw {
+  id?: string;
   date: string;
   amount: number;
   note?: string;
   tag?: string;
   account?: string;
+}
+
+export interface CreditSettlementOverride {
+  amount?: number;
+  date?: string;
+  note?: string;
 }
 
 export interface CashEntry {
@@ -24,6 +31,7 @@ export interface CashEntry {
   note?: string;
   isRecurring?: boolean;
   frequency?: string;
+  seriesId?: string;
   creditType?: string; // 'cib' | 'hsbc' | ''
   source?: string;
   isDraw?: boolean;
@@ -33,6 +41,9 @@ export interface CashEntry {
   settlementDate?: string;
   creditSettlementDate?: string;
   calculatedAmount?: number;
+  statementAmount?: number;
+  variance?: number;
+  statementNote?: string;
   baseDue?: number;
   cardSpendTotal?: number;
   cardExpenseCount?: number;
@@ -41,6 +52,8 @@ export interface CashEntry {
   linkedInflowId?: string;
   archivedAt?: string;
   currency?: string;
+  originalAmount?: number;
+  fxRateAtEntry?: number;
   actualAmount?: number;
   actualDate?: string;
   loanId?: string;
@@ -121,6 +134,7 @@ export interface JobDayLog {
 
 export interface JobPayment {
   id: string;
+  entryId?: string;
   date: string;
   amount: number;
   currency?: string;

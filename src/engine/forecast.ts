@@ -12,11 +12,29 @@ export function getEntryActualAmount(
   entry: CashEntry,
   entryActuals: Record<string, number>
 ): number {
+  if (!entry) return 0;
   const id = entry.id || '';
   let rawValue = entryActuals[id];
   if ((rawValue === undefined || rawValue === null) && entry.id) {
     const legacyId = `${entry.date}-${entry.category}-${entry.amount}-${entry.type}-${entry.account || 'cash'}`;
     rawValue = entryActuals[legacyId];
+  }
+  // Fallback for legacy installment index keys (e.g. installment-id-0)
+  if ((rawValue === undefined || rawValue === null) && id.startsWith('installment-')) {
+    const parts = id.split('-');
+    if (parts.length >= 4) {
+      // id is installment-{instId}-{year}-{month}
+      const instId = parts.slice(1, parts.length - 2).join('-');
+      // search for any installment-{instId}-{index} matching entry
+      const legacyPattern = new RegExp(`^installment-${instId}-\\d+$`);
+      for (const [key, val] of Object.entries(entryActuals || {})) {
+        if (legacyPattern.test(key) && val !== undefined && val !== null) {
+          // If the note or matching index corresponds
+          rawValue = val;
+          break;
+        }
+      }
+    }
   }
   if (rawValue !== undefined && rawValue !== null) {
     return Math.round(Number(rawValue) || 0);

@@ -127,14 +127,15 @@ export function isCardExpenseForAccount(entry: CashEntry, accountKey: string): b
 
 export function getCreditSettlementDate(
   entry: CashEntry,
-  creditSettlementOverrides?: Record<string, { amount?: number; date?: string }>
+  creditSettlementOverrides?: Record<string, { amount?: number; date?: string; note?: string }>,
+  entryActualDates?: Record<string, string>
 ): string {
   if (!entry) return '';
   if (isCreditCardExpense(entry)) {
     const type = (entry.creditType || '').toLowerCase();
     const account = (entry.account || '').toLowerCase();
     const accKey = type.includes('hsbc') || account.includes('hsbc') ? 'hsbc' : 'cib';
-    const actualDate = entry.actualDate || entry.date;
+    const actualDate = (entryActualDates && entry.id && entryActualDates[entry.id]) || entry.actualDate || entry.date;
     const defaultDate = entry.creditSettlementDate || calculateCreditSettlementDate(actualDate, `${accKey}_card`);
     const sMonth = defaultDate ? DateUtils.getMonthKey(defaultDate) : '';
     if (sMonth && creditSettlementOverrides) {
@@ -151,9 +152,10 @@ export function getCreditSettlementDate(
 
 export function getCreditSettlementMonth(
   entry: CashEntry,
-  creditSettlementOverrides?: Record<string, { amount?: number; date?: string }>
+  creditSettlementOverrides?: Record<string, { amount?: number; date?: string; note?: string }>,
+  entryActualDates?: Record<string, string>
 ): string {
-  const date = getCreditSettlementDate(entry, creditSettlementOverrides);
+  const date = getCreditSettlementDate(entry, creditSettlementOverrides, entryActualDates);
   return date ? DateUtils.getMonthKey(date) : '';
 }
 
@@ -164,7 +166,7 @@ export function buildCreditDueEntries(params: {
   archivedEntries?: CashEntry[];
   entryActuals: Record<string, number>;
   entryActualDates?: Record<string, string>;
-  creditSettlementOverrides?: Record<string, { amount?: number; date?: string }>;
+  creditSettlementOverrides?: Record<string, { amount?: number; date?: string; note?: string }>;
 }): CashEntry[] {
   const {
     accounts = {},
@@ -208,10 +210,7 @@ export function buildCreditDueEntries(params: {
 
     allExpenses.forEach((entry) => {
       if (isCardExpenseForAccount(entry, accountKey)) {
-        const effectiveEntry = entryActualDates[entry.id]
-          ? { ...entry, actualDate: entryActualDates[entry.id] }
-          : entry;
-        const sMonth = getCreditSettlementMonth(effectiveEntry, creditSettlementOverrides);
+        const sMonth = getCreditSettlementMonth(entry, creditSettlementOverrides, entryActualDates);
         if (sMonth) settlementMonths.add(sMonth);
       } else if (isLumpCreditDueForAccount(entry, accountKey)) {
         const sMonth = DateUtils.getMonthKey(entry.date);
@@ -245,10 +244,7 @@ export function buildCreditDueEntries(params: {
       const cardExpenses = allExpenses.filter(
         (entry) =>
           isCardExpenseForAccount(entry, accountKey) &&
-          getCreditSettlementMonth(
-            entryActualDates[entry.id] ? { ...entry, actualDate: entryActualDates[entry.id] } : entry,
-            creditSettlementOverrides
-          ) === monthKey
+          getCreditSettlementMonth(entry, creditSettlementOverrides, entryActualDates) === monthKey
       );
       const cardSpendTotal = cardExpenses.reduce((sum, e) => {
         const act = getActual(e);
@@ -266,9 +262,10 @@ export function buildCreditDueEntries(params: {
         override.amount !== undefined &&
         override.amount !== null &&
         !isNaN(Number(override.amount));
-      const totalPlannedDue = hasPlannedOverride
-        ? Math.max(Number(override.amount), calculatedPlannedDue)
-        : calculatedPlannedDue;
+      
+      const statementAmount = hasPlannedOverride ? Number(override.amount) : undefined;
+      const totalPlannedDue = hasPlannedOverride ? Number(override.amount) : calculatedPlannedDue;
+      const variance = hasPlannedOverride ? Number(override.amount) - calculatedPlannedDue : 0;
 
       if (totalPlannedDue <= 0 && actualPaid <= 0 && calculatedPlannedDue <= 0) return;
 
@@ -296,6 +293,9 @@ export function buildCreditDueEntries(params: {
             ? calculatedPlannedDue
             : actualPaid,
         calculatedAmount: calculatedPlannedDue,
+        statementAmount: statementAmount,
+        variance: variance,
+        statementNote: override?.note,
         actualAmount: actualPaid,
         source: 'recurring credit',
         tag: 'Credit',
@@ -304,4 +304,28 @@ export function buildCreditDueEntries(params: {
   });
 
   return entries;
+}
+
+export function getCoveredCreditSettlementKeys(
+  entries: CashEntry[],
+  entryActuals: Record<string, number> = {},
+  entryActualDates: Record<string, string> = {},
+  creditSettlementOverrides?: Record<string, { amount?: number; date?: string; note?: string }>
+): Set<string> {
+  const coveredKeys = new Set<string>();
+  (entries || []).forEach((entry) => {
+    const act = (entryActuals && entryActuals[entry.id] !== undefined)
+      ? Number(entryActuals[entry.id]) || 0
+      : Number(entry.actualAmount) || 0;
+    if (act > 0) {
+      ['cib', 'hsbc'].forEach((accKey) => {
+        if (isLumpCreditDueForAccount(entry, accKey)) {
+          const sMonth = getCreditSettlementMonth(entry, creditSettlementOverrides, entryActualDates) ||
+            DateUtils.getMonthKey(entryActualDates?.[entry.id] || entry.actualDate || entry.date);
+          if (sMonth) coveredKeys.add(`${accKey}-${sMonth}`);
+        }
+      });
+    }
+  });
+  return coveredKeys;
 }

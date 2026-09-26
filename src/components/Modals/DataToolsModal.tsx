@@ -15,11 +15,24 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
   onAutoTagPrompt,
   onResetPrompt,
 }) => {
-  const { exportJSON, importJSON, entries, archivedEntries, entryActuals, entryActualDates, autoTagEntries, resetData, restoreResetBackup } = useBudgetStore();
+  const {
+    exportJSON,
+    importJSON,
+    entries,
+    archivedEntries,
+    entryActuals,
+    entryActualDates,
+    autoTagEntries,
+    resetData,
+    restoreResetBackup,
+    undoImport,
+    archiveSettledEntries,
+  } = useBudgetStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
   const hasResetBackup = Boolean(localStorage.getItem('budget-control-reset-backup'));
+  const hasImportUndoBackup = Boolean(localStorage.getItem('budget-control-import-undo-backup'));
 
   // Export JSON file download
   const handleExportJSON = () => {
@@ -39,7 +52,7 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
     const headers = ['Date', 'Actual Date', 'Category', 'Subcategory / Tags', 'Account', 'Type', 'Source', 'Planned Amount (EGP)', 'Actual Amount (EGP)'];
     const rows = [...entries, ...archivedEntries].map((e) => [
       escapeCsv(e.date),
-      escapeCsv(entryActualDates[e.id] || e.date),
+      escapeCsv(entryActualDates[e.id] || e.actualDate || e.date),
       escapeCsv(e.category),
       escapeCsv([e.subcategory, e.tag].filter(Boolean).join(', ')),
       escapeCsv(e.account || 'cib'),
@@ -69,7 +82,7 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
         const ok = importJSON(content);
         if (ok) {
           const state = useBudgetStore.getState();
-          alert(`✓ Data restored successfully!\n\n• ${state.entries.length} cash entries\n• ${Object.keys(state.accounts).length} accounts\n• ${state.storageAssets.length} storage assets\n• ${state.installments.length} installments`);
+          alert(`✓ Data restored successfully!\n\n• ${state.entries.length} cash entries\n• ${Object.keys(state.accounts).length} accounts\n• ${state.storageAssets.length} storage assets\n• ${state.installments.length} installments\n\n(A rollback snapshot was saved; you can click 'Undo last import' if needed.)`);
           onClose();
         } else {
           alert('Failed to parse backup JSON file. Please ensure it is a valid Budget Control export.');
@@ -85,7 +98,7 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
       <div className="dialog-heading">
         <h3>⚙️ Data Backup &amp; System Tools</h3>
         <button className="icon-button" type="button" aria-label="Close" onClick={onClose}>
-          x
+          ✕
         </button>
       </div>
 
@@ -105,6 +118,23 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
             <button className="ghost-button" type="button" onClick={() => fileInputRef.current?.click()}>
               Import Backup (JSON)
             </button>
+            {hasImportUndoBackup && (
+              <button
+                className="ghost-button"
+                type="button"
+                style={{ borderColor: 'var(--amber)', color: 'var(--amber)' }}
+                onClick={() => {
+                  if (window.confirm('Revert the last imported backup and restore previous data?')) {
+                    if (undoImport()) {
+                      alert('✓ Previous data restored from rollback snapshot.');
+                      onClose();
+                    }
+                  }
+                }}
+              >
+                ↩️ Undo last import
+              </button>
+            )}
             <input
               type="file"
               ref={fileInputRef}
@@ -116,11 +146,21 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
         </div>
 
         <div className="data-tools-card" style={{ background: 'var(--surface-soft)', padding: '14px', borderRadius: '8px', border: '1px solid var(--line)' }}>
-          <h4 style={{ margin: '0 0 4px', fontSize: '14px' }}>🏷️ Tags &amp; Auto-Classification</h4>
+          <h4 style={{ margin: '0 0 4px', fontSize: '14px' }}>📦 Storage Maintenance &amp; Archival</h4>
           <p style={{ fontSize: '13px', color: 'var(--muted)', margin: '0 0 10px' }}>
-            Automatically tag untagged past entries using category and description hints.
+            Archive fully settled past entries to keep active calculations and memory fast.
           </p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+            <button
+              className="ghost-button"
+              type="button"
+              onClick={() => {
+                const count = archiveSettledEntries();
+                alert(count > 0 ? `✓ Archived ${count} settled entries to storage.` : 'No past settled entries need archiving.');
+              }}
+            >
+              📦 Archive Settled Entries ({archivedEntries.length} currently archived)
+            </button>
             <button
               className="ghost-button"
               type="button"
@@ -142,18 +182,18 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
               🔄 Refresh App
             </button>
             <button
-                className="ghost-button"
-                type="button"
-                style={{ color: 'var(--red)' }}
-                onClick={onResetPrompt || (() => {
-                  if (window.confirm('Reset all budget data? A backup will be saved first.')) {
-                    resetData();
-                    onClose();
-                  }
-                })}
-              >
-                Reset sample data
-              </button>
+              className="ghost-button"
+              type="button"
+              style={{ color: 'var(--red)' }}
+              onClick={onResetPrompt || (() => {
+                if (window.confirm('Reset all budget data? A backup will be saved first.')) {
+                  resetData();
+                  onClose();
+                }
+              })}
+            >
+              Reset sample data
+            </button>
             {hasResetBackup && (
               <button
                 className="ghost-button"

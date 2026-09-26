@@ -18,7 +18,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
   onOpenExpenseModal,
   onOpenPaymentModal,
 }) => {
-  const { partTimeJobs, rates, deleteJob, saveJob } = useBudgetStore();
+  const { partTimeJobs, rates, deleteJob, saveJob, deleteJobPayment } = useBudgetStore();
 
   const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'invoiced' | 'partial' | 'paid'>('all');
   const [activeCurrencyFilter, setActiveCurrencyFilter] = useState<string>('all');
@@ -101,8 +101,50 @@ export const JobsView: React.FC<JobsViewProps> = ({
   };
 
   const handleDeletePayment = (job: JobItem, paymentId: string) => {
-    const payments = (job.payments || []).filter((p) => p.id !== paymentId);
-    saveJob('partTime', { ...job, payments });
+    const payment = (job.payments || []).find((p) => p.id === paymentId);
+    if (!payment) return;
+
+    const alsoDeleteCash = window.confirm(
+      `Delete payment of ${formatJobCurrency(payment.amount, payment.currency)} on ${payment.date}?\n\n` +
+      `• Click OK to also remove this entry from Cashflow & History\n` +
+      `• Click Cancel to keep it recorded in History (or choose to remove from Job Tracker only)`
+    );
+    if (alsoDeleteCash) {
+      deleteJobPayment('partTime', job.id, paymentId, { deleteCashEntry: true });
+    } else {
+      const deleteTrackerOnly = window.confirm(
+        `Remove this payment from the Job Tracker while keeping its income entry in Cashflow & History?`
+      );
+      if (deleteTrackerOnly) {
+        deleteJobPayment('partTime', job.id, paymentId, { deleteCashEntry: false });
+      }
+    }
+  };
+
+  const handleDeleteJob = (job: JobItem) => {
+    const hasPayments = Array.isArray(job.payments) && job.payments.length > 0;
+    if (!hasPayments) {
+      if (window.confirm(`Delete job "${job.title || job.client}"?`)) {
+        deleteJob('partTime', job.id);
+      }
+      return;
+    }
+
+    const choice = window.confirm(
+      `Delete job "${job.title || job.client}"?\n\n` +
+      `• Click OK to delete the job and KEEP all collected payments in Cashflow & History (Recommended)\n` +
+      `• Click Cancel to choose full deletion including History records.`
+    );
+    if (choice) {
+      deleteJob('partTime', job.id, { deleteCashEntries: false });
+    } else {
+      const fullDelete = window.confirm(
+        `Do you want to permanently delete this job AND remove all its payments from Cashflow & History?`
+      );
+      if (fullDelete) {
+        deleteJob('partTime', job.id, { deleteCashEntries: true });
+      }
+    }
   };
 
   return (
@@ -481,7 +523,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
                       <button
                         className="delete-button"
                         type="button"
-                        onClick={() => deleteJob('partTime', job.id)}
+                        onClick={() => handleDeleteJob(job)}
                       >
                         Delete Job
                       </button>

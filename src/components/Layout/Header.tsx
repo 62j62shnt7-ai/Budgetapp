@@ -9,12 +9,9 @@ import {
   ShieldAlert, 
   Activity 
 } from 'lucide-react';
-import { calculateForecast, getActiveForecastEntries, getDeficitPeriods } from '../../engine/forecast';
 import { computeFinancialHealthScore } from '../../engine/healthScore';
 import { computeTotalStorageValue } from '../../engine/currency';
-import { buildSalaryEntries, buildInstallmentEntries } from '../../engine/salaryAndInstallments';
-import { buildCreditDueEntries } from '../../engine/creditCards';
-import { DateUtils } from '../../engine/dateUtils';
+import { useForecastCandidates } from '../../hooks/useForecastCandidates';
 
 interface HeaderProps {
   onOpenAddModal: () => void;
@@ -24,46 +21,21 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddModal }) => {
   const { 
     theme, 
     setTheme, 
-    accounts, 
-    entries, 
-    salaryPattern,
-    salaryAnchorMonth,
-    installments, 
     rates, 
     storageAssets,
-    creditDues,
-    archivedEntries,
-    creditSettlementOverrides,
     entryActuals,
-    deletedForecasts,
   } = useBudgetStore();
 
-  const totalCash = Object.values(accounts).reduce((sum, acc) => sum + (acc.balance || 0), 0);
+  const {
+    totalCash,
+    allCandidateEntries,
+    forecast,
+    deficitPeriods,
+    hasDeficit,
+  } = useForecastCandidates(12);
+
   const storageTotal = computeTotalStorageValue(storageAssets, rates);
 
-  // Dynamic forecast & health calculation
-  const currentYm = DateUtils.currentYearMonth();
-  const hasMaterializedSalary = entries.some((entry) => entry.source === 'salary');
-  const salaryEntries = hasMaterializedSalary ? [] : buildSalaryEntries(salaryPattern, currentYm, 12, salaryAnchorMonth);
-  const installmentEntries = buildInstallmentEntries(installments);
-  const creditEntries = buildCreditDueEntries({
-    accounts,
-    creditDues,
-    cashEntries: entries,
-    archivedEntries,
-    entryActuals,
-    creditSettlementOverrides,
-  });
-  const allCandidateEntries = getActiveForecastEntries(
-    [...entries, ...salaryEntries],
-    installmentEntries,
-    creditEntries,
-    deletedForecasts,
-    entryActuals
-  );
-
-  const forecast = calculateForecast(allCandidateEntries, totalCash, 12);
-  const deficitPeriods = getDeficitPeriods(allCandidateEntries, totalCash);
   const health = computeFinancialHealthScore({
     entries: allCandidateEntries,
     forecast,
@@ -72,7 +44,6 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddModal }) => {
     storageTotal,
     entryActuals,
   });
-  const hasDeficit = deficitPeriods.length > 0 || forecast.some((item) => item.balance < 0);
 
   return (
     <header className="app-header">
