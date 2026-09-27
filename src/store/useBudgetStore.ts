@@ -30,6 +30,11 @@ import {
 import { buildSalaryEntries } from '../engine/salaryAndInstallments';
 import { DateUtils } from '../engine/dateUtils';
 import { migrateBackupPayload } from '../engine/migration';
+import {
+  linkEntriesToSeries,
+  unlinkEntriesFromSeries,
+  detectRecurringCandidateGroups,
+} from '../utils/recurringDetector';
 
 let gistSyncTimer: ReturnType<typeof setTimeout> | null = null;
 let gistSyncInFlight = false;
@@ -208,6 +213,9 @@ export interface BudgetStoreState {
   undoImport: () => boolean;
   restoreDeletedForecast: (id: string) => void;
   clearAllDeletedForecasts: () => void;
+  linkRecurringSeries: (entryIds: string[], customSeriesId?: string) => { seriesId: string; modifiedCount: number };
+  unlinkRecurringSeries: (seriesId: string) => number;
+  autoLinkAllRecurringCandidates: () => { linkedGroupsCount: number; modifiedEntriesCount: number };
 
   exportJSON: () => string;
   importJSON: (jsonString: string) => boolean;
@@ -2346,6 +2354,56 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     saveStorage(STORAGE_KEYS.deletedForecasts, []);
     set({ deletedForecasts: [] });
     scheduleAutoGistSync(get);
+  },
+
+  linkRecurringSeries: (entryIds, customSeriesId) => {
+    const { updatedEntries, seriesId, modifiedCount } = linkEntriesToSeries(
+      get().entries,
+      entryIds,
+      customSeriesId
+    );
+    if (modifiedCount > 0) {
+      saveStorage(STORAGE_KEYS.entries, updatedEntries);
+      set({ entries: updatedEntries });
+      scheduleAutoGistSync(get);
+    }
+    return { seriesId, modifiedCount };
+  },
+
+  unlinkRecurringSeries: (seriesId) => {
+    const { updatedEntries, modifiedCount } = unlinkEntriesFromSeries(get().entries, seriesId);
+    if (modifiedCount > 0) {
+      saveStorage(STORAGE_KEYS.entries, updatedEntries);
+      set({ entries: updatedEntries });
+      scheduleAutoGistSync(get);
+    }
+    return modifiedCount;
+  },
+
+  autoLinkAllRecurringCandidates: () => {
+    const candidateGroups = detectRecurringCandidateGroups(get().entries);
+    let currentEntries = get().entries;
+    let linkedGroupsCount = 0;
+    let modifiedEntriesCount = 0;
+
+    candidateGroups.forEach((group) => {
+      if (!group.isFullyLinked) {
+        const res = linkEntriesToSeries(currentEntries, group.entryIds, group.existingSeriesId);
+        if (res.modifiedCount > 0) {
+          currentEntries = res.updatedEntries;
+          linkedGroupsCount++;
+          modifiedEntriesCount += res.modifiedCount;
+        }
+      }
+    });
+
+    if (modifiedEntriesCount > 0) {
+      saveStorage(STORAGE_KEYS.entries, currentEntries);
+      set({ entries: currentEntries });
+      scheduleAutoGistSync(get);
+    }
+
+    return { linkedGroupsCount, modifiedEntriesCount };
   },
 
   exportJSON: () => {

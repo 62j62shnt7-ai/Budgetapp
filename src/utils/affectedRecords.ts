@@ -18,6 +18,8 @@ export function buildEntryDeleteOptions(
     asfJobs: JobItem[];
     irqJobs: JobItem[];
     accounts?: Record<string, AccountBalance>;
+    entryActuals?: Record<string, number>;
+    entries?: CashEntry[];
   }
 ): EntryDeleteAffectedData {
   const isForeign = (entry.currency || 'EGP').toUpperCase() !== 'EGP';
@@ -123,13 +125,26 @@ export function buildEntryDeleteOptions(
   }
 
   if (isRecurring) {
+    const seriesId = entry.seriesId || entry.id;
+    const targetDate = entry.date;
+    const futureSeriesEntries = (context.entries || []).filter((e) => {
+      const matchesSeries = (e.seriesId && e.seriesId === seriesId) || (e.id === entry.id);
+      const isFutureOrCurrent = e.date >= targetDate;
+      const isActualized = Number(context.entryActuals?.[e.id] ?? e.actualAmount ?? 0) > 0;
+      return matchesSeries && isFutureOrCurrent && !isActualized;
+    });
+    const futureCount = futureSeriesEntries.length;
+    const countLabel = futureCount > 1 ? ` (${futureCount} future records)` : '';
+    const countSublabel = futureCount > 1
+      ? `Apply deletion to all ${futureCount} future occurrences in this recurring series (from ${DateUtils.formatDisplayDate(entry.date)} onward). Uncheck to delete this date only.`
+      : 'Apply deletion to all future occurrences in this series (uncheck to delete this date only).';
+
     options.push({
       id: 'series',
-      label: 'Recurring Series Scope',
-      sublabel:
-        'Apply deletion to all future occurrences in this series (uncheck to delete this date only).',
+      label: `Recurring Series Scope${countLabel}`,
+      sublabel: countSublabel,
       icon: '🔄',
-      badge: 'Series',
+      badge: futureCount > 1 ? `${futureCount} Records` : 'Series',
       defaultChecked: false,
     });
   }
@@ -167,6 +182,14 @@ export function buildEntryDeleteOptions(
     });
   }
 
+  const actualAmount =
+    context.entryActuals?.[entry.id] ??
+    (entry.actualAmount !== undefined && entry.actualAmount !== null
+      ? Number(entry.actualAmount) || 0
+      : (entry.isClosed ? Number(entry.amount) || 0 : 0));
+
+  const hasActualMoneyTransacted = actualAmount > 0 || Boolean(entry.draws && entry.draws.length > 0);
+
   const targetAccount = (entry.account || '').trim().toLowerCase();
   const currUpper = (entry.currency || 'EGP').toUpperCase();
   const matchingStorage = (context.storageAssets || []).find((a) => {
@@ -177,39 +200,45 @@ export function buildEntryDeleteOptions(
     return false;
   });
 
-  if (matchingStorage && (isForeign || targetAccount.includes('storage') || targetAccount.includes('vault') || entry.storageAssetId)) {
-    options.push({
-      id: 'storage',
-      label: entry.type === 'expense'
-        ? `Storage Holding (Refund): ${matchingStorage.name}`
-        : `Storage Holding: ${matchingStorage.name}`,
-      sublabel: entry.type === 'expense'
-        ? `Refund and add back ${amountFormatted} to ${matchingStorage.name}${matchingStorage.quantity !== undefined ? ` (Current: ${matchingStorage.quantity} ${matchingStorage.unit})` : ''}.`
-        : `Revert / adjust balance in ${matchingStorage.name}${matchingStorage.quantity !== undefined ? ` (Current: ${matchingStorage.quantity} ${matchingStorage.unit})` : ''}.`,
-      icon: '🏦',
-      badge: entry.type === 'expense' ? 'Storage Refund' : 'Storage',
-      defaultChecked: false,
-    });
-  } else if (!isForeign && context.accounts) {
-    const matchingAccountKey = Object.keys(context.accounts).find(
-      (k) => k.toLowerCase() === targetAccount || (context.accounts![k]?.name || '').toLowerCase().trim() === targetAccount
-    );
-    const matchingAccount = matchingAccountKey ? context.accounts[matchingAccountKey] : undefined;
+  if (hasActualMoneyTransacted) {
+    const actualFormatted = isForeign
+      ? `${formatNativeCurrency(entry.fxRateAtEntry ? Math.round((actualAmount / entry.fxRateAtEntry) * 100) / 100 : (entry.originalAmount || actualAmount), entry.currency!)} (≈ ${formatMoney(actualAmount)})`
+      : formatMoney(actualAmount);
 
-    if (matchingAccount && matchingAccountKey) {
-      const accDisplayName = matchingAccount.name || matchingAccountKey.toUpperCase();
+    if (matchingStorage && (isForeign || targetAccount.includes('storage') || targetAccount.includes('vault') || entry.storageAssetId)) {
       options.push({
         id: 'storage',
         label: entry.type === 'expense'
-          ? `Bank Account Refund: ${accDisplayName}`
-          : `Bank Account: ${accDisplayName}`,
+          ? `Storage Holding (Refund): ${matchingStorage.name}`
+          : `Storage Holding: ${matchingStorage.name}`,
         sublabel: entry.type === 'expense'
-          ? `Refund and add back ${amountFormatted} to ${accDisplayName} balance (Current: ${formatMoney(matchingAccount.balance || 0)}).`
-          : `Deduct deposited ${amountFormatted} from ${accDisplayName} balance (Current: ${formatMoney(matchingAccount.balance || 0)}).`,
+          ? `Refund and add back ${actualFormatted} to ${matchingStorage.name}${matchingStorage.quantity !== undefined ? ` (Current: ${matchingStorage.quantity} ${matchingStorage.unit})` : ''}.`
+          : `Revert / adjust balance in ${matchingStorage.name}${matchingStorage.quantity !== undefined ? ` (Current: ${matchingStorage.quantity} ${matchingStorage.unit})` : ''}.`,
         icon: '🏦',
-        badge: entry.type === 'expense' ? 'Bank Refund' : 'Bank Balance',
+        badge: entry.type === 'expense' ? 'Storage Refund' : 'Storage',
         defaultChecked: false,
       });
+    } else if (!isForeign && context.accounts) {
+      const matchingAccountKey = Object.keys(context.accounts).find(
+        (k) => k.toLowerCase() === targetAccount || (context.accounts![k]?.name || '').toLowerCase().trim() === targetAccount
+      );
+      const matchingAccount = matchingAccountKey ? context.accounts[matchingAccountKey] : undefined;
+
+      if (matchingAccount && matchingAccountKey) {
+        const accDisplayName = matchingAccount.name || matchingAccountKey.toUpperCase();
+        options.push({
+          id: 'storage',
+          label: entry.type === 'expense'
+            ? `Bank Account Refund: ${accDisplayName}`
+            : `Bank Account: ${accDisplayName}`,
+          sublabel: entry.type === 'expense'
+            ? `Refund and add back ${actualFormatted} to ${accDisplayName} balance (Current: ${formatMoney(matchingAccount.balance || 0)}).`
+            : `Deduct deposited ${actualFormatted} from ${accDisplayName} balance (Current: ${formatMoney(matchingAccount.balance || 0)}).`,
+          icon: '🏦',
+          badge: entry.type === 'expense' ? 'Bank Refund' : 'Bank Balance',
+          defaultChecked: false,
+        });
+      }
     }
   }
 
@@ -331,6 +360,8 @@ export function hasEntryAffectedParties(
     asfJobs: JobItem[];
     irqJobs: JobItem[];
     accounts?: Record<string, AccountBalance>;
+    entryActuals?: Record<string, number>;
+    entries?: CashEntry[];
   }
 ): boolean {
   if (!entry) return false;

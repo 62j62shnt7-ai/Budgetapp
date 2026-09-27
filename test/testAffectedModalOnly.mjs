@@ -30,6 +30,7 @@ import {
   calculateInstallmentProgress,
   buildInstallmentEntries,
 } from '../src/engine/salaryAndInstallments.ts';
+import { detectRecurringCandidateGroups } from '../src/utils/recurringDetector.ts';
 
 console.log('===============================================================');
 console.log('🧪 RUNNING DEDICATED TEST SUITE: AFFECTED RECORDS MODAL LOGIC');
@@ -560,9 +561,13 @@ console.log('  ✓ Choosing full installment plan deletion cleanly purges instal
 // -------------------------------------------------------------
 console.log('▶ Test Scenario 15: Dot Indicators & Robust Entity Linking');
 
-// 1. Standalone entry has NO dot
+// 1. Standalone entry has NO dot even with bank accounts in context when actual is 0
 const plainEntry = { id: 'plain-1', date: '2026-10-01', amount: 100, category: 'Coffee', type: 'expense', account: 'cib' };
-assert.strictEqual(hasEntryAffectedParties(plainEntry, { installments: [], storageAssets: [], partTimeJobs: [], asfJobs: [], irqJobs: [] }), false, 'Plain entry has no affected dot');
+const accountsCtx = { cib: { name: 'CIB Current', balance: 50000, maturityDay: 1 } };
+assert.strictEqual(hasEntryAffectedParties(plainEntry, { installments: [], storageAssets: [], partTimeJobs: [], asfJobs: [], irqJobs: [], accounts: accountsCtx, entryActuals: {} }), false, 'Untouched forecast entry has no affected dot');
+
+// 1b. Entry with recorded actual money transacted HAS dot (for bank balance refund/adjustment)
+assert.strictEqual(hasEntryAffectedParties(plainEntry, { installments: [], storageAssets: [], partTimeJobs: [], asfJobs: [], irqJobs: [], accounts: accountsCtx, entryActuals: { 'plain-1': 50 } }), true, 'Actualized entry with recorded spend has affected dot');
 
 // 2. Entry with recurring series HAS dot
 const recurringEntryWithDot = { id: 'rec-1', date: '2026-10-01', amount: 500, category: 'Internet', type: 'expense', account: 'cib', seriesId: 'series-net' };
@@ -836,6 +841,56 @@ assert.strictEqual(useBudgetStore.getState().accounts['cib'].balance, 53500, 'Ba
 
 console.log('  ✓ buildEntryDeleteOptions & buildEntryClearOptions generate selective Bank Account Refund option');
 console.log('  ✓ clearActual and deleteEntry with revertStorage: true correctly add back amount to bank balance\n');
+
+// -------------------------------------------------------------
+// SCENARIO 19: Recurring Candidate Scanning & Accurate Count Confirmations
+// -------------------------------------------------------------
+console.log('▶ Test Scenario 19: Recurring Candidate Scanning & Accurate Future Count Deletions');
+
+const netflix1 = { id: 'netflix-1', date: '2026-05-01', category: 'Netflix', amount: 250, type: 'expense', account: 'cib' };
+const netflix2 = { id: 'netflix-2', date: '2026-06-01', category: 'Netflix', amount: 250, type: 'expense', account: 'cib' };
+const netflix3 = { id: 'netflix-3', date: '2026-07-01', category: 'Netflix', amount: 250, type: 'expense', account: 'cib' };
+
+// 1. Scan detects unlinked recurring candidate pattern
+const detectedGroups = detectRecurringCandidateGroups([netflix1, netflix2, netflix3]);
+assert.strictEqual(detectedGroups.length, 1, 'Detected 1 recurring candidate group');
+assert.strictEqual(detectedGroups[0].name, 'Netflix');
+assert.strictEqual(detectedGroups[0].entries.length, 3);
+assert.strictEqual(detectedGroups[0].isFullyLinked, false, 'Candidate is not yet linked');
+assert.strictEqual(detectedGroups[0].estimatedFrequency, 'Monthly');
+
+// 2. Link entries into recurring series via store
+useBudgetStore.setState({ entries: [netflix1, netflix2, netflix3] });
+const linkResult = useBudgetStore.getState().linkRecurringSeries(['netflix-1', 'netflix-2', 'netflix-3']);
+assert.strictEqual(linkResult.modifiedCount, 3, 'All 3 entries linked to series');
+const updatedStoreEntries = useBudgetStore.getState().entries;
+assert.ok(updatedStoreEntries.every((e) => e.seriesId === linkResult.seriesId && e.isRecurring === true), 'All entries have seriesId & isRecurring');
+
+// 3. Deleting occurrence #2 (2026-06-01) calculates exact future count (2 records: June + July)
+const deleteOptData = buildEntryDeleteOptions(updatedStoreEntries[1], {
+  installments: [],
+  storageAssets: [],
+  partTimeJobs: [],
+  asfJobs: [],
+  irqJobs: [],
+  entries: updatedStoreEntries,
+});
+const seriesDeleteOption = deleteOptData.options.find((o) => o.id === 'series');
+assert.ok(seriesDeleteOption, 'Series option present');
+assert.ok(seriesDeleteOption.label.includes('2 future records'), 'Series option label shows exact count (2 future records)');
+assert.ok(seriesDeleteOption.sublabel.includes('2 future occurrences'), 'Series option sublabel explains 2 future occurrences');
+assert.strictEqual(seriesDeleteOption.badge, '2 Records');
+
+// 4. Executing future series deletion removes June & July and preserves May
+useBudgetStore.getState().deleteEntry('netflix-2', 'future');
+const remainingAfterDelete = useBudgetStore.getState().entries;
+assert.strictEqual(remainingAfterDelete.length, 1, 'Only 1 record remains');
+assert.strictEqual(remainingAfterDelete[0].id, 'netflix-1', 'Preserved prior May occurrence');
+
+console.log('  ✓ detectRecurringCandidateGroups scans and groups repeating name & amount occurrences');
+console.log('  ✓ linkRecurringSeries marks seriesId & isRecurring across target entries');
+console.log('  ✓ buildEntryDeleteOptions calculates and displays exact count of future recurring records');
+console.log('  ✓ deleteEntry with seriesMode: "future" deletes calculated future subset accurately\n');
 
 console.log('===============================================================');
 console.log('🌟 100% OF ALL AFFECTED RECORDS MODAL TESTS PASSED! 🌟');

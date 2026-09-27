@@ -1,6 +1,7 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { executeAppRefresh } from '../../utils/appRefresh';
+import { detectRecurringCandidateGroups } from '../../utils/recurringDetector';
 
 interface DataToolsModalProps {
   isOpen: boolean;
@@ -23,6 +24,9 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
     deletedForecasts,
     restoreDeletedForecast,
     clearAllDeletedForecasts,
+    linkRecurringSeries,
+    unlinkRecurringSeries,
+    autoLinkAllRecurringCandidates,
     entryActuals,
     entryActualDates,
     autoTagEntries,
@@ -35,6 +39,23 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
   const [feedbackMsg, setFeedbackMsg] = useState<string>('');
   const [showDeletedModal, setShowDeletedModal] = useState<boolean>(false);
   const [deletedFilterTerm, setDeletedFilterTerm] = useState<string>('');
+  const [showRecurringModal, setShowRecurringModal] = useState<boolean>(false);
+  const [recurringFilterTerm, setRecurringFilterTerm] = useState<string>('');
+
+  const recurringGroups = useMemo(() => detectRecurringCandidateGroups(entries), [entries]);
+  const unlinkedRecurringCount = useMemo(() => recurringGroups.filter((g) => !g.isFullyLinked).length, [recurringGroups]);
+
+  const filteredRecurringGroups = useMemo(() => {
+    if (!recurringFilterTerm.trim()) return recurringGroups;
+    const term = recurringFilterTerm.toLowerCase();
+    return recurringGroups.filter((g) =>
+      g.name.toLowerCase().includes(term) ||
+      g.category.toLowerCase().includes(term) ||
+      (g.subcategory && g.subcategory.toLowerCase().includes(term)) ||
+      String(g.amount).includes(term) ||
+      (g.account && g.account.toLowerCase().includes(term))
+    );
+  }, [recurringGroups, recurringFilterTerm]);
 
   if (!isOpen) return null;
   const hasResetBackup = Boolean(localStorage.getItem('budget-control-reset-backup'));
@@ -238,6 +259,43 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
             )}
           </div>
 
+          {/* Recurring Series Scanner & Detector */}
+          <div className="data-tools-card" style={{ background: 'var(--surface-soft)', padding: '14px', borderRadius: '8px', border: '1px solid var(--line)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+              <h4 style={{ margin: 0, fontSize: '14px' }}>🔄 Recurring Series Scanner &amp; Detector</h4>
+              <span style={{ fontSize: '12px', color: unlinkedRecurringCount > 0 ? 'var(--amber)' : 'var(--muted)', background: 'rgba(0,0,0,0.15)', padding: '2px 8px', borderRadius: '12px' }}>
+                {recurringGroups.length} pattern{recurringGroups.length === 1 ? '' : 's'}{unlinkedRecurringCount > 0 ? ` (${unlinkedRecurringCount} unlinked)` : ''}
+              </span>
+            </div>
+            <p style={{ fontSize: '13px', color: 'var(--muted)', margin: '0 0 10px' }}>
+              Scan entries for repeating names and amounts (e.g. subscriptions, bills, salaries) to link them into unified recurring series.
+            </p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              <button
+                className="ghost-button"
+                type="button"
+                style={{ borderColor: unlinkedRecurringCount > 0 ? 'var(--blue)' : undefined, color: unlinkedRecurringCount > 0 ? 'var(--blue)' : undefined }}
+                onClick={() => setShowRecurringModal(true)}
+              >
+                🔍 Scan Recurring Patterns ({recurringGroups.length})
+              </button>
+              {unlinkedRecurringCount > 0 && (
+                <button
+                  className="ghost-button"
+                  type="button"
+                  style={{ borderColor: 'var(--green)', color: 'var(--green)' }}
+                  onClick={() => {
+                    const res = autoLinkAllRecurringCandidates();
+                    setFeedbackMsg(`✓ Linked ${res.linkedGroupsCount} pattern(s) across ${res.modifiedEntriesCount} entries as recurring series.`);
+                    setTimeout(() => setFeedbackMsg(''), 5000);
+                  }}
+                >
+                  ⚡ Link All Detected ({unlinkedRecurringCount})
+                </button>
+              )}
+            </div>
+          </div>
+
           {/* Dismissed / Deleted Forecasts Inspector */}
           <div className="data-tools-card" style={{ background: 'var(--surface-soft)', padding: '14px', borderRadius: '8px', border: '1px solid var(--line)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
@@ -423,6 +481,171 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
 
           <div className="dialog-actions" style={{ marginTop: '12px' }}>
             <button className="ghost-button" type="button" onClick={() => setShowDeletedModal(false)}>
+              Back to Tools
+            </button>
+          </div>
+        </dialog>
+      )}
+
+      {/* Sub-modal: Recurring Series Scanner */}
+      {showRecurringModal && (
+        <dialog
+          open
+          className="native-dialog"
+          onClick={(e) => e.target === e.currentTarget && setShowRecurringModal(false)}
+          style={{ display: 'block', zIndex: 1050, maxWidth: '680px' }}
+        >
+          <div className="dialog-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              🔄 Recurring Series Scanner ({recurringGroups.length})
+            </h3>
+            <button className="icon-button" type="button" aria-label="Close" onClick={() => setShowRecurringModal(false)}>
+              ✕
+            </button>
+          </div>
+
+          <div className="dialog-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '12px 0' }}>
+            <div style={{ background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.25)', borderRadius: '6px', padding: '10px 12px', fontSize: '12.5px', color: 'var(--ink)' }}>
+              ℹ️ Groups of 2 or more cash entries with the same name and amount are detected below. Flagging a group as a <strong>Recurring Series</strong> links them so future edits and deletions can apply across the entire series with accurate occurrence counts.
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <input
+                type="search"
+                placeholder="Filter recurring patterns by name or amount..."
+                value={recurringFilterTerm}
+                onChange={(e) => setRecurringFilterTerm(e.target.value)}
+                className="form-input"
+                style={{ flex: 1, padding: '6px 10px', fontSize: '13px' }}
+              />
+              {unlinkedRecurringCount > 0 && (
+                <button
+                  type="button"
+                  className="ghost-button"
+                  style={{ color: 'var(--green)', borderColor: 'var(--green)', fontSize: '12px', padding: '6px 12px', whiteSpace: 'nowrap' }}
+                  onClick={() => {
+                    const res = autoLinkAllRecurringCandidates();
+                    setFeedbackMsg(`✓ Linked ${res.linkedGroupsCount} pattern(s) across ${res.modifiedEntriesCount} entries.`);
+                    setTimeout(() => setFeedbackMsg(''), 5000);
+                  }}
+                >
+                  ⚡ Link All ({unlinkedRecurringCount})
+                </button>
+              )}
+            </div>
+
+            <div style={{ maxHeight: '380px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px', paddingRight: '4px' }}>
+              {recurringGroups.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '36px 16px', color: 'var(--muted)', fontSize: '13.5px' }}>
+                  ✨ No repeating name + amount patterns found across your entries.
+                </div>
+              ) : filteredRecurringGroups.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '24px 16px', color: 'var(--muted)', fontSize: '13px' }}>
+                  No recurring patterns match "{recurringFilterTerm}".
+                </div>
+              ) : (
+                filteredRecurringGroups.map((group) => {
+                  return (
+                    <div
+                      key={group.key}
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px',
+                        padding: '12px',
+                        background: 'var(--surface-soft)',
+                        border: `1px solid ${group.isFullyLinked ? 'var(--line)' : 'rgba(245, 158, 11, 0.4)'}`,
+                        borderRadius: '8px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                          <span style={{ fontSize: '20px' }}>{group.type === 'income' ? '💰' : '🔄'}</span>
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                              <strong style={{ fontSize: '13.5px' }}>{group.name}</strong>
+                              <span style={{ fontSize: '12.5px', fontWeight: 600, color: group.type === 'income' ? 'var(--green)' : 'var(--ink)' }}>
+                                {group.amountFormatted}
+                              </span>
+                              <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '4px', background: 'var(--surface-sunken)', color: 'var(--muted)' }}>
+                                {group.estimatedFrequency}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: '10px',
+                                  padding: '1px 6px',
+                                  borderRadius: '4px',
+                                  background: group.isFullyLinked ? 'rgba(34, 197, 94, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                                  color: group.isFullyLinked ? 'var(--green)' : 'var(--amber)',
+                                  fontWeight: 500,
+                                }}
+                              >
+                                {group.isFullyLinked ? '✓ Linked Series' : '⚠️ Unlinked Candidate'}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: '11.5px', color: 'var(--muted)', marginTop: '2px' }}>
+                              {group.entries.length} occurrences ({group.earliestDate} to {group.latestDate}) · Account: {group.account?.toUpperCase() || 'Direct'}
+                            </div>
+                          </div>
+                        </div>
+
+                        {group.isFullyLinked ? (
+                          <button
+                            type="button"
+                            className="ghost-button"
+                            style={{ padding: '4px 10px', fontSize: '12px', color: 'var(--muted)', flexShrink: 0 }}
+                            onClick={() => {
+                              if (group.existingSeriesId) {
+                                unlinkRecurringSeries(group.existingSeriesId);
+                              }
+                            }}
+                            title="Unlink this series into standalone independent entries"
+                          >
+                            Unlink
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="ghost-button"
+                            style={{ padding: '4px 10px', fontSize: '12px', color: 'var(--blue)', borderColor: 'var(--blue)', flexShrink: 0 }}
+                            onClick={() => {
+                              linkRecurringSeries(group.entryIds);
+                            }}
+                            title="Flag and link these entries as a recurring series"
+                          >
+                            🔗 Flag as Recurring
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Micro list of occurrences */}
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '2px' }}>
+                        {group.entries.map((e) => (
+                          <span
+                            key={e.id}
+                            style={{
+                              fontSize: '11px',
+                              fontFamily: 'monospace',
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              background: 'var(--surface-sunken)',
+                              color: 'var(--muted)',
+                              border: '1px solid var(--line)',
+                            }}
+                          >
+                            📅 {e.date}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          <div className="dialog-actions" style={{ marginTop: '12px' }}>
+            <button className="ghost-button" type="button" onClick={() => setShowRecurringModal(false)}>
               Back to Tools
             </button>
           </div>

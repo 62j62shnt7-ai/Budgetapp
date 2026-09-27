@@ -818,6 +818,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                                     asfJobs,
                                     irqJobs,
                                     accounts,
+                                    entryActuals,
+                                    entries,
                                   });
                                   return (
                                     <button
@@ -943,6 +945,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
           asfJobs,
           irqJobs,
           accounts,
+          entryActuals,
+          entries,
         });
 
         return (

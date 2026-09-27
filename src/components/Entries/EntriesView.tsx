@@ -21,6 +21,7 @@ export const EntriesView: React.FC<EntriesViewProps> = ({ onOpenAddModal }) => {
     asfJobs,
     irqJobs,
     accounts,
+    entryActuals,
   } = useBudgetStore();
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -180,6 +181,8 @@ export const EntriesView: React.FC<EntriesViewProps> = ({ onOpenAddModal }) => {
                             asfJobs,
                             irqJobs,
                             accounts,
+                            entryActuals,
+                            entries,
                           });
                           return (
                             <button
@@ -217,6 +220,8 @@ export const EntriesView: React.FC<EntriesViewProps> = ({ onOpenAddModal }) => {
           asfJobs,
           irqJobs,
           accounts,
+          entryActuals,
+          entries,
         });
 
         return (

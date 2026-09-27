@@ -841,6 +841,8 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                               asfJobs,
                               irqJobs,
                               accounts,
+                              entryActuals,
+                              entries,
                             });
                             return (
                               <button
@@ -902,6 +904,8 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
           asfJobs,
           irqJobs,
           accounts,
+          entryActuals,
+          entries,
         });
 
         return (
