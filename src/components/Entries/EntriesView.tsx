@@ -240,6 +240,7 @@ export const EntriesView: React.FC<EntriesViewProps> = ({ onOpenAddModal }) => {
                 deleteInstallmentPlan: selectedIds.includes('installment_plan'),
                 syncJob: selectedIds.includes('job'),
                 revertStorage: selectedIds.includes('storage'),
+                restoreForeignAsset: selectedIds.includes('restore_fx_asset'),
               });
               setDeleteEntryTarget(null);
             }}

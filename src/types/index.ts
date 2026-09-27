@@ -63,6 +63,11 @@ export interface CashEntry {
   jobId?: string;
   storageAssetId?: string;
   initialAmount?: number;
+  // Marks an entry as a one-time internal transfer (e.g. FX conversion) rather than
+  // a real forecastable inflow/outflow. Entries with this set are always excluded
+  // from forecast/cashflow candidate lists, even if their actual is cleared.
+  conversionType?: 'fx-sale';
+  excludeFromForecast?: boolean;
 }
 
 export interface SalaryPayment {

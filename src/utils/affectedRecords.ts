@@ -9,6 +9,64 @@ export interface EntryDeleteAffectedData {
   options: AffectedRecordOption[];
 }
 
+// --- Shared installment-occurrence / linked-loan resolution ------------------------
+// These are used both when building the "affected records" checkbox list (what the
+// user is shown) and by the store's deleteEntry (what actually happens), so the two
+// can never drift apart the way they used to (a "Linked Loan" checkbox that appeared
+// and did nothing).
+
+export function isInstallmentOccurrenceEntry(
+  entry: CashEntry,
+  linkedInstallment: Installment | undefined
+): boolean {
+  return Boolean(
+    entry.source === 'installment' ||
+      entry.id.startsWith('installment-') ||
+      (linkedInstallment && !entry.loanId && entry.type === 'expense') ||
+      (entry.tag && entry.tag.toLowerCase() === 'installment')
+  );
+}
+
+export function findLinkedInstallmentByNameOrId(
+  entry: CashEntry,
+  installments: Installment[]
+): Installment | undefined {
+  return installments.find((i) => {
+    const normName = (i.name || '').toLowerCase().trim();
+    const normCategory = (entry.category || '').toLowerCase().trim();
+    const normSubcategory = (entry.subcategory || '').toLowerCase().trim();
+    const normNote = (entry.note || '').toLowerCase().trim();
+    const normSource = (entry.source || '').toLowerCase().trim();
+    return (
+      entry.id.includes(i.id) ||
+      (entry.loanId && (i.id === entry.loanId || (i as any).loanId === entry.loanId)) ||
+      (normName &&
+        (normCategory === normName ||
+          normSubcategory === normName ||
+          normNote.includes(normName) ||
+          normSource.includes(normName)))
+    );
+  });
+}
+
+// Resolves the installment that should be treated as this entry's "Linked Loan
+// Repayment" — an income entry whose loanId (or, failing that, name-match) points
+// at a debt/loan installment, as opposed to an expense entry that's itself an
+// installment occurrence (which is handled separately via installment_plan).
+export function resolveLinkedLoan(
+  entry: CashEntry,
+  installments: Installment[]
+): Installment | undefined {
+  const linkedInstallment = findLinkedInstallmentByNameOrId(entry, installments);
+  const isInstallmentOccurrence = isInstallmentOccurrenceEntry(entry, linkedInstallment);
+
+  const byLoanId = entry.loanId
+    ? installments.find((i) => i.id === entry.loanId || (i as any).loanId === entry.loanId)
+    : undefined;
+
+  return byLoanId || (!isInstallmentOccurrence ? linkedInstallment : undefined);
+}
+
 export function buildEntryDeleteOptions(
   entry: CashEntry,
   context: {
@@ -40,23 +98,8 @@ export function buildEntryDeleteOptions(
   const normNote = (entry.note || '').toLowerCase().trim();
   const normSource = (entry.source || '').toLowerCase().trim();
 
-  const linkedInstallment = context.installments.find(
-    (i) => {
-      const normName = (i.name || '').toLowerCase().trim();
-      return (
-        entry.id.includes(i.id) ||
-        (entry.loanId && (i.id === entry.loanId || (i as any).loanId === entry.loanId)) ||
-        (normName && (normCategory === normName || normSubcategory === normName || normNote.includes(normName) || normSource.includes(normName)))
-      );
-    }
-  );
-
-  const isInstallmentOccurrence = Boolean(
-    entry.source === 'installment' ||
-    entry.id.startsWith('installment-') ||
-    (linkedInstallment && !entry.loanId && entry.type === 'expense') ||
-    (entry.tag && entry.tag.toLowerCase() === 'installment')
-  );
+  const linkedInstallment = findLinkedInstallmentByNameOrId(entry, context.installments);
+  const isInstallmentOccurrence = isInstallmentOccurrenceEntry(entry, linkedInstallment);
 
   const actualAmount =
     context.entryActuals?.[entry.id] ??
@@ -78,14 +121,7 @@ export function buildEntryDeleteOptions(
     (entry.frequency && entry.frequency.trim() !== '')
   );
 
-  const linkedLoanId = entry.loanId;
-  const linkedLoan =
-    (linkedLoanId
-      ? context.installments.find(
-          (i) => i.id === linkedLoanId || (i as any).loanId === linkedLoanId
-        )
-      : undefined) ||
-    (!isInstallmentOccurrence && linkedInstallment ? linkedInstallment : undefined);
+  const linkedLoan = resolveLinkedLoan(entry, context.installments);
 
   const allJobs = [
     ...(context.partTimeJobs || []),
@@ -184,19 +220,27 @@ export function buildEntryDeleteOptions(
     options.push({
       id: 'draws',
       label: `Recorded Tranches (${entry.draws.length})`,
-      sublabel: `Remove all recorded draw installments and actual payouts linked to this entry.`,
+      sublabel: `All recorded draw installments and actual payouts are removed along with this entry.`,
       icon: '📑',
       badge: 'Draws',
+      required: true,
       defaultChecked: true,
     });
   }
+
+  // FX-conversion entries: the entry's own account/currency reflect only the EGP side of
+  // the transaction. The foreign asset that was drawn down is tracked separately via
+  // storageAssetId/originalAmount and must NOT be treated as "this entry's own storage
+  // target" (that would hijack the bank-account-refund detection below and offer the
+  // wrong single checkbox instead of two independent ones).
+  const isFxConversion = entry.conversionType === 'fx-sale';
 
   const hasActualMoneyTransacted = actualAmount > 0 || Boolean(entry.draws && entry.draws.length > 0);
 
   const targetAccount = (entry.account || '').trim().toLowerCase();
   const currUpper = (entry.currency || 'EGP').toUpperCase();
   const matchingStorage = (context.storageAssets || []).find((a) => {
-    if (entry.storageAssetId && a.id === entry.storageAssetId) return true;
+    if (!isFxConversion && entry.storageAssetId && a.id === entry.storageAssetId) return true;
     if (a.name.trim().toLowerCase() === targetAccount) return true;
     if (isForeign && ((a.unit || '').toUpperCase() === currUpper || (a.currency || '').toUpperCase() === currUpper)) return true;
     if (entry.draws && entry.draws.some((d) => (d as any).storageAssetId === a.id || (d.account && d.account.trim().toLowerCase() === a.name.trim().toLowerCase()))) return true;
@@ -242,6 +286,24 @@ export function buildEntryDeleteOptions(
           defaultChecked: false,
         });
       }
+    }
+  }
+
+  // FX-conversion entries drew a foreign-currency amount out of a storage asset in
+  // addition to depositing EGP into an account (handled above). That foreign leg is
+  // never restored automatically, so offer it as its own independent option here.
+  if (isFxConversion && entry.storageAssetId) {
+    const sourceAsset = (context.storageAssets || []).find((a) => a.id === entry.storageAssetId);
+    if (sourceAsset) {
+      const restoreQty = entry.originalAmount ?? 0;
+      options.push({
+        id: 'restore_fx_asset',
+        label: `Restore Foreign Storage Asset: ${sourceAsset.name}`,
+        sublabel: `Add back ${formatNativeCurrency(restoreQty, sourceAsset.unit)} to ${sourceAsset.name}${sourceAsset.quantity !== undefined ? ` (Current: ${sourceAsset.quantity} ${sourceAsset.unit})` : ''} — the amount converted in this transaction.`,
+        icon: '💱',
+        badge: 'FX Restore',
+        defaultChecked: true,
+      });
     }
   }
 
@@ -553,10 +615,12 @@ export function buildEntryClearOptions(
     });
   }
 
+  const isFxConversion = entry.conversionType === 'fx-sale';
+
   const targetAccount = (entry.account || '').trim().toLowerCase();
   const currUpper = (entry.currency || 'EGP').toUpperCase();
   const matchingStorage = (context.storageAssets || []).find((a) => {
-    if (entry.storageAssetId && a.id === entry.storageAssetId) return true;
+    if (!isFxConversion && entry.storageAssetId && a.id === entry.storageAssetId) return true;
     if (a.name.trim().toLowerCase() === targetAccount) return true;
     if (
       isForeign &&
@@ -630,9 +694,10 @@ export function buildEntryClearOptions(
     options.push({
       id: 'draws',
       label: `Recorded Tranches (${entry.draws.length})`,
-      sublabel: `Clear all ${entry.draws.length} recorded draw installments and actual payouts.`,
+      sublabel: `All ${entry.draws.length} recorded draw installments and actual payouts are cleared along with the actual.`,
       icon: '📑',
       badge: 'Draws',
+      required: true,
       defaultChecked: true,
     });
   }

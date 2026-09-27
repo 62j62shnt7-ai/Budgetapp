@@ -619,6 +619,11 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                       const entryId = entry.id;
                       const hasMultipleDraws = Boolean(entry.draws && entry.draws.length > 1);
                       const isDrawsExpanded = expandedDraws.has(entryId);
+                      // FX-conversion entries are one-time completed transfers, not a
+                      // "planned then actualized" forecast item — there's no meaningful
+                      // planned state to revert to, so "Clear" doesn't apply. Deleting
+                      // (with "Restore Foreign Storage Asset" checked) is the only valid undo.
+                      const isFxConversionEntry = entry.conversionType === 'fx-sale';
 
                       let varianceText = '—';
                       let varianceClass = 'neutral';
@@ -778,7 +783,17 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                           <td className="cell-actions">
                             {isAdminUnlocked ? (
                               <div style={{ display: 'flex', gap: '4px' }}>
-                                {(() => {
+                                {isFxConversionEntry ? (
+                                  <button
+                                    className="ghost-button icon-button"
+                                    type="button"
+                                    disabled
+                                    style={{ position: 'relative', opacity: 0.4, cursor: 'not-allowed' }}
+                                    title="Not applicable — this is a completed FX conversion, not a planned entry. Delete it (and restore the foreign asset) to undo it."
+                                  >
+                                    <RotateCcw size={13} />
+                                  </button>
+                                ) : (() => {
                                   const hasClearAffected = hasEntryClearAffectedParties(entry, {
                                     installments,
                                     storageAssets,
@@ -843,6 +858,16 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                                   );
                                 })()}
                               </div>
+                            ) : isFxConversionEntry ? (
+                              <button
+                                className="ghost-button history-clear-btn"
+                                type="button"
+                                disabled
+                                style={{ position: 'relative', opacity: 0.4, cursor: 'not-allowed' }}
+                                title="Not applicable — this is a completed FX conversion, not a planned entry."
+                              >
+                                Clear
+                              </button>
                             ) : (
                               (() => {
                                 const hasClearAffected = hasEntryClearAffectedParties(entry, {
@@ -965,6 +990,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                 deleteInstallmentPlan: selectedIds.includes('installment_plan'),
                 syncJob: selectedIds.includes('job'),
                 revertStorage: selectedIds.includes('storage'),
+                restoreForeignAsset: selectedIds.includes('restore_fx_asset'),
               });
               setDeleteEntryTarget(null);
             }}

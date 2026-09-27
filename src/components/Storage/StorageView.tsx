@@ -492,8 +492,10 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenStorageModal }) 
             itemDescription={affectedData.itemDescription}
             amountFormatted={affectedData.amountFormatted}
             options={affectedData.options}
-            onConfirm={() => {
-              deleteStorageAsset(deleteAssetTarget.id);
+            onConfirm={(selectedIds) => {
+              deleteStorageAsset(deleteAssetTarget.id, {
+                resetJobDestinations: selectedIds.includes('jobs'),
+              });
               setDeleteAssetTarget(null);
             }}
             onClose={() => setDeleteAssetTarget(null)}

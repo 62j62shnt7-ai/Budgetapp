@@ -919,24 +919,19 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
             options={affectedData.options}
             onConfirm={(selectedIds) => {
               const seriesMode = selectedIds.includes('series') ? 'future' : 'single';
-              const deletePlan = selectedIds.includes('installment_plan');
-              const matchedInstallment = installments.find(
-                (i) =>
-                  deleteEntryTarget.id.includes(i.id) ||
-                  (deleteEntryTarget.loanId && (i.id === deleteEntryTarget.loanId || (i as any).loanId === deleteEntryTarget.loanId)) ||
-                  (deleteEntryTarget.source === 'installment' && i.name.toLowerCase().trim() === (deleteEntryTarget.category || '').toLowerCase().trim())
-              );
-
-              if (deletePlan && matchedInstallment) {
-                deleteInstallment(matchedInstallment.id, { deleteCashEntries: true });
-              } else {
-                deleteEntry(deleteEntryTarget.id, seriesMode, {
-                  deleteLinkedLoan: selectedIds.includes('loan'),
-                  deleteInstallmentPlan: deletePlan,
-                  syncJob: selectedIds.includes('job'),
-                  revertStorage: selectedIds.includes('storage'),
-                });
-              }
+              // Route through the same deleteEntry(...) call as EntriesView/HistoryView,
+              // so "delete this occurrence + wipe the whole installment plan" behaves
+              // identically regardless of which screen triggered it: deleteInstallmentPlan
+              // only removes the installment tracker/future occurrences and preserves
+              // actualized/archived history, while every other checked option (loan, job,
+              // storage, series) is still honored instead of being silently dropped.
+              deleteEntry(deleteEntryTarget.id, seriesMode, {
+                deleteLinkedLoan: selectedIds.includes('loan'),
+                deleteInstallmentPlan: selectedIds.includes('installment_plan'),
+                syncJob: selectedIds.includes('job'),
+                revertStorage: selectedIds.includes('storage'),
+                restoreForeignAsset: selectedIds.includes('restore_fx_asset'),
+              });
               setDeleteEntryTarget(null);
             }}
             onClose={() => setDeleteEntryTarget(null)}

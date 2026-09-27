@@ -239,7 +239,7 @@ export function getForecastCandidateEntries(
   const nonLumpCashEntries = cashEntries.filter((entry) => !isCreditDueLumpSum(entry));
   const all = [...nonLumpCashEntries, ...installmentEntries, ...creditDueEntries];
   const deletedSet = new Set(deletedForecasts || []);
-  return all.filter((entry) => !deletedSet.has(getEntryId(entry)));
+  return all.filter((entry) => !deletedSet.has(getEntryId(entry)) && !entry.excludeFromForecast);
 }
 
 // ==========================================================================

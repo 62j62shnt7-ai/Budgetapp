@@ -35,6 +35,7 @@ import {
   unlinkEntriesFromSeries,
   detectRecurringCandidateGroups,
 } from '../utils/recurringDetector';
+import { resolveLinkedLoan } from '../utils/affectedRecords';
 
 let gistSyncTimer: ReturnType<typeof setTimeout> | null = null;
 let gistSyncInFlight = false;
@@ -158,7 +159,7 @@ export interface BudgetStoreState {
 
   addEntry: (entry: Omit<CashEntry, 'id'>) => string;
   updateEntry: (id: string, updates: Partial<CashEntry>, seriesMode?: 'single' | 'future') => void;
-  deleteEntry: (id: string, seriesMode?: 'single' | 'future', options?: { deleteLinkedLoan?: boolean; deleteInstallmentPlan?: boolean; revertStorage?: boolean; storageAssetId?: string; syncJob?: boolean }) => void;
+  deleteEntry: (id: string, seriesMode?: 'single' | 'future', options?: { deleteLinkedLoan?: boolean; deleteInstallmentPlan?: boolean; revertStorage?: boolean; storageAssetId?: string; syncJob?: boolean; restoreForeignAsset?: boolean }) => void;
   recordActual: (entryId: string, amount: number, date?: string, drawMeta?: { note?: string; tag?: string; account?: string }) => void;
   clearActual: (entryId: string, options?: { revertStorage?: boolean; storageAssetId?: string; syncJob?: boolean }) => void;
   addDraw: (entryId: string, draw: { id?: string; date: string; amount: number; note?: string; tag?: string; account?: string }) => void;
@@ -181,7 +182,7 @@ export interface BudgetStoreState {
 
   addStorageAsset: (asset: Omit<StorageAsset, 'id'>) => void;
   updateStorageAsset: (id: string, updates: Partial<StorageAsset>) => void;
-  deleteStorageAsset: (id: string) => void;
+  deleteStorageAsset: (id: string, options?: { resetJobDestinations?: boolean }) => void;
   depositToStorageAsset: (assetId: string, amount: number) => void;
   transferStorageAsset: (fromAssetId: string, toAssetId: string, amount: number) => boolean;
   convertStorageAssetToEgp: (
@@ -629,7 +630,14 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     }
 
     // 2. Handle linked loans & installment plans
-    const linkedLoanId = target?.type === 'income' ? target.loanId : undefined;
+    // Resolved the same way buildEntryDeleteOptions resolves it (loanId match, falling
+    // back to name-matching against installments), so the "Linked Loan Repayment"
+    // checkbox never appears without a matching action, or vice versa.
+    const resolvedLinkedLoan = target ? resolveLinkedLoan(target, get().installments) : undefined;
+    // Prefer the entry's own loanId (used to match other entries sharing the same loan)
+    // when present; otherwise fall back to the resolved installment's id (name-matched
+    // case, where no other entries are expected to carry that loanId anyway).
+    const linkedLoanId = target?.loanId || resolvedLinkedLoan?.id;
     const shouldDeleteLinked = Boolean(
       linkedLoanId && (options?.deleteLinkedLoan !== undefined ? options.deleteLinkedLoan : true)
     );
@@ -736,7 +744,22 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       return next;
     });
 
-    // 7. Revert storage holding if selected
+    // 7. Restore the foreign-currency leg of an FX-conversion entry, if selected.
+    // This is independent of (and in addition to) the EGP-side revertStorage handling
+    // below — an FX conversion moves money on both legs, so undoing it needs both.
+    if (options?.restoreForeignAsset && target?.conversionType === 'fx-sale' && target.storageAssetId) {
+      const sourceAsset = get().storageAssets.find((a) => a.id === target.storageAssetId);
+      if (sourceAsset) {
+        const restoreQty = Number(target.originalAmount) || 0;
+        if (restoreQty > 0) {
+          get().updateStorageAsset(sourceAsset.id, {
+            quantity: (Number(sourceAsset.quantity) || 0) + restoreQty,
+          });
+        }
+      }
+    }
+
+    // 8. Revert storage holding if selected
     if (options?.revertStorage && target) {
       const isForeign = (target.currency || 'EGP').toUpperCase() !== 'EGP';
       const actualAmt = Number(get().entryActuals[id] ?? target.actualAmount ?? target.amount ?? 0);
@@ -1650,10 +1673,48 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     scheduleAutoGistSync(get);
   },
 
-  deleteStorageAsset: (id) => {
+  deleteStorageAsset: (id, options) => {
     const updated = get().storageAssets.filter((a) => a.id !== id);
     saveStorage(STORAGE_KEYS.storage, updated);
-    set({ storageAssets: updated });
+
+    let asfJobsUpdated = false;
+    let irqJobsUpdated = false;
+    let partTimeJobsUpdated = false;
+    let updatedAsf = get().asfJobs;
+    let updatedIrq = get().irqJobs;
+    let updatedPartTime = get().partTimeJobs;
+
+    if (options?.resetJobDestinations) {
+      const resetJob = (j: JobItem): JobItem =>
+        j.forecastDestination === `storage:existing-${id}` ? { ...j, forecastDestination: undefined } : j;
+
+      const nextAsf = get().asfJobs.map(resetJob);
+      if (nextAsf.some((j, i) => j !== get().asfJobs[i])) {
+        asfJobsUpdated = true;
+        updatedAsf = nextAsf;
+      }
+      const nextIrq = get().irqJobs.map(resetJob);
+      if (nextIrq.some((j, i) => j !== get().irqJobs[i])) {
+        irqJobsUpdated = true;
+        updatedIrq = nextIrq;
+      }
+      const nextPartTime = get().partTimeJobs.map(resetJob);
+      if (nextPartTime.some((j, i) => j !== get().partTimeJobs[i])) {
+        partTimeJobsUpdated = true;
+        updatedPartTime = nextPartTime;
+      }
+
+      if (asfJobsUpdated) saveStorage(STORAGE_KEYS.asf, updatedAsf);
+      if (irqJobsUpdated) saveStorage(STORAGE_KEYS.irq, updatedIrq);
+      if (partTimeJobsUpdated) saveStorage(STORAGE_KEYS.partTimeJobs, updatedPartTime);
+    }
+
+    set({
+      storageAssets: updated,
+      ...(asfJobsUpdated ? { asfJobs: updatedAsf } : {}),
+      ...(irqJobsUpdated ? { irqJobs: updatedIrq } : {}),
+      ...(partTimeJobsUpdated ? { partTimeJobs: updatedPartTime } : {}),
+    });
     scheduleAutoGistSync(get);
   },
 
@@ -1712,7 +1773,11 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       saveStorage(STORAGE_KEYS.accounts, accounts);
     }
 
-    // 3. Log an income entry for record tracking
+    // 3. Log an income entry for record tracking. This entry represents a completed,
+    // non-repeatable internal transfer (foreign storage -> EGP account), so it carries
+    // the source asset + native amount converted (for reversal) and is flagged to be
+    // excluded from forecast/cashflow candidate lists permanently, even if its actual
+    // is later cleared.
     const today = DateUtils.todayString();
     const entryId = get().addEntry({
       date: today,
@@ -1726,6 +1791,11 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       actualDate: today,
       currency: 'EGP',
       source: `Converted ${foreignAmount} ${asset.unit || asset.currency} @ ${rate} EGP`,
+      storageAssetId: assetId,
+      originalAmount: foreignAmount,
+      fxRateAtEntry: rate,
+      conversionType: 'fx-sale',
+      excludeFromForecast: true,
     });
 
     set({ storageAssets: updatedAssets, accounts });
