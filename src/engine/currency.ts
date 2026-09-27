@@ -20,9 +20,17 @@ export const defaultRates: RatesData = {
   ],
 };
 
-export function getCurrencyRate(rates: RatesData, code: string): number {
-  const c = rates.currencies.find((item) => item.name.toUpperCase() === code.toUpperCase());
-  return c ? c.buy : 1.0;
+export function getCurrencyRate(rates: RatesData | any, code: string): number {
+  if (!rates) return 1.0;
+  if (Array.isArray(rates?.currencies)) {
+    const c = rates.currencies.find((item: any) => item?.name && item.name.toUpperCase() === code.toUpperCase());
+    if (c) return Number(c.buy ?? c.sell) || 1.0;
+  }
+  if (typeof rates === 'object') {
+    if (code in rates) return Number(rates[code]) || 1.0;
+    if (code.toUpperCase() in rates) return Number(rates[code.toUpperCase()]) || 1.0;
+  }
+  return 1.0;
 }
 
 export function computeSpreadPct(sell: number, buy: number): number {
@@ -59,6 +67,80 @@ export function storageValue(item: StorageAsset, rates?: RatesData): number {
   return qty * rate;
 }
 
+export function getCurrencySymbol(code: string): string {
+  const upper = (code || '').toUpperCase();
+  switch (upper) {
+    case 'USD':
+      return '$';
+    case 'EUR':
+      return '€';
+    case 'GBP':
+      return '£';
+    case 'SAR':
+      return 'SAR ';
+    case 'AED':
+      return 'AED ';
+    case 'EGP':
+      return 'EGP ';
+    default:
+      return `${code} `;
+  }
+}
+
+export function formatNativeCurrency(quantity: number, unitOrCode: string): string {
+  const qty = Number(quantity) || 0;
+  const upper = (unitOrCode || '').toUpperCase().trim();
+
+  if (upper === 'USD' || upper === 'DOLLARS' || upper === '$') {
+    return `$${qty.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+  if (upper === 'EUR' || upper === 'EUROS' || upper === '€') {
+    return `€${qty.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+  if (upper === 'GBP' || upper === 'POUNDS' || upper === '£') {
+    return `£${qty.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+  if (upper === 'SAR' || upper === 'AED' || upper === 'EGP') {
+    return `${upper} ${qty.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+  return `${qty.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} ${unitOrCode || 'units'}`;
+}
+
+export function inferAssetLocation(asset: Partial<StorageAsset>): {
+  locationType: 'bank' | 'cash' | 'vault' | 'other';
+  location: string;
+  locationLabel: string;
+} {
+  if (asset.locationType && asset.location) {
+    return {
+      locationType: asset.locationType,
+      location: asset.location,
+      locationLabel: asset.locationLabel || (asset.locationType === 'bank' ? 'HSBC Account' : asset.locationType === 'cash' ? 'Cash in Hand' : 'Vault'),
+    };
+  }
+
+  const name = (asset.name || '').toLowerCase();
+  const category = (asset.category || '').toLowerCase();
+  const rateSource = (asset.rateSource || '').toLowerCase();
+
+  if (name.includes('cash') || name.includes('wallet') || name.includes('hand')) {
+    return { locationType: 'cash', location: 'cash', locationLabel: 'Physical Cash' };
+  }
+  if (name.includes('hsbc')) {
+    return { locationType: 'bank', location: 'hsbc', locationLabel: 'HSBC Foreign Account' };
+  }
+  if (name.includes('cib')) {
+    return { locationType: 'bank', location: 'cib', locationLabel: 'CIB Foreign Account' };
+  }
+  if (category.includes('gold') || rateSource.startsWith('gold:') || name.includes('gold') || name.includes('silver') || name.includes('coin')) {
+    return { locationType: 'vault', location: 'vault', locationLabel: 'Physical Vault' };
+  }
+  if (category.includes('currency') || rateSource.startsWith('currency:')) {
+    return { locationType: 'bank', location: 'hsbc', locationLabel: 'HSBC Foreign Account' };
+  }
+  return { locationType: 'other', location: 'other', locationLabel: 'Storage' };
+}
+
 export function computeAssetEgpValue(asset: StorageAsset, rates: RatesData): number {
   return storageValue(asset, rates);
 }
@@ -66,6 +148,7 @@ export function computeAssetEgpValue(asset: StorageAsset, rates: RatesData): num
 export function computeTotalStorageValue(assets: StorageAsset[], rates: RatesData): number {
   return (assets || []).reduce((sum, asset) => sum + storageValue(asset, rates), 0);
 }
+
 
 // ==========================================================================
 // Live Market Rates API

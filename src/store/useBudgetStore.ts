@@ -5,13 +5,22 @@ import { create } from 'zustand';
 import type {
   AccountBalance,
   CashEntry,
+  EntryDraw,
   Installment,
   JobItem,
+  JobPayment,
   RatesData,
   SalaryPayment,
   StorageAsset,
 } from '../types';
-import { defaultRates, resolveRateSourceValue, computeTotalStorageValue } from '../engine/currency';
+import {
+  defaultRates,
+  resolveRateSourceValue,
+  computeTotalStorageValue,
+  inferAssetLocation,
+  getCurrencyRate,
+} from '../engine/currency';
+import { calculateJobFinancials } from '../engine/jobs';
 import {
   buildCreditDueEntries,
   getCreditSettlementMonth,
@@ -143,12 +152,12 @@ export interface BudgetStoreState {
 
   addEntry: (entry: Omit<CashEntry, 'id'>) => string;
   updateEntry: (id: string, updates: Partial<CashEntry>, seriesMode?: 'single' | 'future') => void;
-  deleteEntry: (id: string, seriesMode?: 'single' | 'future') => void;
+  deleteEntry: (id: string, seriesMode?: 'single' | 'future', options?: { deleteLinkedLoan?: boolean; deleteInstallmentPlan?: boolean; revertStorage?: boolean; storageAssetId?: string; syncJob?: boolean }) => void;
   recordActual: (entryId: string, amount: number, date?: string, drawMeta?: { note?: string; tag?: string; account?: string }) => void;
   clearActual: (entryId: string) => void;
   addDraw: (entryId: string, draw: { id?: string; date: string; amount: number; note?: string; tag?: string; account?: string }) => void;
   updateDraw: (entryId: string, drawIndex: number, draw: { date: string; amount: number; note?: string; tag?: string; account?: string }) => void;
-  deleteDraw: (entryId: string, drawIndex: number) => void;
+  deleteDraw: (entryId: string, drawIndex: number, options?: { updateCashflow?: boolean; syncJob?: boolean; revertStorage?: boolean; storageAssetId?: string }) => void;
   updateCreditSettlementOverride: (id: string, override: { amount?: number; date?: string; note?: string }) => void;
   recalculateCreditSettlement: (id: string) => CashEntry | undefined;
 
@@ -159,7 +168,7 @@ export interface BudgetStoreState {
 
   addInstallment: (installment: Omit<Installment, 'id'>) => void;
   updateInstallment: (id: string, updates: Partial<Installment>) => void;
-  deleteInstallment: (id: string) => void;
+  deleteInstallment: (id: string, options?: { deleteCashEntries?: boolean }) => void;
 
   updateRates: (rates: RatesData, syncImmediately?: boolean) => void;
   syncStorageRates: (rates?: RatesData) => void;
@@ -167,11 +176,25 @@ export interface BudgetStoreState {
   addStorageAsset: (asset: Omit<StorageAsset, 'id'>) => void;
   updateStorageAsset: (id: string, updates: Partial<StorageAsset>) => void;
   deleteStorageAsset: (id: string) => void;
+  depositToStorageAsset: (assetId: string, amount: number) => void;
+  transferStorageAsset: (fromAssetId: string, toAssetId: string, amount: number) => boolean;
+  convertStorageAssetToEgp: (
+    assetId: string,
+    foreignAmount: number,
+    targetAccount: string,
+    customRate?: number
+  ) => string | undefined;
 
   // Jobs Actions
   saveJob: (jobType: 'asf' | 'irq' | 'partTime', job: JobItem) => void;
   deleteJob: (jobType: 'asf' | 'irq' | 'partTime', jobId: string, options?: { deleteCashEntries?: boolean }) => void;
-  deleteJobPayment: (jobType: 'asf' | 'irq' | 'partTime', jobId: string, paymentId: string, options?: { deleteCashEntry?: boolean }) => void;
+  deleteJobPayment: (
+    jobType: 'asf' | 'irq' | 'partTime',
+    jobId: string,
+    paymentId: string,
+    options?: { syncCashflow?: boolean; deleteCashEntry?: boolean; revertStorage?: boolean; storageAssetId?: string }
+  ) => void;
+  settleJobForecastPayment: (entryId: string, actualEgp: number, isFinishing?: boolean) => boolean;
 
   archiveSettledEntries: () => number;
   unarchiveEntry: (id: string) => void;
@@ -285,6 +308,74 @@ export function inferTag(entry: Partial<CashEntry>): string {
   return '';
 }
 
+function revertStorageOrAccountBalance(
+  get: () => BudgetStoreState,
+  params: {
+    assetId?: string;
+    account?: string;
+    currency?: string;
+    amount: number;
+    isEgpAmount?: boolean;
+    fxRate?: number;
+  }
+) {
+  const { assetId, account, currency = 'USD', amount, isEgpAmount = false, fxRate } = params;
+  if (!amount || amount <= 0) return;
+
+  const storageAssets = get().storageAssets;
+  const currUpper = (currency || 'USD').toUpperCase();
+  const isForeign = currUpper !== 'EGP';
+  const accountLower = (account || '').toLowerCase().trim();
+
+  // 1. Direct assetId match
+  let targetAsset = assetId ? storageAssets.find((a) => a.id === assetId) : undefined;
+
+  // 2. Match by exact asset name (e.g. "HSBC USD Account", "USD Cash in Hand")
+  if (!targetAsset && account) {
+    targetAsset = storageAssets.find(
+      (a) => a.name.trim().toLowerCase() === accountLower
+    );
+  }
+
+  // 3. Match by account keyword and currency
+  if (!targetAsset && isForeign) {
+    if (accountLower.includes('hsbc') || accountLower.includes('bank')) {
+      targetAsset = storageAssets.find(
+        (a) => a.name.toLowerCase().includes('hsbc') && (a.unit || '').toUpperCase() === currUpper
+      );
+    } else if (accountLower.includes('cash') || accountLower.includes('hand') || accountLower.includes('vault')) {
+      targetAsset = storageAssets.find(
+        (a) => a.name.toLowerCase().includes('cash') && (a.unit || '').toUpperCase() === currUpper
+      );
+    }
+  }
+
+  // 4. Fallback match by unit / currency
+  if (!targetAsset && isForeign) {
+    targetAsset = storageAssets.find(
+      (a) => (a.unit || '').toUpperCase() === currUpper || (a.currency || '').toUpperCase() === currUpper
+    );
+  }
+
+  if (targetAsset) {
+    let nativeQty = amount;
+    if (isEgpAmount && isForeign) {
+      const rate = fxRate || targetAsset.rate || targetAsset.buyPrice || getCurrencyRate(get().rates, currUpper) || 1;
+      nativeQty = Math.round((amount / rate) * 100) / 100;
+    }
+    const currentQty = Number(targetAsset.quantity) || 0;
+    const nextQty = Math.max(0, currentQty - nativeQty);
+    get().updateStorageAsset(targetAsset.id, { quantity: nextQty });
+    return;
+  }
+
+  // If it's a bank account in accounts (e.g. cib, hsbc EGP)
+  if (!isForeign && get().accounts[accountLower]) {
+    const currentBal = get().accounts[accountLower].balance || 0;
+    get().updateAccountBalance(accountLower, Math.max(0, currentBal - amount));
+  }
+}
+
 export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
   theme: loadStorage<'dark' | 'light'>(STORAGE_KEYS.theme, 'light'),
   activeTab: 'dashboard',
@@ -297,7 +388,15 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
   salaryPattern: loadStorage<SalaryPayment[]>(STORAGE_KEYS.salary, defaultSalaryPattern),
   installments: loadStorage<Installment[]>(STORAGE_KEYS.installments, []),
   rates: loadStorage<RatesData>(STORAGE_KEYS.rates, defaultRates),
-  storageAssets: loadStorage<StorageAsset[]>(STORAGE_KEYS.storage, []),
+  storageAssets: (loadStorage<StorageAsset[]>(STORAGE_KEYS.storage, []) || []).map((asset) => {
+    const loc = inferAssetLocation(asset);
+    return {
+      ...asset,
+      locationType: asset.locationType || loc.locationType,
+      location: asset.location || loc.location,
+      locationLabel: asset.locationLabel || loc.locationLabel,
+    };
+  }),
 
   asfJobs: loadStorage<JobItem[]>(STORAGE_KEYS.asf, []),
   irqJobs: loadStorage<JobItem[]>(STORAGE_KEYS.irq, []),
@@ -418,10 +517,21 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     }
     saveStorage(STORAGE_KEYS.entries, updated);
     set({ entries: updated });
+    if (updates.actualAmount !== undefined) {
+      const actuals = { ...get().entryActuals, [id]: updates.actualAmount };
+      const dates = { ...get().entryActualDates, [id]: updates.actualDate || DateUtils.todayString() };
+      saveStorage(STORAGE_KEYS.entryActuals, actuals);
+      saveStorage(STORAGE_KEYS.entryActualDates, dates);
+      set({ entryActuals: actuals, entryActualDates: dates });
+    }
+    if (updates.isClosed === true) {
+      const currentActual = get().entryActuals[id] ?? updates.actualAmount ?? updates.amount ?? 0;
+      get().settleJobForecastPayment(id, Number(currentActual) || 0, true);
+    }
     scheduleAutoGistSync(get);
   },
 
-  deleteEntry: (id, seriesMode = 'single') => {
+  deleteEntry: (id, seriesMode = 'single', options) => {
     const inEntries = get().entries.find((e) => e.id === id);
     const inArchived = get().archivedEntries.find((e) => e.id === id);
     const target = inEntries || inArchived;
@@ -450,20 +560,28 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       updatedArchived = updatedArchived.filter((e) => e.id !== id);
     }
 
-    // 2. Handle linked loans
+    // 2. Handle linked loans & installment plans
     const linkedLoanId = target?.type === 'income' ? target.loanId : undefined;
     const shouldDeleteLinked = Boolean(
-      linkedLoanId &&
-      typeof window !== 'undefined' &&
-      window.confirm('This entry has a linked loan repayment. Delete the repayment too?')
+      linkedLoanId && (options?.deleteLinkedLoan !== undefined ? options.deleteLinkedLoan : true)
     );
+    const shouldDeleteInstallmentPlan = Boolean(options?.deleteInstallmentPlan);
     if (shouldDeleteLinked && linkedLoanId) {
       updatedEntries = updatedEntries.filter((e) => e.loanId !== linkedLoanId);
       updatedArchived = updatedArchived.filter((e) => e.loanId !== linkedLoanId);
     }
-    const updatedInstallments = shouldDeleteLinked && linkedLoanId
-      ? get().installments.filter((installment) => installment.loanId !== linkedLoanId)
+    let updatedInstallments = shouldDeleteLinked && linkedLoanId
+      ? get().installments.filter((installment) => installment.id !== linkedLoanId && installment.loanId !== linkedLoanId)
       : get().installments;
+
+    if (shouldDeleteInstallmentPlan) {
+      updatedInstallments = updatedInstallments.filter((inst) => {
+        if (id.includes(inst.id)) return false;
+        if (target?.loanId && (inst.id === target.loanId || (inst as any).loanId === target.loanId)) return false;
+        if (target?.category && inst.name.toLowerCase().trim() === target.category.toLowerCase().trim()) return false;
+        return true;
+      });
+    }
 
     // 3. If credit settlement entry, clean up manual lump payment and overrides
     let updatedOverrides = { ...get().creditSettlementOverrides };
@@ -489,7 +607,82 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       ? get().deletedForecasts
       : [...get().deletedForecasts, id];
 
-    // 6. Persist
+    // 6. Clean up linked forecast scheduling or payments on any job
+    const cleanJobForecast = (job: JobItem): JobItem => {
+      let changed = false;
+      let nextForecastEntryId = job.forecastEntryId;
+      let nextForecastDueDate = job.forecastDueDate;
+      let nextForecastAmount = job.forecastAmount;
+      let nextForecastDestination = job.forecastDestination;
+      let nextPayments = job.payments;
+
+      if (job.forecastEntryId === id) {
+        changed = true;
+        nextForecastEntryId = undefined;
+        nextForecastDueDate = undefined;
+        nextForecastAmount = undefined;
+        nextForecastDestination = undefined;
+      }
+
+      if (options?.syncJob !== false && job.payments && job.payments.some((p) => p.entryId === id || (target?.draws && target.draws.some((d) => d.id === p.id)))) {
+        changed = true;
+        nextPayments = job.payments.filter((p) => !(p.entryId === id || (target?.draws && target.draws.some((d) => d.id === p.id))));
+      }
+
+      if (changed) {
+        const updatedJob: JobItem = {
+          ...job,
+          forecastEntryId: nextForecastEntryId,
+          forecastDueDate: nextForecastDueDate,
+          forecastAmount: nextForecastAmount,
+          forecastDestination: nextForecastDestination,
+          payments: nextPayments,
+        };
+        if (nextPayments !== job.payments) {
+          const fin = calculateJobFinancials(updatedJob, get().rates);
+          updatedJob.status = fin.computedStatus;
+        }
+        return updatedJob;
+      }
+      return job;
+    };
+
+    let asfJobsUpdated = false;
+    const updatedAsf = get().asfJobs.map((j) => {
+      const next = cleanJobForecast(j);
+      if (next !== j) asfJobsUpdated = true;
+      return next;
+    });
+
+    let irqJobsUpdated = false;
+    const updatedIrq = get().irqJobs.map((j) => {
+      const next = cleanJobForecast(j);
+      if (next !== j) irqJobsUpdated = true;
+      return next;
+    });
+
+    let partTimeJobsUpdated = false;
+    const updatedPartTime = get().partTimeJobs.map((j) => {
+      const next = cleanJobForecast(j);
+      if (next !== j) partTimeJobsUpdated = true;
+      return next;
+    });
+
+    // 7. Revert storage holding if selected
+    if (options?.revertStorage && target) {
+      const isForeign = (target.currency || 'EGP').toUpperCase() !== 'EGP';
+      const actualAmt = Number(get().entryActuals[id] ?? target.actualAmount ?? target.amount ?? 0);
+      revertStorageOrAccountBalance(get, {
+        assetId: options.storageAssetId,
+        account: target.account,
+        currency: target.currency,
+        amount: actualAmt,
+        isEgpAmount: !isForeign || !target.originalAmount,
+        fxRate: target.fxRateAtEntry,
+      });
+    }
+
+    // 7. Persist
     saveStorage(STORAGE_KEYS.entries, updatedEntries);
     saveStorage(STORAGE_KEYS.archivedEntries, updatedArchived);
     if (updatedInstallments !== get().installments) {
@@ -499,6 +692,9 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     saveStorage(STORAGE_KEYS.entryActuals, actuals);
     saveStorage(STORAGE_KEYS.entryActualDates, dates);
     saveStorage(STORAGE_KEYS.deletedForecasts, deletedForecasts);
+    if (asfJobsUpdated) saveStorage(STORAGE_KEYS.asf, updatedAsf);
+    if (irqJobsUpdated) saveStorage(STORAGE_KEYS.irq, updatedIrq);
+    if (partTimeJobsUpdated) saveStorage(STORAGE_KEYS.partTimeJobs, updatedPartTime);
 
     set({
       entries: updatedEntries,
@@ -508,6 +704,9 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       entryActuals: actuals,
       entryActualDates: dates,
       deletedForecasts,
+      asfJobs: updatedAsf,
+      irqJobs: updatedIrq,
+      partTimeJobs: updatedPartTime,
     });
     scheduleAutoGistSync(get);
   },
@@ -607,6 +806,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       entryActuals: actuals,
       entryActualDates: dates,
     });
+    get().settleJobForecastPayment(entryId, amount, false);
     scheduleAutoGistSync(get);
   },
 
@@ -658,6 +858,94 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       entryActuals: actuals,
       entryActualDates: dates,
     });
+
+    // If this entry was linked to a job forecast payment, revert job status & storage deposit
+    let jobType: 'partTime' | 'asf' | 'irq' = 'partTime';
+    let targetJob = get().partTimeJobs.find((j) => j.forecastEntryId === entryId || j.payments?.some((p) => p.entryId === entryId));
+    if (!targetJob) {
+      targetJob = get().asfJobs.find((j) => j.forecastEntryId === entryId || j.payments?.some((p) => p.entryId === entryId));
+      if (targetJob) jobType = 'asf';
+    }
+    if (!targetJob) {
+      targetJob = get().irqJobs.find((j) => j.forecastEntryId === entryId || j.payments?.some((p) => p.entryId === entryId));
+      if (targetJob) jobType = 'irq';
+    }
+
+    if (targetJob) {
+      const entry = get().entries.find((e) => e.id === entryId) || get().archivedEntries.find((e) => e.id === entryId);
+      const linkedPayment = targetJob.payments?.find((p) => p.entryId === entryId);
+
+      // Revert deposited funds from Storage or Bank balance (if it was deposited)
+      const isNoDeposit = (entry?.account || linkedPayment?.account || linkedPayment?.settlementAccount || '').toLowerCase().includes('no deposit') || (entry?.account || linkedPayment?.account || linkedPayment?.settlementAccount || '').toLowerCase().includes('recorded only');
+      if (linkedPayment && linkedPayment.amount > 0 && !isNoDeposit) {
+        const paidAmt = Number(linkedPayment.amount) || 0;
+        const jobCurrency = (targetJob.currency || linkedPayment.currency || 'USD').toUpperCase();
+        const isForeign = jobCurrency !== 'EGP';
+        const dest = (targetJob.forecastDestination || '').trim();
+        const accountField = (entry?.account || linkedPayment.account || linkedPayment.settlementAccount || '').toLowerCase().trim();
+
+        if (dest === 'storage:hsbc_usd' || (!dest && isForeign && jobCurrency === 'USD' && accountField.includes('hsbc')) || accountField.includes('hsbc_usd') || accountField.includes('hsbc usd')) {
+          const existing = get().storageAssets.find((a) => a.name.toLowerCase().includes('hsbc') && a.unit.toUpperCase() === 'USD');
+          if (existing) {
+            get().updateStorageAsset(existing.id, { quantity: Math.max(0, (Number(existing.quantity) || 0) - paidAmt) });
+          }
+        } else if (dest === 'storage:cash_usd' || (!dest && isForeign && jobCurrency === 'USD' && (accountField.includes('cash') || !accountField.includes('hsbc'))) || accountField.includes('cash_usd') || accountField.includes('usd cash')) {
+          const existing = get().storageAssets.find((a) => a.name.toLowerCase().includes('cash') && a.unit.toUpperCase() === 'USD');
+          if (existing) {
+            get().updateStorageAsset(existing.id, { quantity: Math.max(0, (Number(existing.quantity) || 0) - paidAmt) });
+          }
+        } else if (dest === 'storage:hsbc_eur' || (!dest && isForeign && jobCurrency === 'EUR' && accountField.includes('hsbc')) || accountField.includes('hsbc_eur') || accountField.includes('hsbc eur')) {
+          const existing = get().storageAssets.find((a) => a.name.toLowerCase().includes('hsbc') && a.unit.toUpperCase() === 'EUR');
+          if (existing) {
+            get().updateStorageAsset(existing.id, { quantity: Math.max(0, (Number(existing.quantity) || 0) - paidAmt) });
+          }
+        } else if (dest.startsWith('storage:existing-')) {
+          const assetId = dest.replace('storage:existing-', '');
+          const existing = get().storageAssets.find((a) => a.id === assetId);
+          if (existing) {
+            get().updateStorageAsset(assetId, { quantity: Math.max(0, (Number(existing.quantity) || 0) - paidAmt) });
+          }
+        } else if (dest.startsWith('account:') || get().accounts[accountField]) {
+          const accKey = dest.startsWith('account:') ? dest.replace('account:', '') : accountField;
+          const egpAmt = linkedPayment.egpAmount || Math.round(paidAmt * (entry?.fxRateAtEntry || getCurrencyRate(get().rates, jobCurrency)));
+          if (get().accounts[accKey]) {
+            const currentBal = get().accounts[accKey].balance || 0;
+            get().updateAccountBalance(accKey, Math.max(0, currentBal - egpAmt));
+          }
+        } else if (isForeign) {
+          const existing = get().storageAssets.find((a) => a.unit.toUpperCase() === jobCurrency);
+          if (existing) {
+            get().updateStorageAsset(existing.id, { quantity: Math.max(0, (Number(existing.quantity) || 0) - paidAmt) });
+          }
+        }
+      }
+
+      // Filter out this payment from job
+      const remainingPayments = (targetJob.payments || []).filter((p) => p.entryId !== entryId);
+      const remainingJob = { ...targetJob, payments: remainingPayments };
+      const fin = calculateJobFinancials(remainingJob, get().rates);
+      const totalPaid = remainingPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+
+      let newStatus: JobItem['status'] = targetJob.status;
+      if (remainingPayments.length === 0) {
+        newStatus = (targetJob.daysWorked && targetJob.daysWorked.length > 0) || (targetJob.logs && targetJob.logs.length > 0) ? 'invoiced' : 'invoiced';
+      } else {
+        newStatus = totalPaid >= fin.totalInvoice ? 'paid' : 'partial';
+      }
+
+      const updatedJob: JobItem = {
+        ...targetJob,
+        payments: remainingPayments,
+        status: newStatus,
+        forecastDueDate: entry?.date || targetJob.forecastDueDate || DateUtils.todayString(),
+        forecastEntryId: entryId,
+        forecastAmount: entry?.originalAmount || fin.remainingBalance || targetJob.forecastAmount,
+        forecastDestination: targetJob.forecastDestination || (entry?.account ? `account:${entry.account}` : undefined),
+      };
+
+      get().saveJob(jobType, updatedJob);
+    }
+
     scheduleAutoGistSync(get);
   },
 
@@ -685,6 +973,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     saveStorage(STORAGE_KEYS.entryActuals, actuals);
     saveStorage(STORAGE_KEYS.entryActualDates, dates);
     set({ entries: updatedEntries, entryActuals: actuals, entryActualDates: dates });
+    get().settleJobForecastPayment(entryId, totalAmount, false);
     scheduleAutoGistSync(get);
   },
 
@@ -712,40 +1001,61 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     saveStorage(STORAGE_KEYS.entryActuals, actuals);
     saveStorage(STORAGE_KEYS.entryActualDates, dates);
     set({ entries: updatedEntries, entryActuals: actuals, entryActualDates: dates });
+    get().settleJobForecastPayment(entryId, totalAmount, false);
     scheduleAutoGistSync(get);
   },
 
-  deleteDraw: (entryId, drawIndex) => {
+  deleteDraw: (entryId, drawIndex, options) => {
     const existingIndex = get().entries.findIndex((e) => e.id === entryId);
     if (existingIndex === -1) return;
     const entry = get().entries[existingIndex];
     const newDraws = [...(entry.draws || [])];
+    let deletedDraw: EntryDraw | undefined;
     if (drawIndex >= 0 && drawIndex < newDraws.length) {
-      newDraws.splice(drawIndex, 1);
+      deletedDraw = newDraws.splice(drawIndex, 1)[0];
     }
-    const totalAmount = newDraws.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
-    const lastDate = newDraws.length > 0 ? newDraws[newDraws.length - 1].date : entry.date;
-    const updatedEntry: CashEntry = {
-      ...entry,
-      actualAmount: totalAmount > 0 ? totalAmount : undefined,
-      actualDate: totalAmount > 0 ? lastDate : undefined,
-      draws: newDraws,
-    };
-    const updatedEntries = [...get().entries];
-    updatedEntries[existingIndex] = updatedEntry;
-    const actuals = { ...get().entryActuals };
-    const dates = { ...get().entryActualDates };
-    if (totalAmount > 0) {
-      actuals[entryId] = totalAmount;
-      dates[entryId] = lastDate;
-    } else {
-      delete actuals[entryId];
-      delete dates[entryId];
+    
+    if (options?.updateCashflow !== false) {
+      const totalAmount = newDraws.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+      const lastDate = newDraws.length > 0 ? newDraws[newDraws.length - 1].date : entry.date;
+      const updatedEntry: CashEntry = {
+        ...entry,
+        actualAmount: totalAmount > 0 ? totalAmount : undefined,
+        actualDate: totalAmount > 0 ? lastDate : undefined,
+        draws: newDraws,
+      };
+      const updatedEntries = [...get().entries];
+      updatedEntries[existingIndex] = updatedEntry;
+      const actuals = { ...get().entryActuals };
+      const dates = { ...get().entryActualDates };
+      if (totalAmount > 0) {
+        actuals[entryId] = totalAmount;
+        dates[entryId] = lastDate;
+      } else {
+        delete actuals[entryId];
+        delete dates[entryId];
+      }
+      saveStorage(STORAGE_KEYS.entries, updatedEntries);
+      saveStorage(STORAGE_KEYS.entryActuals, actuals);
+      saveStorage(STORAGE_KEYS.entryActualDates, dates);
+      set({ entries: updatedEntries, entryActuals: actuals, entryActualDates: dates });
+
+      if (options?.syncJob !== false) {
+        get().settleJobForecastPayment(entryId, totalAmount, false);
+      }
     }
-    saveStorage(STORAGE_KEYS.entries, updatedEntries);
-    saveStorage(STORAGE_KEYS.entryActuals, actuals);
-    saveStorage(STORAGE_KEYS.entryActualDates, dates);
-    set({ entries: updatedEntries, entryActuals: actuals, entryActualDates: dates });
+
+    if (options?.revertStorage && deletedDraw) {
+      revertStorageOrAccountBalance(get, {
+        assetId: options.storageAssetId || (deletedDraw as any).storageAssetId,
+        account: deletedDraw.account || entry.account,
+        currency: entry.currency || 'USD',
+        amount: deletedDraw.amount,
+        isEgpAmount: true,
+        fxRate: entry.fxRateAtEntry,
+      });
+    }
+
     scheduleAutoGistSync(get);
   },
 
@@ -944,10 +1254,40 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     scheduleAutoGistSync(get);
   },
 
-  deleteInstallment: (id) => {
+  deleteInstallment: (id, options) => {
+    const inst = get().installments.find((i) => i.id === id);
     const updated = get().installments.filter((i) => i.id !== id);
+    let updatedEntries = get().entries;
+    let updatedArchived = get().archivedEntries;
+    const updatedDeletedForecasts = get().deletedForecasts.filter(
+      (df) => !df.startsWith(`installment-${id}-`) && df !== id
+    );
+
+    if (options?.deleteCashEntries && inst) {
+      const matchKey = (inst.name || '').toLowerCase().trim();
+      const matchLoanId = (inst as any).loanId || inst.id;
+      updatedEntries = updatedEntries.filter((e) => {
+        if (e.loanId && (e.loanId === matchLoanId || e.loanId === inst.id)) return false;
+        if (e.category && e.category.toLowerCase().trim() === matchKey) return false;
+        return true;
+      });
+      updatedArchived = updatedArchived.filter((e) => {
+        if (e.loanId && (e.loanId === matchLoanId || e.loanId === inst.id)) return false;
+        if (e.category && e.category.toLowerCase().trim() === matchKey) return false;
+        return true;
+      });
+    }
+
     saveStorage(STORAGE_KEYS.installments, updated);
-    set({ installments: updated });
+    saveStorage(STORAGE_KEYS.entries, updatedEntries);
+    saveStorage(STORAGE_KEYS.archivedEntries, updatedArchived);
+    saveStorage(STORAGE_KEYS.deletedForecasts, updatedDeletedForecasts);
+    set({
+      installments: updated,
+      entries: updatedEntries,
+      archivedEntries: updatedArchived,
+      deletedForecasts: updatedDeletedForecasts,
+    });
     scheduleAutoGistSync(get);
   },
 
@@ -999,25 +1339,108 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
   },
 
   addStorageAsset: (assetData) => {
+    const loc = inferAssetLocation(assetData);
     const newAsset: StorageAsset = {
       ...assetData,
+      locationType: assetData.locationType || loc.locationType,
+      location: assetData.location || loc.location,
+      locationLabel: assetData.locationLabel || loc.locationLabel,
       id: `asset-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
     };
     const updated = [...get().storageAssets, newAsset];
     saveStorage(STORAGE_KEYS.storage, updated);
     set({ storageAssets: updated });
+    scheduleAutoGistSync(get);
   },
 
   updateStorageAsset: (id, updates) => {
     const updated = get().storageAssets.map((a) => (a.id === id ? { ...a, ...updates } : a));
     saveStorage(STORAGE_KEYS.storage, updated);
     set({ storageAssets: updated });
+    scheduleAutoGistSync(get);
   },
 
   deleteStorageAsset: (id) => {
     const updated = get().storageAssets.filter((a) => a.id !== id);
     saveStorage(STORAGE_KEYS.storage, updated);
     set({ storageAssets: updated });
+    scheduleAutoGistSync(get);
+  },
+
+  depositToStorageAsset: (assetId, amount) => {
+    if (!amount || amount <= 0) return;
+    const current = get().storageAssets.find((a) => a.id === assetId);
+    if (!current) return;
+    const nextQty = (Number(current.quantity) || 0) + Number(amount);
+    get().updateStorageAsset(assetId, { quantity: nextQty });
+  },
+
+  transferStorageAsset: (fromAssetId, toAssetId, amount) => {
+    if (fromAssetId === toAssetId || !amount || amount <= 0) return false;
+    const fromAsset = get().storageAssets.find((a) => a.id === fromAssetId);
+    const toAsset = get().storageAssets.find((a) => a.id === toAssetId);
+    if (!fromAsset || !toAsset) return false;
+    if ((Number(fromAsset.quantity) || 0) < amount) return false;
+
+    const updated = get().storageAssets.map((a) => {
+      if (a.id === fromAssetId) {
+        return { ...a, quantity: Math.max(0, (Number(a.quantity) || 0) - amount) };
+      }
+      if (a.id === toAssetId) {
+        return { ...a, quantity: (Number(a.quantity) || 0) + amount };
+      }
+      return a;
+    });
+
+    saveStorage(STORAGE_KEYS.storage, updated);
+    set({ storageAssets: updated });
+    scheduleAutoGistSync(get);
+    return true;
+  },
+
+  convertStorageAssetToEgp: (assetId, foreignAmount, targetAccount, customRate) => {
+    if (!foreignAmount || foreignAmount <= 0) return undefined;
+    const asset = get().storageAssets.find((a) => a.id === assetId);
+    if (!asset || (Number(asset.quantity) || 0) < foreignAmount) return undefined;
+
+    const rate = customRate || (asset.rateSource ? resolveRateSourceValue(asset.rateSource, get().rates) : null) || asset.rate || asset.buyPrice || 1;
+    const egpGained = Math.round(foreignAmount * rate);
+
+    // 1. Deduct foreign quantity from storage asset
+    const updatedAssets = get().storageAssets.map((a) =>
+      a.id === assetId ? { ...a, quantity: Math.max(0, (Number(a.quantity) || 0) - foreignAmount) } : a
+    );
+    saveStorage(STORAGE_KEYS.storage, updatedAssets);
+
+    // 2. Deposit EGP to bank account
+    const accounts = { ...get().accounts };
+    if (accounts[targetAccount]) {
+      accounts[targetAccount] = {
+        ...accounts[targetAccount],
+        balance: (accounts[targetAccount].balance || 0) + egpGained,
+      };
+      saveStorage(STORAGE_KEYS.accounts, accounts);
+    }
+
+    // 3. Log an income entry for record tracking
+    const today = DateUtils.todayString();
+    const entryId = get().addEntry({
+      date: today,
+      category: 'FX Conversion',
+      subcategory: `Sold ${asset.name}`,
+      tag: 'FX Exchange',
+      account: targetAccount,
+      type: 'income',
+      amount: egpGained,
+      actualAmount: egpGained,
+      actualDate: today,
+      currency: 'EGP',
+      source: `Converted ${foreignAmount} ${asset.unit || asset.currency} @ ${rate} EGP`,
+    });
+
+    set({ storageAssets: updatedAssets, accounts });
+    scheduleAutoGistSync(get);
+    return entryId;
   },
 
   saveJob: (jobType, job) => {
@@ -1064,14 +1487,156 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
 
     const payment = (targetJob.payments || []).find((p) => p.id === paymentId);
     const remainingPayments = (targetJob.payments || []).filter((p) => p.id !== paymentId);
-    const updatedJob = { ...targetJob, payments: remainingPayments };
+
+    const fin = calculateJobFinancials({ ...targetJob, payments: remainingPayments }, get().rates);
+    const totalPaid = remainingPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    const updatedJob = {
+      ...targetJob,
+      payments: remainingPayments,
+      status: (totalPaid >= fin.totalInvoice && fin.totalInvoice > 0 ? 'paid' : (totalPaid > 0 ? 'partial' : 'invoiced')) as any,
+      forecastAmount: Math.max(0, fin.totalInvoice - totalPaid),
+    };
 
     get().saveJob(jobType, updatedJob);
 
-    const shouldDeleteCashEntry = options?.deleteCashEntry === true;
-    if (shouldDeleteCashEntry && payment?.entryId) {
-      get().deleteEntry(payment.entryId);
+    if (options?.syncCashflow !== false && payment?.entryId) {
+      const shouldDeleteCashEntry = options?.deleteCashEntry === true;
+      if (shouldDeleteCashEntry) {
+        get().deleteEntry(payment.entryId);
+      } else {
+        // Sync cashflow entry draws and actual amount
+        const entry = get().entries.find((e) => e.id === payment.entryId);
+        if (entry) {
+          const remainingDraws = (entry.draws || []).filter((d) => d.id !== paymentId);
+          const newActual = remainingDraws.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+          const lastDate = remainingDraws.length > 0 ? remainingDraws[remainingDraws.length - 1].date : entry.date;
+          get().updateEntry(payment.entryId, {
+            actualAmount: newActual > 0 ? newActual : undefined,
+            actualDate: newActual > 0 ? lastDate : undefined,
+            draws: remainingDraws,
+            isClosed: false,
+          });
+          if (newActual === 0) {
+            get().clearActual(payment.entryId);
+          }
+        }
+      }
     }
+
+    // If user selected to revert storage asset balance
+    if (options?.revertStorage && payment) {
+      revertStorageOrAccountBalance(get, {
+        assetId: options.storageAssetId,
+        account: payment.settlementAccount || payment.account,
+        currency: payment.currency || targetJob.currency || 'USD',
+        amount: Number(payment.amount) || 0,
+        isEgpAmount: false,
+      });
+    }
+  },
+
+  settleJobForecastPayment: (entryId, actualEgp, isFinishing = false) => {
+    if (!entryId || actualEgp < 0) return false;
+
+    // 1. Locate entry
+    const entry = get().entries.find((e) => e.id === entryId) || get().archivedEntries.find((e) => e.id === entryId);
+
+    // 2. Locate linked job
+    let jobType: 'partTime' | 'asf' | 'irq' = 'partTime';
+    let targetJob = get().partTimeJobs.find((j) => j.forecastEntryId === entryId || j.payments?.some((p) => p.entryId === entryId));
+    if (!targetJob) {
+      targetJob = get().asfJobs.find((j) => j.forecastEntryId === entryId || j.payments?.some((p) => p.entryId === entryId));
+      if (targetJob) jobType = 'asf';
+    }
+    if (!targetJob) {
+      targetJob = get().irqJobs.find((j) => j.forecastEntryId === entryId || j.payments?.some((p) => p.entryId === entryId));
+      if (targetJob) jobType = 'irq';
+    }
+    if (!targetJob) return false;
+
+    // 3. Currency and amounts
+    const jobCurrency = (targetJob.currency || entry?.currency || 'USD').toUpperCase();
+    const isForeign = jobCurrency !== 'EGP';
+    const fxRate = entry?.fxRateAtEntry || (isForeign ? getCurrencyRate(get().rates, jobCurrency) : 1);
+
+    let nativeAmt = actualEgp;
+    if (isForeign) {
+      if (entry?.originalAmount && actualEgp >= (entry.amount || 0)) {
+        nativeAmt = entry.originalAmount;
+      } else if (fxRate > 0) {
+        nativeAmt = Math.round((actualEgp / fxRate) * 100) / 100;
+      }
+    }
+
+    // 4. Update payments on job (funds routing is handled via modal confirmation)
+    const actDate = entry?.actualDate || DateUtils.todayString();
+    const settlementAcc = entry?.account || (targetJob.forecastDestination?.replace('storage:', '').replace('account:', '')) || 'Operating';
+
+    let updatedPayments = [...(targetJob.payments || [])];
+    if (entry?.draws && entry.draws.length > 0) {
+      // Sync draws 1-to-1 with job payments to maintain separate tranches
+      updatedPayments = entry.draws.map((d, idx) => {
+        const existingP = targetJob.payments?.find((p) => p.id === d.id);
+        const dEgp = Number(d.amount) || 0;
+        const dNative = isForeign ? (fxRate > 0 ? Math.round((dEgp / fxRate) * 100) / 100 : dEgp) : dEgp;
+        return {
+          id: d.id || existingP?.id || `pay-${idx}-${entryId}`,
+          entryId,
+          date: d.date || actDate,
+          amount: existingP?.currency === jobCurrency && existingP.amount ? existingP.amount : dNative,
+          currency: jobCurrency,
+          egpAmount: dEgp,
+          settlementAccount: d.account || existingP?.settlementAccount || settlementAcc,
+          account: d.account || existingP?.account || settlementAcc,
+          syncToBudget: true,
+          paymentNote: d.note || existingP?.paymentNote || 'Tranche payment via Cashflow',
+        };
+      });
+    } else {
+      const existingPayment = targetJob.payments?.find((p) => p.entryId === entryId);
+      if (existingPayment) {
+        if ((targetJob.payments || []).length <= 1) {
+          updatedPayments = [{ ...existingPayment, amount: nativeAmt, egpAmount: actualEgp, date: actDate }];
+        } else {
+          updatedPayments = (targetJob.payments || []).map((p) =>
+            p.id === existingPayment.id
+              ? { ...p, amount: nativeAmt, egpAmount: actualEgp, date: actDate }
+              : p
+          );
+        }
+      } else if (nativeAmt > 0) {
+        const newPay: JobPayment = {
+          id: `pay-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          entryId,
+          date: actDate,
+          amount: nativeAmt,
+          currency: jobCurrency,
+          egpAmount: actualEgp,
+          settlementAccount: settlementAcc,
+          account: settlementAcc,
+          syncToBudget: true,
+          paymentNote: 'Received & settled via Cashflow Forecast',
+        };
+        updatedPayments.push(newPay);
+      }
+    }
+
+    const fin = calculateJobFinancials({ ...targetJob, payments: updatedPayments }, get().rates);
+    const totalPaid = updatedPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    const isFullyPaid = isFinishing || (totalPaid >= fin.totalInvoice && fin.totalInvoice > 0);
+
+    const updatedJob: JobItem = {
+      ...targetJob,
+      payments: updatedPayments,
+      status: isFullyPaid ? 'paid' : (totalPaid > 0 ? 'partial' : targetJob.status),
+      forecastDueDate: isFullyPaid ? undefined : targetJob.forecastDueDate,
+      forecastEntryId: isFullyPaid ? undefined : targetJob.forecastEntryId,
+      forecastAmount: isFullyPaid ? undefined : Math.max(0, fin.totalInvoice - totalPaid),
+      forecastDestination: isFullyPaid ? undefined : targetJob.forecastDestination,
+    };
+
+    get().saveJob(jobType, updatedJob);
+    return true;
   },
 
   archiveSettledEntries: () => {

@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { inferTag, useBudgetStore } from '../../store/useBudgetStore';
 import { calculateCreditSettlementDate, getCreditCycleHint } from '../../engine/creditCards';
-import { getCurrencyRate } from '../../engine/currency';
+import { getCurrencyRate, formatNativeCurrency } from '../../engine/currency';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { getEntryActualAmount } from '../../engine/forecast';
-import type { CashEntry } from '../../types';
+import type { CashEntry, EntryDraw } from '../../types';
+import { DeleteAffectedPartiesModal, type AffectedPartyOption } from './DeleteAffectedPartiesModal';
 
 interface EntryModalProps {
   isOpen: boolean;
@@ -22,6 +23,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
   onDeductPrompt,
 }) => {
   const {
+    entries,
     addEntry,
     updateEntry,
     recordActual,
@@ -29,9 +31,17 @@ export const EntryModal: React.FC<EntryModalProps> = ({
     updateCreditSettlementOverride,
     recalculateCreditSettlement,
     deleteDraw,
+    settleJobForecastPayment,
     rates,
     entryActuals,
+    partTimeJobs,
+    asfJobs,
+    irqJobs,
+    storageAssets,
   } = useBudgetStore();
+
+  const activeEntry = (entryToEdit ? entries.find((e) => e.id === entryToEdit.id) : null) || entryToEdit;
+  const [deleteDrawTarget, setDeleteDrawTarget] = useState<{ drawIndex: number; draw: EntryDraw } | null>(null);
 
   const [creditType, setCreditType] = useState<string>('');
   const [date, setDate] = useState<string>(DateUtils.todayString());
@@ -55,19 +65,32 @@ export const EntryModal: React.FC<EntryModalProps> = ({
   const [recurringDayOfWeek, setRecurringDayOfWeek] = useState<number>(new Date().getDay());
 
   useEffect(() => {
-    if (entryToEdit) {
-      setCreditType(entryToEdit.creditType || '');
-      setDate(entryToEdit.date);
-      setCategory(entryToEdit.category);
-      setTag(entryToEdit.tag || entryToEdit.subcategory || '');
-      setAccount(entryToEdit.account || 'cib');
-      setType(entryToEdit.type);
-      setCurrency(entryToEdit.currency || 'EGP');
-      setAmount(String(entryToEdit.amount));
-      const existingActual = getEntryActualAmount(entryToEdit, entryActuals);
-      setActualAmount(existingActual > 0 ? String(existingActual) : '');
-      setCreditSettlementDate(entryToEdit.creditSettlementDate || entryToEdit.settlementDate || '');
-      setStatementNote(entryToEdit.statementNote || '');
+    if (activeEntry) {
+      const entryCurr = activeEntry.currency || 'EGP';
+      setCreditType(activeEntry.creditType || '');
+      setDate(activeEntry.date);
+      setCategory(activeEntry.category);
+      setTag(activeEntry.tag || activeEntry.subcategory || '');
+      setAccount(activeEntry.account || 'cib');
+      setType(activeEntry.type);
+      setCurrency(entryCurr);
+      
+      const isForeign = entryCurr !== 'EGP';
+      const nativeAmount = isForeign
+        ? (activeEntry.originalAmount !== undefined && activeEntry.originalAmount !== null
+            ? activeEntry.originalAmount
+            : (activeEntry.fxRateAtEntry ? Math.round((activeEntry.amount / activeEntry.fxRateAtEntry) * 100) / 100 : activeEntry.amount))
+        : activeEntry.amount;
+      setAmount(String(nativeAmount));
+
+      const existingActual = getEntryActualAmount(activeEntry, entryActuals);
+      const nativeActual = isForeign && existingActual > 0
+        ? (activeEntry.fxRateAtEntry ? Math.round((existingActual / activeEntry.fxRateAtEntry) * 100) / 100 : existingActual)
+        : existingActual;
+      setActualAmount(nativeActual > 0 ? String(nativeActual) : '');
+
+      setCreditSettlementDate(activeEntry.creditSettlementDate || activeEntry.settlementDate || '');
+      setStatementNote(activeEntry.statementNote || '');
       setSeriesEditMode('single');
       setIsRecurring(false);
       setRecalcStatus('');
@@ -88,7 +111,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
       setIsRecurring(false);
       setRecalcStatus('');
     }
-  }, [entryToEdit, initialType, isOpen, entryActuals]);
+  }, [entryToEdit, activeEntry?.draws?.length, initialType, isOpen, entryActuals]);
 
   // Recalculate settlement date when credit card or date changes
   useEffect(() => {
@@ -333,28 +356,54 @@ export const EntryModal: React.FC<EntryModalProps> = ({
         )}
 
         {/* Existing Draws List if Editing */}
-        {entryToEdit && Array.isArray(entryToEdit.draws) && entryToEdit.draws.length > 0 && (
-          <div style={{ padding: '10px 12px', background: 'var(--bg-card)', borderRadius: '8px', border: '1px solid var(--border)', marginTop: '8px' }}>
-            <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '6px' }}>📋 Recorded Draws / Tranches ({entryToEdit.draws.length})</div>
+        {activeEntry && Array.isArray(activeEntry.draws) && activeEntry.draws.length > 0 && (
+          <div style={{ padding: '10px 12px', background: 'var(--surface-soft)', borderRadius: '8px', border: '1px solid var(--line)', marginTop: '8px' }}>
+            <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '6px' }}>📋 Recorded Draws / Tranches ({activeEntry.draws.length})</div>
             <div style={{ maxHeight: '120px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              {entryToEdit.draws.map((d, dIdx) => (
-                <div key={d.id || dIdx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', padding: '3px 6px', background: 'var(--bg-card-hover)', borderRadius: '4px' }}>
-                  <span>{DateUtils.formatDisplayDate(d.date)}: <strong>{formatMoney(d.amount)}</strong> {d.note ? `(${d.note})` : ''}</span>
-                  <button
-                    type="button"
-                    className="icon-button"
-                    style={{ color: '#f43f5e', padding: '2px', height: 'auto' }}
-                    title="Delete this draw"
-                    onClick={() => {
-                      if (window.confirm(`Delete draw of ${formatMoney(d.amount)} on ${d.date}?`)) {
-                        deleteDraw(entryToEdit.id, dIdx);
-                      }
-                    }}
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
+              {activeEntry.draws.map((d, dIdx) => {
+                const entryIsForeign = (activeEntry.currency || 'EGP').toUpperCase() !== 'EGP';
+                const drawRate = activeEntry.fxRateAtEntry || getCurrencyRate(rates, activeEntry.currency || 'USD') || 48.5;
+                const nativeDrawQty = entryIsForeign ? Math.round((d.amount / drawRate) * 100) / 100 : d.amount;
+                return (
+                  <div key={d.id || dIdx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', padding: '4px 8px', background: 'var(--surface)', borderRadius: '4px', border: '1px solid var(--line)' }}>
+                    <span>
+                      {DateUtils.formatDisplayDate(d.date)}:{' '}
+                      <strong>
+                        {entryIsForeign
+                          ? `${formatNativeCurrency(nativeDrawQty, activeEntry.currency!)} (≈ ${formatMoney(d.amount)})`
+                          : formatMoney(d.amount)}
+                      </strong>{' '}
+                      {d.note ? `(${d.note})` : ''}
+                    </span>
+                    {(() => {
+                      const linkedJob =
+                        partTimeJobs.find((j) => j.forecastEntryId === activeEntry.id || j.payments?.some((p) => p.entryId === activeEntry.id || p.id === d.id)) ||
+                        asfJobs.find((j) => j.forecastEntryId === activeEntry.id || j.payments?.some((p) => p.entryId === activeEntry.id || p.id === d.id)) ||
+                        irqJobs.find((j) => j.forecastEntryId === activeEntry.id || j.payments?.some((p) => p.entryId === activeEntry.id || p.id === d.id));
+                      const hasAffectedDraw = Boolean(linkedJob || (storageAssets.length > 0 && ((d as any).storageAssetId || d.account?.toLowerCase().includes('storage') || entryIsForeign)));
+                      return (
+                        <button
+                          type="button"
+                          className="icon-button"
+                          style={{ position: 'relative', color: 'var(--rose, #f43f5e)', padding: '2px', height: 'auto', minWidth: 'auto' }}
+                          title={hasAffectedDraw ? 'Delete this draw (has affected linked records)' : 'Delete this draw'}
+                          onClick={() => {
+                            setDeleteDrawTarget({ drawIndex: dIdx, draw: d });
+                          }}
+                        >
+                          ✕
+                          {hasAffectedDraw && (
+                            <span
+                              className="affected-parties-dot"
+                              title="Has affected linked records"
+                            />
+                          )}
+                        </button>
+                      );
+                    })()}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -443,16 +492,25 @@ export const EntryModal: React.FC<EntryModalProps> = ({
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
           <label>
-            Account
+            Account / Destination
             <input
               name="account"
               type="text"
-              placeholder="cib, hsbc, cash"
+              list="accountSuggestions"
+              placeholder="cib, hsbc, cash, hsbc_usd..."
               value={account}
               onChange={(e) => setAccount(e.target.value)}
               required
             />
           </label>
+          <datalist id="accountSuggestions">
+            <option value="cib">🏦 CIB Operating Account</option>
+            <option value="hsbc">🏦 HSBC Operating Account</option>
+            <option value="hsbc_usd">🏦 HSBC USD Sub-Account (Storage)</option>
+            <option value="hsbc_eur">🏦 HSBC EUR Sub-Account (Storage)</option>
+            <option value="cash_usd">💵 USD Cash in Hand (Storage)</option>
+            <option value="cash">💵 Cash in Hand (EGP)</option>
+          </datalist>
 
           <label id="typeField" className="entry-field">
             Type
@@ -498,17 +556,22 @@ export const EntryModal: React.FC<EntryModalProps> = ({
         )}
 
         <label>
-          Actual amount (Optional)
+          Actual amount {currency !== 'EGP' ? `(${currency})` : ''} (Optional)
           <input
             name="actualAmount"
             type="number"
-            step="1"
+            step="0.01"
             min="0"
-            placeholder="0 if not paid yet"
+            placeholder={currency !== 'EGP' ? '0.00 if not paid yet' : '0 if not paid yet'}
             value={actualAmount}
             onChange={(e) => setActualAmount(e.target.value)}
           />
         </label>
+        {currency !== 'EGP' && Number(actualAmount) > 0 && (
+          <small style={{ color: 'var(--muted)', fontSize: '12px', margin: '-4px 0 0', display: 'block' }}>
+            Actual in EGP: ≈ {formatMoney(Math.round(Number(actualAmount) * fxRate))}
+          </small>
+        )}
 
         {!entryToEdit && (
           <div id="recurringField" className="entry-field recurring-group" style={{ marginTop: '8px' }}>
@@ -564,7 +627,38 @@ export const EntryModal: React.FC<EntryModalProps> = ({
           </div>
         )}
 
-        <div className="dialog-actions" style={{ marginTop: '18px' }}>
+        <div className="dialog-actions" style={{ marginTop: '18px', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+          {entryToEdit && !activeEntry?.isClosed && (
+            <button
+              type="button"
+              className="ghost-button finish-loan-btn"
+              style={{
+                marginRight: 'auto',
+                color: 'var(--green, #16a34a)',
+                borderColor: 'var(--green, #16a34a)',
+                padding: '8px 14px',
+              }}
+              title="Finish and close this entry at current actual amount"
+              onClick={() => {
+                const currentActualEgp = getEntryActualAmount(activeEntry || entryToEdit, entryActuals);
+                const inputActual = Number(actualAmount) || 0;
+                const finalActualEgp = currency !== 'EGP'
+                  ? Math.round(inputActual * fxRate) || currentActualEgp
+                  : inputActual || currentActualEgp;
+
+                updateEntry(entryToEdit.id, {
+                  isClosed: true,
+                  keepOngoing: false,
+                  actualAmount: finalActualEgp > 0 ? finalActualEgp : undefined,
+                  amount: finalActualEgp > 0 ? finalActualEgp : entryToEdit.amount,
+                });
+                settleJobForecastPayment(entryToEdit.id, finalActualEgp, true);
+                onClose();
+              }}
+            >
+              ✓ Finish &amp; Fulfill
+            </button>
+          )}
           <button className="ghost-button" type="button" onClick={onClose}>
             Cancel
           </button>
@@ -573,6 +667,93 @@ export const EntryModal: React.FC<EntryModalProps> = ({
           </button>
         </div>
       </form>
+
+      {/* Selective affected parties deletion modal */}
+      {deleteDrawTarget && activeEntry && (() => {
+        const linkedJob =
+          partTimeJobs.find((j) => j.forecastEntryId === activeEntry.id || j.payments?.some((p) => p.entryId === activeEntry.id)) ||
+          asfJobs.find((j) => j.forecastEntryId === activeEntry.id || j.payments?.some((p) => p.entryId === activeEntry.id)) ||
+          irqJobs.find((j) => j.forecastEntryId === activeEntry.id || j.payments?.some((p) => p.entryId === activeEntry.id));
+
+        const entryIsForeign = (activeEntry.currency || 'EGP').toUpperCase() !== 'EGP';
+        const drawRate = activeEntry.fxRateAtEntry || getCurrencyRate(rates, activeEntry.currency || 'USD') || 48.5;
+        const nativeDrawQty = entryIsForeign ? Math.round((deleteDrawTarget.draw.amount / drawRate) * 100) / 100 : deleteDrawTarget.draw.amount;
+        const amountDisplay = entryIsForeign
+          ? `${formatNativeCurrency(nativeDrawQty, activeEntry.currency!)} (≈ ${formatMoney(deleteDrawTarget.draw.amount)})`
+          : formatMoney(deleteDrawTarget.draw.amount);
+
+        const deleteDrawOptions: AffectedPartyOption[] = [
+          {
+            id: 'cashflow',
+            label: 'Forecast & History Actuals',
+            sublabel: `Deduct ${amountDisplay} from this forecast entry and recalculate actual received amount.`,
+            icon: '📊',
+            defaultChecked: true,
+          },
+          ...(linkedJob
+            ? [
+                {
+                  id: 'job',
+                  label: `Job Tracker: ${linkedJob.title || linkedJob.client}`,
+                  sublabel: `Deduct payment tranche from "${linkedJob.title || linkedJob.client}" and adjust remaining invoice.`,
+                  icon: '💼',
+                  defaultChecked: true,
+                },
+              ]
+            : []),
+          ...(storageAssets.length > 0
+            ? (() => {
+                const targetAccount = (deleteDrawTarget.draw.account || activeEntry.account || '').trim().toLowerCase();
+                const currUpper = (activeEntry.currency || 'USD').toUpperCase();
+                const matchingStorage = storageAssets.find(
+                  (a) =>
+                    a.id === (deleteDrawTarget.draw as any).storageAssetId ||
+                    a.name.trim().toLowerCase() === targetAccount ||
+                    (entryIsForeign &&
+                      ((a.unit || '').toUpperCase() === currUpper || (a.currency || '').toUpperCase() === currUpper))
+                );
+                const assetName = matchingStorage ? matchingStorage.name : 'Storage / Bank Balance';
+                const currentQtyDesc = matchingStorage ? ` (Current: ${matchingStorage.quantity} ${matchingStorage.unit || ''})` : '';
+                return [
+                  {
+                    id: 'storage',
+                    label: `Storage: ${assetName}`,
+                    sublabel: `Revert / deduct ${entryIsForeign ? formatNativeCurrency(nativeDrawQty, activeEntry.currency!) : formatMoney(deleteDrawTarget.draw.amount)} from ${assetName}${currentQtyDesc}.`,
+                    icon: '🏦',
+                    defaultChecked: Boolean(
+                      matchingStorage &&
+                        (targetAccount.includes('storage') ||
+                          targetAccount.includes('usd') ||
+                          targetAccount.includes('hsbc') ||
+                          targetAccount.includes('cash') ||
+                          entryIsForeign)
+                    ),
+                  },
+                ];
+              })()
+            : []),
+        ];
+
+        return (
+          <DeleteAffectedPartiesModal
+            isOpen={Boolean(deleteDrawTarget)}
+            title="Delete Tranche Draw"
+            subtitle="Choose which records and balances should be updated upon deleting this tranche."
+            itemDescription={`Tranche on ${DateUtils.formatDisplayDate(deleteDrawTarget.draw.date)}${deleteDrawTarget.draw.note ? ` — ${deleteDrawTarget.draw.note}` : ''}`}
+            amountFormatted={amountDisplay}
+            options={deleteDrawOptions}
+            onConfirm={(selectedOptionIds) => {
+              deleteDraw(activeEntry.id, deleteDrawTarget.drawIndex, {
+                updateCashflow: selectedOptionIds.includes('cashflow'),
+                syncJob: selectedOptionIds.includes('job'),
+                revertStorage: selectedOptionIds.includes('storage'),
+              });
+              setDeleteDrawTarget(null);
+            }}
+            onClose={() => setDeleteDrawTarget(null)}
+          />
+        );
+      })()}
     </dialog>
   );
 };

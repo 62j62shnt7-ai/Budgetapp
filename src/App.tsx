@@ -24,6 +24,7 @@ import {
   JobLogDayModal,
   JobExpenseModal,
   JobPaymentModal,
+  JobForecastModal,
 } from './components/Modals/JobModals';
 import { RateModal } from './components/Modals/RateModal';
 import { GistSyncModal } from './components/Modals/GistSyncModal';
@@ -71,6 +72,8 @@ export const App: React.FC = () => {
   const [selectedJobIdForExpense, setSelectedJobIdForExpense] = useState<string | null>(null);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [selectedJobIdForPayment, setSelectedJobIdForPayment] = useState<string | null>(null);
+  const [forecastModalOpen, setForecastModalOpen] = useState(false);
+  const [selectedJobIdForForecast, setSelectedJobIdForForecast] = useState<string | null>(null);
 
   // Rate Modal
   const [rateModalOpen, setRateModalOpen] = useState(false);
@@ -286,6 +289,11 @@ export const App: React.FC = () => {
     setPaymentModalOpen(true);
   };
 
+  const handleOpenJobForecast = (jobId: string) => {
+    setSelectedJobIdForForecast(jobId);
+    setForecastModalOpen(true);
+  };
+
   const handleOpenRateModal = (type: 'currency' | 'gold') => {
     setRateModalType(type);
     setRateModalOpen(true);
@@ -340,6 +348,7 @@ export const App: React.FC = () => {
             onOpenLogDayModal={handleOpenLogDay}
             onOpenExpenseModal={handleOpenJobExpense}
             onOpenPaymentModal={handleOpenJobPayment}
+            onOpenForecastModal={handleOpenJobForecast}
           />
         );
       case 'rates':
@@ -527,6 +536,12 @@ export const App: React.FC = () => {
         isOpen={paymentModalOpen}
         jobId={selectedJobIdForPayment}
         onClose={() => setPaymentModalOpen(false)}
+      />
+
+      <JobForecastModal
+        isOpen={forecastModalOpen}
+        jobId={selectedJobIdForForecast}
+        onClose={() => setForecastModalOpen(false)}
       />
 
       <RateModal

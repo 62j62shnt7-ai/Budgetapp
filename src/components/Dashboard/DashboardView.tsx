@@ -5,7 +5,7 @@ import {
   simulateSpend,
 } from '../../engine/forecast';
 import { computeFinancialHealthScore, generateSmartInsights } from '../../engine/healthScore';
-import { computeAssetEgpValue, computeTotalStorageValue } from '../../engine/currency';
+import { computeAssetEgpValue, computeTotalStorageValue, formatNativeCurrency } from '../../engine/currency';
 import { DateUtils, formatMoney, formatLastUpdated } from '../../engine/dateUtils';
 import { ForecastChart } from '../Forecast/ForecastChart';
 import { CreditCard, CheckCircle2, Clock } from 'lucide-react';
@@ -527,13 +527,32 @@ export const DashboardView: React.FC = () => {
         </div>
         {nextUpcomingEntries.length > 0 && (
           <div className="dashboard-upcoming-list" aria-label="Next upcoming entries">
-            {nextUpcomingEntries.map((entry) => (
-              <div key={entry.id} className="dashboard-upcoming-row">
-                <span>{DateUtils.formatDisplayDate(entry.date)}</span>
-                <strong>{entry.category}</strong>
-                <span className={`pill ${entry.type}`}>{entry.type === 'income' ? '+' : '-'}{formatMoney(entry.amount)}</span>
-              </div>
-            ))}
+            {nextUpcomingEntries.map((entry) => {
+              const isForeign = Boolean(entry.currency && entry.currency !== 'EGP');
+              const nativeQty = isForeign
+                ? (entry.originalAmount !== undefined && entry.originalAmount !== null
+                    ? entry.originalAmount
+                    : (entry.fxRateAtEntry ? Math.round((entry.amount / entry.fxRateAtEntry) * 100) / 100 : entry.amount))
+                : entry.amount;
+
+              return (
+                <div key={entry.id} className="dashboard-upcoming-row">
+                  <span>{DateUtils.formatDisplayDate(entry.date)}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <strong>{entry.category}</strong>
+                    {isForeign && (
+                      <span className="source-pill" style={{ background: 'rgba(99, 102, 241, 0.12)', color: '#818cf8', fontWeight: 700, fontSize: '10px' }}>
+                        💵 {entry.currency}
+                      </span>
+                    )}
+                  </div>
+                  <span className={`pill ${entry.type}`}>
+                    {entry.type === 'income' ? '+' : '-'}
+                    {isForeign ? formatNativeCurrency(nativeQty, entry.currency!) : formatMoney(entry.amount)}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         )}
       </section>

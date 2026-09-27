@@ -2,14 +2,17 @@ import React, { useState } from 'react';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { calculateJobFinancials, formatJobCurrency } from '../../engine/jobs';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
-import type { JobItem } from '../../types';
+import type { JobItem, JobPayment } from '../../types';
 import { Plus, ChevronDown, ChevronUp } from 'lucide-react';
+import { DeleteAffectedPartiesModal } from '../Modals/DeleteAffectedPartiesModal';
+import { hasJobAffectedParties, hasJobPaymentAffectedParties } from '../../utils/affectedRecords';
 
 interface JobsViewProps {
   onOpenJobModal: (job?: JobItem) => void;
   onOpenLogDayModal: (jobId: string) => void;
   onOpenExpenseModal: (jobId: string) => void;
   onOpenPaymentModal: (jobId: string) => void;
+  onOpenForecastModal: (jobId: string) => void;
 }
 
 export const JobsView: React.FC<JobsViewProps> = ({
@@ -17,13 +20,17 @@ export const JobsView: React.FC<JobsViewProps> = ({
   onOpenLogDayModal,
   onOpenExpenseModal,
   onOpenPaymentModal,
+  onOpenForecastModal,
 }) => {
-  const { partTimeJobs, rates, deleteJob, saveJob, deleteJobPayment } = useBudgetStore();
+  const { partTimeJobs, rates, entries, deletedForecasts, deleteJob, saveJob, deleteJobPayment, storageAssets } = useBudgetStore();
 
   const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'invoiced' | 'partial' | 'paid'>('all');
   const [activeCurrencyFilter, setActiveCurrencyFilter] = useState<string>('all');
   const [activeSort, setActiveSort] = useState<'newest' | 'oldest'>('newest');
   const [expandedJobIds, setExpandedJobIds] = useState<Set<string>>(new Set());
+
+  const [deletePaymentTarget, setDeletePaymentTarget] = useState<{ job: JobItem; payment: JobPayment } | null>(null);
+  const [deleteJobTarget, setDeleteJobTarget] = useState<JobItem | null>(null);
 
   const toggleExpand = (jobId: string) => {
     setExpandedJobIds((prev) => {
@@ -103,48 +110,11 @@ export const JobsView: React.FC<JobsViewProps> = ({
   const handleDeletePayment = (job: JobItem, paymentId: string) => {
     const payment = (job.payments || []).find((p) => p.id === paymentId);
     if (!payment) return;
-
-    const alsoDeleteCash = window.confirm(
-      `Delete payment of ${formatJobCurrency(payment.amount, payment.currency)} on ${payment.date}?\n\n` +
-      `• Click OK to also remove this entry from Cashflow & History\n` +
-      `• Click Cancel to keep it recorded in History (or choose to remove from Job Tracker only)`
-    );
-    if (alsoDeleteCash) {
-      deleteJobPayment('partTime', job.id, paymentId, { deleteCashEntry: true });
-    } else {
-      const deleteTrackerOnly = window.confirm(
-        `Remove this payment from the Job Tracker while keeping its income entry in Cashflow & History?`
-      );
-      if (deleteTrackerOnly) {
-        deleteJobPayment('partTime', job.id, paymentId, { deleteCashEntry: false });
-      }
-    }
+    setDeletePaymentTarget({ job, payment });
   };
 
   const handleDeleteJob = (job: JobItem) => {
-    const hasPayments = Array.isArray(job.payments) && job.payments.length > 0;
-    if (!hasPayments) {
-      if (window.confirm(`Delete job "${job.title || job.client}"?`)) {
-        deleteJob('partTime', job.id);
-      }
-      return;
-    }
-
-    const choice = window.confirm(
-      `Delete job "${job.title || job.client}"?\n\n` +
-      `• Click OK to delete the job and KEEP all collected payments in Cashflow & History (Recommended)\n` +
-      `• Click Cancel to choose full deletion including History records.`
-    );
-    if (choice) {
-      deleteJob('partTime', job.id, { deleteCashEntries: false });
-    } else {
-      const fullDelete = window.confirm(
-        `Do you want to permanently delete this job AND remove all its payments from Cashflow & History?`
-      );
-      if (fullDelete) {
-        deleteJob('partTime', job.id, { deleteCashEntries: true });
-      }
-    }
+    setDeleteJobTarget(job);
   };
 
   return (
@@ -357,6 +327,74 @@ export const JobsView: React.FC<JobsViewProps> = ({
                   </div>
                 </div>
 
+                {/* Forecast Banner if scheduled */}
+                {(() => {
+                  const isForecastActive = Boolean(
+                    job.forecastDueDate &&
+                    fin.remainingBalance > 0 &&
+                    (!job.forecastEntryId || (entries.some((e) => e.id === job.forecastEntryId) && !deletedForecasts.includes(job.forecastEntryId)))
+                  );
+
+                  return (
+                    <>
+                      {isForecastActive && (
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            background: 'rgba(59, 130, 246, 0.08)',
+                            border: '1px solid rgba(59, 130, 246, 0.25)',
+                            borderRadius: '6px',
+                            padding: '6px 10px',
+                            marginTop: '8px',
+                            fontSize: '12px',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span>🗓️</span>
+                            <span>
+                              <strong>In Forecast:</strong> Expected on <strong>{DateUtils.formatDisplayDate(job.forecastDueDate)}</strong> ({formatJobCurrency(job.forecastAmount || fin.remainingBalance, job.currency)} ≈ {formatMoney(Math.round((job.forecastAmount || fin.remainingBalance) * fin.fxRate))})
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            className="ghost-button"
+                            style={{ padding: '2px 8px', fontSize: '11px' }}
+                            onClick={() => onOpenForecastModal(job.id)}
+                          >
+                            Edit Date
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Quick Action Buttons on Card */}
+                      {fin.remainingBalance > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '8px' }}>
+                          {!isForecastActive && (
+                            <button
+                              type="button"
+                              className="ghost-button"
+                              style={{ padding: '4px 10px', fontSize: '11.5px', color: '#2563eb', borderColor: '#93c5fd' }}
+                              onClick={() => onOpenForecastModal(job.id)}
+                            >
+                              📅 Schedule in Forecast
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="primary-button"
+                            style={{ padding: '4px 12px', fontSize: '11.5px' }}
+                            onClick={() => onOpenPaymentModal(job.id)}
+                          >
+                            💵 Record Payment
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+
                 {/* Expanded Sections */}
                 {isExpanded && (
                   <div className="jobs-expanded-details">
@@ -503,13 +541,26 @@ export const JobsView: React.FC<JobsViewProps> = ({
                                   <td><span className="account-pill">{p.settlementAccount || p.account || 'cib'}</span></td>
                                   <td style={{ color: 'var(--muted)', fontSize: '12px' }}>{p.paymentNote || p.note || '—'}</td>
                                   <td>
-                                    <button
-                                      className="delete-button icon-button"
-                                      type="button"
-                                      onClick={() => handleDeletePayment(job, p.id)}
-                                    >
-                                      x
-                                    </button>
+                                    {(() => {
+                                      const hasAffectedPay = hasJobPaymentAffectedParties(p, storageAssets);
+                                      return (
+                                        <button
+                                          className="delete-button icon-button"
+                                          type="button"
+                                          style={{ position: 'relative' }}
+                                          title={hasAffectedPay ? 'Delete payment (linked to cashflow or storage)' : 'Delete payment'}
+                                          onClick={() => handleDeletePayment(job, p.id)}
+                                        >
+                                          x
+                                          {hasAffectedPay && (
+                                            <span
+                                              className="affected-parties-dot"
+                                              title="Linked to cashflow or storage"
+                                            />
+                                          )}
+                                        </button>
+                                      );
+                                    })()}
                                   </td>
                                 </tr>
                               ))}
@@ -520,13 +571,26 @@ export const JobsView: React.FC<JobsViewProps> = ({
                     </div>
 
                     <div className="jobs-detail-actions">
-                      <button
-                        className="delete-button"
-                        type="button"
-                        onClick={() => handleDeleteJob(job)}
-                      >
-                        Delete Job
-                      </button>
+                      {(() => {
+                        const hasAffectedJob = hasJobAffectedParties(job);
+                        return (
+                          <button
+                            className="delete-button"
+                            type="button"
+                            style={{ position: 'relative' }}
+                            title={hasAffectedJob ? 'Delete Job (has linked payments or forecast records)' : 'Delete Job'}
+                            onClick={() => handleDeleteJob(job)}
+                          >
+                            Delete Job
+                            {hasAffectedJob && (
+                              <span
+                                className="affected-parties-dot"
+                                title="Has linked payments or forecast records"
+                              />
+                            )}
+                          </button>
+                        );
+                      })()}
                     </div>
                   </div>
                 )}
@@ -535,6 +599,114 @@ export const JobsView: React.FC<JobsViewProps> = ({
           })
         )}
       </div>
+
+      {/* Selective Payment Deletion Modal */}
+      {deletePaymentTarget && (
+        <DeleteAffectedPartiesModal
+          isOpen={Boolean(deletePaymentTarget)}
+          title="Delete Job Payment"
+          subtitle="Choose which records and balances should be updated upon deleting this payment."
+          itemDescription={`Payment for "${deletePaymentTarget.job.title || deletePaymentTarget.job.client}" on ${DateUtils.formatDisplayDate(deletePaymentTarget.payment.date)}`}
+          amountFormatted={formatJobCurrency(deletePaymentTarget.payment.amount, deletePaymentTarget.payment.currency || deletePaymentTarget.job.currency)}
+          options={[
+            {
+              id: 'job',
+              label: `Job Tracker (${deletePaymentTarget.job.title || deletePaymentTarget.job.client})`,
+              sublabel: 'Remove payment from this job and recalculate remaining balance & status.',
+              icon: '💼',
+              defaultChecked: true,
+            },
+            ...(deletePaymentTarget.payment.entryId
+              ? [
+                  {
+                    id: 'cashflow',
+                    label: 'Cash Flow & Forecast Actuals',
+                    sublabel: 'Deduct this payment from the linked Forecast / Cashflow entry actuals.',
+                    icon: '📊',
+                    defaultChecked: true,
+                  },
+                ]
+              : []),
+            ...(storageAssets.length > 0
+              ? (() => {
+                  const targetAccount = (deletePaymentTarget.payment.settlementAccount || deletePaymentTarget.payment.account || '').trim().toLowerCase();
+                  const paymentCurr = (deletePaymentTarget.payment.currency || deletePaymentTarget.job.currency || 'USD').toUpperCase();
+                  const isForeign = paymentCurr !== 'EGP';
+                  const matchingStorage = storageAssets.find(
+                    (a) =>
+                      a.name.trim().toLowerCase() === targetAccount ||
+                      (isForeign &&
+                        ((a.unit || '').toUpperCase() === paymentCurr || (a.currency || '').toUpperCase() === paymentCurr))
+                  );
+                  const assetName = matchingStorage ? matchingStorage.name : 'Storage / Bank Balance';
+                  const currentQtyDesc = matchingStorage ? ` (Current: ${matchingStorage.quantity} ${matchingStorage.unit || ''})` : '';
+                  return [
+                    {
+                      id: 'storage',
+                      label: `Storage: ${assetName}`,
+                      sublabel: `Revert / deduct ${formatJobCurrency(deletePaymentTarget.payment.amount, deletePaymentTarget.payment.currency || deletePaymentTarget.job.currency)} from ${assetName}${currentQtyDesc}.`,
+                      icon: '🏦',
+                      defaultChecked: Boolean(
+                        matchingStorage &&
+                          (targetAccount.includes('storage') ||
+                            targetAccount.includes('usd') ||
+                            targetAccount.includes('hsbc') ||
+                            targetAccount.includes('cash') ||
+                            isForeign)
+                      ),
+                    },
+                  ];
+                })()
+              : []),
+          ]}
+          onConfirm={(selectedOptionIds) => {
+            deleteJobPayment('partTime', deletePaymentTarget.job.id, deletePaymentTarget.payment.id, {
+              syncCashflow: selectedOptionIds.includes('cashflow'),
+              deleteCashEntry: false,
+              revertStorage: selectedOptionIds.includes('storage'),
+            });
+            setDeletePaymentTarget(null);
+          }}
+          onClose={() => setDeletePaymentTarget(null)}
+        />
+      )}
+
+      {/* Selective Job Deletion Modal */}
+      {deleteJobTarget && (
+        <DeleteAffectedPartiesModal
+          isOpen={Boolean(deleteJobTarget)}
+          title="Delete Job"
+          subtitle="Choose what records should be affected when deleting this job."
+          itemDescription={`Job: "${deleteJobTarget.title || deleteJobTarget.client}"`}
+          options={[
+            {
+              id: 'job',
+              label: 'Job Tracker Record',
+              sublabel: 'Permanently remove this job from the Job Tracker.',
+              icon: '💼',
+              defaultChecked: true,
+            },
+            ...((deleteJobTarget.payments && deleteJobTarget.payments.length > 0) || deleteJobTarget.forecastEntryId
+              ? [
+                  {
+                    id: 'cashEntries',
+                    label: 'Linked Cash Flow & History Records',
+                    sublabel: 'Delete all associated income records and forecast projections from Cash Flow & History.',
+                    icon: '🗑️',
+                    defaultChecked: false,
+                  },
+                ]
+              : []),
+          ]}
+          onConfirm={(selectedOptionIds) => {
+            deleteJob('partTime', deleteJobTarget.id, {
+              deleteCashEntries: selectedOptionIds.includes('cashEntries'),
+            });
+            setDeleteJobTarget(null);
+          }}
+          onClose={() => setDeleteJobTarget(null)}
+        />
+      )}
     </section>
   );
 };

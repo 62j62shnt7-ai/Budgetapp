@@ -57,6 +57,8 @@ export interface CashEntry {
   actualAmount?: number;
   actualDate?: string;
   loanId?: string;
+  jobId?: string;
+  storageAssetId?: string;
   initialAmount?: number;
 }
 
@@ -108,6 +110,8 @@ export interface Installment {
   initialAmount?: number;
 }
 
+export type StorageLocationType = 'bank' | 'cash' | 'vault' | 'other';
+
 export interface StorageAsset {
   id: string;
   name: string;
@@ -120,7 +124,11 @@ export interface StorageAsset {
   notes?: string;
   rate?: number;
   rateSource?: string;
+  locationType?: StorageLocationType;
+  location?: string;
+  locationLabel?: string;
 }
+
 
 
 export interface JobDayLog {
@@ -138,6 +146,7 @@ export interface JobPayment {
   date: string;
   amount: number;
   currency?: string;
+  egpAmount?: number;
   account?: string;
   settlementAccount?: string;
   syncToBudget?: boolean;
@@ -175,6 +184,10 @@ export interface JobItem {
   logs?: JobDayLog[];
   payments?: JobPayment[];
   expenses?: JobExpense[];
+  forecastDueDate?: string;
+  forecastEntryId?: string;
+  forecastAmount?: number;
+  forecastDestination?: string;
 }
 
 export interface DeficitPeriod {

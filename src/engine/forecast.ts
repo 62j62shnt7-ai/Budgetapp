@@ -67,7 +67,11 @@ export function isPartialTracked(entry: CashEntry): boolean {
   if (entry.type === 'expense') return true;
   if (entry.source === 'loan') return true;
   const cat = (entry.category || '').toLowerCase();
-  if (cat.includes('loan')) return true;
+  if (cat.includes('loan') || cat.includes('job')) return true;
+  const src = (entry.source || '').toLowerCase();
+  if (src.includes('job') || src.includes('loan')) return true;
+  const tag = (entry.tag || '').toLowerCase();
+  if (tag.includes('part-time') || tag.includes('job') || tag.includes('loan')) return true;
   return false;
 }
 

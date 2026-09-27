@@ -1,22 +1,39 @@
 import React, { useState } from 'react';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { formatMoney } from '../../engine/dateUtils';
-import { ArrowRightLeft } from 'lucide-react';
+import { formatNativeCurrency, inferAssetLocation, storageValue } from '../../engine/currency';
+import { ArrowRightLeft, Coins } from 'lucide-react';
+import { StorageTransferModal } from '../Modals/StorageTransferModal';
+import { StorageFxModal } from '../Modals/StorageFxModal';
 
 const accountOrder = ['cib', 'hsbc'] as const;
 
 export const AccountsView: React.FC = () => {
-  const { accounts, updateAccountBalance } = useBudgetStore();
+  const { accounts, updateAccountBalance, storageAssets, rates } = useBudgetStore();
 
   const [transferFrom, setTransferFrom] = useState<string>('cib');
   const [transferTo, setTransferTo] = useState<string>('hsbc');
   const [transferAmount, setTransferAmount] = useState<string>('');
   const [transferSuccess, setTransferSuccess] = useState<string | null>(null);
 
+  const [storageTransferOpen, setStorageTransferOpen] = useState(false);
+  const [storageFxOpen, setStorageFxOpen] = useState(false);
+
   const totalOpening = Object.values(accounts).reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
   const displayedAccounts = accountOrder.flatMap((id) =>
     accounts[id] ? [[id, accounts[id]] as const] : []
   );
+
+  // Filter foreign holdings by institution
+  const hsbcForeignAssets = storageAssets.filter((a) => {
+    const loc = inferAssetLocation(a);
+    return loc.location === 'hsbc' || (loc.locationType === 'bank' && a.name.toLowerCase().includes('hsbc'));
+  });
+
+  const cashForeignAssets = storageAssets.filter((a) => {
+    const loc = inferAssetLocation(a);
+    return loc.locationType === 'cash';
+  });
 
   const handleBalanceChange = (id: string, newBalance: number) => {
     updateAccountBalance(id, newBalance);
@@ -45,37 +62,101 @@ export const AccountsView: React.FC = () => {
       <div className="content-grid">
         {/* Account Settings Panel */}
         <section className="panel">
-          <div className="panel-heading">
+          <div className="panel-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 style={{ margin: 0 }}>Account Settings</h3>
           </div>
           <div id="accountsList" className="stack-list" style={{ marginTop: '12px' }}>
-            {displayedAccounts.map(([id, acc]) => (
-              <div
-                key={id}
-                className="list-row account-row-card"
-              >
-                <div className="account-info">
-                  <span className="account-badge">🏦</span>
-                  <div>
-                    <strong className="account-title">{acc.name}</strong>
-                    <span className="account-subtitle">Liquid Account</span>
+            {displayedAccounts.map(([id, acc]) => {
+              const isHsbc = id === 'hsbc';
+              return (
+                <div key={id} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div className="list-row account-row-card">
+                    <div className="account-info">
+                      <span className="account-badge">🏦</span>
+                      <div>
+                        <strong className="account-title">{acc.name}</strong>
+                        <span className="account-subtitle">Liquid Operating Account</span>
+                      </div>
+                    </div>
+                    <div className="account-balance-input-wrap">
+                      <span className="account-currency-prefix">EGP</span>
+                      <input
+                        type="number"
+                        className="form-input account-balance-input"
+                        value={acc.balance}
+                        onChange={(e) => handleBalanceChange(id, Number(e.target.value) || 0)}
+                      />
+                    </div>
                   </div>
+
+                  {/* If HSBC, show associated foreign sub-accounts */}
+                  {isHsbc && hsbcForeignAssets.length > 0 && (
+                    <div
+                      style={{
+                        marginLeft: '18px',
+                        padding: '10px 14px',
+                        background: 'var(--surface-soft)',
+                        borderRadius: '8px',
+                        borderLeft: '3px solid #2563eb',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '6px',
+                      }}
+                    >
+                      <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase' }}>
+                        HSBC Foreign Sub-Accounts (Reserves)
+                      </span>
+                      {hsbcForeignAssets.map((fAsset) => (
+                        <div key={fAsset.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
+                          <span>{fAsset.name}</span>
+                          <div>
+                            <strong style={{ marginRight: '8px' }}>{formatNativeCurrency(fAsset.quantity, fAsset.unit)}</strong>
+                            <span style={{ color: 'var(--muted)', fontSize: '12px' }}>
+                              (≈ {formatMoney(storageValue(fAsset, rates))})
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <div className="account-balance-input-wrap">
-                  <span className="account-currency-prefix">EGP</span>
-                  <input
-                    type="number"
-                    className="form-input account-balance-input"
-                    value={acc.balance}
-                    onChange={(e) => handleBalanceChange(id, Number(e.target.value) || 0)}
-                  />
-                </div>
+              );
+            })}
+
+            {/* Physical Cash Holdings Row if any */}
+            {cashForeignAssets.length > 0 && (
+              <div
+                style={{
+                  marginTop: '6px',
+                  padding: '10px 14px',
+                  background: 'var(--surface-soft)',
+                  borderRadius: '8px',
+                  borderLeft: '3px solid #16a34a',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
+                }}
+              >
+                <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase' }}>
+                  💵 Physical Cash Foreign Reserves
+                </span>
+                {cashForeignAssets.map((fAsset) => (
+                  <div key={fAsset.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
+                    <span>{fAsset.name}</span>
+                    <div>
+                      <strong style={{ marginRight: '8px' }}>{formatNativeCurrency(fAsset.quantity, fAsset.unit)}</strong>
+                      <span style={{ color: 'var(--muted)', fontSize: '12px' }}>
+                        (≈ {formatMoney(storageValue(fAsset, rates))})
+                      </span>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </div>
         </section>
 
-        {/* Transfer & Note Panel */}
+        {/* Transfer & FX Panel */}
         <section className="panel">
           <div className="panel-heading">
             <h3 style={{ margin: 0 }}>Quick Transfer</h3>
@@ -114,7 +195,7 @@ export const AccountsView: React.FC = () => {
             </label>
             <button className="primary-button transfer-submit-btn" type="submit">
               <ArrowRightLeft size={15} style={{ marginRight: '6px' }} />
-              <span>Transfer Funds</span>
+              <span>Transfer EGP Funds</span>
             </button>
             {transferSuccess && (
               <div className="transfer-success-msg">
@@ -123,12 +204,31 @@ export const AccountsView: React.FC = () => {
             )}
           </form>
 
-          <div className="summary-block" style={{ marginTop: '16px', borderTop: '1px dashed var(--line)', paddingTop: '12px' }}>
-            <span style={{ fontSize: '13px', color: 'var(--muted)' }}>Manual expense note</span>
-            <p style={{ fontSize: '12.5px', color: 'var(--muted)', margin: '4px 0 0' }}>
-              Add credit card payments as regular expenses from the cash flow tab.
-              Use the "+ Expense" button in topbar to log them manually.
-            </p>
+          {/* Foreign Currency Actions */}
+          <div style={{ marginTop: '16px', borderTop: '1px dashed var(--line)', paddingTop: '14px' }}>
+            <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: '8px' }}>
+              Foreign Currency Operations
+            </span>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <button
+                type="button"
+                className="ghost-button"
+                style={{ fontSize: '12px', justifyContent: 'center', padding: '8px' }}
+                onClick={() => setStorageTransferOpen(true)}
+              >
+                <ArrowRightLeft size={13} style={{ marginRight: '4px' }} />
+                Move Cash / Bank
+              </button>
+              <button
+                type="button"
+                className="ghost-button"
+                style={{ fontSize: '12px', justifyContent: 'center', padding: '8px' }}
+                onClick={() => setStorageFxOpen(true)}
+              >
+                <Coins size={13} style={{ marginRight: '4px' }} />
+                Sell FX to EGP
+              </button>
+            </div>
           </div>
         </section>
       </div>
@@ -138,15 +238,26 @@ export const AccountsView: React.FC = () => {
           <h3 style={{ margin: 0 }}>Quick Summary</h3>
         </div>
         <div className="summary-block" style={{ padding: '16px 0 0' }}>
-          <span style={{ fontSize: '13px', color: 'var(--muted)' }}>Combined Starting Balance</span>
+          <span style={{ fontSize: '13px', color: 'var(--muted)' }}>Combined Liquid Operating Balance</span>
           <strong id="totalOpeningBalance" style={{ display: 'block', fontSize: '1.75rem', fontWeight: 800, color: 'var(--ink)', margin: '4px 0' }}>
             {formatMoney(totalOpening)}
           </strong>
           <p style={{ fontSize: '12.5px', color: 'var(--muted)', margin: 0 }}>
-            Aggregated sum of all registered bank accounts and cash in hand.
+            Aggregated sum of all registered EGP liquid bank accounts. Foreign currencies are tracked safely in the Storage tab.
           </p>
         </div>
       </section>
+
+      {/* Storage Modals */}
+      <StorageTransferModal
+        isOpen={storageTransferOpen}
+        onClose={() => setStorageTransferOpen(false)}
+      />
+      <StorageFxModal
+        isOpen={storageFxOpen}
+        onClose={() => setStorageFxOpen(false)}
+      />
     </section>
   );
 };
+

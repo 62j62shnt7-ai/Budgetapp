@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
+import { formatNativeCurrency } from '../../engine/currency';
 import {
   isCreditCardExpense,
   calculateCreditSettlementDate,
@@ -13,6 +14,8 @@ import type { CashEntry } from '../../types';
 import { Lock, Unlock, Trash2, RotateCcw } from 'lucide-react';
 import { HistorySummaryTab } from './HistorySummaryTab';
 import { HistoryAnalyticsSection } from './HistoryAnalyticsSection';
+import { AffectedRecordsModal } from '../Modals/AffectedRecordsModal';
+import { buildEntryDeleteOptions, hasEntryAffectedParties } from '../../utils/affectedRecords';
 
 interface HistoryViewProps {
   onEditEntry?: (entry: CashEntry) => void;
@@ -32,7 +35,13 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
     recordActual,
     clearActual,
     deleteEntry,
+    storageAssets,
+    partTimeJobs,
+    asfJobs,
+    irqJobs,
   } = useBudgetStore();
+
+  const [deleteEntryTarget, setDeleteEntryTarget] = useState<CashEntry | null>(null);
 
   const [activeHistoryTab, setActiveHistoryTab] = useState<'summary' | 'transactions'>('summary');
   const [isAdminUnlocked, setIsAdminUnlocked] = useState<boolean>(() =>
@@ -671,6 +680,11 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                           </td>
                           <td className="cell-category">
                             <strong>{entry.category}</strong>
+                            {entry.currency && entry.currency !== 'EGP' && (
+                              <span className="source-pill" style={{ background: 'rgba(99, 102, 241, 0.12)', color: '#818cf8', fontWeight: 700, fontSize: '10px', marginLeft: '4px' }}>
+                                💵 {entry.currency}
+                              </span>
+                            )}
                             {getEntryTags(entry).map((tag) => (
                               <button
                                 key={`${entry.id}-${tag}`}
@@ -701,7 +715,23 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                           </td>
                           <td className="cell-planned number" style={{ color: 'var(--muted)', fontWeight: 600 }}>
                             <span className="mobile-cell-label">Planned: </span>
-                            <span>{formatMoney(entry.amount)}</span>
+                            {entry.currency && entry.currency !== 'EGP' ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+                                <span>
+                                  {formatNativeCurrency(
+                                    entry.originalAmount !== undefined && entry.originalAmount !== null
+                                      ? entry.originalAmount
+                                      : (entry.fxRateAtEntry ? Math.round((entry.amount / entry.fxRateAtEntry) * 100) / 100 : entry.amount),
+                                    entry.currency
+                                  )}
+                                </span>
+                                <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 500 }}>
+                                  ≈ {formatMoney(entry.amount)}
+                                </span>
+                              </div>
+                            ) : (
+                              <span>{formatMoney(entry.amount)}</span>
+                            )}
                           </td>
                           <td className="cell-actual number" style={{ color: entry.type === 'income' ? 'var(--green)' : 'var(--red)', fontWeight: 800 }}>
                             {isAdminUnlocked ? (
@@ -748,17 +778,35 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                                 >
                                   <RotateCcw size={13} />
                                 </button>
-                                <button
-                                  className="delete-button icon-button"
-                                  type="button"
-                                  title="Delete entry"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    deleteEntry(entry.id);
-                                  }}
-                                >
-                                  <Trash2 size={13} />
-                                </button>
+                                {(() => {
+                                  const hasAffected = hasEntryAffectedParties(entry, {
+                                    installments,
+                                    storageAssets,
+                                    partTimeJobs,
+                                    asfJobs,
+                                    irqJobs,
+                                  });
+                                  return (
+                                    <button
+                                      className="delete-button icon-button"
+                                      type="button"
+                                      style={{ position: 'relative' }}
+                                      title={hasAffected ? 'Delete entry (has affected linked records)' : 'Delete entry'}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setDeleteEntryTarget(entry);
+                                      }}
+                                    >
+                                      <Trash2 size={13} />
+                                      {hasAffected && (
+                                        <span
+                                          className="affected-parties-dot"
+                                          title="Has affected linked records"
+                                        />
+                                      )}
+                                    </button>
+                                  );
+                                })()}
                               </div>
                             ) : (
                               <button
@@ -830,6 +878,40 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
           </section>
         </div>
       )}
+
+      {/* Affected Records Modal for Entry Deletion */}
+      {deleteEntryTarget && (() => {
+        const affectedData = buildEntryDeleteOptions(deleteEntryTarget, {
+          installments,
+          storageAssets,
+          partTimeJobs,
+          asfJobs,
+          irqJobs,
+        });
+
+        return (
+          <AffectedRecordsModal
+            isOpen={Boolean(deleteEntryTarget)}
+            mode="delete"
+            title="Delete History Entry"
+            subtitle="Choose which linked records and recurring occurrences should be affected."
+            itemDescription={affectedData.itemDescription}
+            amountFormatted={affectedData.amountFormatted}
+            options={affectedData.options}
+            onConfirm={(selectedIds) => {
+              const seriesMode = selectedIds.includes('series') ? 'future' : 'single';
+              deleteEntry(deleteEntryTarget.id, seriesMode, {
+                deleteLinkedLoan: selectedIds.includes('loan'),
+                deleteInstallmentPlan: selectedIds.includes('installment_plan'),
+                syncJob: selectedIds.includes('job'),
+                revertStorage: selectedIds.includes('storage'),
+              });
+              setDeleteEntryTarget(null);
+            }}
+            onClose={() => setDeleteEntryTarget(null)}
+          />
+        );
+      })()}
     </section>
   );
 };

@@ -273,6 +273,57 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
     ? (data.deletedForecasts || parsed.deletedForecasts)
     : [];
 
+  // Auto-reconcile & link entities together for smooth affected tracking
+  const allMigratedJobs = [...partTimeJobs, ...asfJobs, ...irqJobs];
+  for (const job of allMigratedJobs) {
+    const jTitle = (job.title || '').toLowerCase().trim();
+    const jClient = (job.client || '').toLowerCase().trim();
+
+    if (job.payments && job.payments.length > 0) {
+      for (const p of job.payments) {
+        if (!p.entryId) {
+          const matchingEntry = entries.find((e) =>
+            e.type === 'income' &&
+            (e.amount === p.amount || e.amount === p.egpAmount || (e.draws && e.draws.some((d) => d.amount === p.amount || d.id === p.id))) &&
+            ((jTitle && (e.category?.toLowerCase() === jTitle || e.subcategory?.toLowerCase() === jTitle || e.source?.toLowerCase().includes(jTitle))) ||
+             (jClient && (e.category?.toLowerCase() === jClient || e.subcategory?.toLowerCase() === jClient || e.source?.toLowerCase().includes(jClient))))
+          );
+          if (matchingEntry) {
+            p.entryId = matchingEntry.id;
+            if (!matchingEntry.jobId) matchingEntry.jobId = job.id;
+          }
+        } else {
+          const entry = entries.find((e) => e.id === p.entryId);
+          if (entry && !entry.jobId) {
+            entry.jobId = job.id;
+          }
+        }
+      }
+    }
+    if (job.forecastEntryId) {
+      const fe = entries.find((e) => e.id === job.forecastEntryId);
+      if (fe && !fe.jobId) {
+        fe.jobId = job.id;
+      }
+    }
+  }
+
+  for (const inst of installments) {
+    const instName = (inst.name || '').toLowerCase().trim();
+    if (!instName) continue;
+    for (const e of entries) {
+      if (!e.loanId) {
+        const cat = (e.category || '').toLowerCase().trim();
+        const sub = (e.subcategory || '').toLowerCase().trim();
+        const note = (e.note || '').toLowerCase().trim();
+        const src = (e.source || '').toLowerCase().trim();
+        if (cat === instName || sub === instName || note.includes(instName) || src.includes(instName) || e.id.includes(inst.id)) {
+          e.loanId = inst.id;
+        }
+      }
+    }
+  }
+
   return {
     schemaVersion: '2.1',
     migratedAt: new Date().toISOString(),

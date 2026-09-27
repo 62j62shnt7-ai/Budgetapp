@@ -54,16 +54,25 @@ export function calculateJobFinancials(job: JobItem, rates: RatesData): JobFinan
 
   const totalDays = daysWorked.reduce((sum, d) => sum + (Number(d.units) || 1), 0);
   const totalLoggedHours = daysWorked.reduce((sum, d) => sum + (Number(d.hours) || 0), 0);
+  const totalPaid = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 
   let grossFee = 0;
   if (type === 'daily_rate' || job.rateType === 'daily') {
     const rate = Number(job.dailyRate) || Number(job.rateAmount) || 0;
-    grossFee = rate * totalDays;
+    if (totalDays > 0) {
+      grossFee = rate * totalDays;
+    } else {
+      grossFee = Number(job.lumpSumAmount) || Number(job.forecastAmount) || rate || 0;
+    }
   } else if (job.rateType === 'hourly') {
     const rate = Number(job.rateAmount) || 0;
-    grossFee = rate * totalLoggedHours;
+    if (totalLoggedHours > 0) {
+      grossFee = rate * totalLoggedHours;
+    } else {
+      grossFee = Number(job.forecastAmount) || 0;
+    }
   } else {
-    grossFee = Number(job.lumpSumAmount) || Number(job.rateAmount) || 0;
+    grossFee = Number(job.lumpSumAmount) || Number(job.rateAmount) || Number(job.forecastAmount) || 0;
   }
 
   let billableExpenses = 0;
@@ -80,7 +89,6 @@ export function calculateJobFinancials(job: JobItem, rates: RatesData): JobFinan
   const totalInvoice = grossFee + billableExpenses;
   const netEarnings = grossFee - deductibleExpenses;
 
-  const totalPaid = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
   const remainingBalance = Math.max(0, Math.round((totalInvoice - totalPaid) * 100) / 100);
   const percentPaid = totalInvoice > 0 ? Math.min(100, Math.round((totalPaid / totalInvoice) * 100)) : (totalPaid > 0 ? 100 : 0);
 

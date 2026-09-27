@@ -2,6 +2,8 @@ import React from 'react';
 import { Plus, Trash2, Edit2, ChevronDown, ChevronUp } from 'lucide-react';
 import type { Installment } from '../../types';
 import { formatMoney } from '../../engine/dateUtils';
+import { useBudgetStore } from '../../store/useBudgetStore';
+import { hasInstallmentAffectedParties } from '../../utils/affectedRecords';
 
 interface InstallmentsSectionProps {
   installmentsOpen: boolean;
@@ -9,10 +11,10 @@ interface InstallmentsSectionProps {
   installments: Installment[];
   installmentMonthlyTotal: number;
   installmentOutstandingTotal: number;
-  installmentProgressSummary: { paid: number; total: number; remaining: number };
+  installmentProgressSummary: { paid: number; dismissed?: number; total: number; remaining: number };
   onOpenInstallmentModal: (inst?: Installment) => void;
-  getInstallmentProgress: (inst: Installment) => { paid: number; total: number; remaining: number };
-  onDeleteInstallment: (id: string) => void;
+  getInstallmentProgress: (inst: Installment) => { paid: number; dismissed?: number; total: number; remaining: number; outstandingAmount?: number; monthlyAmount?: number };
+  onDeleteInstallment: (installment: Installment) => void;
 }
 
 export const InstallmentsSection: React.FC<InstallmentsSectionProps> = ({
@@ -26,6 +28,7 @@ export const InstallmentsSection: React.FC<InstallmentsSectionProps> = ({
   getInstallmentProgress,
   onDeleteInstallment,
 }) => {
+  const { entries } = useBudgetStore();
   return (
     <section className="panel collapsible-panel cashflow-collapsible-panel">
       <div
@@ -46,8 +49,8 @@ export const InstallmentsSection: React.FC<InstallmentsSectionProps> = ({
               <span style={{ margin: '0 6px' }}>· Total: {formatMoney(installmentOutstandingTotal)}</span>
               <span>
                 {installmentProgressSummary.paid > 0
-                  ? `(${installmentProgressSummary.paid}/${installmentProgressSummary.total} paid)`
-                  : `(${installmentProgressSummary.total} scheduled)`}
+                  ? `(${installmentProgressSummary.paid}/${installmentProgressSummary.total} paid${(installmentProgressSummary.dismissed || 0) > 0 ? `, ${installmentProgressSummary.dismissed} dismissed` : ''})`
+                  : `(${installmentProgressSummary.total} scheduled${(installmentProgressSummary.dismissed || 0) > 0 ? `, ${installmentProgressSummary.dismissed} dismissed` : ''})`}
               </span>
             </span>
           )}
@@ -103,6 +106,7 @@ export const InstallmentsSection: React.FC<InstallmentsSectionProps> = ({
                     </span>
                     <span style={{ fontSize: '12px', color: 'var(--muted)', display: 'block' }}>
                       {progress.paid > 0 ? `Paid ${progress.paid} of ${progress.total}` : `${progress.total} scheduled`}
+                      {(progress.dismissed || 0) > 0 ? ` · ${progress.dismissed} dismissed` : ''}
                     </span>
                     <span
                       style={{
@@ -115,7 +119,7 @@ export const InstallmentsSection: React.FC<InstallmentsSectionProps> = ({
                     >
                       {progress.remaining === 0
                         ? '✓ Completed · Remaining: 0'
-                        : `${progress.remaining} remaining · ${formatMoney((Number(inst.amount) || 0) * progress.remaining)} outstanding`}
+                        : `${progress.remaining} remaining · ${formatMoney(progress.outstandingAmount ?? (Number(inst.amount) || 0) * progress.remaining)} outstanding`}
                     </span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -128,15 +132,27 @@ export const InstallmentsSection: React.FC<InstallmentsSectionProps> = ({
                     >
                       <Edit2 size={14} />
                     </button>
-                    <button
-                      className="ghost-button icon-button"
-                      style={{ padding: '6px' }}
-                      type="button"
-                      aria-label={`Delete installment ${inst.name}`}
-                      onClick={() => onDeleteInstallment(inst.id)}
-                    >
-                      <Trash2 size={14} color="var(--red)" />
-                    </button>
+                    {(() => {
+                      const hasAffected = hasInstallmentAffectedParties(inst, { entries });
+                      return (
+                        <button
+                          className="ghost-button icon-button"
+                          style={{ position: 'relative', padding: '6px' }}
+                          type="button"
+                          aria-label={`Delete installment ${inst.name}`}
+                          title={hasAffected ? 'Delete installment (has linked cashflow entries)' : 'Delete installment'}
+                          onClick={() => onDeleteInstallment(inst)}
+                        >
+                          <Trash2 size={14} color="var(--red)" />
+                          {hasAffected && (
+                            <span
+                              className="affected-parties-dot"
+                              title="Has linked cashflow entries"
+                            />
+                          )}
+                        </button>
+                      );
+                    })()}
                   </div>
                 </div>
               );

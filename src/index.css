@@ -3764,4 +3764,63 @@ input[type="date"]::-webkit-date-and-time-value {
   animation: spin 1s linear infinite;
 }
 
+/* Chip Buttons & Storage Filter Pills */
+.chip-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 11px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 9999px;
+  border: 1px solid var(--line);
+  background: var(--surface-soft, rgba(255, 255, 255, 0.05));
+  color: var(--ink);
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  white-space: nowrap;
+}
+
+.chip-button:hover {
+  border-color: var(--primary, #3b82f6);
+  background: var(--surface-hover, rgba(59, 130, 246, 0.08));
+  color: var(--primary, #3b82f6);
+}
+
+.chip-button.active {
+  background: var(--primary, #3b82f6);
+  border-color: var(--primary, #3b82f6);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+/* Affected Parties Indicator Dot on Action/Delete Buttons */
+.affected-parties-dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: var(--amber, #f59e0b);
+  border: 1.5px solid var(--surface, #1e293b);
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.7);
+  pointer-events: none;
+  z-index: 2;
+  animation: pulseAffectedDot 2s infinite ease-in-out;
+}
+
+@keyframes pulseAffectedDot {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  50% {
+    transform: scale(1.25);
+    opacity: 1;
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.9);
+  }
+}
+
+
 

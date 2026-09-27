@@ -3,6 +3,7 @@ import { useBudgetStore } from '../../store/useBudgetStore';
 import {
   buildSalaryEntries,
   buildInstallmentEntries,
+  calculateInstallmentProgress,
 } from '../../engine/salaryAndInstallments';
 import {
   buildCreditDueEntries,
@@ -23,11 +24,18 @@ import {
   calculateLoanRepaymentScale,
 } from '../../engine/forecast';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
+import { formatNativeCurrency, getCurrencyRate } from '../../engine/currency';
 import { Plus } from 'lucide-react';
 
 import type { CashEntry, Installment } from '../../types';
 import { ExactAmountDecisionModal } from '../Modals/ExactAmountDecisionModal';
 import { AdjustLoanRepaymentModal, type LinkedRepaymentInfo } from '../Modals/AdjustLoanRepaymentModal';
+import { AffectedRecordsModal } from '../Modals/AffectedRecordsModal';
+import {
+  buildEntryDeleteOptions,
+  buildInstallmentDeleteOptions,
+  hasEntryAffectedParties,
+} from '../../utils/affectedRecords';
 import { SalaryStructureSection } from './SalaryStructureSection';
 import { InstallmentsSection } from './InstallmentsSection';
 import { ExpenseMixSection } from './ExpenseMixSection';
@@ -64,6 +72,12 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     entryActualDates,
     deletedForecasts,
     recordActual,
+    settleJobForecastPayment,
+    rates,
+    storageAssets,
+    partTimeJobs,
+    asfJobs,
+    irqJobs,
     setActiveTab,
   } = useBudgetStore();
 
@@ -72,6 +86,10 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
   const [typeFilter, setTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Delete targets for AffectedRecordsModal
+  const [deleteEntryTarget, setDeleteEntryTarget] = useState<CashEntry | null>(null);
+  const [deleteInstallmentTarget, setDeleteInstallmentTarget] = useState<Installment | null>(null);
 
   // Decision Modals state
   const [loanAdjustmentData, setLoanAdjustmentData] = useState<{
@@ -124,11 +142,17 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
       }
     }
 
-    if (newActual >= plannedAmount && plannedAmount > 0 && !entry.isClosed) {
+    const isForeign = Boolean(entry.currency && entry.currency.toUpperCase() !== 'EGP');
+    const fxRate = entry.fxRateAtEntry || (entry.currency ? getCurrencyRate(rates, entry.currency) : 1) || 48.5;
+    const effectivePlannedAmount = isForeign && entry.originalAmount
+      ? Math.round(entry.originalAmount * fxRate)
+      : Number(entry.amount || 0);
+
+    if (newActual >= effectivePlannedAmount && effectivePlannedAmount > 0 && !entry.isClosed) {
       setExactDecisionData({
         entry,
         actualAmount: newActual,
-        plannedAmount,
+        plannedAmount: effectivePlannedAmount,
       });
     }
   };
@@ -170,6 +194,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     if (!exactDecisionData) return;
     const { entry, actualAmount } = exactDecisionData;
     updateEntry(entry.id, { isClosed: true, keepOngoing: false, amount: actualAmount });
+    settleJobForecastPayment(entry.id, actualAmount, true);
 
     if (isLoanInflow(entry)) {
       const linked = findLinkedLoanRepayment(entry, entries, installments);
@@ -384,30 +409,39 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     updateSalaryPattern(salaryPattern.filter((_, paymentIndex) => paymentIndex !== index));
   };
 
+  const installmentProgressMap = React.useMemo(() => {
+    const map = new Map<string, ReturnType<typeof calculateInstallmentProgress>>();
+    installments.forEach((inst) => {
+      map.set(inst.id, calculateInstallmentProgress(inst, entryActuals, deletedForecasts));
+    });
+    return map;
+  }, [installments, entryActuals, deletedForecasts]);
+
   const getInstallmentProgress = (installment: (typeof installments)[number]) => {
-    const total = Math.max(0, Number(installment.remainingMonths) || Number(installment.totalMonths) || 0);
-    const paid = Array.from({ length: total }, (_, index) => {
-      const actual = Number(entryActuals[`installment-${installment.id}-${index}`]) || 0;
-      return actual >= (Number(installment.amount) || 0) && actual > 0;
-    }).filter(Boolean).length;
-    return { total, paid, remaining: Math.max(0, total - paid) };
+    return installmentProgressMap.get(installment.id) || calculateInstallmentProgress(installment, entryActuals, deletedForecasts);
   };
 
-  const installmentMonthlyTotal = installments.reduce((sum, installment) => sum + (Number(installment.amount) || 0), 0);
+  const installmentMonthlyTotal = installments.reduce((sum, installment) => {
+    const progress = getInstallmentProgress(installment);
+    return sum + progress.monthlyAmount;
+  }, 0);
+
   const installmentOutstandingTotal = installments.reduce((sum, installment) => {
     const progress = getInstallmentProgress(installment);
-    return sum + (Number(installment.amount) || 0) * progress.remaining;
+    return sum + progress.outstandingAmount;
   }, 0);
+
   const installmentProgressSummary = installments.reduce(
     (summary, installment) => {
       const progress = getInstallmentProgress(installment);
       return {
         paid: summary.paid + progress.paid,
+        dismissed: ((summary as any).dismissed || 0) + progress.dismissed,
         total: summary.total + progress.total,
         remaining: summary.remaining + progress.remaining,
       };
     },
-    { paid: 0, total: 0, remaining: 0 },
+    { paid: 0, dismissed: 0, total: 0, remaining: 0 },
   );
 
   const handlePopulateSalaryForecast = () => {
@@ -533,7 +567,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
           installmentProgressSummary={installmentProgressSummary}
           onOpenInstallmentModal={onOpenInstallmentModal}
           getInstallmentProgress={getInstallmentProgress}
-          onDeleteInstallment={deleteInstallment}
+          onDeleteInstallment={(inst) => setDeleteInstallmentTarget(inst)}
         />
 
         <ExpenseMixSection
@@ -614,16 +648,30 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                 const isLoan = (e.source || '').toLowerCase().includes('loan') || (e.category || '').toLowerCase().includes('loan');
                 const isCreditSettlement = (e.source || '').toLowerCase().includes('credit') || (e.id && e.id.startsWith('credit-settlement-'));
                 const isCardPurchase = isCreditCardExpense(e);
-                const placeholder = isLoan ? 'Add draw' : isCreditSettlement ? 'Add payment' : e.type === 'income' ? 'Add actual' : 'Add spend';
+                const isForeign = Boolean(e.currency && e.currency !== 'EGP');
+                const nativeQty = isForeign
+                  ? (e.originalAmount !== undefined && e.originalAmount !== null
+                      ? e.originalAmount
+                      : (e.fxRateAtEntry ? Math.round((e.amount / e.fxRateAtEntry) * 100) / 100 : e.amount))
+                  : e.amount;
+                const placeholder = isLoan
+                  ? 'Add draw'
+                  : isCreditSettlement
+                  ? 'Add payment'
+                  : isForeign
+                  ? `Add ${e.type === 'income' ? 'actual' : 'spend'} (${e.currency})`
+                  : e.type === 'income'
+                  ? 'Add actual'
+                  : 'Add spend';
                 const actualValue = getEntryActualAmount(e, entryActuals);
                 const originalEntry = entries.find((entry) => entry.id === e.id) || e;
                 const plannedAmt = Number(originalEntry.amount || e.amount || 0);
                 const remainingAmt = Math.max(0, plannedAmt - actualValue);
                 const isFull = plannedAmt > 0 && actualValue >= plannedAmt;
-                const isPartial = e.type === 'expense' || isLoan;
+                const isPartial = isPartialTracked(e);
                 const isPastDate = Boolean(e.date && e.date < DateUtils.todayString());
                 const ongoing = isOngoingEntry(e, entryActuals) || (isPartial && !e.isClosed && remainingAmt > 0 && (actualValue > 0 || isPastDate));
-                const canFinish = isPartial && !e.isClosed && (remainingAmt > 0 || ongoing) && (actualValue > 0 || isPastDate || isLoan) && !isOpening;
+                const canFinish = !e.isClosed && !isOpening && (actualValue > 0 || isPastDate || isLoan || ongoing || (isPartial && remainingAmt > 0));
                 const actualDate = actualValue > 0 ? getEntryActualDate(e, entryActualDates) : '';
                 const dateLabel = ongoing
                   ? `${DateUtils.formatDisplayDate(e.date)} → ${actualDate && actualDate !== DateUtils.todayString()
@@ -666,6 +714,11 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                           <span aria-hidden="true">#</span>{tag}
                         </span>
                         ))}
+                      {isForeign && (
+                        <span className="source-pill" style={{ background: 'rgba(99, 102, 241, 0.12)', color: '#818cf8', fontWeight: 700, fontSize: '10px', marginLeft: '4px' }}>
+                          💵 {e.currency}
+                        </span>
+                      )}
                       {e.creditType && (
                         <span className="source-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', color: 'var(--blue)', fontWeight: 600, fontSize: '10px', marginLeft: '4px' }}>
                           💳 {e.creditType.toUpperCase()}
@@ -698,7 +751,18 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                       ) : null}
                     </td>
                     <td className="cell-amount number" style={{ color: e.type === 'income' ? 'var(--green)' : 'var(--red)', fontWeight: 700 }}>
-                      {e.type === 'income' ? '+' : '-'}{formatMoney(e.amount)}
+                      {isForeign ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+                          <span>
+                            {e.type === 'income' ? '+' : '-'}{formatNativeCurrency(nativeQty, e.currency!)}
+                          </span>
+                          <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 500 }}>
+                            ≈ {formatMoney(e.amount)}
+                          </span>
+                        </div>
+                      ) : (
+                        <span>{e.type === 'income' ? '+' : '-'}{formatMoney(e.amount)}</span>
+                      )}
                     </td>
                     <td className="cell-actual number">
                       {isOpening ? (
@@ -715,20 +779,24 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                               if (ev.key === 'Enter') {
                                 ev.preventDefault();
                                 const input = ev.currentTarget;
-                                const val = Math.round(Number(input.value) || 0);
-                                if (val > 0) {
-                                  handleActualSpend(e, val, actualValue);
-                                }
+                                const rawVal = Number(input.value) || 0;
                                 input.value = '';
+                                if (rawVal > 0) {
+                                  const effectiveRate = e.fxRateAtEntry || (e.currency ? getCurrencyRate(rates, e.currency) : 1);
+                                  const egpVal = isForeign ? Math.round(rawVal * effectiveRate) : Math.round(rawVal);
+                                  handleActualSpend(e, egpVal, actualValue);
+                                }
                               }
                             }}
                             onBlur={(ev) => {
                               const input = ev.currentTarget;
-                              const val = Math.round(Number(input.value) || 0);
-                              if (val > 0) {
-                                handleActualSpend(e, val, actualValue);
-                              }
+                              const rawVal = Number(input.value) || 0;
                               input.value = '';
+                              if (rawVal > 0) {
+                                const effectiveRate = e.fxRateAtEntry || (e.currency ? getCurrencyRate(rates, e.currency) : 1);
+                                const egpVal = isForeign ? Math.round(rawVal * effectiveRate) : Math.round(rawVal);
+                                handleActualSpend(e, egpVal, actualValue);
+                              }
                             }}
                           />
                           {actualValue > 0 && (
@@ -737,6 +805,8 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                                 ? `Drawn so far: ${formatMoney(actualValue)} ${isFull ? '(Full amount reached · Ongoing)' : `(Remaining: ${formatMoney(remainingAmt)})`}`
                                 : isCreditSettlement
                                 ? `Paid so far: ${formatMoney(actualValue)} ${isFull ? '(Settled in full)' : `(Remaining: ${formatMoney(remainingAmt)})`}`
+                                : isForeign
+                                ? `Spent so far: ${formatNativeCurrency(Math.round((actualValue / (e.fxRateAtEntry || getCurrencyRate(rates, e.currency!))) * 100) / 100, e.currency!)} (≈ ${formatMoney(actualValue)}) ${isFull ? '(Full budget reached · Ongoing)' : `(Remaining: ≈ ${formatMoney(remainingAmt)})`}`
                                 : `Spent so far: ${formatMoney(actualValue)} ${isFull ? '(Full budget reached · Ongoing)' : `(Remaining: ${formatMoney(remainingAmt)})`}`}
                             </small>
                           )}
@@ -763,18 +833,34 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                               ✓ Finish
                             </button>
                           )}
-                          <button
-                            className="delete-button"
-                            title="Delete entry"
-                            onClick={(ev) => {
-                              ev.stopPropagation();
-                              if (window.confirm(`Delete entry "${e.category}" (${formatMoney(e.amount)})?`)) {
-                                deleteEntry(e.id);
-                              }
-                            }}
-                          >
-                            Delete
-                          </button>
+                          {(() => {
+                            const hasAffected = hasEntryAffectedParties(e, {
+                              installments,
+                              storageAssets,
+                              partTimeJobs,
+                              asfJobs,
+                              irqJobs,
+                            });
+                            return (
+                              <button
+                                className="delete-button"
+                                style={{ position: 'relative' }}
+                                title={hasAffected ? 'Delete entry (has affected linked records)' : 'Delete entry'}
+                                onClick={(ev) => {
+                                  ev.stopPropagation();
+                                  setDeleteEntryTarget(e);
+                                }}
+                              >
+                                Delete
+                                {hasAffected && (
+                                  <span
+                                    className="affected-parties-dot"
+                                    title="Has affected linked records"
+                                  />
+                                )}
+                              </button>
+                            );
+                          })()}
                         </div>
                       )}
                     </td>
@@ -805,6 +891,78 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
         onKeep={handleKeepEntry}
         onFinish={handleFinishEntry}
       />
+
+      {/* Affected Records Modal for Entry Deletion */}
+      {deleteEntryTarget && (() => {
+        const affectedData = buildEntryDeleteOptions(deleteEntryTarget, {
+          installments,
+          storageAssets,
+          partTimeJobs,
+          asfJobs,
+          irqJobs,
+        });
+
+        return (
+          <AffectedRecordsModal
+            isOpen={Boolean(deleteEntryTarget)}
+            mode="delete"
+            title="Delete Forecast Entry"
+            subtitle="Choose which linked records and recurring occurrences should be affected."
+            itemDescription={affectedData.itemDescription}
+            amountFormatted={affectedData.amountFormatted}
+            options={affectedData.options}
+            onConfirm={(selectedIds) => {
+              const seriesMode = selectedIds.includes('series') ? 'future' : 'single';
+              const deletePlan = selectedIds.includes('installment_plan');
+              const matchedInstallment = installments.find(
+                (i) =>
+                  deleteEntryTarget.id.includes(i.id) ||
+                  (deleteEntryTarget.loanId && (i.id === deleteEntryTarget.loanId || (i as any).loanId === deleteEntryTarget.loanId)) ||
+                  (deleteEntryTarget.source === 'installment' && i.name.toLowerCase().trim() === (deleteEntryTarget.category || '').toLowerCase().trim())
+              );
+
+              if (deletePlan && matchedInstallment) {
+                deleteInstallment(matchedInstallment.id, { deleteCashEntries: true });
+              } else {
+                deleteEntry(deleteEntryTarget.id, seriesMode, {
+                  deleteLinkedLoan: selectedIds.includes('loan'),
+                  deleteInstallmentPlan: deletePlan,
+                  syncJob: selectedIds.includes('job'),
+                  revertStorage: selectedIds.includes('storage'),
+                });
+              }
+              setDeleteEntryTarget(null);
+            }}
+            onClose={() => setDeleteEntryTarget(null)}
+          />
+        );
+      })()}
+
+      {/* Affected Records Modal for Installment Deletion */}
+      {deleteInstallmentTarget && (() => {
+        const affectedData = buildInstallmentDeleteOptions(deleteInstallmentTarget, {
+          entries,
+        });
+
+        return (
+          <AffectedRecordsModal
+            isOpen={Boolean(deleteInstallmentTarget)}
+            mode="delete"
+            title="Delete Installment"
+            subtitle="Choose what records should be affected when deleting this installment."
+            itemDescription={affectedData.itemDescription}
+            amountFormatted={affectedData.amountFormatted}
+            options={affectedData.options}
+            onConfirm={(selectedIds) => {
+              deleteInstallment(deleteInstallmentTarget.id, {
+                deleteCashEntries: selectedIds.includes('cashflow'),
+              });
+              setDeleteInstallmentTarget(null);
+            }}
+            onClose={() => setDeleteInstallmentTarget(null)}
+          />
+        );
+      })()}
     </section>
   );
 };

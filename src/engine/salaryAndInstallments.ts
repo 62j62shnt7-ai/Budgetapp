@@ -85,6 +85,7 @@ export function buildInstallmentEntries(installments: Installment[]): CashEntry[
         type: 'expense',
         amount: Number(installment.amount) || 0,
         source: 'installment',
+        loanId: installment.id,
         tag: installment.tag || 'Installment',
         note: `Installment: ${installment.name} (${i + 1}/${count})`,
       });
@@ -93,3 +94,60 @@ export function buildInstallmentEntries(installments: Installment[]): CashEntry[
     return entries;
   });
 }
+
+export interface InstallmentProgress {
+  total: number;
+  paid: number;
+  dismissed: number;
+  remaining: number;
+  outstandingAmount: number;
+  monthlyAmount: number;
+  isActive: boolean;
+}
+
+export function calculateInstallmentProgress(
+  installment: Installment,
+  entryActuals: Record<string, number> = {},
+  deletedForecasts: string[] = []
+): InstallmentProgress {
+  const [startYear, startMonth] = DateUtils.parseYearMonth(installment.startMonth);
+  const frequency = Math.max(1, Number(installment.frequency) || 1);
+  const count = Number(installment.remainingMonths) || Number(installment.totalMonths) || 0;
+  const deletedSet = new Set(deletedForecasts || []);
+  const amount = Number(installment.amount) || 0;
+
+  let paid = 0;
+  let dismissed = 0;
+
+  for (let i = 0; i < count; i += 1) {
+    const totalMonthIndex = startYear * 12 + (startMonth - 1) + i * frequency;
+    const y = Math.floor(totalMonthIndex / 12);
+    const m = (totalMonthIndex % 12) + 1;
+    const dateId = getInstallmentDateId(installment.id, y, m);
+
+    if (deletedSet.has(dateId)) {
+      dismissed += 1;
+    } else {
+      const actual = Number(entryActuals[dateId]) || 0;
+      if (actual >= amount && actual > 0) {
+        paid += 1;
+      }
+    }
+  }
+
+  const remaining = Math.max(0, count - paid - dismissed);
+  const outstandingAmount = amount * remaining;
+  const isActive = remaining > 0;
+  const monthlyAmount = isActive ? amount : 0;
+
+  return {
+    total: count,
+    paid,
+    dismissed,
+    remaining,
+    outstandingAmount,
+    monthlyAmount,
+    isActive,
+  };
+}
+

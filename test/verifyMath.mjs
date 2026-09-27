@@ -38,7 +38,13 @@ import {
 import { computeSpreadPct, computeAssetEgpValue, defaultRates, autoFetchLatestRates } from '../src/engine/currency.ts';
 import { computeFinancialHealthScore } from '../src/engine/healthScore.ts';
 import { DateUtils } from '../src/engine/dateUtils.ts';
+import { calculateJobFinancials } from '../src/engine/jobs.ts';
 import { useBudgetStore } from '../src/store/useBudgetStore.ts';
+import {
+  buildEntryDeleteOptions,
+  buildInstallmentDeleteOptions,
+  buildStorageDeleteOptions,
+} from '../src/utils/affectedRecords.ts';
 
 console.log('Running comprehensive test suite for Budget Control Financial Engine & Store...\n');
 
@@ -385,7 +391,192 @@ assert.strictEqual(useBudgetStore.getState().entries.some((e) => e.id === linked
 useBudgetStore.getState().deleteJob('asf', testJobId, { deleteCashEntries: false });
 assert.strictEqual(useBudgetStore.getState().asfJobs.some((j) => j.id === testJobId), false);
 assert.strictEqual(useBudgetStore.getState().entries.some((e) => e.id === linkedCashEntryId1), true, 'Payment 1 cashflow history entry remains intact');
-console.log('✓ Job payment Cashflow linking & configurable History preservation verified');
+
+// Case 4: Forecast entry deletion auto-clears job forecast scheduling
+const forecastJobId = `pt-test-${Date.now()}`;
+const forecastEntryId = useBudgetStore.getState().addEntry({
+  date: '2026-10-15',
+  category: 'Job Income',
+  account: 'cib',
+  type: 'income',
+  amount: 48500,
+  currency: 'USD',
+  originalAmount: 1000,
+});
+
+useBudgetStore.getState().saveJob('partTime', {
+  id: forecastJobId,
+  client: 'Global Client',
+  title: 'Architecture Review',
+  rate: 1000,
+  currency: 'USD',
+  workedDays: [],
+  expenses: [],
+  payments: [],
+  forecastDueDate: '2026-10-15',
+  forecastEntryId: forecastEntryId,
+  forecastAmount: 1000,
+  forecastDestination: 'account:cib',
+});
+
+let ptJob = useBudgetStore.getState().partTimeJobs.find((j) => j.id === forecastJobId);
+assert.strictEqual(ptJob?.forecastDueDate, '2026-10-15');
+assert.strictEqual(ptJob?.forecastEntryId, forecastEntryId);
+
+// Delete the entry directly from cashflow/forecast
+useBudgetStore.getState().deleteEntry(forecastEntryId);
+
+ptJob = useBudgetStore.getState().partTimeJobs.find((j) => j.id === forecastJobId);
+assert.strictEqual(ptJob?.forecastDueDate, undefined, 'Job forecastDueDate must be cleared when linked entry is deleted');
+assert.strictEqual(ptJob?.forecastEntryId, undefined, 'Job forecastEntryId must be cleared when linked entry is deleted');
+
+// Case 5: Recording actual & finishing forecast entry auto-settles Job payment and deposits into Storage
+const settleJobId = `pt-settle-${Date.now()}`;
+const settleEntryId = useBudgetStore.getState().addEntry({
+  date: '2026-10-20',
+  category: 'Job Income',
+  account: 'HSBC USD Account',
+  type: 'income',
+  amount: 48500,
+  currency: 'USD',
+  originalAmount: 1000,
+  fxRateAtEntry: 48.5,
+});
+
+useBudgetStore.getState().saveJob('partTime', {
+  id: settleJobId,
+  client: 'TechCorp',
+  title: 'Backend Dev',
+  rate: 1000,
+  currency: 'USD',
+  workedDays: [],
+  expenses: [],
+  payments: [],
+  forecastDueDate: '2026-10-20',
+  forecastEntryId: settleEntryId,
+  forecastAmount: 1000,
+  forecastDestination: 'storage:hsbc_usd',
+});
+
+let hsbcAsset = useBudgetStore.getState().storageAssets.find(a => a.name.toLowerCase().includes('hsbc') && a.unit === 'USD');
+if (!hsbcAsset) {
+  useBudgetStore.getState().addStorageAsset({
+    name: 'HSBC USD Account',
+    category: 'Currency',
+    quantity: 0,
+    unit: 'USD',
+    buyPrice: 48.5,
+    rate: 48.5,
+    currency: 'EGP',
+  });
+  hsbcAsset = useBudgetStore.getState().storageAssets.find(a => a.name.toLowerCase().includes('hsbc') && a.unit === 'USD');
+}
+const initialStorageUsd = hsbcAsset?.quantity || 0;
+
+// User records income of 48,500 EGP ($1000 USD), selects Deposit & Save (deposits 1000 to Storage) and finishes entry
+useBudgetStore.getState().recordActual(settleEntryId, 48500, '2026-10-20');
+useBudgetStore.getState().depositToStorageAsset(hsbcAsset.id, 1000);
+useBudgetStore.getState().updateEntry(settleEntryId, { isClosed: true, keepOngoing: false, amount: 48500, account: 'HSBC USD Account' });
+
+const settledJob = useBudgetStore.getState().partTimeJobs.find((j) => j.id === settleJobId);
+assert.strictEqual(settledJob?.status, 'paid', 'Job must be marked paid after forecast settlement');
+assert.strictEqual(settledJob?.payments?.length, 1, 'Job must have 1 payment recorded');
+assert.strictEqual(settledJob?.payments?.[0].amount, 1000, 'Payment must be 1000 USD');
+assert.strictEqual(settledJob?.forecastDueDate, undefined, 'Forecast due date must be cleared on paid job');
+
+const finalStorageUsd = useBudgetStore.getState().storageAssets.find(a => a.name.toLowerCase().includes('hsbc') && a.unit === 'USD')?.quantity || 0;
+assert.strictEqual(finalStorageUsd, initialStorageUsd + 1000, 'Storage HSBC USD must have received the 1000 USD deposit');
+
+// Case 6: Clearing actual reverts entry, restores Job forecast/invoiced status, removes payment, and reverts storage
+useBudgetStore.getState().clearActual(settleEntryId);
+
+const revertedJob = useBudgetStore.getState().partTimeJobs.find((j) => j.id === settleJobId);
+assert.strictEqual(revertedJob?.status, 'invoiced', 'Job must revert from paid to invoiced');
+assert.strictEqual(revertedJob?.payments?.length, 0, 'Job payments must be empty after clearing actual');
+assert.strictEqual(revertedJob?.forecastDueDate, '2026-10-20', 'Job forecastDueDate must be restored');
+assert.strictEqual(revertedJob?.forecastEntryId, settleEntryId, 'Job forecastEntryId must be restored');
+
+const revertedStorageUsd = useBudgetStore.getState().storageAssets.find(a => a.name.toLowerCase().includes('hsbc') && a.unit === 'USD')?.quantity || 0;
+assert.strictEqual(revertedStorageUsd, initialStorageUsd, 'Storage HSBC USD must have reverted the 1000 USD deposit');
+
+console.log('✓ Job payment Cashflow linking, forecast auto-unscheduling, storage deposit & clearActual reversal verified');
+
+// Case 7: Multiple sequential tranches (Tranche 1: $200 kept in EGP/no deposit, Tranche 2: $300 deposited to USD)
+const multiTrancheJobId = `pt-multi-${Date.now()}`;
+const multiTrancheEntryId = useBudgetStore.getState().addEntry({
+  date: '2026-11-01',
+  category: 'Job Income',
+  account: 'HSBC USD Account',
+  type: 'income',
+  amount: 48500,
+  currency: 'USD',
+  originalAmount: 1000,
+  fxRateAtEntry: 48.5,
+});
+
+useBudgetStore.getState().saveJob('partTime', {
+  id: multiTrancheJobId,
+  client: 'MultiCorp',
+  title: 'Consulting Contract',
+  currency: 'USD',
+  type: 'lumpsum',
+  lumpSumAmount: 1000,
+  forecastDueDate: '2026-11-01',
+  forecastEntryId: multiTrancheEntryId,
+  forecastAmount: 1000,
+  forecastDestination: 'storage:hsbc_usd',
+  payments: [],
+});
+
+// Record Tranche 1: $200 (9,700 EGP) - No deposit
+useBudgetStore.getState().addDraw(multiTrancheEntryId, {
+  id: `draw-1-${Date.now()}`,
+  date: '2026-11-02',
+  amount: 9700,
+  note: 'Tranche 1 (EGP - No Deposit)',
+  account: 'Recorded Only (No Deposit)',
+});
+
+let mtJob = useBudgetStore.getState().partTimeJobs.find((j) => j.id === multiTrancheJobId);
+let mtFin = calculateJobFinancials(mtJob, useBudgetStore.getState().rates);
+assert.strictEqual(mtFin.totalPaid, 200, 'Total paid after Tranche 1 must be 200 USD');
+assert.strictEqual(mtFin.remainingBalance, 800, 'Remaining balance after Tranche 1 must be 800 USD');
+assert.strictEqual(mtJob?.status, 'partial', 'Job status must be partial after Tranche 1');
+
+// Record Tranche 2: $300 (14,550 EGP) - Deposited to HSBC USD
+useBudgetStore.getState().addDraw(multiTrancheEntryId, {
+  id: `draw-2-${Date.now()}`,
+  date: '2026-11-05',
+  amount: 14550,
+  note: 'Tranche 2 (USD Storage Deposit)',
+  account: 'HSBC USD Account',
+});
+
+// Delete Tranche 2 via deleteDraw and verify job payment is removed & balance updated
+const mtEntry = useBudgetStore.getState().entries.find((e) => e.id === multiTrancheEntryId);
+const draw2Index = (mtEntry?.draws || []).findIndex((d) => d.amount === 14550);
+assert(draw2Index !== -1, 'Draw 2 must exist in entry draws');
+useBudgetStore.getState().deleteDraw(multiTrancheEntryId, draw2Index);
+
+mtJob = useBudgetStore.getState().partTimeJobs.find((j) => j.id === multiTrancheJobId);
+mtFin = calculateJobFinancials(mtJob, useBudgetStore.getState().rates);
+assert.strictEqual(mtFin.totalPaid, 200, 'Total paid must revert to 200 USD after deleting Tranche 2');
+assert.strictEqual(mtFin.remainingBalance, 800, 'Remaining balance must revert to 800 USD after deleting Tranche 2');
+assert.strictEqual(mtJob?.payments?.length, 1, 'Job must now have only 1 payment remaining');
+
+// Now delete Payment 1 from Jobs tab and verify entry draws & actuals revert to empty
+const pay1Id = mtJob?.payments?.[0].id;
+useBudgetStore.getState().deleteJobPayment('partTime', multiTrancheJobId, pay1Id);
+mtJob = useBudgetStore.getState().partTimeJobs.find((j) => j.id === multiTrancheJobId);
+assert.strictEqual(mtJob?.payments?.length, 0, 'Job payments must be empty after deleting payment from Jobs tab');
+assert.strictEqual(mtJob?.status, 'invoiced', 'Job status must revert to invoiced');
+
+const entryAfterJobDelete = useBudgetStore.getState().entries.find((e) => e.id === multiTrancheEntryId);
+assert.strictEqual(entryAfterJobDelete?.draws?.length, 0, 'Entry draws must be empty after job payment deletion');
+assert.strictEqual(useBudgetStore.getState().entryActuals[multiTrancheEntryId], undefined, 'Entry actuals must be cleared');
+
+console.log('✓ Multi-tranche sequential payments & separate destination tracking verified');
+console.log('✓ Bidirectional tranche addition & deletion synchronization (Forecast ↔ History ↔ Jobs) verified');
 
 // C. Recurring Series Single vs Future Updates
 const testSeriesId = `series-test-${Date.now()}`;
@@ -554,6 +745,118 @@ assert.strictEqual(useBudgetStore.getState().deletedForecasts.includes('credit-s
 useBudgetStore.getState().clearAllDeletedForecasts();
 assert.strictEqual(useBudgetStore.getState().deletedForecasts.length, 0, 'All deleted forecasts cleared');
 console.log('✓ History deduplication, restore forecast & clear deleted forecasts verified');
+
+// Test Storage Reversion on Tranche & Payment Deletion
+useBudgetStore.setState({
+  storageAssets: [
+    {
+      id: 'hsbc-usd-asset',
+      name: 'HSBC USD Account',
+      category: 'Currency',
+      quantity: 2100,
+      unit: 'USD',
+      buyPrice: 50,
+      rate: 50,
+      currency: 'EGP',
+      locationType: 'bank',
+      location: 'hsbc',
+    },
+  ],
+  entries: [
+    {
+      id: 'job-usd-forecast',
+      date: '2026-09-27',
+      amount: 105000,
+      originalAmount: 2100,
+      currency: 'USD',
+      fxRateAtEntry: 50,
+      category: 'Job Income',
+      account: 'HSBC USD Account',
+      type: 'income',
+      actualAmount: 105000,
+      draws: [
+        { id: 'draw-1', date: '2026-09-20', amount: 80000, note: 'Tranche 1', account: 'HSBC USD Account' },
+        { id: 'draw-2', date: '2026-09-27', amount: 25000, note: 'Tranche 2', account: 'HSBC USD Account' },
+      ],
+    },
+  ],
+  rates: { USD: 50, EUR: 55, goldGram24: 4000 },
+});
+
+// Delete Tranche 2 (25,000 EGP = 500 USD) with revertStorage = true
+useBudgetStore.getState().deleteDraw('job-usd-forecast', 1, {
+  updateCashflow: true,
+  syncJob: false,
+  revertStorage: true,
+});
+
+const updatedStorage = useBudgetStore.getState().storageAssets.find((a) => a.id === 'hsbc-usd-asset');
+assert.strictEqual(updatedStorage.quantity, 1600, 'HSBC USD Account quantity reverted from 2100 to 1600 USD (500 USD deducted)');
+const revertedEntry = useBudgetStore.getState().entries.find((e) => e.id === 'job-usd-forecast');
+assert.strictEqual(revertedEntry.draws.length, 1, 'Entry has 1 draw remaining');
+assert.strictEqual(revertedEntry.actualAmount, 80000, 'Entry actual amount updated to 80000 EGP');
+console.log('✓ Storage balance reversion upon draw deletion verified');
+
+// Test Affected Records Builders & Selective Cascade
+const testEntryToAffect = {
+  id: 'test-entry-affected',
+  date: '2026-10-01',
+  category: 'Car Loan Inflow',
+  amount: 50000,
+  type: 'income',
+  loanId: 'car-loan-inst-1',
+  seriesId: 'series-car-loan',
+  draws: [{ date: '2026-10-01', amount: 50000, note: 'Initial tranche' }],
+};
+
+const entryAffectedRes = buildEntryDeleteOptions(testEntryToAffect, {
+  installments: [{ id: 'car-loan-inst-1', name: 'Car Loan', amount: 5000, totalMonths: 10, remainingMonths: 8, startMonth: '2026-10' }],
+  storageAssets: [],
+  partTimeJobs: [],
+  asfJobs: [],
+  irqJobs: [],
+});
+
+assert.strictEqual(entryAffectedRes.options.some((o) => o.id === 'cashflow'), true, 'Contains cashflow primary option');
+assert.strictEqual(entryAffectedRes.options.some((o) => o.id === 'series'), true, 'Contains recurring series scope option');
+assert.strictEqual(entryAffectedRes.options.some((o) => o.id === 'loan'), true, 'Contains linked loan option');
+assert.strictEqual(entryAffectedRes.options.some((o) => o.id === 'draws'), true, 'Contains draws option');
+
+// Test Installment affected options
+const testInst = { id: 'inst-test-1', name: 'MacBook Installment', amount: 2500, totalMonths: 12, remainingMonths: 6, startMonth: '2026-05' };
+const instAffectedRes = buildInstallmentDeleteOptions(testInst, {
+  entries: [{ id: 'e-inst-1', date: '2026-10-01', category: 'MacBook Installment', amount: 2500, type: 'expense', account: 'cib' }],
+});
+assert.strictEqual(instAffectedRes.options.some((o) => o.id === 'installment'), true, 'Contains installment option');
+assert.strictEqual(instAffectedRes.options.some((o) => o.id === 'cashflow'), true, 'Contains linked cashflow option');
+
+// Test Storage Asset affected options
+const testStorageAsset = { id: 'storage-eur', name: 'HSBC EUR Account', category: 'Currency', quantity: 1500, unit: 'EUR', buyPrice: 55, currency: 'EGP' };
+const storageAffectedRes = buildStorageDeleteOptions(testStorageAsset, {
+  partTimeJobs: [{ id: 'job-eur', client: 'EuroCorp', title: 'Consulting', forecastDestination: 'storage:existing-storage-eur', type: 'daily_rate', currency: 'EUR' }],
+  asfJobs: [],
+  irqJobs: [],
+});
+assert.strictEqual(storageAffectedRes.options.some((o) => o.id === 'storage'), true, 'Contains storage option');
+assert.strictEqual(storageAffectedRes.options.some((o) => o.id === 'jobs'), true, 'Contains linked jobs option');
+
+// Test selective cascading deletion in store
+useBudgetStore.setState({
+  installments: [{ id: 'inst-to-del', name: 'Laptop Loan', amount: 3000, totalMonths: 6, remainingMonths: 3, startMonth: '2026-08' }],
+  entries: [
+    { id: 'e-loan-1', date: '2026-10-01', category: 'Laptop Loan', amount: 3000, type: 'expense', account: 'cib', loanId: 'inst-to-del' },
+    { id: 'e-other', date: '2026-10-01', category: 'Groceries', amount: 1200, type: 'expense', account: 'cib' },
+  ],
+  archivedEntries: [],
+});
+
+// Delete installment with deleteCashEntries = true
+useBudgetStore.getState().deleteInstallment('inst-to-del', { deleteCashEntries: true });
+assert.strictEqual(useBudgetStore.getState().installments.length, 0, 'Installment deleted');
+assert.strictEqual(useBudgetStore.getState().entries.length, 1, 'Linked loan entry deleted, other entry remains');
+assert.strictEqual(useBudgetStore.getState().entries[0].id, 'e-other', 'Groceries entry preserved');
+
+console.log('✓ Global Affected Records builders & selective cascading deletion verified');
 
 console.log('\n=================================================================');
 console.log('🌟 100% OF ENGINE, STORE, AND BUSINESS LOGIC TESTS PASSED! 🌟');
