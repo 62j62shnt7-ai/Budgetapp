@@ -38,6 +38,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
     asfJobs,
     irqJobs,
     storageAssets,
+    accounts,
   } = useBudgetStore();
 
   const activeEntry = (entryToEdit ? entries.find((e) => e.id === entryToEdit.id) : null) || entryToEdit;
@@ -719,37 +720,49 @@ export const EntryModal: React.FC<EntryModalProps> = ({
                 },
               ]
             : []),
-          ...(storageAssets.length > 0
-            ? (() => {
-                const targetAccount = (deleteDrawTarget.draw.account || activeEntry.account || '').trim().toLowerCase();
-                const currUpper = (activeEntry.currency || 'USD').toUpperCase();
-                const matchingStorage = storageAssets.find(
-                  (a) =>
-                    a.id === (deleteDrawTarget.draw as any).storageAssetId ||
-                    a.name.trim().toLowerCase() === targetAccount ||
-                    (entryIsForeign &&
-                      ((a.unit || '').toUpperCase() === currUpper || (a.currency || '').toUpperCase() === currUpper))
-                );
-                const assetName = matchingStorage ? matchingStorage.name : 'Storage / Bank Balance';
-                const currentQtyDesc = matchingStorage ? ` (Current: ${matchingStorage.quantity} ${matchingStorage.unit || ''})` : '';
-                return [
-                  {
-                    id: 'storage',
-                    label: `Storage: ${assetName}`,
-                    sublabel: `Revert / deduct ${entryIsForeign ? formatNativeCurrency(nativeDrawQty, activeEntry.currency!) : formatMoney(deleteDrawTarget.draw.amount)} from ${assetName}${currentQtyDesc}.`,
-                    icon: '🏦',
-                    defaultChecked: Boolean(
-                      matchingStorage &&
-                        (targetAccount.includes('storage') ||
-                          targetAccount.includes('usd') ||
-                          targetAccount.includes('hsbc') ||
-                          targetAccount.includes('cash') ||
-                          entryIsForeign)
-                    ),
-                  },
-                ];
-              })()
-            : []),
+          {(() => {
+            const targetAccount = (deleteDrawTarget.draw.account || activeEntry.account || '').trim().toLowerCase();
+            const currUpper = (activeEntry.currency || 'USD').toUpperCase();
+            const matchingStorage = storageAssets.find(
+              (a) =>
+                a.id === (deleteDrawTarget.draw as any).storageAssetId ||
+                a.name.trim().toLowerCase() === targetAccount ||
+                (entryIsForeign &&
+                  ((a.unit || '').toUpperCase() === currUpper || (a.currency || '').toUpperCase() === currUpper))
+            );
+            const matchedAccount = accounts[targetAccount];
+            const isExpense = activeEntry.type === 'expense';
+            const assetName = matchingStorage
+              ? matchingStorage.name
+              : matchedAccount
+              ? matchedAccount.name || targetAccount.toUpperCase()
+              : targetAccount.toUpperCase();
+            const currentQtyDesc = matchingStorage
+              ? ` (Current: ${matchingStorage.quantity} ${matchingStorage.unit || ''})`
+              : matchedAccount
+              ? ` (Current: ${formatMoney(matchedAccount.balance || 0)})`
+              : '';
+            const actionText = isExpense
+              ? `Refund / restore +${entryIsForeign ? formatNativeCurrency(nativeDrawQty, activeEntry.currency!) : formatMoney(deleteDrawTarget.draw.amount)} to`
+              : `Revert / deduct -${entryIsForeign ? formatNativeCurrency(nativeDrawQty, activeEntry.currency!) : formatMoney(deleteDrawTarget.draw.amount)} from`;
+
+            return {
+              id: 'storage',
+              label: matchingStorage ? `Storage Asset: ${assetName}` : `Bank Balance: ${assetName}`,
+              sublabel: `${actionText} ${assetName}${currentQtyDesc}.`,
+              icon: matchingStorage ? '🏦' : '💳',
+              defaultChecked: Boolean(
+                matchingStorage ||
+                matchedAccount ||
+                targetAccount.includes('storage') ||
+                targetAccount.includes('usd') ||
+                targetAccount.includes('hsbc') ||
+                targetAccount.includes('cib') ||
+                targetAccount.includes('cash') ||
+                entryIsForeign
+              ),
+            };
+          })(),
         ];
 
         return (

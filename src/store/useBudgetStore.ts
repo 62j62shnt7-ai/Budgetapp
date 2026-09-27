@@ -324,9 +324,10 @@ function revertStorageOrAccountBalance(
     amount: number;
     isEgpAmount?: boolean;
     fxRate?: number;
+    entryType?: 'income' | 'expense';
   }
 ) {
-  const { assetId, account, currency = 'USD', amount, isEgpAmount = false, fxRate } = params;
+  const { assetId, account, currency = 'USD', amount, isEgpAmount = false, fxRate, entryType = 'income' } = params;
   if (!amount || amount <= 0) return;
 
   const storageAssets = get().storageAssets;
@@ -371,7 +372,9 @@ function revertStorageOrAccountBalance(
       nativeQty = Math.round((amount / rate) * 100) / 100;
     }
     const currentQty = Number(targetAsset.quantity) || 0;
-    const nextQty = Math.max(0, currentQty - nativeQty);
+    const nextQty = entryType === 'expense'
+      ? currentQty + nativeQty // Reverting an expense refunds/adds back to storage
+      : Math.max(0, currentQty - nativeQty); // Reverting an income deducts the deposited funds
     get().updateStorageAsset(targetAsset.id, { quantity: nextQty });
     return;
   }
@@ -379,7 +382,10 @@ function revertStorageOrAccountBalance(
   // If it's a bank account in accounts (e.g. cib, hsbc EGP)
   if (!isForeign && get().accounts[accountLower]) {
     const currentBal = get().accounts[accountLower].balance || 0;
-    get().updateAccountBalance(accountLower, Math.max(0, currentBal - amount));
+    const nextBal = entryType === 'expense'
+      ? currentBal + amount // Reverting an expense refunds/adds back to bank balance
+      : Math.max(0, currentBal - amount); // Reverting an income deducts the deposited money
+    get().updateAccountBalance(accountLower, nextBal);
   }
 }
 
@@ -733,6 +739,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         amount: actualAmt,
         isEgpAmount: !isForeign || !target.originalAmount,
         fxRate: target.fxRateAtEntry,
+        entryType: target.type,
       });
     }
 
@@ -1219,6 +1226,18 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         entryActuals: actuals,
         entryActualDates: dates,
       });
+
+      if (options?.revertStorage && deletedDraw) {
+        revertStorageOrAccountBalance(get, {
+          assetId: options.storageAssetId || (deletedDraw as any).storageAssetId,
+          account: deletedDraw.account || existingOverride.account || 'cib',
+          currency: 'EGP',
+          amount: deletedDraw.amount,
+          isEgpAmount: true,
+          entryType: 'expense',
+        });
+      }
+
       scheduleAutoGistSync(get);
       return;
     }
@@ -1282,6 +1301,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         amount: deletedDraw.amount,
         isEgpAmount: true,
         fxRate: entry.fxRateAtEntry,
+        entryType: entry.type,
       });
     }
 

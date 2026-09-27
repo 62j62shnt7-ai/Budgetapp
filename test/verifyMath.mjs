@@ -797,6 +797,43 @@ assert.strictEqual(revertedEntry.draws.length, 1, 'Entry has 1 draw remaining');
 assert.strictEqual(revertedEntry.actualAmount, 80000, 'Entry actual amount updated to 80000 EGP');
 console.log('✓ Storage balance reversion upon draw deletion verified');
 
+// Test Expense Tranche Deletion (Refunds back to Bank Account)
+useBudgetStore.setState({
+  accounts: {
+    cib: { id: 'cib', name: 'CIB', balance: 5000 },
+    hsbc: { id: 'hsbc', name: 'HSBC', balance: 10000 },
+  },
+  entries: [
+    {
+      id: 'expense-test-entry',
+      date: '2026-09-27',
+      amount: 3000,
+      currency: 'EGP',
+      category: 'Home Supplies',
+      account: 'cib',
+      type: 'expense',
+      actualAmount: 2000,
+      draws: [
+        { id: 'draw-exp-1', date: '2026-09-26', amount: 1500, note: 'Tranche 1', account: 'cib' },
+        { id: 'draw-exp-2', date: '2026-09-27', amount: 500, note: 'Tranche 2', account: 'cib' },
+      ],
+    },
+  ],
+});
+
+// Delete Tranche 2 (500 EGP) from expense -> should refund +500 to CIB (5000 -> 5500)
+useBudgetStore.getState().deleteDraw('expense-test-entry', 1, {
+  updateCashflow: true,
+  revertStorage: true,
+});
+
+const cibAccount = useBudgetStore.getState().accounts.cib;
+assert.strictEqual(cibAccount.balance, 5500, 'CIB balance refunded from 5000 to 5500 EGP after deleting 500 EGP expense tranche');
+const updatedExpense = useBudgetStore.getState().entries.find((e) => e.id === 'expense-test-entry');
+assert.strictEqual(updatedExpense.draws.length, 1, 'Expense entry has 1 draw remaining');
+assert.strictEqual(updatedExpense.actualAmount, 1500, 'Expense actual amount updated to 1500 EGP');
+console.log('✓ Expense tranche deletion bank refund verified');
+
 // Test Affected Records Builders & Selective Cascade
 const testEntryToAffect = {
   id: 'test-entry-affected',
