@@ -1065,7 +1065,8 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         { ...draw, id: draw.id || `draw-${Date.now()}-${(existingOverride.draws || []).length}` },
       ];
       const totalAmount = newDraws.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
-      const lastDate = draw.date || DateUtils.todayString();
+      const validDates = newDraws.map((d) => d.date).filter(Boolean).sort();
+      const lastDate = validDates.length > 0 ? validDates[validDates.length - 1] : draw.date || DateUtils.todayString();
       const updatedOverride = {
         ...existingOverride,
         draws: newDraws,
@@ -1098,7 +1099,8 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       { ...draw, id: draw.id || `draw-${Date.now()}-${(entry.draws || []).length}` },
     ];
     const totalAmount = newDraws.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
-    const lastDate = draw.date || DateUtils.todayString();
+    const validDates = newDraws.map((d) => d.date).filter(Boolean).sort();
+    const lastDate = validDates.length > 0 ? validDates[validDates.length - 1] : draw.date || DateUtils.todayString();
     const updatedEntry: CashEntry = {
       ...entry,
       actualAmount: totalAmount,
@@ -1134,7 +1136,8 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         newDraws[drawIndex] = { ...newDraws[drawIndex], ...draw };
       }
       const totalAmount = newDraws.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
-      const lastDate = newDraws.length > 0 ? newDraws[newDraws.length - 1].date : DateUtils.todayString();
+      const validDates = newDraws.map((d) => d.date).filter(Boolean).sort();
+      const lastDate = validDates.length > 0 ? validDates[validDates.length - 1] : DateUtils.todayString();
       const updatedOverride = {
         ...existingOverride,
         draws: newDraws,
@@ -1167,7 +1170,8 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       newDraws[drawIndex] = { ...newDraws[drawIndex], ...draw };
     }
     const totalAmount = newDraws.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
-    const lastDate = newDraws.length > 0 ? newDraws[newDraws.length - 1].date : DateUtils.todayString();
+    const validDates = newDraws.map((d) => d.date).filter(Boolean).sort();
+    const lastDate = validDates.length > 0 ? validDates[validDates.length - 1] : entry.date || DateUtils.todayString();
     const updatedEntry: CashEntry = {
       ...entry,
       actualAmount: totalAmount,
@@ -1199,11 +1203,13 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     if (entryId.startsWith('credit-settlement-')) {
       const existingOverride = get().creditSettlementOverrides[entryId] || {};
       const newDraws = [...(existingOverride.draws || [])];
+      let deletedDraw: EntryDraw | undefined;
       if (drawIndex >= 0 && drawIndex < newDraws.length) {
-        newDraws.splice(drawIndex, 1);
+        deletedDraw = newDraws.splice(drawIndex, 1)[0];
       }
       const totalAmount = newDraws.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
-      const lastDate = newDraws.length > 0 ? newDraws[newDraws.length - 1].date : DateUtils.todayString();
+      const validDates = newDraws.map((d) => d.date).filter(Boolean).sort();
+      const lastDate = validDates.length > 0 ? validDates[validDates.length - 1] : DateUtils.todayString();
       const updatedOverride = {
         ...existingOverride,
         draws: newDraws,
@@ -1256,7 +1262,8 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     
     if (options?.updateCashflow !== false) {
       const totalAmount = newDraws.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
-      const lastDate = newDraws.length > 0 ? newDraws[newDraws.length - 1].date : entry.date;
+      const validDates = newDraws.map((d) => d.date).filter(Boolean).sort();
+      const lastDate = validDates.length > 0 ? validDates[validDates.length - 1] : entry.date;
       const updatedEntry: CashEntry = {
         ...entry,
         actualAmount: totalAmount > 0 ? totalAmount : undefined,
@@ -1768,7 +1775,8 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         if (entry) {
           const remainingDraws = (entry.draws || []).filter((d) => d.id !== paymentId);
           const newActual = remainingDraws.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
-          const lastDate = remainingDraws.length > 0 ? remainingDraws[remainingDraws.length - 1].date : entry.date;
+          const validDates = remainingDraws.map((d) => d.date).filter(Boolean).sort();
+          const lastDate = validDates.length > 0 ? validDates[validDates.length - 1] : entry.date;
           get().updateEntry(payment.entryId, {
             actualAmount: newActual > 0 ? newActual : undefined,
             actualDate: newActual > 0 ? lastDate : undefined,

@@ -51,13 +51,13 @@ export function getEntryActualDate(
   entryActualDates: Record<string, string>
 ): string {
   if (!entry) return DateUtils.todayString();
-  if ((entry as any).actualDate) return (entry as any).actualDate;
+  if (entry.draws && Array.isArray(entry.draws) && entry.draws.length > 0) {
+    const validDates = entry.draws.map((d) => d.date).filter(Boolean).sort();
+    if (validDates.length > 0) return validDates[validDates.length - 1];
+  }
   const id = entry.id || '';
   if (entryActualDates && entryActualDates[id]) return entryActualDates[id];
-  if (entry.draws && Array.isArray(entry.draws) && entry.draws.length > 0) {
-    const lastDraw = entry.draws[entry.draws.length - 1];
-    return lastDraw ? lastDraw.date : (entry.date || DateUtils.todayString());
-  }
+  if ((entry as any).actualDate) return (entry as any).actualDate;
   return entry.date || DateUtils.todayString();
 }
 

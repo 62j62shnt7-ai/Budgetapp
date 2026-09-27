@@ -110,7 +110,14 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
 
   const getEntryActualDate = React.useCallback((entry: CashEntry): string => {
     if (!entry) return DateUtils.todayString();
-    return entryActualDates[entry.id] || (entry as any).actualDate || entry.date || DateUtils.todayString();
+    if (entry.draws && Array.isArray(entry.draws) && entry.draws.length > 0) {
+      const validDates = entry.draws.map((d) => d.date).filter(Boolean).sort();
+      if (validDates.length > 0) return validDates[validDates.length - 1];
+    }
+    const id = entry.id || '';
+    if (entryActualDates && entryActualDates[id]) return entryActualDates[id];
+    if (entry.actualDate) return entry.actualDate;
+    return entry.date || DateUtils.todayString();
   }, [entryActualDates]);
 
   // Actualized entries: matching legacy actualizedEntries() 1:1

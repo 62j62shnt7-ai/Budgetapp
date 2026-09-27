@@ -830,9 +830,38 @@ useBudgetStore.getState().deleteDraw('expense-test-entry', 1, {
 const cibAccount = useBudgetStore.getState().accounts.cib;
 assert.strictEqual(cibAccount.balance, 5500, 'CIB balance refunded from 5000 to 5500 EGP after deleting 500 EGP expense tranche');
 const updatedExpense = useBudgetStore.getState().entries.find((e) => e.id === 'expense-test-entry');
-assert.strictEqual(updatedExpense.draws.length, 1, 'Expense entry has 1 draw remaining');
-assert.strictEqual(updatedExpense.actualAmount, 1500, 'Expense actual amount updated to 1500 EGP');
-console.log('✓ Expense tranche deletion bank refund verified');
+assert.strictEqual(updatedExpense.actualDate, '2026-09-26', 'Expense actualDate updated to the date of the last remaining tranche (2026-09-26)');
+assert.strictEqual(useBudgetStore.getState().entryActualDates['expense-test-entry'], '2026-09-26', 'entryActualDates updated to 2026-09-26');
+console.log('✓ Expense tranche deletion bank refund & date re-ordering verified');
+
+// Test Tranche Re-ordering on out-of-order Tranche Deletion
+useBudgetStore.setState({
+  entries: [
+    {
+      id: 'multidraw-entry',
+      date: '2026-09-01',
+      amount: 1000,
+      currency: 'EGP',
+      category: 'Consulting',
+      account: 'cib',
+      type: 'income',
+      actualAmount: 900,
+      draws: [
+        { id: 'd-1', date: '2026-09-10', amount: 300, account: 'cib' },
+        { id: 'd-2', date: '2026-09-25', amount: 400, account: 'cib' },
+        { id: 'd-3', date: '2026-09-18', amount: 200, account: 'cib' },
+      ],
+    },
+  ],
+  entryActualDates: { 'multidraw-entry': '2026-09-25' },
+});
+
+// Delete Tranche 2 (date 2026-09-25) -> remaining dates are 2026-09-10 and 2026-09-18 -> latest should be 2026-09-18
+useBudgetStore.getState().deleteDraw('multidraw-entry', 1, { updateCashflow: true });
+const mdEntry = useBudgetStore.getState().entries.find((e) => e.id === 'multidraw-entry');
+assert.strictEqual(mdEntry.actualDate, '2026-09-18', 'Entry actualDate properly re-derived from remaining tranches as 2026-09-18');
+assert.strictEqual(useBudgetStore.getState().entryActualDates['multidraw-entry'], '2026-09-18', 'entryActualDates updated to 2026-09-18');
+console.log('✓ Out-of-order tranche deletion chronological date re-derivation verified');
 
 // Test Affected Records Builders & Selective Cascade
 const testEntryToAffect = {
