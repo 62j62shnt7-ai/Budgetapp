@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useLayoutEffect, useId, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import type { CashEntry } from '../../types';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
 
@@ -35,6 +36,20 @@ interface SeriesPoint {
   expenseCount?: number;
 }
 
+// Compact axis-label formatter (12,500 -> "12.5K"). Tooltips keep full formatMoney.
+const formatAxisLabel = (val: number): string => {
+  const abs = Math.abs(val);
+  if (abs >= 1_000_000) {
+    const v = val / 1_000_000;
+    return `${v % 1 === 0 ? v.toFixed(0) : v.toFixed(1)}M`;
+  }
+  if (abs >= 1000) {
+    const v = val / 1000;
+    return `${v % 1 === 0 ? v.toFixed(0) : v.toFixed(1)}K`;
+  }
+  return `${Math.round(val)}`;
+};
+
 export const ForecastChart: React.FC<ForecastChartProps> = ({
   entries,
   totalCash,
@@ -45,22 +60,30 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
   onSelectDate,
 }) => {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const [animKey, setAnimKey] = useState(0);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const reactId = useId().replace(/[^a-zA-Z0-9]/g, '');
+  const clipId = `fcClip-${reactId}`;
+  const glowId = `fcGlow-${reactId}`;
 
-  useEffect(() => {
-    if (hoverIndex === null) return;
-    const handleOutsideTap = (e: MouseEvent | TouchEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest('.forecast-line-svg-wrap')) {
-        setHoverIndex(null);
+  const [dims, setDims] = useState<{ w: number; h: number }>({ w: 1000, h: 340 });
+
+  useLayoutEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const measure = () => {
+      const rect = el.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        setDims((prev) => (Math.abs(prev.w - rect.width) < 0.5 && Math.abs(prev.h - rect.height) < 0.5
+          ? prev
+          : { w: rect.width, h: rect.height }));
       }
     };
-    document.addEventListener('click', handleOutsideTap);
-    document.addEventListener('touchstart', handleOutsideTap, { passive: true });
-    return () => {
-      document.removeEventListener('click', handleOutsideTap);
-      document.removeEventListener('touchstart', handleOutsideTap);
-    };
-  }, [hoverIndex]);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const today = DateUtils.todayString();
   const currentYm = DateUtils.currentYearMonth();
@@ -209,6 +232,11 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
     return list;
   }, [entries, totalCash, rangeMonths, mode, today, cutoffDate, currentYm, isSimActive, simAmount, simDate]);
 
+  // Replay the draw-in animation whenever the underlying trajectory meaningfully changes.
+  useEffect(() => {
+    setAnimKey((k) => k + 1);
+  }, [mode, rangeMonths, series.length, isSimActive]);
+
   if (series.length === 0) {
     return (
       <div style={{ padding: '40px', textAlign: 'center', color: 'var(--muted)' }}>
@@ -217,13 +245,16 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
     );
   }
 
-  // Layout & Coordinate system
-  const viewBoxW = 1000;
-  const viewBoxH = 340;
-  const padL = 75;
-  const padR = 40;
+  // Layout & Coordinate system — matches the wrap's real measured pixel size, so text
+  // and stroke widths render at their true intended size on any screen instead of being
+  // squished by a fixed abstract viewBox on narrow (mobile) widths.
+  const viewBoxW = dims.w;
+  const viewBoxH = dims.h;
+  const isNarrow = viewBoxW < 480;
+  const padL = isNarrow ? 46 : 62;
+  const padR = isNarrow ? 14 : 24;
   const padT = 30;
-  const padB = 45;
+  const padB = 40;
 
   const chartW = viewBoxW - padL - padR;
   const chartH = viewBoxH - padT - padB;
@@ -245,6 +276,12 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
       rawMax = 0;
     }
   }
+
+  // Auto-scale breathing room: pad the range proportionally to itself so peaks/troughs
+  // never hug the chart edges, no matter how big or small the trajectory is.
+  const prePadRange = rawMax - rawMin || 1;
+  rawMax += prePadRange * 0.12;
+  if (hasDeficit) rawMin -= prePadRange * 0.08;
 
   const rawRange = rawMax - rawMin || 1;
   const roughStep = rawRange / 5;
@@ -319,8 +356,48 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
   const cumPct = totalCash !== 0 && activePoint ? ((cumChange / Math.abs(totalCash)) * 100).toFixed(1) : '0';
   const sign = cumChange >= 0 ? '+' : '';
 
+  // Converts a real screen clientX into the nearest series index — shared by mouse and
+  // touch handlers so both scrub the same way.
+  const clientXToIndex = (clientX: number): number => {
+    const rect = wrapRef.current?.getBoundingClientRect();
+    if (!rect || rect.width === 0) return 0;
+    const scaleX = viewBoxW / rect.width;
+    const svgX = (clientX - rect.left) * scaleX;
+    const relative = (svgX - padL) / Math.max(1, chartW);
+    const idx = Math.round(relative * (series.length - 1));
+    return Math.min(series.length - 1, Math.max(0, idx));
+  };
+
   return (
-    <div className="forecast-line-svg-wrap" style={{ position: 'relative', width: '100%', userSelect: 'none' }}>
+    <div ref={wrapRef} className="forecast-line-svg-wrap" style={{ position: 'relative', width: '100%', userSelect: 'none' }}>
+      <style>{`
+        @keyframes fcPointIn {
+          from { opacity: 0; transform: scale(0.25); }
+          to { opacity: 1; transform: scale(1); }
+        }
+        @keyframes fcFadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes fcPulseRing {
+          0% { opacity: 0.55; r: 6; }
+          100% { opacity: 0; r: 13; }
+        }
+        @keyframes fcTooltipPop {
+          from { opacity: 0; transform: translateY(4px) scale(0.97); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .fc-point-enter {
+          transform-box: fill-box;
+          transform-origin: center;
+          animation: fcPointIn 0.38s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+        }
+        .fc-area-enter { animation: fcFadeIn 0.7s ease both; }
+        .fc-today-pulse {
+          animation: fcPulseRing 2.1s ease-out infinite;
+        }
+        .fc-tooltip-pop { animation: fcTooltipPop 0.16s ease-out both; }
+      `}</style>
       <svg
         className="forecast-line-svg"
         viewBox={`0 0 ${viewBoxW} ${viewBoxH}`}
@@ -338,18 +415,28 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
             <stop offset="50%" stopColor="#14b8a6" />
             <stop offset="100%" stopColor="#2dd4bf" />
           </linearGradient>
+          <filter id={glowId} x="-35%" y="-35%" width="170%" height="170%">
+            <feGaussianBlur stdDeviation="3" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+          <clipPath id={clipId}>
+            <rect x={padL - 6} y={0} width={chartW + 12} height={viewBoxH}>
+              <animate
+                attributeName="width"
+                from="0"
+                to={chartW + 12}
+                dur="0.85s"
+                fill="freeze"
+                calcMode="spline"
+                keyTimes="0;1"
+                keySplines="0.22 1 0.36 1"
+              />
+            </rect>
+          </clipPath>
         </defs>
-
-        {/* Deficit hazard area if balance drops below zero */}
-        {hasDeficit && zeroY < padT + chartH && (
-          <rect
-            x={padL}
-            y={Math.max(padT, zeroY)}
-            width={chartW}
-            height={Math.max(0, padT + chartH - Math.max(padT, zeroY))}
-            fill="rgba(239, 68, 68, 0.08)"
-          />
-        )}
 
         {/* Horizontal grid lines */}
         {gridTicks.map((t, idx) => (
@@ -372,7 +459,7 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
               fill="var(--muted)"
               fontFamily="var(--font-main)"
             >
-              {formatMoney(t.val)}
+              {formatAxisLabel(t.val)}
             </text>
           </g>
         ))}
@@ -404,163 +491,209 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
           </g>
         )}
 
-        {/* Area fill */}
-        <path d={areaD} fill="url(#forecastAreaGrad)" />
+        {/* Animated draw-in group: everything that should reveal left-to-right on data change */}
+        <g key={animKey} clipPath={`url(#${clipId})`}>
+          {/* Deficit hazard area if balance drops below zero */}
+          {hasDeficit && zeroY < padT + chartH && (
+            <rect
+              className="fc-area-enter"
+              x={padL}
+              y={Math.max(padT, zeroY)}
+              width={chartW}
+              height={Math.max(0, padT + chartH - Math.max(padT, zeroY))}
+              fill="rgba(239, 68, 68, 0.08)"
+            />
+          )}
 
-        {/* Trajectory line */}
-        <path
-          d={pathD}
-          fill="none"
-          stroke="url(#forecastLineGrad)"
-          strokeWidth="3"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
+          {/* Area fill */}
+          <path className="fc-area-enter" d={areaD} fill="url(#forecastAreaGrad)" />
 
-        {/* Simulated trajectory curve */}
-        {isSimActive && simPathD && (
+          {/* Soft glow halo beneath the trajectory line */}
           <path
-            d={simPathD}
+            d={pathD}
             fill="none"
-            stroke="#f59e0b"
-            strokeWidth="2.5"
-            strokeDasharray="5 4"
+            stroke="#2dd4bf"
+            strokeWidth="7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            opacity="0.35"
+            filter={`url(#${glowId})`}
+          />
+
+          {/* Trajectory line */}
+          <path
+            d={pathD}
+            fill="none"
+            stroke="url(#forecastLineGrad)"
+            strokeWidth="3"
             strokeLinecap="round"
             strokeLinejoin="round"
           />
-        )}
 
-        {simulatedLowestPoint && (
+          {/* Simulated trajectory curve */}
+          {isSimActive && simPathD && (
+            <path
+              d={simPathD}
+              fill="none"
+              stroke="#f59e0b"
+              strokeWidth="2.5"
+              strokeDasharray="5 4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          )}
+
+          {simulatedLowestPoint && (
+            <g pointerEvents="none">
+              <line
+                x1={simulatedLowestPoint.coordinate.x}
+                y1={padT}
+                x2={simulatedLowestPoint.coordinate.x}
+                y2={padT + chartH}
+                stroke="#f59e0b"
+                strokeWidth="1.5"
+                strokeDasharray="3 3"
+                opacity="0.8"
+              />
+              <circle
+                cx={simulatedLowestPoint.coordinate.x}
+                cy={simulatedLowestPoint.coordinate.y}
+                r="8"
+                fill="#f59e0b"
+                stroke="var(--surface)"
+                strokeWidth="3"
+              />
+              <g transform={`translate(${Math.min(Math.max(simulatedLowestPoint.coordinate.x - 78, padL), padL + chartW - 156)}, 2)`}>
+                <rect width="156" height="22" rx="6" fill="#92400e" opacity="0.88" />
+                <text x="78" y="15" textAnchor="middle" fontSize="10" fill="#fff" fontFamily="var(--font-main)">
+                  Low: {formatMoney(simulatedLowestPoint.series.simulatedBalance)} · {simulatedLowestPoint.series.shortLabel}
+                </text>
+              </g>
+            </g>
+          )}
+
+          {/* Point nodes & X-axis labels */}
+          {points.map((pt, idx) => {
+            const s = series[idx];
+            const isNegative = s.balance < 0;
+            const isHovered = hoverIndex === idx;
+
+            // Only show labels on periodic points to prevent clutter
+            const labelStep = Math.max(1, Math.floor(series.length / 10));
+            const showLabel = idx === 0 || idx === series.length - 1 || idx % labelStep === 0;
+
+            return (
+              <g key={idx}>
+                {s.isOpening && (
+                  <circle
+                    className="fc-today-pulse"
+                    cx={pt.x}
+                    cy={pt.y}
+                    r="6"
+                    fill="none"
+                    stroke="#14b8a6"
+                    strokeWidth="2"
+                  />
+                )}
+                <circle
+                  className="fc-point-enter"
+                  cx={pt.x}
+                  cy={pt.y}
+                  r={isHovered ? 7 : series.length > 36 ? 3 : 4.5}
+                  fill={isNegative ? '#ef4444' : s.isOpening ? '#0f766e' : '#14b8a6'}
+                  stroke="var(--surface)"
+                  strokeWidth={isHovered ? 3.5 : 2}
+                  style={{ transition: 'r 0.15s ease', animationDelay: `${Math.min(idx * 0.015, 0.5)}s` }}
+                />
+
+                {showLabel && (
+                  <text
+                    x={pt.x}
+                    y={viewBoxH - 12}
+                    textAnchor="middle"
+                    fontSize="10"
+                    fill="var(--muted)"
+                    fontFamily="var(--font-main)"
+                  >
+                    {s.shortLabel}
+                  </text>
+                )}
+              </g>
+            );
+          })}
+        </g>
+
+        {/* Hover vertical crosshair line + glowing intersection dot */}
+        {activeCoord && (
           <g pointerEvents="none">
             <line
-              x1={simulatedLowestPoint.coordinate.x}
+              x1={activeCoord.x}
               y1={padT}
-              x2={simulatedLowestPoint.coordinate.x}
+              x2={activeCoord.x}
               y2={padT + chartH}
-              stroke="#f59e0b"
+              stroke="var(--teal)"
               strokeWidth="1.5"
               strokeDasharray="3 3"
-              opacity="0.8"
+              opacity="0.9"
             />
             <circle
-              cx={simulatedLowestPoint.coordinate.x}
-              cy={simulatedLowestPoint.coordinate.y}
-              r="8"
-              fill="#f59e0b"
-              stroke="var(--surface)"
-              strokeWidth="3"
+              cx={activeCoord.x}
+              cy={activeCoord.y}
+              r="5"
+              fill="#2dd4bf"
+              filter={`url(#${glowId})`}
+              opacity="0.95"
             />
-            <g transform={`translate(${Math.min(Math.max(simulatedLowestPoint.coordinate.x - 78, padL), padL + chartW - 156)}, 2)`}>
-              <rect width="156" height="22" rx="6" fill="#92400e" opacity="0.88" />
-              <text x="78" y="15" textAnchor="middle" fontSize="10" fill="#fff" fontFamily="var(--font-main)">
-                Low: {formatMoney(simulatedLowestPoint.series.simulatedBalance)} · {simulatedLowestPoint.series.shortLabel}
-              </text>
-            </g>
           </g>
         )}
 
-        {/* Hover vertical crosshair line */}
-        {activeCoord && (
-          <line
-            x1={activeCoord.x}
-            y1={padT}
-            x2={activeCoord.x}
-            y2={padT + chartH}
-            stroke="var(--teal)"
-            strokeWidth="1.5"
-            strokeDasharray="3 3"
-            opacity="0.9"
-            pointerEvents="none"
-          />
-        )}
-
-        {/* Point nodes & X-axis labels */}
-        {points.map((pt, idx) => {
-          const s = series[idx];
-          const isNegative = s.balance < 0;
-          const isHovered = hoverIndex === idx;
-
-          // Only show labels on periodic points to prevent clutter
-          const labelStep = Math.max(1, Math.floor(series.length / 10));
-          const showLabel = idx === 0 || idx === series.length - 1 || idx % labelStep === 0;
-
-          return (
-            <g key={idx}>
-              <circle
-                cx={pt.x}
-                cy={pt.y}
-                r={isHovered ? 7 : series.length > 36 ? 3 : 4.5}
-                fill={isNegative ? '#ef4444' : s.isOpening ? '#0f766e' : '#14b8a6'}
-                stroke="var(--surface)"
-                strokeWidth={isHovered ? 3.5 : 2}
-                style={{ transition: 'r 0.15s ease' }}
-              />
-
-              {showLabel && (
-                <text
-                  x={pt.x}
-                  y={viewBoxH - 12}
-                  textAnchor="middle"
-                  fontSize="10"
-                  fill="var(--muted)"
-                  fontFamily="var(--font-main)"
-                >
-                  {s.shortLabel}
-                </text>
-              )}
-            </g>
-          );
-        })}
-
-        {/* Transparent interactive hover & touch columns */}
-        {points.map((pt, idx) => {
-          const colW = chartW / Math.max(1, series.length);
-          return (
-            <rect
-              key={idx}
-              x={pt.x - colW / 2}
-              y={padT}
-              width={colW}
-              height={chartH}
-              fill="transparent"
-              style={{ cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}
-              onMouseEnter={() => setHoverIndex(idx)}
-              onMouseMove={() => setHoverIndex(idx)}
-              onMouseLeave={() => setHoverIndex(null)}
-              onClick={(e) => {
-                e.stopPropagation();
-                setHoverIndex((prev) => (prev === idx ? null : idx));
-                if (onSelectDate) {
-                  onSelectDate(series[idx].date || today);
-                }
-              }}
-              onTouchStart={(e) => {
-                e.stopPropagation();
-                setHoverIndex(idx);
-                if (onSelectDate) {
-                  onSelectDate(series[idx].date || today);
-                }
-              }}
-            />
-          );
-        })}
+        {/* Unified interactive overlay: computes the nearest series point from the actual
+            pointer/touch position, so scrubbing works with touch (which doesn't retarget
+            move events across sibling elements the way mouse hover does) as well as mouse. */}
+        <rect
+          x={padL}
+          y={padT}
+          width={chartW}
+          height={chartH}
+          fill="transparent"
+          style={{ cursor: 'pointer', touchAction: 'none' }}
+          onMouseMove={(e) => setHoverIndex(clientXToIndex(e.clientX))}
+          onMouseEnter={(e) => setHoverIndex(clientXToIndex(e.clientX))}
+          onMouseLeave={() => setHoverIndex(null)}
+          onClick={(e) => {
+            const idx = clientXToIndex(e.clientX);
+            if (onSelectDate) onSelectDate(series[idx].date || today);
+          }}
+          onTouchStart={(e) => setHoverIndex(clientXToIndex(e.touches[0].clientX))}
+          onTouchMove={(e) => setHoverIndex(clientXToIndex(e.touches[0].clientX))}
+          onTouchEnd={() => {
+            if (onSelectDate && hoverIndex !== null && series[hoverIndex]) {
+              onSelectDate(series[hoverIndex].date || today);
+            }
+          }}
+        />
       </svg>
 
-      {/* Floating Glass Tooltip / Point Card */}
-      {activePoint && activeCoord && (
+      {/* Floating Glass Tooltip — rendered into a portal, positioned in real screen
+          pixels off the wrap's bounding box, so no ancestor's overflow:hidden can clip it */}
+      {activePoint && activeCoord && wrapRef.current && createPortal(
+        (() => {
+          const rect = wrapRef.current!.getBoundingClientRect();
+          const leftPct = (activeCoord.x / viewBoxW) * 100;
+          const topPct = (activeCoord.y / viewBoxH) * 100;
+          const pxX = rect.left + (leftPct / 100) * rect.width;
+          const pxY = rect.top + (topPct / 100) * rect.height;
+          const xAlign = leftPct < 22 ? '0%' : leftPct > 78 ? '-100%' : '-50%';
+          const yAlign = topPct < 45 ? '16px' : 'calc(-100% - 14px)';
+          return (
         <div
-          className="forecast-tooltip"
-          onClick={(e) => e.stopPropagation()}
+          key={hoverIndex}
+          className="forecast-tooltip fc-tooltip-pop"
           style={{
-            left: `${(activeCoord.x / viewBoxW) * 100}%`,
-            top: `${(activeCoord.y / viewBoxH) * 100}%`,
-            transform: (() => {
-              const leftPct = (activeCoord.x / viewBoxW) * 100;
-              const topPct = (activeCoord.y / viewBoxH) * 100;
-              const xAlign = leftPct < 22 ? '0%' : leftPct > 78 ? '-100%' : '-50%';
-              const yAlign = topPct < 45 ? '16px' : 'calc(-100% - 14px)';
-              return `translate(${xAlign}, ${yAlign})`;
-            })(),
+            position: 'fixed',
+            left: pxX,
+            top: pxY,
+            transform: `translate(${xAlign}, ${yAlign})`,
             display: 'block',
           }}
         >
@@ -670,6 +803,9 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
             </div>
           )}
         </div>
+          );
+        })(),
+        document.body
       )}
     </div>
   );
