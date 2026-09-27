@@ -15,7 +15,12 @@ import { Lock, Unlock, Trash2, RotateCcw } from 'lucide-react';
 import { HistorySummaryTab } from './HistorySummaryTab';
 import { HistoryAnalyticsSection } from './HistoryAnalyticsSection';
 import { AffectedRecordsModal } from '../Modals/AffectedRecordsModal';
-import { buildEntryDeleteOptions, hasEntryAffectedParties } from '../../utils/affectedRecords';
+import {
+  buildEntryDeleteOptions,
+  hasEntryAffectedParties,
+  buildEntryClearOptions,
+  hasEntryClearAffectedParties,
+} from '../../utils/affectedRecords';
 
 interface HistoryViewProps {
   onEditEntry?: (entry: CashEntry) => void;
@@ -42,6 +47,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
   } = useBudgetStore();
 
   const [deleteEntryTarget, setDeleteEntryTarget] = useState<CashEntry | null>(null);
+  const [clearEntryTarget, setClearEntryTarget] = useState<CashEntry | null>(null);
 
   const [activeHistoryTab, setActiveHistoryTab] = useState<'summary' | 'transactions'>('summary');
   const [isAdminUnlocked, setIsAdminUnlocked] = useState<boolean>(() =>
@@ -93,10 +99,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
     setSelectedTag((current) => current.toLowerCase() === tag.toLowerCase() ? 'all' : tag);
   };
 
-  const handleClearActual = (id: string) => {
-    if (window.confirm('Clear recorded actual for this entry? It will revert back to its planned forecast.')) {
-      clearActual(id);
-    }
+  const handleClearActual = (entry: CashEntry) => {
+    setClearEntryTarget(entry);
   };
 
   const getEntryActualAmount = React.useCallback((entry: CashEntry): number => {
@@ -753,7 +757,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                                   onKeyDown={(event) => {
                                     if (event.key === 'Enter') {
                                       const value = Math.round(Number(event.currentTarget.value) || 0);
-                                      if (value <= 0) clearActual(entry.id);
+                                      if (value <= 0) handleClearActual(entry);
                                       else recordActual(entry.id, value, actDate, { tag: entry.tag, account: entry.account });
                                       event.currentTarget.blur();
                                     }
@@ -774,17 +778,38 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                           <td className="cell-actions">
                             {isAdminUnlocked ? (
                               <div style={{ display: 'flex', gap: '4px' }}>
-                                <button
-                                  className="ghost-button icon-button"
-                                  type="button"
-                                  title="Clear actual (revert to forecast)"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleClearActual(entry.id);
-                                  }}
-                                >
-                                  <RotateCcw size={13} />
-                                </button>
+                                {(() => {
+                                  const hasClearAffected = hasEntryClearAffectedParties(entry, {
+                                    installments,
+                                    storageAssets,
+                                    partTimeJobs,
+                                    asfJobs,
+                                    irqJobs,
+                                    accounts,
+                                    entryActuals,
+                                    entryActualDates,
+                                  });
+                                  return (
+                                    <button
+                                      className="ghost-button icon-button"
+                                      type="button"
+                                      style={{ position: 'relative' }}
+                                      title={hasClearAffected ? 'Clear actual (has affected linked records)' : 'Clear actual (revert to forecast)'}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleClearActual(entry);
+                                      }}
+                                    >
+                                      <RotateCcw size={13} />
+                                      {hasClearAffected && (
+                                        <span
+                                          className="affected-parties-dot"
+                                          title="Has affected linked records"
+                                        />
+                                      )}
+                                    </button>
+                                  );
+                                })()}
                                 {(() => {
                                   const hasAffected = hasEntryAffectedParties(entry, {
                                     installments,
@@ -792,6 +817,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                                     partTimeJobs,
                                     asfJobs,
                                     irqJobs,
+                                    accounts,
                                   });
                                   return (
                                     <button
@@ -816,17 +842,39 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                                 })()}
                               </div>
                             ) : (
-                              <button
-                                className="ghost-button history-clear-btn"
-                                type="button"
-                                title="Reset actual amount to 0"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleClearActual(entry.id);
-                                }}
-                              >
-                                Clear
-                              </button>
+                              (() => {
+                                const hasClearAffected = hasEntryClearAffectedParties(entry, {
+                                  installments,
+                                  storageAssets,
+                                  partTimeJobs,
+                                  asfJobs,
+                                  irqJobs,
+                                  accounts,
+                                  entryActuals,
+                                  entryActualDates,
+                                });
+                                return (
+                                  <button
+                                    className="ghost-button history-clear-btn"
+                                    type="button"
+                                    style={{ position: 'relative' }}
+                                    title={hasClearAffected ? 'Clear recorded actual (has affected linked records)' : 'Reset actual amount to 0'}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleClearActual(entry);
+                                    }}
+                                  >
+                                    Clear
+                                    {hasClearAffected && (
+                                      <span
+                                        className="affected-parties-dot"
+                                        style={{ top: '4px', right: '4px' }}
+                                        title="Has affected linked records"
+                                      />
+                                    )}
+                                  </button>
+                                );
+                              })()
                             )}
                           </td>
                         </tr>
@@ -894,6 +942,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
           partTimeJobs,
           asfJobs,
           irqJobs,
+          accounts,
         });
 
         return (
@@ -916,6 +965,54 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
               setDeleteEntryTarget(null);
             }}
             onClose={() => setDeleteEntryTarget(null)}
+          />
+        );
+      })()}
+
+      {/* Affected Records Modal for Clearing Actual */}
+      {clearEntryTarget && (() => {
+        const affectedData = buildEntryClearOptions(clearEntryTarget, {
+          installments,
+          storageAssets,
+          partTimeJobs,
+          asfJobs,
+          irqJobs,
+          accounts,
+          entryActuals,
+          entryActualDates,
+        });
+
+        const targetAccount = (clearEntryTarget.account || '').trim().toLowerCase();
+        const currUpper = (clearEntryTarget.currency || 'EGP').toUpperCase();
+        const isForeign = currUpper !== 'EGP';
+        const matchingStorage = (storageAssets || []).find((a) => {
+          if (clearEntryTarget.storageAssetId && a.id === clearEntryTarget.storageAssetId) return true;
+          if (a.name.trim().toLowerCase() === targetAccount) return true;
+          if (isForeign && ((a.unit || '').toUpperCase() === currUpper || (a.currency || '').toUpperCase() === currUpper)) return true;
+          if (clearEntryTarget.draws && clearEntryTarget.draws.some((d) => (d as any).storageAssetId === a.id || (d.account && d.account.trim().toLowerCase() === a.name.trim().toLowerCase()))) return true;
+          return false;
+        });
+
+        return (
+          <AffectedRecordsModal
+            isOpen={Boolean(clearEntryTarget)}
+            mode="update"
+            title="Clear Recorded Actual"
+            subtitle="Select which affected records, job settlements, and storage balances to revert."
+            confirmLabel="Clear Actual"
+            confirmVariant="danger"
+            itemDescription={affectedData.itemDescription}
+            amountFormatted={affectedData.amountFormatted}
+            options={affectedData.options}
+            onConfirm={(selectedIds) => {
+              clearActual(clearEntryTarget.id, {
+                revertStorage: selectedIds.includes('storage'),
+                storageAssetId: matchingStorage?.id,
+                syncJob: selectedIds.includes('job'),
+              });
+              setClearEntryTarget(null);
+            }}
+            onClose={() => setClearEntryTarget(null)}
           />
         );
       })()}

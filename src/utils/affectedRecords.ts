@@ -1,4 +1,4 @@
-import type { CashEntry, Installment, StorageAsset, JobItem, JobPayment } from '../types';
+import type { CashEntry, Installment, StorageAsset, JobItem, JobPayment, AccountBalance } from '../types';
 import type { AffectedRecordOption } from '../components/Modals/AffectedRecordsModal';
 import { formatMoney, DateUtils } from '../engine/dateUtils';
 import { formatNativeCurrency } from '../engine/currency';
@@ -17,6 +17,7 @@ export function buildEntryDeleteOptions(
     partTimeJobs: JobItem[];
     asfJobs: JobItem[];
     irqJobs: JobItem[];
+    accounts?: Record<string, AccountBalance>;
   }
 ): EntryDeleteAffectedData {
   const isForeign = (entry.currency || 'EGP').toUpperCase() !== 'EGP';
@@ -179,12 +180,37 @@ export function buildEntryDeleteOptions(
   if (matchingStorage && (isForeign || targetAccount.includes('storage') || targetAccount.includes('vault') || entry.storageAssetId)) {
     options.push({
       id: 'storage',
-      label: `Storage Holding: ${matchingStorage.name}`,
-      sublabel: `Revert / adjust balance in ${matchingStorage.name}${matchingStorage.quantity !== undefined ? ` (Current: ${matchingStorage.quantity} ${matchingStorage.unit})` : ''}.`,
+      label: entry.type === 'expense'
+        ? `Storage Holding (Refund): ${matchingStorage.name}`
+        : `Storage Holding: ${matchingStorage.name}`,
+      sublabel: entry.type === 'expense'
+        ? `Refund and add back ${amountFormatted} to ${matchingStorage.name}${matchingStorage.quantity !== undefined ? ` (Current: ${matchingStorage.quantity} ${matchingStorage.unit})` : ''}.`
+        : `Revert / adjust balance in ${matchingStorage.name}${matchingStorage.quantity !== undefined ? ` (Current: ${matchingStorage.quantity} ${matchingStorage.unit})` : ''}.`,
       icon: '🏦',
-      badge: 'Storage',
+      badge: entry.type === 'expense' ? 'Storage Refund' : 'Storage',
       defaultChecked: false,
     });
+  } else if (!isForeign && context.accounts) {
+    const matchingAccountKey = Object.keys(context.accounts).find(
+      (k) => k.toLowerCase() === targetAccount || (context.accounts![k]?.name || '').toLowerCase().trim() === targetAccount
+    );
+    const matchingAccount = matchingAccountKey ? context.accounts[matchingAccountKey] : undefined;
+
+    if (matchingAccount && matchingAccountKey) {
+      const accDisplayName = matchingAccount.name || matchingAccountKey.toUpperCase();
+      options.push({
+        id: 'storage',
+        label: entry.type === 'expense'
+          ? `Bank Account Refund: ${accDisplayName}`
+          : `Bank Account: ${accDisplayName}`,
+        sublabel: entry.type === 'expense'
+          ? `Refund and add back ${amountFormatted} to ${accDisplayName} balance (Current: ${formatMoney(matchingAccount.balance || 0)}).`
+          : `Deduct deposited ${amountFormatted} from ${accDisplayName} balance (Current: ${formatMoney(matchingAccount.balance || 0)}).`,
+        icon: '🏦',
+        badge: entry.type === 'expense' ? 'Bank Refund' : 'Bank Balance',
+        defaultChecked: false,
+      });
+    }
   }
 
   return {
@@ -304,6 +330,7 @@ export function hasEntryAffectedParties(
     partTimeJobs: JobItem[];
     asfJobs: JobItem[];
     irqJobs: JobItem[];
+    accounts?: Record<string, AccountBalance>;
   }
 ): boolean {
   if (!entry) return false;
@@ -356,4 +383,247 @@ export function hasJobPaymentAffectedParties(
     if (matching) return true;
   }
   return false;
+}
+
+export interface EntryClearAffectedData {
+  itemDescription: string;
+  amountFormatted: string;
+  options: AffectedRecordOption[];
+}
+
+export function buildEntryClearOptions(
+  entry: CashEntry,
+  context: {
+    installments?: Installment[];
+    storageAssets?: StorageAsset[];
+    partTimeJobs?: JobItem[];
+    asfJobs?: JobItem[];
+    irqJobs?: JobItem[];
+    accounts?: Record<string, AccountBalance>;
+    entryActuals?: Record<string, number>;
+    entryActualDates?: Record<string, string>;
+  }
+): EntryClearAffectedData {
+  const isForeign = (entry.currency || 'EGP').toUpperCase() !== 'EGP';
+  
+  const rawActual =
+    context.entryActuals?.[entry.id] ??
+    (entry.actualAmount !== undefined && entry.actualAmount !== null
+      ? entry.actualAmount
+      : entry.amount);
+
+  const nativeQty = isForeign
+    ? entry.originalAmount !== undefined && entry.originalAmount !== null
+      ? entry.originalAmount
+      : entry.fxRateAtEntry
+      ? Math.round((rawActual / entry.fxRateAtEntry) * 100) / 100
+      : rawActual
+    : rawActual;
+
+  const amountFormatted = isForeign
+    ? `${formatNativeCurrency(nativeQty, entry.currency!)} (≈ ${formatMoney(rawActual)})`
+    : formatMoney(rawActual);
+
+  const normCategory = (entry.category || '').toLowerCase().trim();
+  const normSubcategory = (entry.subcategory || '').toLowerCase().trim();
+  const normNote = (entry.note || '').toLowerCase().trim();
+  const normSource = (entry.source || '').toLowerCase().trim();
+
+  const linkedInstallment = (context.installments || []).find((i) => {
+    const normName = (i.name || '').toLowerCase().trim();
+    return (
+      entry.id.includes(i.id) ||
+      (entry.loanId && (i.id === entry.loanId || (i as any).loanId === entry.loanId)) ||
+      (normName &&
+        (normCategory === normName ||
+          normSubcategory === normName ||
+          normNote.includes(normName) ||
+          normSource.includes(normName)))
+    );
+  });
+
+  const isInstallmentOccurrence = Boolean(
+    entry.source === 'installment' ||
+      entry.id.startsWith('installment-') ||
+      (linkedInstallment && !entry.loanId && entry.type === 'expense') ||
+      (entry.tag && entry.tag.toLowerCase() === 'installment')
+  );
+
+  const actDate =
+    context.entryActualDates?.[entry.id] ||
+    entry.actualDate ||
+    entry.date;
+
+  const itemDescription = isInstallmentOccurrence
+    ? `Installment: "${entry.category}" on ${DateUtils.formatDisplayDate(actDate)}`
+    : `${entry.type === 'income' ? 'Income' : 'Expense'}: "${entry.category}" on ${DateUtils.formatDisplayDate(actDate)}`;
+
+  const allJobs = [
+    ...(context.partTimeJobs || []),
+    ...(context.asfJobs || []),
+    ...(context.irqJobs || []),
+  ];
+
+  const linkedJob = allJobs.find((j) => {
+    if (entry.jobId && j.id === entry.jobId) return true;
+    if (j.forecastEntryId === entry.id) return true;
+    if (
+      j.payments?.some(
+        (p) => p.entryId === entry.id || (entry.draws && entry.draws.some((d) => d.id === p.id))
+      )
+    )
+      return true;
+    const titleLower = (j.title || '').toLowerCase().trim();
+    const clientLower = (j.client || '').toLowerCase().trim();
+    if (
+      titleLower &&
+      (normCategory === titleLower ||
+        normSubcategory === titleLower ||
+        normSource.includes(titleLower) ||
+        normNote.includes(titleLower))
+    )
+      return true;
+    if (
+      clientLower &&
+      (normCategory === clientLower ||
+        normSubcategory === clientLower ||
+        normSource.includes(clientLower) ||
+        normNote.includes(clientLower))
+    )
+      return true;
+    return false;
+  });
+
+  const options: AffectedRecordOption[] = [
+    {
+      id: 'revert_actual',
+      label: 'Revert Actual to Planned Forecast',
+      sublabel: isInstallmentOccurrence
+        ? `Reset recorded payment (${amountFormatted}) and restore planned installment forecast (${formatMoney(entry.amount)}).`
+        : `Reset recorded actual (${amountFormatted}) to 0 and restore planned forecast (${formatMoney(entry.amount)}).`,
+      icon: '🔄',
+      badge: 'Actual Status',
+      required: true,
+      defaultChecked: true,
+    },
+  ];
+
+  if (linkedJob) {
+    options.push({
+      id: 'job',
+      label: `Linked Job: ${linkedJob.title || linkedJob.client}`,
+      sublabel: `Revert settled payment on "${linkedJob.title || linkedJob.client}" and restore outstanding invoice balance.`,
+      icon: '💼',
+      badge: 'Linked Job',
+      defaultChecked: true,
+    });
+  }
+
+  const targetAccount = (entry.account || '').trim().toLowerCase();
+  const currUpper = (entry.currency || 'EGP').toUpperCase();
+  const matchingStorage = (context.storageAssets || []).find((a) => {
+    if (entry.storageAssetId && a.id === entry.storageAssetId) return true;
+    if (a.name.trim().toLowerCase() === targetAccount) return true;
+    if (
+      isForeign &&
+      ((a.unit || '').toUpperCase() === currUpper || (a.currency || '').toUpperCase() === currUpper)
+    )
+      return true;
+    if (
+      entry.draws &&
+      entry.draws.some(
+        (d) =>
+          (d as any).storageAssetId === a.id ||
+          (d.account && d.account.trim().toLowerCase() === a.name.trim().toLowerCase())
+      )
+    )
+      return true;
+    return false;
+  });
+
+  if (
+    matchingStorage &&
+    (isForeign ||
+      targetAccount.includes('storage') ||
+      targetAccount.includes('vault') ||
+      entry.storageAssetId ||
+      linkedJob)
+  ) {
+    options.push({
+      id: 'storage',
+      label: entry.type === 'expense'
+        ? `Storage Holding (Refund): ${matchingStorage.name}`
+        : `Storage Holding: ${matchingStorage.name}`,
+      sublabel: entry.type === 'expense'
+        ? `Refund and add back ${amountFormatted} to ${matchingStorage.name}${
+            matchingStorage.quantity !== undefined
+              ? ` (Current: ${matchingStorage.quantity} ${matchingStorage.unit})`
+              : ''
+          }.`
+        : `Revert / adjust balance in ${matchingStorage.name}${
+            matchingStorage.quantity !== undefined
+              ? ` (Current: ${matchingStorage.quantity} ${matchingStorage.unit})`
+              : ''
+          }.`,
+      icon: '🏦',
+      badge: entry.type === 'expense' ? 'Storage Refund' : 'Storage',
+      defaultChecked: true,
+    });
+  } else if (!isForeign && context.accounts) {
+    const matchingAccountKey = Object.keys(context.accounts).find(
+      (k) => k.toLowerCase() === targetAccount || (context.accounts![k]?.name || '').toLowerCase().trim() === targetAccount
+    );
+    const matchingAccount = matchingAccountKey ? context.accounts[matchingAccountKey] : undefined;
+
+    if (matchingAccount && matchingAccountKey) {
+      const accDisplayName = matchingAccount.name || matchingAccountKey.toUpperCase();
+      options.push({
+        id: 'storage',
+        label: entry.type === 'expense'
+          ? `Bank Account Refund: ${accDisplayName}`
+          : `Bank Account: ${accDisplayName}`,
+        sublabel: entry.type === 'expense'
+          ? `Refund and add back ${amountFormatted} to ${accDisplayName} balance (Current: ${formatMoney(matchingAccount.balance || 0)}).`
+          : `Deduct deposited ${amountFormatted} from ${accDisplayName} balance (Current: ${formatMoney(matchingAccount.balance || 0)}).`,
+        icon: '🏦',
+        badge: entry.type === 'expense' ? 'Bank Refund' : 'Bank Balance',
+        defaultChecked: true,
+      });
+    }
+  }
+
+  if (entry.draws && entry.draws.length > 0) {
+    options.push({
+      id: 'draws',
+      label: `Recorded Tranches (${entry.draws.length})`,
+      sublabel: `Clear all ${entry.draws.length} recorded draw installments and actual payouts.`,
+      icon: '📑',
+      badge: 'Draws',
+      defaultChecked: true,
+    });
+  }
+
+  return {
+    itemDescription,
+    amountFormatted,
+    options,
+  };
+}
+
+export function hasEntryClearAffectedParties(
+  entry: CashEntry,
+  context: {
+    installments?: Installment[];
+    storageAssets?: StorageAsset[];
+    partTimeJobs?: JobItem[];
+    asfJobs?: JobItem[];
+    irqJobs?: JobItem[];
+    accounts?: Record<string, AccountBalance>;
+    entryActuals?: Record<string, number>;
+    entryActualDates?: Record<string, string>;
+  }
+): boolean {
+  if (!entry) return false;
+  const res = buildEntryClearOptions(entry, context);
+  return res.options.length > 1;
 }

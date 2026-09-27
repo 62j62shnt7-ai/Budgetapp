@@ -5,8 +5,8 @@
   "start_url": "/Budgetapp/",
   "scope": "/Budgetapp/",
   "display": "standalone",
-  "background_color": "#0f1614",
-  "theme_color": "#18211f",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "orientation": "any",
   "icons": [
     {

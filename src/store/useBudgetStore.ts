@@ -327,7 +327,7 @@ function revertStorageOrAccountBalance(
     entryType?: 'income' | 'expense';
   }
 ) {
-  const { assetId, account, currency = 'USD', amount, isEgpAmount = false, fxRate, entryType = 'income' } = params;
+  const { assetId, account, currency = 'EGP', amount, isEgpAmount = false, fxRate, entryType = 'income' } = params;
   if (!amount || amount <= 0) return;
 
   const storageAssets = get().storageAssets;
@@ -390,7 +390,7 @@ function revertStorageOrAccountBalance(
 }
 
 export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
-  theme: loadStorage<'dark' | 'light'>(STORAGE_KEYS.theme, 'light'),
+  theme: loadStorage<'dark' | 'light'>(STORAGE_KEYS.theme, 'dark'),
   activeTab: 'dashboard',
   sidebarCollapsed: loadStorage<boolean>(STORAGE_KEYS.sidebarCollapsed, false),
 
@@ -910,6 +910,9 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
   },
 
   clearActual: (entryId, options) => {
+    const target = get().entries.find((e) => e.id === entryId) || get().archivedEntries.find((e) => e.id === entryId);
+    const prevActualAmt = Number(get().entryActuals[entryId] ?? target?.actualAmount ?? target?.amount ?? 0);
+
     const actuals = { ...get().entryActuals };
     delete actuals[entryId];
     const dates = { ...get().entryActualDates };
@@ -958,10 +961,10 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       entryActualDates: dates,
     });
 
+    let targetJob = undefined;
+    let jobType: 'partTime' | 'asf' | 'irq' = 'partTime';
     if (options?.syncJob !== false) {
-      // If this entry was linked to a job forecast payment, revert job status & storage deposit
-      let jobType: 'partTime' | 'asf' | 'irq' = 'partTime';
-      let targetJob = get().partTimeJobs.find((j) => j.forecastEntryId === entryId || j.payments?.some((p) => p.entryId === entryId));
+      targetJob = get().partTimeJobs.find((j) => j.forecastEntryId === entryId || j.payments?.some((p) => p.entryId === entryId));
       if (!targetJob) {
         targetJob = get().asfJobs.find((j) => j.forecastEntryId === entryId || j.payments?.some((p) => p.entryId === entryId));
         if (targetJob) jobType = 'asf';
@@ -972,7 +975,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       }
 
       if (targetJob) {
-        const entry = get().entries.find((e) => e.id === entryId) || get().archivedEntries.find((e) => e.id === entryId);
+        const entry = target;
         const linkedPayment = targetJob.payments?.find((p) => p.entryId === entryId);
 
         // Revert deposited funds from Storage or Bank balance (if it was deposited and not unticked)
@@ -1052,6 +1055,19 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
 
         get().saveJob(jobType, updatedJob);
       }
+    }
+
+    if (!targetJob && options?.revertStorage && target) {
+      const isForeign = (target.currency || 'EGP').toUpperCase() !== 'EGP';
+      revertStorageOrAccountBalance(get, {
+        assetId: options.storageAssetId,
+        account: target.account,
+        currency: target.currency || 'EGP',
+        amount: prevActualAmt,
+        isEgpAmount: !isForeign || !target.originalAmount,
+        fxRate: target.fxRateAtEntry,
+        entryType: target.type,
+      });
     }
 
     scheduleAutoGistSync(get);

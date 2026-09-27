@@ -16,9 +16,11 @@ if (typeof globalThis.localStorage === 'undefined') {
 import { useBudgetStore } from '../src/store/useBudgetStore.ts';
 import {
   buildEntryDeleteOptions,
+  buildEntryClearOptions,
   buildInstallmentDeleteOptions,
   buildStorageDeleteOptions,
   hasEntryAffectedParties,
+  hasEntryClearAffectedParties,
   hasInstallmentAffectedParties,
   hasStorageAffectedParties,
   hasJobAffectedParties,
@@ -715,6 +717,125 @@ assert.strictEqual(syncResult, true, 'syncFromGist handles local mutation gracef
 
 globalThis.fetch = originalFetch;
 console.log('  ✓ Older cloud backup does not trigger false conflict warning on local mutations\n');
+
+// -------------------------------------------------------------
+// SCENARIO 17: History Clear Actual Affected Records Dialogue
+// -------------------------------------------------------------
+console.log('▶ Test Scenario 17: History Clear Actual Options & Affected Indicator');
+
+const testEntryWithJobAndStorage = {
+  id: 'e-clear-test',
+  date: '2026-10-15',
+  category: 'Freelance Design',
+  amount: 50000,
+  type: 'income',
+  currency: 'USD',
+  originalAmount: 1000,
+  account: 'hsbc_usd',
+  draws: [
+    { id: 'd-1', date: '2026-10-15', amount: 50000, account: 'hsbc_usd' },
+  ],
+};
+
+const clearContext = {
+  installments: [],
+  storageAssets: [{ id: 's-usd', name: 'HSBC USD Holding', unit: 'USD', quantity: 5000 }],
+  partTimeJobs: [{
+    id: 'j-clear-1',
+    title: 'Design Project',
+    client: 'Acme Corp',
+    currency: 'USD',
+    payments: [{ id: 'p-clear-1', entryId: 'e-clear-test', amount: 1000 }],
+  }],
+  asfJobs: [],
+  irqJobs: [],
+  entryActuals: { 'e-clear-test': 50000 },
+};
+
+const clearOptionsData = buildEntryClearOptions(testEntryWithJobAndStorage, clearContext);
+assert.strictEqual(clearOptionsData.options.length, 4, 'Should have 4 options (Revert Actual, Linked Job, Storage Holding, Recorded Tranches)');
+assert.strictEqual(clearOptionsData.options[0].id, 'revert_actual', 'Primary option is revert_actual');
+assert.strictEqual(clearOptionsData.options[0].required, true, 'Primary option is required');
+assert.strictEqual(clearOptionsData.options.some((o) => o.id === 'job'), true, 'Contains linked job option');
+assert.strictEqual(clearOptionsData.options.some((o) => o.id === 'storage'), true, 'Contains storage option');
+assert.strictEqual(clearOptionsData.options.some((o) => o.id === 'draws'), true, 'Contains draws option');
+
+const hasAffected = hasEntryClearAffectedParties(testEntryWithJobAndStorage, clearContext);
+assert.strictEqual(hasAffected, true, 'hasEntryClearAffectedParties returns true when multi-party linkages exist');
+
+console.log('  ✓ buildEntryClearOptions builds complete multi-entity options for clear actual');
+console.log('  ✓ hasEntryClearAffectedParties correctly identifies linked job, storage, and tranche records\n');
+
+// -------------------------------------------------------------
+// SCENARIO 18: Expense Bank Account Refund on History Clear / Delete
+// -------------------------------------------------------------
+console.log('▶ Test Scenario 18: Expense Bank Account Refund on Clear & Delete');
+
+const testExpenseEntry = {
+  id: 'e-expense-bank-test',
+  date: '2026-10-20',
+  category: 'Home Repairs',
+  amount: 3500,
+  type: 'expense',
+  account: 'cib',
+};
+
+const expenseContext = {
+  installments: [],
+  storageAssets: [],
+  partTimeJobs: [],
+  asfJobs: [],
+  irqJobs: [],
+  accounts: {
+    cib: { name: 'CIB Current', balance: 50000, maturityDay: 1 },
+    hsbc: { name: 'HSBC Savings', balance: 25000, maturityDay: 1 },
+  },
+  entryActuals: { 'e-expense-bank-test': 3500 },
+};
+
+// Test delete options builder includes bank refund
+const expDeleteData = buildEntryDeleteOptions(testExpenseEntry, expenseContext);
+const bankDeleteOpt = expDeleteData.options.find((o) => o.id === 'storage');
+assert.ok(bankDeleteOpt, 'Delete options include bank refund option');
+assert.strictEqual(bankDeleteOpt.label, 'Bank Account Refund: CIB Current', 'Label mentions bank refund');
+assert.strictEqual(bankDeleteOpt.badge, 'Bank Refund', 'Badge is Bank Refund');
+assert.strictEqual(bankDeleteOpt.defaultChecked, false, 'Selective tickmark defaults to unchecked on delete');
+
+// Test clear options builder includes bank refund
+const expClearData = buildEntryClearOptions(testExpenseEntry, expenseContext);
+const bankClearOpt = expClearData.options.find((o) => o.id === 'storage');
+assert.ok(bankClearOpt, 'Clear options include bank refund option');
+assert.strictEqual(bankClearOpt.label, 'Bank Account Refund: CIB Current', 'Label mentions bank refund');
+assert.strictEqual(bankClearOpt.badge, 'Bank Refund', 'Badge is Bank Refund');
+
+// Test store execution: clearing actual expense with revertStorage adds back amount to bank
+useBudgetStore.setState({
+  accounts: {
+    cib: { name: 'CIB Current', balance: 50000, maturityDay: 1 },
+    hsbc: { name: 'HSBC Savings', balance: 25000, maturityDay: 1 },
+  },
+  entries: [testExpenseEntry],
+  entryActuals: { 'e-expense-bank-test': 3500 },
+  entryActualDates: { 'e-expense-bank-test': '2026-10-20' },
+});
+
+useBudgetStore.getState().clearActual('e-expense-bank-test', { revertStorage: true });
+assert.strictEqual(useBudgetStore.getState().accounts['cib'].balance, 53500, 'Bank balance refunded +3500 EGP upon clearActual with revertStorage: true');
+
+// Test store execution: deleting expense with revertStorage adds back amount to bank
+useBudgetStore.setState({
+  accounts: {
+    cib: { name: 'CIB Current', balance: 50000, maturityDay: 1 },
+  },
+  entries: [testExpenseEntry],
+  entryActuals: { 'e-expense-bank-test': 3500 },
+});
+
+useBudgetStore.getState().deleteEntry('e-expense-bank-test', 'single', { revertStorage: true });
+assert.strictEqual(useBudgetStore.getState().accounts['cib'].balance, 53500, 'Bank balance refunded +3500 EGP upon deleteEntry with revertStorage: true');
+
+console.log('  ✓ buildEntryDeleteOptions & buildEntryClearOptions generate selective Bank Account Refund option');
+console.log('  ✓ clearActual and deleteEntry with revertStorage: true correctly add back amount to bank balance\n');
 
 console.log('===============================================================');
 console.log('🌟 100% OF ALL AFFECTED RECORDS MODAL TESTS PASSED! 🌟');

@@ -840,6 +840,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                               partTimeJobs,
                               asfJobs,
                               irqJobs,
+                              accounts,
                             });
                             return (
                               <button
@@ -900,6 +901,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
           partTimeJobs,
           asfJobs,
           irqJobs,
+          accounts,
         });
 
         return (
