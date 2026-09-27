@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Budget Control</title>
+    <script>
+      // GitHub Pages SPA Redirect:
+      // If a route/file isn't found (e.g., when launched from iOS home screen or subpath),
+      // determine the repository base and redirect smoothly to index.html.
+      (function () {
+        var path = window.location.pathname;
+        var segments = path.split('/').filter(Boolean);
+        // If hosted on https://<user>.github.io/<repo>/, segments[0] is the repo name
+        var repoBase = segments.length > 0 ? '/' + segments[0] + '/' : '/';
+        var search = window.location.search || '';
+        var hash = window.location.hash || '';
+        window.location.replace(repoBase + search + hash);
+      })();
+    </script>
+  </head>
+  <body>
+    <p style="font-family: sans-serif; text-align: center; margin-top: 20vh; color: #5e6d67;">
+      Loading Budget Control...
+    </p>
+  </body>
+</html>
