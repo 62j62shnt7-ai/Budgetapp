@@ -9,6 +9,7 @@ import type {
 } from '../types';
 import { DateUtils } from './dateUtils';
 import { inferTag } from '../store/useBudgetStore';
+import { inferAssetLocation } from './currency';
 
 export interface MigratedBudgetDataset {
   schemaVersion: string;
@@ -216,19 +217,25 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
   // 7. Storage Assets
   const rawStorage = data.storageAssets || data.storage || parsed.storageAssets || parsed.storage;
   const storageAssets: StorageAsset[] = Array.isArray(rawStorage)
-    ? rawStorage.map((a: any, idx: number) => ({
-        id: a.id || `asset-${Date.now()}-${idx}`,
-        name: a.name || 'Asset',
-        category: a.category || a.type || 'gold',
-        quantity: Number(a.quantity) || Number(a.amount) || 1,
-        unit: a.unit || (a.category === 'gold' || a.type === 'gold' ? 'g' : 'units'),
-        buyPrice: Number(a.buyPrice) || Number(a.buyRate) || Number(a.value) || 0,
-        currentPrice: a.currentPrice !== undefined ? Number(a.currentPrice) : undefined,
-        currency: a.currency || 'EGP',
-        rate: Number(a.rate) || undefined,
-        rateSource: a.rateSource || a.karat,
-        notes: a.notes,
-      }))
+    ? rawStorage.map((a: any, idx: number) => {
+        const loc = inferAssetLocation(a);
+        return {
+          id: a.id || `asset-${Date.now()}-${idx}`,
+          name: a.name || 'Asset',
+          category: a.category || a.type || 'gold',
+          quantity: Number(a.quantity) || Number(a.amount) || 1,
+          unit: a.unit || (a.category === 'gold' || a.type === 'gold' ? 'g' : 'units'),
+          buyPrice: Number(a.buyPrice) || Number(a.buyRate) || Number(a.value) || 0,
+          currentPrice: a.currentPrice !== undefined ? Number(a.currentPrice) : undefined,
+          currency: a.currency || 'EGP',
+          rate: Number(a.rate) || undefined,
+          rateSource: a.rateSource || a.karat,
+          locationType: a.locationType || loc.locationType,
+          location: a.location || loc.location,
+          locationLabel: a.locationLabel || loc.locationLabel,
+          notes: a.notes,
+        };
+      })
     : [];
 
   // 8. Jobs

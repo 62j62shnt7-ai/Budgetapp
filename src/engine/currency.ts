@@ -111,12 +111,30 @@ export function inferAssetLocation(asset: Partial<StorageAsset>): {
   location: string;
   locationLabel: string;
 } {
-  if (asset.locationType && asset.location) {
+  if (asset.locationType) {
+    const locType = asset.locationType;
+    const loc = asset.location || (locType === 'bank' ? 'hsbc' : locType === 'cash' ? 'cash' : locType === 'vault' ? 'vault' : 'other');
+    const locLabel = asset.locationLabel || (
+      locType === 'bank'
+        ? (loc.toLowerCase().includes('cib') ? 'CIB Foreign Account' : loc.toLowerCase().includes('hsbc') ? 'HSBC Foreign Account' : `${loc.toUpperCase()} Foreign Account`)
+        : locType === 'cash'
+        ? 'Physical Cash'
+        : locType === 'vault'
+        ? 'Physical Vault'
+        : 'Storage'
+    );
     return {
-      locationType: asset.locationType,
-      location: asset.location,
-      locationLabel: asset.locationLabel || (asset.locationType === 'bank' ? 'HSBC Account' : asset.locationType === 'cash' ? 'Cash in Hand' : 'Vault'),
+      locationType: locType,
+      location: loc,
+      locationLabel: locLabel,
     };
+  }
+
+  if (asset.location) {
+    const loc = asset.location.toLowerCase();
+    const locType: 'bank' | 'cash' | 'vault' | 'other' =
+      loc === 'cash' ? 'cash' : loc === 'vault' ? 'vault' : (loc === 'hsbc' || loc === 'cib') ? 'bank' : 'other';
+    return inferAssetLocation({ ...asset, locationType: locType, location: loc });
   }
 
   const name = (asset.name || '').toLowerCase();

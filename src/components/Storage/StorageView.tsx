@@ -69,8 +69,8 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenStorageModal }) 
     return loc.locationType === activeFilter;
   });
 
-  const handleFieldChange = (index: number, field: string, value: any) => {
-    const asset = storageAssets[index];
+  const handleFieldChange = (assetId: string, field: string, value: any) => {
+    const asset = storageAssets.find((a) => a.id === assetId);
     if (!asset) return;
     if (field === 'rate') {
       updateStorageAsset(asset.id, {
@@ -87,8 +87,8 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenStorageModal }) 
     }
   };
 
-  const handleRateSourceChange = (index: number, value: string) => {
-    const asset = storageAssets[index];
+  const handleRateSourceChange = (assetId: string, value: string) => {
+    const asset = storageAssets.find((a) => a.id === assetId);
     if (!asset) return;
 
     let newRate = Number(asset.rate) || Number(asset.buyPrice) || 0;
@@ -105,12 +105,12 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenStorageModal }) 
     });
   };
 
-  const handleLocationChange = (index: number, val: string) => {
-    const asset = storageAssets[index];
+  const handleLocationChange = (assetId: string, val: string) => {
+    const asset = storageAssets.find((a) => a.id === assetId);
     if (!asset) return;
     const [locType, loc] = val.split(':') as [StorageLocationType, string];
     let locLabel = 'Storage';
-    if (locType === 'bank') locLabel = loc === 'hsbc' ? 'HSBC Account' : `${loc.toUpperCase()} Account`;
+    if (locType === 'bank') locLabel = loc === 'hsbc' ? 'HSBC Account' : loc === 'cib' ? 'CIB Account' : `${loc.toUpperCase()} Account`;
     else if (locType === 'cash') locLabel = 'Physical Cash';
     else if (locType === 'vault') locLabel = 'Physical Vault';
 
@@ -346,7 +346,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenStorageModal }) 
                           min="0"
                           step="0.01"
                           value={item.quantity}
-                          onChange={(e) => handleFieldChange(globalIndex, 'quantity', Number(e.target.value) || 0)}
+                          onChange={(e) => handleFieldChange(item.id, 'quantity', Number(e.target.value) || 0)}
                         />
                       </label>
                       <label className="storage-field-item">
@@ -357,7 +357,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenStorageModal }) 
                           min="0"
                           step="0.01"
                           value={currentRate}
-                          onChange={(e) => handleFieldChange(globalIndex, 'rate', Number(e.target.value) || 0)}
+                          onChange={(e) => handleFieldChange(item.id, 'rate', Number(e.target.value) || 0)}
                         />
                       </label>
                     </div>
@@ -368,7 +368,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenStorageModal }) 
                         <select
                           className="form-select"
                           value={currentSource}
-                          onChange={(e) => handleRateSourceChange(globalIndex, e.target.value)}
+                          onChange={(e) => handleRateSourceChange(item.id, e.target.value)}
                         >
                           <option value="manual">Manual entry</option>
                           <optgroup label="Currencies">
@@ -393,7 +393,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenStorageModal }) 
                         <select
                           className="form-select"
                           value={`${loc.locationType}:${loc.location}`}
-                          onChange={(e) => handleLocationChange(globalIndex, e.target.value)}
+                          onChange={(e) => handleLocationChange(item.id, e.target.value)}
                         >
                           <option value="bank:hsbc">🏦 HSBC Bank</option>
                           <option value="bank:cib">🏦 CIB Bank</option>

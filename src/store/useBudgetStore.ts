@@ -1370,7 +1370,17 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
   },
 
   updateStorageAsset: (id, updates) => {
-    const updated = get().storageAssets.map((a) => (a.id === id ? { ...a, ...updates } : a));
+    const updated = get().storageAssets.map((a) => {
+      if (a.id !== id) return a;
+      const merged = { ...a, ...updates };
+      if (updates.locationType || updates.location) {
+        const loc = inferAssetLocation(merged);
+        merged.locationType = updates.locationType || merged.locationType || loc.locationType;
+        merged.location = updates.location || merged.location || loc.location;
+        merged.locationLabel = updates.locationLabel || loc.locationLabel;
+      }
+      return merged;
+    });
     saveStorage(STORAGE_KEYS.storage, updated);
     set({ storageAssets: updated });
     scheduleAutoGistSync(get);

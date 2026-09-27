@@ -66,7 +66,7 @@ export const StorageModal: React.FC<StorageModalProps> = ({ isOpen, onClose }) =
     if (!name.trim() || numericQty <= 0 || numericRate <= 0) return;
 
     let locLabel = 'Storage';
-    if (locationType === 'bank') locLabel = location === 'hsbc' ? 'HSBC Account' : `${location.toUpperCase()} Account`;
+    if (locationType === 'bank') locLabel = location === 'hsbc' ? 'HSBC Account' : location === 'cib' ? 'CIB Account' : `${location.toUpperCase()} Account`;
     else if (locationType === 'cash') locLabel = 'Physical Cash';
     else if (locationType === 'vault') locLabel = 'Physical Vault';
 
@@ -88,6 +88,8 @@ export const StorageModal: React.FC<StorageModalProps> = ({ isOpen, onClose }) =
     setQuantity('1');
     setUnit('USD');
     setRateSource('currency:USD');
+    setLocationType('bank');
+    setLocation('hsbc');
     onClose();
   };
 
@@ -120,6 +122,20 @@ export const StorageModal: React.FC<StorageModalProps> = ({ isOpen, onClose }) =
               onClick={() => applyPreset('HSBC EUR Account', 'EUR', 'currency:EUR', 'bank', 'hsbc')}
             >
               🏦 HSBC EUR
+            </button>
+            <button
+              type="button"
+              className="chip-button"
+              onClick={() => applyPreset('CIB USD Account', 'USD', 'currency:USD', 'bank', 'cib')}
+            >
+              🏦 CIB USD
+            </button>
+            <button
+              type="button"
+              className="chip-button"
+              onClick={() => applyPreset('CIB EUR Account', 'EUR', 'currency:EUR', 'bank', 'cib')}
+            >
+              🏦 CIB EUR
             </button>
             <button
               type="button"

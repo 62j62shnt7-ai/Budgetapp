@@ -858,6 +858,49 @@ assert.strictEqual(useBudgetStore.getState().entries[0].id, 'e-other', 'Grocerie
 
 console.log('✓ Global Affected Records builders & selective cascading deletion verified');
 
+// Test Storage Asset location persistence (Where Held does NOT revert to HSBC)
+useBudgetStore.getState().addStorageAsset({
+  name: 'Foreign Savings',
+  category: 'Currency',
+  quantity: 2000,
+  unit: 'USD',
+  buyPrice: 48.5,
+  currency: 'EGP',
+  rateSource: 'currency:USD',
+  rate: 48.5,
+  locationType: 'bank',
+  location: 'cib',
+  locationLabel: 'CIB Account',
+});
+
+const cibAsset = useBudgetStore.getState().storageAssets.find((a) => a.name === 'Foreign Savings');
+assert.ok(cibAsset, 'Foreign Savings asset created');
+assert.strictEqual(cibAsset.locationType, 'bank');
+assert.strictEqual(cibAsset.location, 'cib');
+
+// Update location from CIB to cash
+useBudgetStore.getState().updateStorageAsset(cibAsset.id, {
+  locationType: 'cash',
+  location: 'cash',
+  locationLabel: 'Physical Cash',
+});
+
+const updatedCib = useBudgetStore.getState().storageAssets.find((a) => a.id === cibAsset.id);
+assert.strictEqual(updatedCib.locationType, 'cash', 'LocationType updated to cash');
+assert.strictEqual(updatedCib.location, 'cash', 'Location updated to cash');
+
+// Test that exporting JSON and importing it preserves the updated location (no revert to HSBC)
+const exportedJson = useBudgetStore.getState().exportJSON();
+const storageImportSuccess = useBudgetStore.getState().importJSON(exportedJson);
+assert.strictEqual(storageImportSuccess, true, 'Import succeeded');
+
+const postImportAsset = useBudgetStore.getState().storageAssets.find((a) => a.id === cibAsset.id);
+assert.ok(postImportAsset, 'Asset exists after import');
+assert.strictEqual(postImportAsset.locationType, 'cash', 'LocationType still cash after import');
+assert.strictEqual(postImportAsset.location, 'cash', 'Location still cash after import');
+
+console.log('✓ Storage Asset location persistence across mutations, Gist export, and migration verified');
+
 console.log('\n=================================================================');
 console.log('🌟 100% OF ENGINE, STORE, AND BUSINESS LOGIC TESTS PASSED! 🌟');
 console.log('=================================================================');
