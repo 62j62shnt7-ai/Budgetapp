@@ -454,6 +454,31 @@ assert.strictEqual(undoSuccess, true, 'Undo import should succeed');
 assert.strictEqual(useBudgetStore.getState().entries.length, preImportEntriesCount, 'State fully restored from pre-import backup');
 console.log('✓ Clean import replacement, orphan cleanup & undoImport verified');
 
+// F. Migration Pipeline & Conflict Resolution
+const legacyArray = [
+  { amount: '500', category: 'Old Legacy Rent', type: 'expense', account: 'cash' }
+];
+const importLegacy = useBudgetStore.getState().importJSON(legacyArray);
+assert.strictEqual(importLegacy, true, 'Legacy array migrated and imported');
+assert.strictEqual(useBudgetStore.getState().entries[0].category, 'Old Legacy Rent');
+assert.strictEqual(useBudgetStore.getState().entries[0].account, 'cib', 'Legacy cash mapped to valid account');
+assert.strictEqual(useBudgetStore.getState().entries[0].amount, 500, 'String amount converted to number');
+
+// Gist conflict resolution
+useBudgetStore.setState({
+  gistConflict: {
+    remoteTime: '2026-09-27T03:00:00.000Z',
+    remoteData: JSON.stringify({
+      version: '2.1',
+      entries: [{ id: 'cloud-entry-1', amount: 1234, category: 'Cloud Entry', type: 'expense', account: 'cib', date: '2026-10-01' }]
+    })
+  }
+});
+await useBudgetStore.getState().resolveGistConflict('remote');
+assert.strictEqual(useBudgetStore.getState().gistConflict, null, 'Gist conflict cleared');
+assert.strictEqual(useBudgetStore.getState().entries[0].category, 'Cloud Entry', 'Remote data restored on user resolution');
+console.log('✓ Migration pipeline and Gist conflict resolution verified');
+
 console.log('\n=================================================================');
 console.log('🌟 100% OF ENGINE, STORE, AND BUSINESS LOGIC TESTS PASSED! 🌟');
 console.log('=================================================================');

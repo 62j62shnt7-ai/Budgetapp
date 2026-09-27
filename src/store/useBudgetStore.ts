@@ -20,6 +20,7 @@ import {
 } from '../engine/creditCards';
 import { buildSalaryEntries } from '../engine/salaryAndInstallments';
 import { DateUtils } from '../engine/dateUtils';
+import { migrateBackupPayload } from '../engine/migration';
 
 let gistSyncTimer: ReturnType<typeof setTimeout> | null = null;
 let gistSyncInFlight = false;
@@ -129,7 +130,10 @@ export interface BudgetStoreState {
   gistId: string;
   gistAutoSync: boolean;
   gistSyncStatus: 'idle' | 'scheduled' | 'syncing' | 'synced' | 'error';
+  gistConflict: { remoteTime?: string; remoteData: string } | null;
   historyAdminUnlocked: boolean;
+
+  resolveGistConflict: (resolution: 'local' | 'remote') => Promise<void>;
 
   // Actions
   setTheme: (theme: 'dark' | 'light') => void;
@@ -312,6 +316,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     ? (localStorage.getItem(STORAGE_KEYS.gistAutoSync) === null ? true : localStorage.getItem(STORAGE_KEYS.gistAutoSync) === 'true')
     : true,
   gistSyncStatus: 'idle',
+  gistConflict: null,
   historyAdminUnlocked: typeof localStorage !== 'undefined'
     ? localStorage.getItem(STORAGE_KEYS.historyAdminUnlocked) === 'true'
     : false,
@@ -1047,15 +1052,56 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         }
       }
 
-      if (!content || !get().importJSON(content)) {
+      if (!content) {
         throw new Error('No valid budget JSON content could be restored from this Gist');
       }
-      set({ gistSyncStatus: 'synced' });
+
+      // Check for remote conflict if local data has also changed
+      let parsedRemote: any = null;
+      try {
+        parsedRemote = JSON.parse(content);
+      } catch {
+        // ignore
+      }
+
+      const remoteExportedAt = parsedRemote?.exportedAt || parsedRemote?.data?.exportedAt;
+      if (
+        remoteExportedAt &&
+        lastLocalMutationTimestamp > 0 &&
+        lastLocalMutationTimestamp > lastGistUploadTimestamp
+      ) {
+        set({
+          gistConflict: {
+            remoteTime: remoteExportedAt,
+            remoteData: content,
+          },
+          gistSyncStatus: 'idle',
+        });
+        return false;
+      }
+
+      if (!get().importJSON(content)) {
+        throw new Error('No valid budget JSON content could be restored from this Gist');
+      }
+      set({ gistSyncStatus: 'synced', gistConflict: null });
       return true;
     } catch (error) {
       console.error('Gist download failed:', error);
       set({ gistSyncStatus: 'error' });
       return false;
+    }
+  },
+
+  resolveGistConflict: async (resolution: 'local' | 'remote') => {
+    const conflict = get().gistConflict;
+    if (resolution === 'local') {
+      set({ gistConflict: null });
+      scheduleAutoGistSync(get, true);
+    } else if (resolution === 'remote' && conflict?.remoteData) {
+      get().importJSON(conflict.remoteData);
+      set({ gistConflict: null, gistSyncStatus: 'synced' });
+    } else {
+      set({ gistConflict: null });
     }
   },
 
@@ -1317,203 +1363,47 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       };
       saveStorage(STORAGE_KEYS.importUndoBackup, currentSnapshot);
 
-      // Handle raw array import
-      if (Array.isArray(parsed)) {
-        const normalized: CashEntry[] = parsed.map((e, idx) => ({
-          ...e,
-          id: e.id || `entry-import-${Date.now()}-${idx}`,
-          amount: Number(e.amount) || 0,
-          actualAmount: e.actualAmount !== undefined && e.actualAmount !== '' ? Number(e.actualAmount) : undefined,
-        }));
-        saveStorage(STORAGE_KEYS.entries, normalized);
-        set({ entries: normalized });
-        scheduleAutoGistSync(get);
-        return true;
-      }
+      // 2. Run versioned migration pipeline
+      const migrated = migrateBackupPayload(parsed);
 
-      // Standard budget export format (data payload or root)
-      const data = (parsed.data && typeof parsed.data === 'object' && !Array.isArray(parsed.data))
-        ? parsed.data
-        : parsed;
+      // 3. Commit all storage changes atomically
+      saveStorage(STORAGE_KEYS.entries, migrated.entries);
+      saveStorage(STORAGE_KEYS.archivedEntries, migrated.archivedEntries);
+      saveStorage(STORAGE_KEYS.accounts, migrated.accounts);
+      saveStorage(STORAGE_KEYS.salary, migrated.salaryPattern);
+      saveStorage(STORAGE_KEYS.creditDues, migrated.creditDues);
+      saveStorage(STORAGE_KEYS.creditDueMonths, migrated.creditDueMonths);
+      saveStorage(STORAGE_KEYS.creditSettlementOverrides, migrated.creditSettlementOverrides);
+      saveStorage(STORAGE_KEYS.salaryAnchor, migrated.salaryAnchorMonth);
+      saveStorage(STORAGE_KEYS.installments, migrated.installments);
+      saveStorage(STORAGE_KEYS.rates, migrated.rates);
+      saveStorage(STORAGE_KEYS.storage, migrated.storageAssets);
+      saveStorage(STORAGE_KEYS.asf, migrated.asfJobs);
+      saveStorage(STORAGE_KEYS.irq, migrated.irqJobs);
+      saveStorage(STORAGE_KEYS.partTimeJobs, migrated.partTimeJobs);
+      saveStorage(STORAGE_KEYS.entryActuals, migrated.entryActuals);
+      saveStorage(STORAGE_KEYS.entryActualDates, migrated.entryActualDates);
+      saveStorage(STORAGE_KEYS.deletedForecasts, migrated.deletedForecasts);
 
-      // 1. Cash entries: Full replacement
-      const rawEntries = data.cashEntries || data.entries || data.items || parsed.cashEntries || parsed.entries;
-      let newEntries: CashEntry[] = [];
-      if (Array.isArray(rawEntries)) {
-        newEntries = rawEntries.map((e: any, idx: number) => ({
-          ...e,
-          id: e.id || `entry-import-${Date.now()}-${idx}`,
-          amount: Number(e.amount) || 0,
-          actualAmount: e.actualAmount !== undefined && e.actualAmount !== '' ? Number(e.actualAmount) : undefined,
-        }));
-      }
-
-      // 2. Accounts
-      const rawAccounts = data.accountBalances || data.accounts || parsed.accountBalances || parsed.accounts;
-      let newAccounts: Record<string, AccountBalance> = defaultAccounts;
-      if (rawAccounts && typeof rawAccounts === 'object') {
-        const accMap: Record<string, AccountBalance> = {};
-        for (const [k, v] of Object.entries(rawAccounts)) {
-          if (v && typeof v === 'object' && 'balance' in (v as any)) {
-            accMap[k] = {
-              name: (v as any).name || k.toUpperCase(),
-              balance: Number((v as any).balance) || 0,
-              maturityDay: Number((v as any).maturityDay) || 1,
-            };
-          } else if (typeof v === 'number') {
-            accMap[k] = {
-              name: k.toUpperCase(),
-              balance: v,
-              maturityDay: k.toLowerCase().includes('hsbc') ? 30 : 15,
-            };
-          }
-        }
-        if (Object.keys(accMap).length > 0) {
-          newAccounts = withoutCashAccount(accMap);
-        }
-      }
-
-      // 3. Salary pattern
-      const rawSalary = data.salaryPattern || parsed.salaryPattern;
-      let newSalary: SalaryPayment[] = defaultSalaryPattern;
-      if (Array.isArray(rawSalary) && rawSalary.length > 0) {
-        newSalary = rawSalary.map((s: any) => ({
-          monthOffset: Number(s.monthOffset) || 0,
-          day: Number(s.day) || 15,
-          amount: Number(s.amount) || 0,
-        }));
-      }
-
-      const rawCreditDues = data.creditDues || parsed.creditDues;
-      const rawCreditDueMonths = data.creditDueMonths || parsed.creditDueMonths;
-      const rawSettlementOverrides = data.creditSettlementOverrides || parsed.creditSettlementOverrides;
-      const rawSalaryAnchor = data.salaryAnchorMonth || parsed.salaryAnchorMonth;
-      const newCreditDues = rawCreditDues && typeof rawCreditDues === 'object'
-        ? rawCreditDues as Record<string, Record<string, number>>
-        : {};
-      const newCreditDueMonths = rawCreditDueMonths && typeof rawCreditDueMonths === 'object'
-        ? rawCreditDueMonths as Record<string, string[]>
-        : {};
-      const newSettlementOverrides = rawSettlementOverrides && typeof rawSettlementOverrides === 'object'
-        ? rawSettlementOverrides as Record<string, { amount?: number; date?: string; note?: string }>
-        : {};
-      const newSalaryAnchor = typeof rawSalaryAnchor === 'string' ? rawSalaryAnchor : DateUtils.currentYearMonth();
-
-      // 4. Installments
-      const rawInstallments = data.installments || parsed.installments;
-      let newInstallments: Installment[] = [];
-      if (Array.isArray(rawInstallments)) {
-        newInstallments = rawInstallments.map((inst: any, idx: number) => ({
-          ...inst,
-          id: inst.id || `inst-${Date.now()}-${idx}`,
-          name: inst.name || inst.item || 'Installment',
-          amount: Number(inst.amount) || Number(inst.monthlyAmount) || 0,
-          totalMonths: Number(inst.totalMonths) || Number(inst.months) || Number(inst.installmentsCount) || 1,
-          remainingMonths: Number(inst.remainingMonths) || Number(inst.totalMonths) || Number(inst.months) || 1,
-          startMonth: inst.startMonth || DateUtils.currentYearMonth(),
-          day: Number(inst.day) || 10,
-        }));
-      }
-
-      // 5. Rates
-      const rawRates = data.ratesData || data.rates || parsed.ratesData || parsed.rates;
-      let newRates: RatesData = defaultRates;
-      if (rawRates && typeof rawRates === 'object') {
-        newRates = {
-          currencies: Array.isArray(rawRates.currencies) && rawRates.currencies.length > 0 ? rawRates.currencies : defaultRates.currencies,
-          gold: Array.isArray(rawRates.gold) && rawRates.gold.length > 0 ? rawRates.gold : defaultRates.gold,
-          lastFetched: typeof rawRates.lastFetched === 'string' ? rawRates.lastFetched : undefined,
-          currenciesLastFetched: typeof rawRates.currenciesLastFetched === 'string' ? rawRates.currenciesLastFetched : undefined,
-          goldLastFetched: typeof rawRates.goldLastFetched === 'string' ? rawRates.goldLastFetched : undefined,
-          previousStorageTotal: typeof rawRates.previousStorageTotal === 'number' ? rawRates.previousStorageTotal : undefined,
-        };
-      }
-
-      // 6. Storage assets
-      const rawStorage = data.storageAssets || data.storage || parsed.storageAssets || parsed.storage;
-      let newStorage: StorageAsset[] = [];
-      if (Array.isArray(rawStorage)) {
-        newStorage = rawStorage.map((asset: any, idx: number) => ({
-          ...asset,
-          id: asset.id || `storage-${Date.now()}-${idx}`,
-          amount: Number(asset.amount) || 0,
-          buyRate: Number(asset.buyRate) || 1,
-        }));
-      }
-
-      // 7. Jobs
-      const newAsf: JobItem[] = Array.isArray(data.asfJobs || parsed.asfJobs) ? (data.asfJobs || parsed.asfJobs) : [];
-      const newIrq: JobItem[] = Array.isArray(data.irqJobs || parsed.irqJobs) ? (data.irqJobs || parsed.irqJobs) : [];
-      const newPartTime: JobItem[] = Array.isArray(data.partTimeJobs || parsed.partTimeJobs) ? (data.partTimeJobs || parsed.partTimeJobs) : [];
-
-      // 8. Actuals Tracking: Clean replace, no spread merge of stale values
-      const rawActuals = data.entryActuals || parsed.entryActuals || {};
-      const newActuals: Record<string, number> = {};
-      if (typeof rawActuals === 'object') {
-        for (const [k, v] of Object.entries(rawActuals)) {
-          if (v !== undefined && v !== null && !isNaN(Number(v))) {
-            newActuals[k] = Number(v);
-          }
-        }
-      }
-
-      const rawActualDates = data.entryActualDates || parsed.entryActualDates || {};
-      const newActualDates: Record<string, string> = {};
-      if (typeof rawActualDates === 'object') {
-        for (const [k, v] of Object.entries(rawActualDates)) {
-          if (typeof v === 'string') {
-            newActualDates[k] = v;
-          }
-        }
-      }
-
-      // 9. Deleted forecasts & archived entries
-      const newDeleted: string[] = Array.isArray(data.deletedForecasts || parsed.deletedForecasts)
-        ? (data.deletedForecasts || parsed.deletedForecasts)
-        : [];
-
-      const newArchived: CashEntry[] = Array.isArray(data.archivedEntries || parsed.archivedEntries)
-        ? (data.archivedEntries || parsed.archivedEntries)
-        : [];
-
-      // Commit all storage changes atomically
-      saveStorage(STORAGE_KEYS.entries, newEntries);
-      saveStorage(STORAGE_KEYS.accounts, newAccounts);
-      saveStorage(STORAGE_KEYS.salary, newSalary);
-      saveStorage(STORAGE_KEYS.creditDues, newCreditDues);
-      saveStorage(STORAGE_KEYS.creditDueMonths, newCreditDueMonths);
-      saveStorage(STORAGE_KEYS.creditSettlementOverrides, newSettlementOverrides);
-      saveStorage(STORAGE_KEYS.salaryAnchor, newSalaryAnchor);
-      saveStorage(STORAGE_KEYS.installments, newInstallments);
-      saveStorage(STORAGE_KEYS.rates, newRates);
-      saveStorage(STORAGE_KEYS.storage, newStorage);
-      saveStorage(STORAGE_KEYS.asf, newAsf);
-      saveStorage(STORAGE_KEYS.irq, newIrq);
-      saveStorage(STORAGE_KEYS.partTimeJobs, newPartTime);
-      saveStorage(STORAGE_KEYS.entryActuals, newActuals);
-      saveStorage(STORAGE_KEYS.entryActualDates, newActualDates);
-      saveStorage(STORAGE_KEYS.deletedForecasts, newDeleted);
-      saveStorage(STORAGE_KEYS.archivedEntries, newArchived);
-
-      // Update state
+      // 4. Update state atomically
       set({
-        entries: newEntries,
-        accounts: newAccounts,
-        salaryPattern: newSalary,
-        installments: newInstallments,
-        rates: newRates,
-        creditDues: newCreditDues,
-        creditDueMonths: newCreditDueMonths,
-        creditSettlementOverrides: newSettlementOverrides,
-        salaryAnchorMonth: newSalaryAnchor,
-        storageAssets: newStorage,
-        asfJobs: newAsf,
-        irqJobs: newIrq,
-        partTimeJobs: newPartTime,
-        entryActuals: newActuals,
-        entryActualDates: newActualDates,
-        deletedForecasts: newDeleted,
-        archivedEntries: newArchived,
+        entries: migrated.entries,
+        archivedEntries: migrated.archivedEntries,
+        accounts: migrated.accounts,
+        salaryPattern: migrated.salaryPattern,
+        installments: migrated.installments,
+        rates: migrated.rates,
+        creditDues: migrated.creditDues,
+        creditDueMonths: migrated.creditDueMonths,
+        creditSettlementOverrides: migrated.creditSettlementOverrides,
+        salaryAnchorMonth: migrated.salaryAnchorMonth,
+        storageAssets: migrated.storageAssets,
+        asfJobs: migrated.asfJobs,
+        irqJobs: migrated.irqJobs,
+        partTimeJobs: migrated.partTimeJobs,
+        entryActuals: migrated.entryActuals,
+        entryActualDates: migrated.entryActualDates,
+        deletedForecasts: migrated.deletedForecasts,
       });
 
       scheduleAutoGistSync(get);

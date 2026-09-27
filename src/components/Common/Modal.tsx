@@ -24,12 +24,14 @@ export const Modal: React.FC<ModalProps> = ({
   showCloseButton = true,
 }) => {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const previousActiveElement = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
 
     if (isOpen) {
+      previousActiveElement.current = document.activeElement as HTMLElement | null;
       if (!dialog.open) {
         try {
           dialog.showModal();
@@ -40,6 +42,9 @@ export const Modal: React.FC<ModalProps> = ({
     } else {
       if (dialog.open) {
         dialog.close();
+      }
+      if (previousActiveElement.current && typeof previousActiveElement.current.focus === 'function') {
+        previousActiveElement.current.focus();
       }
     }
   }, [isOpen]);

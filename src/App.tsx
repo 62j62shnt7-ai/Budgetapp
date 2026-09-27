@@ -43,8 +43,12 @@ export const App: React.FC = () => {
     gistToken, 
     gistAutoSync, 
     setGistConfig, 
-    updateRates
+    updateRates,
+    gistConflict,
+    resolveGistConflict
   } = useBudgetStore();
+
+  const [tabConflictDetected, setTabConflictDetected] = useState(false);
 
   // Modals state
   const [actionSheetOpen, setActionSheetOpen] = useState(false);
@@ -106,6 +110,17 @@ export const App: React.FC = () => {
       window.removeEventListener('online', checkStatus);
       window.removeEventListener('offline', checkStatus);
     };
+  }, []);
+
+  // Multi-tab sync coordination
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key && e.key.startsWith('budget-control-') && !e.key.includes('gist')) {
+        setTabConflictDetected(true);
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
   useEffect(() => {
@@ -336,6 +351,108 @@ export const App: React.FC = () => {
 
   return (
     <>
+      {tabConflictDetected && (
+        <div style={{
+          background: 'var(--amber, #f59e0b)',
+          color: '#000',
+          padding: '8px 16px',
+          textAlign: 'center',
+          fontSize: '13px',
+          fontWeight: 600,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '12px',
+          zIndex: 9999,
+          position: 'sticky',
+          top: 0,
+        }}>
+          <span>⚠️ Data was updated in another browser tab.</span>
+          <button
+            type="button"
+            style={{
+              background: '#000',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '4px',
+              padding: '4px 10px',
+              fontSize: '12px',
+              cursor: 'pointer',
+              fontWeight: 600,
+            }}
+            onClick={() => window.location.reload()}
+          >
+            Reload to Sync
+          </button>
+          <button
+            type="button"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: 'bold',
+            }}
+            onClick={() => setTabConflictDetected(false)}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {gistConflict && (
+        <div style={{
+          background: 'var(--red, #ef4444)',
+          color: '#fff',
+          padding: '10px 16px',
+          textAlign: 'center',
+          fontSize: '13px',
+          fontWeight: 600,
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '10px',
+          zIndex: 9999,
+          position: 'sticky',
+          top: tabConflictDetected ? '38px' : 0,
+        }}>
+          <span>⚠️ Cloud Conflict: Cloud backup has newer changes from another device ({gistConflict.remoteTime?.slice(0, 16).replace('T', ' ')}).</span>
+          <button
+            type="button"
+            style={{
+              background: '#fff',
+              color: '#000',
+              border: 'none',
+              borderRadius: '4px',
+              padding: '4px 10px',
+              fontSize: '12px',
+              cursor: 'pointer',
+              fontWeight: 600,
+            }}
+            onClick={() => void resolveGistConflict('local')}
+          >
+            Keep This Device (Overwrite Cloud)
+          </button>
+          <button
+            type="button"
+            style={{
+              background: '#000',
+              color: '#fff',
+              border: '1px solid rgba(255,255,255,0.4)',
+              borderRadius: '4px',
+              padding: '4px 10px',
+              fontSize: '12px',
+              cursor: 'pointer',
+              fontWeight: 600,
+            }}
+            onClick={() => void resolveGistConflict('remote')}
+          >
+            Restore Cloud Copy
+          </button>
+        </div>
+      )}
+
       <Sidebar />
       <main className="app-shell has-bottom-nav">
         <Topbar
