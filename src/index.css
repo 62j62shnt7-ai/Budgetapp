@@ -1115,7 +1115,7 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     gap: 10px !important;
     height: auto !important;
     min-height: 54px;
-    margin-top: calc(-1 * max(12px, env(safe-area-inset-top))) !important;
+    margin-top: 0 !important;
     padding-top: max(14px, env(safe-area-inset-top)) !important;
     padding-bottom: 10px !important;
     padding-left: max(14px, env(safe-area-inset-left)) !important;

@@ -488,8 +488,8 @@ body.sidebar-collapsed .sidebar-open-btn {
   background: var(--topbar-glass-bg);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
-  margin-top: -24px;
-  padding-top: 24px;
+  margin-top: 0;
+  padding-top: max(16px, env(safe-area-inset-top));
   padding-bottom: 16px;
   margin-bottom: 20px;
   border-bottom: 1px solid var(--glass-border-subtle);
