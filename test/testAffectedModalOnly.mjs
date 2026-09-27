@@ -859,6 +859,10 @@ assert.strictEqual(detectedGroups[0].entries.length, 3);
 assert.strictEqual(detectedGroups[0].isFullyLinked, false, 'Candidate is not yet linked');
 assert.strictEqual(detectedGroups[0].estimatedFrequency, 'Monthly');
 
+// 1b. Actualized history entries are ignored from recurring scanning
+const scanWithHistory = detectRecurringCandidateGroups([netflix1, netflix2, netflix3], { 'netflix-1': 250, 'netflix-2': 250 });
+assert.strictEqual(scanWithHistory.length, 0, 'No candidate groups found when past entries are actualized (less than 2 unactualized candidates)');
+
 // 2. Link entries into recurring series via store
 useBudgetStore.setState({ entries: [netflix1, netflix2, netflix3] });
 const linkResult = useBudgetStore.getState().linkRecurringSeries(['netflix-1', 'netflix-2', 'netflix-3']);
@@ -881,15 +885,28 @@ assert.ok(seriesDeleteOption.label.includes('2 future records'), 'Series option 
 assert.ok(seriesDeleteOption.sublabel.includes('2 future occurrences'), 'Series option sublabel explains 2 future occurrences');
 assert.strictEqual(seriesDeleteOption.badge, '2 Records');
 
+// 3b. Deleting an actualized historical entry does NOT offer recurring series deletion
+const historyDeleteOptData = buildEntryDeleteOptions(updatedStoreEntries[1], {
+  installments: [],
+  storageAssets: [],
+  partTimeJobs: [],
+  asfJobs: [],
+  irqJobs: [],
+  entries: updatedStoreEntries,
+  entryActuals: { [updatedStoreEntries[1].id]: 250 },
+});
+assert.strictEqual(historyDeleteOptData.options.some((o) => o.id === 'series'), false, 'Historical actualized entry has no series deletion scope option');
+
 // 4. Executing future series deletion removes June & July and preserves May
 useBudgetStore.getState().deleteEntry('netflix-2', 'future');
 const remainingAfterDelete = useBudgetStore.getState().entries;
 assert.strictEqual(remainingAfterDelete.length, 1, 'Only 1 record remains');
 assert.strictEqual(remainingAfterDelete[0].id, 'netflix-1', 'Preserved prior May occurrence');
 
-console.log('  ✓ detectRecurringCandidateGroups scans and groups repeating name & amount occurrences');
+console.log('  ✓ detectRecurringCandidateGroups scans and groups repeating name & amount occurrences, ignoring history');
 console.log('  ✓ linkRecurringSeries marks seriesId & isRecurring across target entries');
 console.log('  ✓ buildEntryDeleteOptions calculates and displays exact count of future recurring records');
+console.log('  ✓ deleting actualized history entry treats it as individual record without series scope cascade');
 console.log('  ✓ deleteEntry with seriesMode: "future" deletes calculated future subset accurately\n');
 
 console.log('===============================================================');

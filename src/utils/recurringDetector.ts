@@ -59,13 +59,22 @@ function estimateFrequency(dates: string[]): string {
 
 /**
  * Scans a list of cash entries and detects candidate recurring groups based on matching name & amount.
+ * Only scans active unactualized forecast entries (ignores history/actualized entries).
  */
-export function detectRecurringCandidateGroups(entries: CashEntry[]): RecurringCandidateGroup[] {
+export function detectRecurringCandidateGroups(
+  entries: CashEntry[],
+  entryActuals: Record<string, number> = {}
+): RecurringCandidateGroup[] {
   const map = new Map<string, CashEntry[]>();
 
   (entries || []).forEach((entry) => {
     // Ignore dynamic installment occurrences or opening balance records
     if (entry.source === 'installment' || entry.id.startsWith('installment-') || entry.source === 'starting balance') {
+      return;
+    }
+    // Ignore historical / actualized records
+    const actual = entryActuals[entry.id] ?? (entry.actualAmount !== undefined && entry.actualAmount !== null ? Number(entry.actualAmount) || 0 : (entry.isClosed ? Number(entry.amount) || 0 : 0));
+    if (actual > 0 || entry.isClosed) {
       return;
     }
     const key = normalizeEntryKey(entry);

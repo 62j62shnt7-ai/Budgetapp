@@ -42,7 +42,7 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
   const [showRecurringModal, setShowRecurringModal] = useState<boolean>(false);
   const [recurringFilterTerm, setRecurringFilterTerm] = useState<string>('');
 
-  const recurringGroups = useMemo(() => detectRecurringCandidateGroups(entries), [entries]);
+  const recurringGroups = useMemo(() => detectRecurringCandidateGroups(entries, entryActuals), [entries, entryActuals]);
   const unlinkedRecurringCount = useMemo(() => recurringGroups.filter((g) => !g.isFullyLinked).length, [recurringGroups]);
 
   const filteredRecurringGroups = useMemo(() => {

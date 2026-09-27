@@ -2381,7 +2381,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
   },
 
   autoLinkAllRecurringCandidates: () => {
-    const candidateGroups = detectRecurringCandidateGroups(get().entries);
+    const candidateGroups = detectRecurringCandidateGroups(get().entries, get().entryActuals);
     let currentEntries = get().entries;
     let linkedGroupsCount = 0;
     let modifiedEntriesCount = 0;

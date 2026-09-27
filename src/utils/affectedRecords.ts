@@ -58,11 +58,20 @@ export function buildEntryDeleteOptions(
     (entry.tag && entry.tag.toLowerCase() === 'installment')
   );
 
+  const actualAmount =
+    context.entryActuals?.[entry.id] ??
+    (entry.actualAmount !== undefined && entry.actualAmount !== null
+      ? Number(entry.actualAmount) || 0
+      : (entry.isClosed ? Number(entry.amount) || 0 : 0));
+
+  const isActualized = actualAmount > 0 || Boolean(entry.isClosed);
+
   const itemDescription = isInstallmentOccurrence
     ? `Installment: "${entry.category}" on ${DateUtils.formatDisplayDate(entry.date)}`
     : `${entry.type === 'income' ? 'Income' : 'Expense'}: "${entry.category}" on ${DateUtils.formatDisplayDate(entry.date)}`;
 
-  const isRecurring = Boolean(
+  // Recurring series scope only applies to unactualized forecast entries (historical actualized entries are standalone individual records)
+  const isRecurring = !isActualized && Boolean(
     entry.seriesId ||
     entry.isRecurring ||
     (entry.source && entry.source.toLowerCase().includes('monthly')) ||
@@ -181,12 +190,6 @@ export function buildEntryDeleteOptions(
       defaultChecked: true,
     });
   }
-
-  const actualAmount =
-    context.entryActuals?.[entry.id] ??
-    (entry.actualAmount !== undefined && entry.actualAmount !== null
-      ? Number(entry.actualAmount) || 0
-      : (entry.isClosed ? Number(entry.amount) || 0 : 0));
 
   const hasActualMoneyTransacted = actualAmount > 0 || Boolean(entry.draws && entry.draws.length > 0);
 
