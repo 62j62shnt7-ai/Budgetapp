@@ -2,7 +2,7 @@
 // Credit Card Settlement & Cycle Calculation Engine
 // ==========================================================================
 import { DateUtils } from './dateUtils';
-import type { CashEntry } from '../types';
+import type { CashEntry, CreditSettlementOverride } from '../types';
 
 export function calculateCreditSettlementDate(dateStr: string, creditType?: string): string {
   const safeDate = dateStr || DateUtils.todayString();
@@ -160,7 +160,7 @@ export function getCreditSettlementDate(
 
 export function getCreditSettlementMonth(
   entry: CashEntry,
-  creditSettlementOverrides?: Record<string, { amount?: number; date?: string; note?: string }>,
+  creditSettlementOverrides?: Record<string, CreditSettlementOverride>,
   entryActualDates?: Record<string, string>
 ): string {
   const date = getCreditSettlementDate(entry, creditSettlementOverrides, entryActualDates);
@@ -174,7 +174,7 @@ export function buildCreditDueEntries(params: {
   archivedEntries?: CashEntry[];
   entryActuals: Record<string, number>;
   entryActualDates?: Record<string, string>;
-  creditSettlementOverrides?: Record<string, { amount?: number; date?: string; note?: string }>;
+  creditSettlementOverrides?: Record<string, CreditSettlementOverride>;
 }): CashEntry[] {
   const {
     accounts = {},
@@ -319,7 +319,7 @@ export function getCoveredCreditSettlementKeys(
   entries: CashEntry[],
   entryActuals: Record<string, number> = {},
   entryActualDates: Record<string, string> = {},
-  creditSettlementOverrides?: Record<string, { amount?: number; date?: string; note?: string }>,
+  creditSettlementOverrides?: Record<string, CreditSettlementOverride>,
   archivedEntries: CashEntry[] = []
 ): Set<string> {
   const coveredKeys = new Set<string>();

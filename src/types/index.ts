@@ -17,6 +17,9 @@ export interface CreditSettlementOverride {
   amount?: number;
   date?: string;
   note?: string;
+  tag?: string;
+  account?: string;
+  draws?: EntryDraw[];
 }
 
 export interface CashEntry {

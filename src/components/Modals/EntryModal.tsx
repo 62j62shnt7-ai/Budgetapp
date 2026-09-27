@@ -218,7 +218,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
           account: baseEntry.account,
           note: baseEntry.note,
         });
-        if (shouldPromptDeduct && newActual !== previousActual) {
+        if (shouldPromptDeduct && newActual !== previousActual && onDeductPrompt) {
           onDeductPrompt({ ...baseEntry, id: entryToEdit.id }, newActual - previousActual);
         }
       } else if (previousActual > 0) {
@@ -259,12 +259,12 @@ export const EntryModal: React.FC<EntryModalProps> = ({
           });
           if (i === 0) firstCreatedId = createdId;
         }
-        if (newActual > 0 && shouldPromptDeduct) {
+        if (newActual > 0 && shouldPromptDeduct && onDeductPrompt) {
           onDeductPrompt({ ...baseEntry, id: firstCreatedId }, newActual);
         }
       } else {
         const createdId = addEntry(baseEntry);
-        if (newActual > 0 && shouldPromptDeduct) {
+        if (newActual > 0 && shouldPromptDeduct && onDeductPrompt) {
           onDeductPrompt({ ...baseEntry, id: createdId }, newActual);
         }
       }
@@ -720,7 +720,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
                 },
               ]
             : []),
-          {(() => {
+          (() => {
             const targetAccount = (deleteDrawTarget.draw.account || activeEntry.account || '').trim().toLowerCase();
             const currUpper = (activeEntry.currency || 'USD').toUpperCase();
             const matchingStorage = storageAssets.find(
