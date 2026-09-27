@@ -60,7 +60,16 @@ export function isCreditCardExpense(entry: CashEntry): boolean {
   if (id.startsWith('credit-settlement-') || id.startsWith('installment-')) return false;
   if (entry.source === 'recurring credit' || entry.source === 'installment' || (entry as any).isCreditSettlement) return false;
   const cat = (entry.category || '').toLowerCase();
-  if (cat.includes('credit due')) return false;
+  if (
+    cat.includes('credit due') ||
+    cat.includes('settlement') ||
+    cat.includes('card payment') ||
+    cat.includes('credit payment') ||
+    cat.includes('bill payment') ||
+    cat.includes('card bill')
+  ) {
+    return false;
+  }
   const t = (entry.creditType || '').toLowerCase();
   const acc = (entry.account || '').toLowerCase();
   const src = (entry.source || '').toLowerCase();
@@ -68,7 +77,6 @@ export function isCreditCardExpense(entry: CashEntry): boolean {
 
   if (src === 'credit card' || src === 'credit-card' || src === 'credit_card' || src === 'card') return true;
   if (t === 'cib_card' || t === 'hsbc_card' || t === 'cib-card' || t === 'hsbc-card' || t === 'cib_credit' || t === 'hsbc_credit') return true;
-  if ((t === 'cib' || t === 'hsbc') && !cat.includes('credit due')) return true;
   if (acc.includes('cib') && (acc.includes('credit') || acc.includes('card'))) return true;
   if (acc.includes('hsbc') && (acc.includes('credit') || acc.includes('card'))) return true;
   if (acc === 'cib credit' || acc === 'cib_credit' || acc === 'cib-credit' || acc === 'hsbc credit' || acc === 'hsbc_credit' || acc === 'hsbc-credit') return true;
@@ -284,7 +292,7 @@ export function buildCreditDueEntries(params: {
         id: settlementId,
         date: settlementDate,
         category: `${acc.name} Credit Due`,
-        account: matchingBalanceKey,
+        account: override?.account || matchingBalanceKey,
         type: 'expense',
         amount:
           totalPlannedDue > 0
@@ -298,7 +306,8 @@ export function buildCreditDueEntries(params: {
         statementNote: override?.note,
         actualAmount: actualPaid,
         source: 'recurring credit',
-        tag: 'Credit',
+        tag: override?.tag || 'Credit',
+        draws: override?.draws || [],
       });
     });
   });

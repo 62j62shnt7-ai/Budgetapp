@@ -132,7 +132,7 @@ export interface BudgetStoreState {
   // Credit Dues & Legacy Overrides
   creditDues: Record<string, Record<string, number>>;
   creditDueMonths: Record<string, string[]>;
-  creditSettlementOverrides: Record<string, { amount?: number; date?: string }>;
+  creditSettlementOverrides: Record<string, { amount?: number; date?: string; note?: string; tag?: string; account?: string; draws?: EntryDraw[] }>;
   salaryAnchorMonth: string;
 
   // Cloud Sync & Admin
@@ -414,7 +414,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
 
   creditDues: loadStorage<Record<string, Record<string, number>>>(STORAGE_KEYS.creditDues, {}),
   creditDueMonths: loadStorage<Record<string, string[]>>(STORAGE_KEYS.creditDueMonths, {}),
-  creditSettlementOverrides: loadStorage<Record<string, { amount?: number; date?: string }>>(STORAGE_KEYS.creditSettlementOverrides, {}),
+  creditSettlementOverrides: loadStorage<Record<string, { amount?: number; date?: string; note?: string; tag?: string; account?: string; draws?: EntryDraw[] }>>(STORAGE_KEYS.creditSettlementOverrides, {}),
   salaryAnchorMonth: loadStorage<string>(STORAGE_KEYS.salaryAnchor, new Date().toISOString().slice(0, 7)),
 
   gistToken: typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.gistToken) || '' : '',
@@ -471,8 +471,55 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
   },
 
   updateEntry: (id, updates, seriesMode = 'single') => {
-    const current = get().entries.find((e) => e.id === id);
-    if (!current) return;
+    if (id.startsWith('credit-settlement-')) {
+      const existingOverride = get().creditSettlementOverrides[id] || {};
+      const updatedOverride = {
+        ...existingOverride,
+        ...(updates.amount !== undefined ? { amount: Number(updates.amount) } : {}),
+        ...(updates.date ? { date: updates.date } : {}),
+        ...(updates.statementNote !== undefined ? { note: updates.statementNote } : {}),
+        ...(updates.tag !== undefined ? { tag: updates.tag } : {}),
+        ...(updates.account !== undefined ? { account: updates.account } : {}),
+        ...(updates.draws !== undefined ? { draws: updates.draws } : {}),
+      };
+      const nextOverrides = { ...get().creditSettlementOverrides, [id]: updatedOverride };
+      saveStorage(STORAGE_KEYS.creditSettlementOverrides, nextOverrides);
+      set({ creditSettlementOverrides: nextOverrides });
+      if (updates.actualAmount !== undefined) {
+        const actuals = { ...get().entryActuals, [id]: updates.actualAmount };
+        const dates = { ...get().entryActualDates, [id]: updates.actualDate || DateUtils.todayString() };
+        saveStorage(STORAGE_KEYS.entryActuals, actuals);
+        saveStorage(STORAGE_KEYS.entryActualDates, dates);
+        set({ entryActuals: actuals, entryActualDates: dates });
+      }
+      scheduleAutoGistSync(get);
+      return;
+    }
+
+    const inEntries = get().entries.find((e) => e.id === id);
+    const inArchived = get().archivedEntries.find((e) => e.id === id);
+    if (!inEntries && !inArchived) return;
+
+    if (!inEntries && inArchived) {
+      const updatedArchived = get().archivedEntries.map((e) => (e.id === id ? { ...e, ...updates } : e));
+      saveStorage(STORAGE_KEYS.archivedEntries, updatedArchived);
+      set({ archivedEntries: updatedArchived });
+      if (updates.actualAmount !== undefined) {
+        const actuals = { ...get().entryActuals, [id]: updates.actualAmount };
+        const dates = { ...get().entryActualDates, [id]: updates.actualDate || DateUtils.todayString() };
+        saveStorage(STORAGE_KEYS.entryActuals, actuals);
+        saveStorage(STORAGE_KEYS.entryActualDates, dates);
+        set({ entryActuals: actuals, entryActualDates: dates });
+      }
+      if (updates.isClosed === true) {
+        const currentActual = get().entryActuals[id] ?? updates.actualAmount ?? updates.amount ?? 0;
+        get().settleJobForecastPayment(id, Number(currentActual) || 0, true);
+      }
+      scheduleAutoGistSync(get);
+      return;
+    }
+
+    const current = inEntries!;
 
     if (seriesMode === 'future' && (current.seriesId || current.isRecurring)) {
       const seriesId = current.seriesId || id;
@@ -724,6 +771,44 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     const dates = { ...get().entryActualDates };
     if (date) dates[entryId] = date;
 
+    if (entryId.startsWith('credit-settlement-')) {
+      const existingOverride = get().creditSettlementOverrides[entryId] || {};
+      const prevActual = Number(get().entryActuals[entryId] ?? 0);
+      const tranche = amount > prevActual ? amount - prevActual : amount;
+
+      let draws = Array.isArray(existingOverride.draws) ? [...existingOverride.draws] : [];
+      if (draws.length === 0 && prevActual > 0) {
+        draws.push({
+          id: `draw-${Date.now()}-0`,
+          date: actDate,
+          amount: prevActual,
+          tag: existingOverride.tag || 'Credit',
+          account: existingOverride.account || 'cib',
+        });
+      }
+
+      if (tranche > 0 && amount > prevActual) {
+        draws.push({
+          id: `draw-${Date.now()}-${draws.length}`,
+          date: actDate,
+          amount: tranche,
+          tag: drawMeta?.tag || existingOverride.tag || 'Credit',
+          account: drawMeta?.account || existingOverride.account || 'cib',
+          note: drawMeta?.note,
+        });
+      }
+
+      const updatedOverride = {
+        ...existingOverride,
+        tag: drawMeta?.tag || existingOverride.tag || 'Credit',
+        account: drawMeta?.account || existingOverride.account || 'cib',
+        draws,
+      };
+      const nextOverrides = { ...get().creditSettlementOverrides, [entryId]: updatedOverride };
+      saveStorage(STORAGE_KEYS.creditSettlementOverrides, nextOverrides);
+      set({ creditSettlementOverrides: nextOverrides });
+    }
+
     const existingIndex = get().entries.findIndex((e) => e.id === entryId);
     let updatedEntries = get().entries;
     let updatedArchived = get().archivedEntries;
@@ -966,9 +1051,41 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
   },
 
   addDraw: (entryId, draw) => {
-    const existingIndex = get().entries.findIndex((e) => e.id === entryId);
-    if (existingIndex === -1) return;
-    const entry = get().entries[existingIndex];
+    if (entryId.startsWith('credit-settlement-')) {
+      const existingOverride = get().creditSettlementOverrides[entryId] || {};
+      const newDraws = [
+        ...(existingOverride.draws || []),
+        { ...draw, id: draw.id || `draw-${Date.now()}-${(existingOverride.draws || []).length}` },
+      ];
+      const totalAmount = newDraws.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+      const lastDate = draw.date || DateUtils.todayString();
+      const updatedOverride = {
+        ...existingOverride,
+        draws: newDraws,
+        tag: draw.tag || existingOverride.tag || 'Credit',
+        account: draw.account || existingOverride.account || 'cib',
+      };
+      const nextOverrides = { ...get().creditSettlementOverrides, [entryId]: updatedOverride };
+      saveStorage(STORAGE_KEYS.creditSettlementOverrides, nextOverrides);
+      const actuals = { ...get().entryActuals, [entryId]: totalAmount };
+      const dates = { ...get().entryActualDates, [entryId]: lastDate };
+      saveStorage(STORAGE_KEYS.entryActuals, actuals);
+      saveStorage(STORAGE_KEYS.entryActualDates, dates);
+      set({
+        creditSettlementOverrides: nextOverrides,
+        entryActuals: actuals,
+        entryActualDates: dates,
+      });
+      scheduleAutoGistSync(get);
+      return;
+    }
+
+    const inEntries = get().entries.findIndex((e) => e.id === entryId);
+    const inArchived = get().archivedEntries.findIndex((e) => e.id === entryId);
+    if (inEntries === -1 && inArchived === -1) return;
+
+    const isArchived = inEntries === -1;
+    const entry = isArchived ? get().archivedEntries[inArchived] : get().entries[inEntries];
     const newDraws = [
       ...(entry.draws || []),
       { ...draw, id: draw.id || `draw-${Date.now()}-${(entry.draws || []).length}` },
@@ -981,22 +1098,63 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       actualDate: lastDate,
       draws: newDraws,
     };
-    const updatedEntries = [...get().entries];
-    updatedEntries[existingIndex] = updatedEntry;
+
+    if (isArchived) {
+      const updatedArchived = [...get().archivedEntries];
+      updatedArchived[inArchived] = updatedEntry;
+      saveStorage(STORAGE_KEYS.archivedEntries, updatedArchived);
+      set({ archivedEntries: updatedArchived });
+    } else {
+      const updatedEntries = [...get().entries];
+      updatedEntries[inEntries] = updatedEntry;
+      saveStorage(STORAGE_KEYS.entries, updatedEntries);
+      set({ entries: updatedEntries });
+    }
     const actuals = { ...get().entryActuals, [entryId]: totalAmount };
     const dates = { ...get().entryActualDates, [entryId]: lastDate };
-    saveStorage(STORAGE_KEYS.entries, updatedEntries);
     saveStorage(STORAGE_KEYS.entryActuals, actuals);
     saveStorage(STORAGE_KEYS.entryActualDates, dates);
-    set({ entries: updatedEntries, entryActuals: actuals, entryActualDates: dates });
+    set({ entryActuals: actuals, entryActualDates: dates });
     get().settleJobForecastPayment(entryId, totalAmount, false);
     scheduleAutoGistSync(get);
   },
 
   updateDraw: (entryId, drawIndex, draw) => {
-    const existingIndex = get().entries.findIndex((e) => e.id === entryId);
-    if (existingIndex === -1) return;
-    const entry = get().entries[existingIndex];
+    if (entryId.startsWith('credit-settlement-')) {
+      const existingOverride = get().creditSettlementOverrides[entryId] || {};
+      const newDraws = [...(existingOverride.draws || [])];
+      if (drawIndex >= 0 && drawIndex < newDraws.length) {
+        newDraws[drawIndex] = { ...newDraws[drawIndex], ...draw };
+      }
+      const totalAmount = newDraws.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+      const lastDate = newDraws.length > 0 ? newDraws[newDraws.length - 1].date : DateUtils.todayString();
+      const updatedOverride = {
+        ...existingOverride,
+        draws: newDraws,
+        tag: draw.tag || existingOverride.tag || 'Credit',
+        account: draw.account || existingOverride.account || 'cib',
+      };
+      const nextOverrides = { ...get().creditSettlementOverrides, [entryId]: updatedOverride };
+      saveStorage(STORAGE_KEYS.creditSettlementOverrides, nextOverrides);
+      const actuals = { ...get().entryActuals, [entryId]: totalAmount };
+      const dates = { ...get().entryActualDates, [entryId]: lastDate };
+      saveStorage(STORAGE_KEYS.entryActuals, actuals);
+      saveStorage(STORAGE_KEYS.entryActualDates, dates);
+      set({
+        creditSettlementOverrides: nextOverrides,
+        entryActuals: actuals,
+        entryActualDates: dates,
+      });
+      scheduleAutoGistSync(get);
+      return;
+    }
+
+    const inEntries = get().entries.findIndex((e) => e.id === entryId);
+    const inArchived = get().archivedEntries.findIndex((e) => e.id === entryId);
+    if (inEntries === -1 && inArchived === -1) return;
+
+    const isArchived = inEntries === -1;
+    const entry = isArchived ? get().archivedEntries[inArchived] : get().entries[inEntries];
     const newDraws = [...(entry.draws || [])];
     if (drawIndex >= 0 && drawIndex < newDraws.length) {
       newDraws[drawIndex] = { ...newDraws[drawIndex], ...draw };
@@ -1009,22 +1167,68 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       actualDate: lastDate,
       draws: newDraws,
     };
-    const updatedEntries = [...get().entries];
-    updatedEntries[existingIndex] = updatedEntry;
+
+    if (isArchived) {
+      const updatedArchived = [...get().archivedEntries];
+      updatedArchived[inArchived] = updatedEntry;
+      saveStorage(STORAGE_KEYS.archivedEntries, updatedArchived);
+      set({ archivedEntries: updatedArchived });
+    } else {
+      const updatedEntries = [...get().entries];
+      updatedEntries[inEntries] = updatedEntry;
+      saveStorage(STORAGE_KEYS.entries, updatedEntries);
+      set({ entries: updatedEntries });
+    }
     const actuals = { ...get().entryActuals, [entryId]: totalAmount };
     const dates = { ...get().entryActualDates, [entryId]: lastDate };
-    saveStorage(STORAGE_KEYS.entries, updatedEntries);
     saveStorage(STORAGE_KEYS.entryActuals, actuals);
     saveStorage(STORAGE_KEYS.entryActualDates, dates);
-    set({ entries: updatedEntries, entryActuals: actuals, entryActualDates: dates });
+    set({ entryActuals: actuals, entryActualDates: dates });
     get().settleJobForecastPayment(entryId, totalAmount, false);
     scheduleAutoGistSync(get);
   },
 
   deleteDraw: (entryId, drawIndex, options) => {
-    const existingIndex = get().entries.findIndex((e) => e.id === entryId);
-    if (existingIndex === -1) return;
-    const entry = get().entries[existingIndex];
+    if (entryId.startsWith('credit-settlement-')) {
+      const existingOverride = get().creditSettlementOverrides[entryId] || {};
+      const newDraws = [...(existingOverride.draws || [])];
+      if (drawIndex >= 0 && drawIndex < newDraws.length) {
+        newDraws.splice(drawIndex, 1);
+      }
+      const totalAmount = newDraws.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+      const lastDate = newDraws.length > 0 ? newDraws[newDraws.length - 1].date : DateUtils.todayString();
+      const updatedOverride = {
+        ...existingOverride,
+        draws: newDraws,
+      };
+      const nextOverrides = { ...get().creditSettlementOverrides, [entryId]: updatedOverride };
+      saveStorage(STORAGE_KEYS.creditSettlementOverrides, nextOverrides);
+      const actuals = { ...get().entryActuals };
+      const dates = { ...get().entryActualDates };
+      if (totalAmount > 0) {
+        actuals[entryId] = totalAmount;
+        dates[entryId] = lastDate;
+      } else {
+        delete actuals[entryId];
+        delete dates[entryId];
+      }
+      saveStorage(STORAGE_KEYS.entryActuals, actuals);
+      saveStorage(STORAGE_KEYS.entryActualDates, dates);
+      set({
+        creditSettlementOverrides: nextOverrides,
+        entryActuals: actuals,
+        entryActualDates: dates,
+      });
+      scheduleAutoGistSync(get);
+      return;
+    }
+
+    const inEntries = get().entries.findIndex((e) => e.id === entryId);
+    const inArchived = get().archivedEntries.findIndex((e) => e.id === entryId);
+    if (inEntries === -1 && inArchived === -1) return;
+
+    const isArchived = inEntries === -1;
+    const entry = isArchived ? get().archivedEntries[inArchived] : get().entries[inEntries];
     const newDraws = [...(entry.draws || [])];
     let deletedDraw: EntryDraw | undefined;
     if (drawIndex >= 0 && drawIndex < newDraws.length) {
@@ -1040,8 +1244,18 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         actualDate: totalAmount > 0 ? lastDate : undefined,
         draws: newDraws,
       };
-      const updatedEntries = [...get().entries];
-      updatedEntries[existingIndex] = updatedEntry;
+      if (isArchived) {
+        const updatedArchived = [...get().archivedEntries];
+        updatedArchived[inArchived] = updatedEntry;
+        saveStorage(STORAGE_KEYS.archivedEntries, updatedArchived);
+        set({ archivedEntries: updatedArchived });
+      } else {
+        const updatedEntries = [...get().entries];
+        updatedEntries[inEntries] = updatedEntry;
+        saveStorage(STORAGE_KEYS.entries, updatedEntries);
+        set({ entries: updatedEntries });
+      }
+
       const actuals = { ...get().entryActuals };
       const dates = { ...get().entryActualDates };
       if (totalAmount > 0) {
@@ -1051,10 +1265,9 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         delete actuals[entryId];
         delete dates[entryId];
       }
-      saveStorage(STORAGE_KEYS.entries, updatedEntries);
       saveStorage(STORAGE_KEYS.entryActuals, actuals);
       saveStorage(STORAGE_KEYS.entryActualDates, dates);
-      set({ entries: updatedEntries, entryActuals: actuals, entryActualDates: dates });
+      set({ entryActuals: actuals, entryActualDates: dates });
 
       if (options?.syncJob !== false) {
         get().settleJobForecastPayment(entryId, totalAmount, false);
@@ -1850,21 +2063,60 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     const state = get();
     let count = 0;
     const updatedEntries = state.entries.map((entry) => {
-      if (entry.tag?.trim()) return entry;
-      const tag = inferTag(entry);
-      if (!tag) return entry;
-      count += 1;
-      return { ...entry, tag };
+      let entryChanged = false;
+      let newTag = entry.tag;
+      if (!newTag?.trim()) {
+        const inferred = inferTag(entry);
+        if (inferred) {
+          newTag = inferred;
+          entryChanged = true;
+          count += 1;
+        }
+      }
+      let updatedDraws = entry.draws;
+      if (entry.draws && entry.draws.length > 0 && newTag) {
+        const hasUntagged = entry.draws.some((d) => !d.tag || !d.tag.trim());
+        if (hasUntagged) {
+          entryChanged = true;
+          updatedDraws = entry.draws.map((d) => (!d.tag || !d.tag.trim() ? { ...d, tag: newTag } : d));
+        }
+      }
+      return entryChanged ? { ...entry, tag: newTag, draws: updatedDraws } : entry;
     });
+
+    const updatedArchived = state.archivedEntries.map((entry) => {
+      let entryChanged = false;
+      let newTag = entry.tag;
+      if (!newTag?.trim()) {
+        const inferred = inferTag(entry);
+        if (inferred) {
+          newTag = inferred;
+          entryChanged = true;
+          count += 1;
+        }
+      }
+      let updatedDraws = entry.draws;
+      if (entry.draws && entry.draws.length > 0 && newTag) {
+        const hasUntagged = entry.draws.some((d) => !d.tag || !d.tag.trim());
+        if (hasUntagged) {
+          entryChanged = true;
+          updatedDraws = entry.draws.map((d) => (!d.tag || !d.tag.trim() ? { ...d, tag: newTag } : d));
+        }
+      }
+      return entryChanged ? { ...entry, tag: newTag, draws: updatedDraws } : entry;
+    });
+
     const updatedInstallments = state.installments.map((installment) => {
       if (installment.tag?.trim()) return installment;
       count += 1;
       return { ...installment, tag: inferTag({ category: installment.name, source: 'installment' }) || 'Installment' };
     });
+
     if (count > 0) {
       saveStorage(STORAGE_KEYS.entries, updatedEntries);
+      saveStorage(STORAGE_KEYS.archivedEntries, updatedArchived);
       saveStorage(STORAGE_KEYS.installments, updatedInstallments);
-      set({ entries: updatedEntries, installments: updatedInstallments });
+      set({ entries: updatedEntries, archivedEntries: updatedArchived, installments: updatedInstallments });
       scheduleAutoGistSync(get);
     }
     return count;

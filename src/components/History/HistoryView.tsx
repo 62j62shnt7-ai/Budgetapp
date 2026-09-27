@@ -709,7 +709,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                           <td className="cell-source" style={{ fontSize: '12px', color: 'var(--muted)' }}>
                             {entry.source && !['manual', 'expense', 'income', 'direct', 'starting balance', 'cash', 'default'].includes(entry.source.toLowerCase()) ? (
                               <span className={`source-pill ${entry.source === 'loan' ? 'loan' : ''}`}>
-                                {entry.source}
+                                {entry.source === 'recurring credit' ? '🏛️ Credit Settlement' : entry.source === 'credit card' ? '💳 Credit Card' : entry.source}
                               </span>
                             ) : null}
                           </td>
@@ -747,7 +747,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                                     if (event.key === 'Enter') {
                                       const value = Math.round(Number(event.currentTarget.value) || 0);
                                       if (value <= 0) clearActual(entry.id);
-                                      else recordActual(entry.id, value, actDate);
+                                      else recordActual(entry.id, value, actDate, { tag: entry.tag, account: entry.account });
                                       event.currentTarget.blur();
                                     }
                                   }}

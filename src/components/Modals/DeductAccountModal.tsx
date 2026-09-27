@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useBudgetStore } from '../../store/useBudgetStore';
-import { formatMoney } from '../../engine/dateUtils';
+import { formatMoney, DateUtils } from '../../engine/dateUtils';
 import { getCurrencyRate, formatNativeCurrency } from '../../engine/currency';
 import type { CashEntry } from '../../types';
 
@@ -19,6 +19,8 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
 }) => {
   const {
     accounts,
+    entries,
+    archivedEntries,
     storageAssets,
     rates,
     depositToStorageAsset,
@@ -44,6 +46,34 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
     ? Math.round((actualAmount / defaultRate) * 100) / 100
     : actualAmount;
 
+  const tagSuggestions = useMemo(() => {
+    const baseSuggestions = [
+      'Food',
+      'Groceries',
+      'Credit',
+      'Loan',
+      'Installment',
+      'Rent',
+      'Salary',
+      'Bills',
+      'Kids',
+      'Part-Time',
+      'Maintenance',
+      'Electricity',
+      'Internet',
+      'Water',
+      'Fuel',
+    ];
+    const extractedTags = [
+      ...entries.map((e) => e.tag),
+      ...entries.flatMap((e) => (e.draws || []).map((d) => d.tag)),
+      ...archivedEntries.map((e) => e.tag),
+      ...archivedEntries.flatMap((e) => (e.draws || []).map((d) => d.tag)),
+    ].filter((t): t is string => Boolean(t && t.trim()));
+
+    return Array.from(new Set([...baseSuggestions, ...extractedTags])).sort((a, b) => a.localeCompare(b));
+  }, [entries, archivedEntries]);
+
   useEffect(() => {
     if (entry) {
       setSelectedAccountId(accounts[entry.account || ''] ? entry.account! : 'cib');
@@ -65,16 +95,42 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
   };
 
   const handleSaveWithoutDeposit = () => {
-    if (tag.trim() && tag.trim() !== entry.tag) {
-      updateEntry(entry.id, { tag: tag.trim() });
+    const trimmedTag = tag.trim();
+    const currentEntry =
+      entries.find((e) => e.id === entry.id) ||
+      archivedEntries.find((e) => e.id === entry.id) ||
+      entry;
+
+    let updatedDraws = currentEntry.draws ? [...currentEntry.draws] : [];
+    if (updatedDraws.length > 0) {
+      const lastIndex = updatedDraws.length - 1;
+      updatedDraws[lastIndex] = {
+        ...updatedDraws[lastIndex],
+        tag: trimmedTag,
+      };
+    } else if (actualAmount > 0) {
+      updatedDraws = [
+        {
+          id: `draw-${Date.now()}-0`,
+          date: entry.actualDate || entry.date || DateUtils.todayString(),
+          amount: actualAmount,
+          tag: trimmedTag,
+          account: entry.account || 'cash',
+        },
+      ];
     }
+
+    updateEntry(entry.id, {
+      tag: trimmedTag,
+      draws: updatedDraws,
+    });
+
     onClose();
   };
 
   const handleDepositAndSave = () => {
-    if (tag.trim() && tag.trim() !== entry.tag) {
-      updateEntry(entry.id, { tag: tag.trim() });
-    }
+    const trimmedTag = tag.trim();
+    let accountName = '';
 
     if (isForeign && isIncome && settlementMode === 'foreign') {
       // 1. Keep in Foreign Currency -> Deposit to Storage
@@ -83,7 +139,7 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
         depositToStorageAsset(assetId, foreignNativeAmount);
         const existing = storageAssets.find((a) => a.id === assetId);
         if (existing) {
-          updateEntry(entry.id, { account: existing.name });
+          accountName = existing.name;
         }
       } else if (foreignDestination === 'storage:hsbc_usd') {
         const existing = storageAssets.find(
@@ -106,7 +162,7 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
             locationLabel: 'HSBC Foreign Account',
           });
         }
-        updateEntry(entry.id, { account: 'HSBC USD Account' });
+        accountName = 'HSBC USD Account';
       } else if (foreignDestination === 'storage:cash_usd') {
         const existing = storageAssets.find(
           (a) => a.name.toLowerCase().includes('cash') && a.unit.toUpperCase() === 'USD'
@@ -128,7 +184,7 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
             locationLabel: 'Physical Cash',
           });
         }
-        updateEntry(entry.id, { account: 'USD Cash in Hand' });
+        accountName = 'USD Cash in Hand';
       } else if (foreignDestination === 'storage:hsbc_eur') {
         const existing = storageAssets.find(
           (a) => a.name.toLowerCase().includes('hsbc') && a.unit.toUpperCase() === 'EUR'
@@ -150,7 +206,7 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
             locationLabel: 'HSBC Foreign Account',
           });
         }
-        updateEntry(entry.id, { account: 'HSBC EUR Account' });
+        accountName = 'HSBC EUR Account';
       }
     } else {
       // 2. Deposit or Deduct from Operating EGP Account
@@ -160,9 +216,40 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
         const currentBal = acc.balance || 0;
         const newBal = isIncome ? currentBal + effectiveEgp : currentBal - effectiveEgp;
         updateAccountBalance(selectedAccountId, newBal);
-        updateEntry(entry.id, { account: acc.name });
+        accountName = acc.name;
       }
     }
+
+    const currentEntry =
+      entries.find((e) => e.id === entry.id) ||
+      archivedEntries.find((e) => e.id === entry.id) ||
+      entry;
+
+    let updatedDraws = currentEntry.draws ? [...currentEntry.draws] : [];
+    if (updatedDraws.length > 0) {
+      const lastIndex = updatedDraws.length - 1;
+      updatedDraws[lastIndex] = {
+        ...updatedDraws[lastIndex],
+        tag: trimmedTag,
+        ...(accountName ? { account: accountName } : {}),
+      };
+    } else if (actualAmount > 0) {
+      updatedDraws = [
+        {
+          id: `draw-${Date.now()}-0`,
+          date: entry.actualDate || entry.date || DateUtils.todayString(),
+          amount: actualAmount,
+          tag: trimmedTag,
+          account: accountName || entry.account || 'cash',
+        },
+      ];
+    }
+
+    updateEntry(entry.id, {
+      tag: trimmedTag,
+      ...(accountName ? { account: accountName } : {}),
+      draws: updatedDraws,
+    });
 
     onClose();
   };
@@ -313,12 +400,17 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
         <span>Subcategory / Tag <small style={{ color: 'var(--muted)', fontSize: '12px' }}>(Optional)</small></span>
         <input
           type="text"
-          list="subcatSuggestions"
-          placeholder="e.g. Job Payout, Client Wire, Salary"
+          list="deductTagSuggestions"
+          placeholder="e.g. Job Payout, Client Wire, Salary, Groceries"
           value={tag}
           onChange={(e) => setTag(e.target.value)}
         />
       </label>
+      <datalist id="deductTagSuggestions">
+        {tagSuggestions.map((s) => (
+          <option key={s} value={s} />
+        ))}
+      </datalist>
 
       <div className="dialog-actions" style={{ marginTop: '18px', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
         <button className="ghost-button" type="button" onClick={handleSaveWithoutDeposit}>
@@ -331,6 +423,3 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
     </dialog>
   );
 };
-
-
-

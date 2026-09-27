@@ -84,6 +84,8 @@ export const DateUtils = {
 export const numberFormatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
 export const usdFormatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
 
+export const todayString = DateUtils.todayString;
+
 export const formatMoney = (value: number | string): string =>
   `${numberFormatter.format(Math.round(Number(value) || 0))} EGP`;
 

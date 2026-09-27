@@ -171,7 +171,17 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({ onBridgeDeficit }) =
                   </div>
                   <div className="overdue-entry-actions">
                     <strong className="overdue-entry-amount">{formatMoney(remaining)}</strong>
-                    <button className="ghost-button overdue-mark-paid-btn" type="button" onClick={() => recordActual(entry.id, remaining, today)}>
+                    <button
+                      className="ghost-button overdue-mark-paid-btn"
+                      type="button"
+                      onClick={() => {
+                        const plannedAmt = Number(entry.amount || 0);
+                        recordActual(entry.id, plannedAmt, today, {
+                          tag: entry.tag || '',
+                          account: entry.account || 'cash',
+                        });
+                      }}
+                    >
                       Mark Paid
                     </button>
                   </div>

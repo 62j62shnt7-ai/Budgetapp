@@ -156,14 +156,28 @@ export const EntryModal: React.FC<EntryModalProps> = ({
     e.preventDefault();
     if (!numericAmount || numericAmount <= 0) return;
 
-    const isCardExpense = creditType === 'cib_card' || creditType === 'hsbc_card';
-    const isCreditDue = creditType === 'cib' || creditType === 'hsbc';
+    const isSettlement =
+      creditType === 'cib' ||
+      creditType === 'hsbc' ||
+      (entryToEdit?.id && entryToEdit.id.startsWith('credit-settlement-')) ||
+      category.toLowerCase().includes('settlement') ||
+      category.toLowerCase().includes('credit due') ||
+      category.toLowerCase().includes('card payment') ||
+      category.toLowerCase().includes('credit payment') ||
+      category.toLowerCase().includes('bill payment') ||
+      category.toLowerCase().includes('card bill') ||
+      tag.toLowerCase().includes('settlement');
+
+    const isCardExpense = (creditType === 'cib_card' || creditType === 'hsbc_card') && !isSettlement;
+    const isCreditDue = creditType === 'cib' || creditType === 'hsbc' || isSettlement;
+    const shouldPromptDeduct = Boolean(onDeductPrompt);
+
     const normalizedCategory = category.trim() || (isCreditDue
-      ? `${creditType === 'cib' ? 'CIB' : 'HSBC'} Credit Due`
+      ? `${creditType.includes('hsbc') ? 'HSBC' : 'CIB'} Credit Due`
       : type === 'income' ? 'Income' : 'Other');
     const chosenAccount = isCardExpense && (!account.trim() || account.toLowerCase() === 'cash')
       ? (creditType.includes('hsbc') ? 'HSBC Credit' : 'CIB Credit')
-      : account.toLowerCase().trim() || 'cib';
+      : account.toLowerCase().trim() || (creditType === 'hsbc' ? 'hsbc' : 'cib');
     const settlementDate = isCardExpense
       ? creditSettlementDate || calculateCreditSettlementDate(date, creditType.includes('hsbc') ? 'hsbc' : 'cib')
       : '';
@@ -180,7 +194,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
       fxRateAtEntry: fxRate,
       creditType: creditType || undefined,
       creditSettlementDate: settlementDate || undefined,
-      source: isCardExpense ? 'credit card' : undefined,
+      source: isCardExpense ? 'credit card' : isSettlement ? 'recurring credit' : undefined,
       actualAmount: actualAmount ? Math.round(Number(actualAmount) * fxRate) : undefined,
       actualDate: actualAmount ? date : undefined,
     };
@@ -198,9 +212,12 @@ export const EntryModal: React.FC<EntryModalProps> = ({
         updateEntry(entryToEdit.id, baseEntry, seriesEditMode);
       }
       if (newActual > 0) {
-        recordActual(entryToEdit.id, newActual, date);
-        // Only prompt for account deduction if NOT a credit card purchase
-        if (onDeductPrompt && !isCardExpense && newActual !== previousActual) {
+        recordActual(entryToEdit.id, newActual, date, {
+          tag: baseEntry.tag,
+          account: baseEntry.account,
+          note: baseEntry.note,
+        });
+        if (shouldPromptDeduct && newActual !== previousActual) {
           onDeductPrompt({ ...baseEntry, id: entryToEdit.id }, newActual - previousActual);
         }
       } else if (previousActual > 0) {
@@ -241,12 +258,12 @@ export const EntryModal: React.FC<EntryModalProps> = ({
           });
           if (i === 0) firstCreatedId = createdId;
         }
-        if (newActual > 0 && !isCardExpense && onDeductPrompt) {
+        if (newActual > 0 && shouldPromptDeduct) {
           onDeductPrompt({ ...baseEntry, id: firstCreatedId }, newActual);
         }
       } else {
         const createdId = addEntry(baseEntry);
-        if (newActual > 0 && !isCardExpense && onDeductPrompt) {
+        if (newActual > 0 && shouldPromptDeduct) {
           onDeductPrompt({ ...baseEntry, id: createdId }, newActual);
         }
       }
@@ -285,10 +302,10 @@ export const EntryModal: React.FC<EntryModalProps> = ({
           Payment / Credit Mode
           <select value={creditType} onChange={(e) => setCreditType(e.target.value)}>
             <option value="">Direct (Cash / Bank account)</option>
-            <option value="cib_card">💳 Paid with CIB Credit Card</option>
-            <option value="hsbc_card">💳 Paid with HSBC Credit Card</option>
-            <option value="cib">🏛️ CIB Credit Due (Lump sum)</option>
-            <option value="hsbc">🏛️ HSBC Credit Due (Lump sum)</option>
+            <option value="cib_card">💳 Card Spend: Charged to CIB Card (Settles next cycle)</option>
+            <option value="hsbc_card">💳 Card Spend: Charged to HSBC Card (Settles next cycle)</option>
+            <option value="cib">🏛️ Card Bill Settlement: Pay CIB Card (Deducts from account)</option>
+            <option value="hsbc">🏛️ Card Bill Settlement: Pay HSBC Card (Deducts from account)</option>
           </select>
         </label>
 
@@ -373,7 +390,8 @@ export const EntryModal: React.FC<EntryModalProps> = ({
                           ? `${formatNativeCurrency(nativeDrawQty, activeEntry.currency!)} (≈ ${formatMoney(d.amount)})`
                           : formatMoney(d.amount)}
                       </strong>{' '}
-                      {d.note ? `(${d.note})` : ''}
+                      {d.tag ? ` #${d.tag}` : ''}
+                      {d.note ? ` (${d.note})` : ''}
                     </span>
                     {(() => {
                       const linkedJob =

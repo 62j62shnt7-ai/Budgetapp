@@ -743,10 +743,10 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                           💳 Settles {DateUtils.formatDisplayDate(calculateCreditSettlementDate(e.date, e.creditType || e.account || ''))}
                         </span>
                       ) : isCreditSettlement || isCreditDueLumpSum(e) ? (
-                        <span className="source-pill credit-due-pill">🏛️ Credit Due</span>
+                        <span className="source-pill credit-due-pill">🏛️ Credit Settlement</span>
                       ) : e.source && !['manual', 'expense', 'income', 'direct', 'starting balance', 'cash', 'default'].includes(e.source.toLowerCase()) ? (
                         <span className={`source-pill ${e.source === 'loan' ? 'loan' : ''}`}>
-                          {e.source}
+                          {e.source === 'recurring credit' ? '🏛️ Credit Settlement' : e.source === 'credit card' ? '💳 Credit Card' : e.source}
                         </span>
                       ) : null}
                     </td>
