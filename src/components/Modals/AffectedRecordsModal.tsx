@@ -50,15 +50,36 @@ export const AffectedRecordsModal: React.FC<AffectedRecordsModalProps> = ({
 }) => {
   const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({});
 
+  const prevIsOpenRef = React.useRef(false);
+  const prevItemDescRef = React.useRef<string | undefined>(undefined);
+
   useEffect(() => {
     if (isOpen) {
-      const initial: Record<string, boolean> = {};
-      options.forEach((opt) => {
-        initial[opt.id] = opt.required ? true : opt.defaultChecked !== false;
-      });
-      setSelectedIds(initial);
+      const isNewlyOpened = !prevIsOpenRef.current || prevItemDescRef.current !== itemDescription;
+      if (isNewlyOpened) {
+        const initial: Record<string, boolean> = {};
+        options.forEach((opt) => {
+          initial[opt.id] = opt.required ? true : opt.defaultChecked !== false;
+        });
+        setSelectedIds(initial);
+      } else {
+        // Modal is already open: retain existing user selections and only add any new option keys
+        setSelectedIds((prev) => {
+          let hasNewKey = false;
+          const next = { ...prev };
+          options.forEach((opt) => {
+            if (!(opt.id in next)) {
+              next[opt.id] = opt.required ? true : opt.defaultChecked !== false;
+              hasNewKey = true;
+            }
+          });
+          return hasNewKey ? next : prev;
+        });
+      }
     }
-  }, [isOpen, options]);
+    prevIsOpenRef.current = isOpen;
+    prevItemDescRef.current = itemDescription;
+  }, [isOpen, itemDescription, options]);
 
   if (!isOpen) return null;
 

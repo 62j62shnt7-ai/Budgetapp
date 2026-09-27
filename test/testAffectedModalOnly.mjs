@@ -591,7 +591,133 @@ assert.strictEqual(hasStorageAffectedParties(usdCashAsset, { partTimeJobs: [], a
 
 console.log('  ✓ All affected party dot indicator helpers verified for entries, installments, jobs, and storage assets\n');
 
+// -------------------------------------------------------------
+// SCENARIO 16: Job Payment Deletion with Unticked Storage & Cloud Conflict Handling
+// -------------------------------------------------------------
+console.log('▶ Test Scenario 16: Job Payment Deletion with Unticked Storage & Conflict Handling');
+
+// 1. Setup a job with a payment linked to an entry and a storage asset
+const testAssetId = 'asset-hsbc-usd-test';
+useBudgetStore.setState({
+  storageAssets: [
+    {
+      id: testAssetId,
+      name: 'HSBC USD Account',
+      category: 'Currency',
+      quantity: 5000,
+      unit: 'USD',
+      currency: 'USD',
+      buyPrice: 50,
+      rate: 50,
+    },
+  ],
+  partTimeJobs: [
+    {
+      id: 'job-uncheck-storage-test',
+      title: 'Consulting Contract',
+      currency: 'USD',
+      totalInvoice: 2000,
+      forecastEntryId: 'entry-job-test-1',
+      status: 'paid',
+      payments: [
+        {
+          id: 'pay-test-1',
+          entryId: 'entry-job-test-1',
+          date: '2026-10-15',
+          amount: 2000,
+          currency: 'USD',
+          settlementAccount: 'HSBC USD Account',
+        },
+      ],
+    },
+  ],
+  entries: [
+    {
+      id: 'entry-job-test-1',
+      date: '2026-10-15',
+      category: 'Consulting Contract',
+      amount: 100000,
+      actualAmount: 100000,
+      type: 'income',
+      account: 'HSBC USD Account',
+      draws: [
+        {
+          id: 'pay-test-1',
+          date: '2026-10-15',
+          amount: 100000,
+          account: 'HSBC USD Account',
+        },
+      ],
+    },
+  ],
+  entryActuals: { 'entry-job-test-1': 100000 },
+  entryActualDates: { 'entry-job-test-1': '2026-10-15' },
+});
+
+const initialQty = useBudgetStore.getState().storageAssets.find((a) => a.id === testAssetId)?.quantity;
+assert.strictEqual(initialQty, 5000, 'Storage asset starts with 5000 USD');
+
+// User deletes the job payment and explicitly UNTICKS revertStorage
+useBudgetStore.getState().deleteJobPayment('partTime', 'job-uncheck-storage-test', 'pay-test-1', {
+  syncCashflow: true,
+  deleteCashEntry: false,
+  revertStorage: false, // User unticked storage
+  storageAssetId: testAssetId,
+});
+
+const qtyAfterDelete = useBudgetStore.getState().storageAssets.find((a) => a.id === testAssetId)?.quantity;
+assert.strictEqual(qtyAfterDelete, 5000, 'Storage quantity MUST remain strictly 5000 USD when unticked!');
+
+// Cashflow entry should have actual cleared since its single draw was removed
+const updatedCashEntry = useBudgetStore.getState().entries.find((e) => e.id === 'entry-job-test-1');
+assert.strictEqual(updatedCashEntry?.actualAmount, undefined, 'Cashflow entry actualAmount cleared');
+assert.strictEqual(updatedCashEntry?.draws?.length, 0, 'Draws cleared');
+assert.strictEqual(useBudgetStore.getState().entryActuals['entry-job-test-1'], undefined, 'entryActuals entry deleted');
+
+// Job should be reverted to invoiced with remaining payments empty
+const revertedJobCheck = useBudgetStore.getState().partTimeJobs.find((j) => j.id === 'job-uncheck-storage-test');
+assert.strictEqual(revertedJobCheck?.payments?.length, 0, 'Job payments empty');
+assert.strictEqual(revertedJobCheck?.status, 'invoiced', 'Job status reverted to invoiced');
+
+console.log('  ✓ Unticking revertStorage guarantees zero storage deductions even when entry actual is cleared');
+
+// 2. Verify Cloud Conflict logic does NOT trigger false positive on local mutation
+// Mock fetch to simulate remote Gist with older export
+const originalFetch = globalThis.fetch;
+const oldRemoteExport = JSON.stringify({
+  version: '2.1',
+  exportedAt: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
+  data: {
+    cashEntries: [],
+    partTimeJobs: [],
+  },
+});
+
+globalThis.fetch = async (url) => {
+  if (typeof url === 'string' && url.includes('api.github.com/gists/')) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        files: {
+          'budget-data.json': { content: oldRemoteExport, truncated: false },
+        },
+      }),
+    };
+  }
+  return { ok: false, status: 404 };
+};
+
+// With local mutations pending, downloading an older Gist backup must NOT flag a conflict
+const syncResult = await useBudgetStore.getState().syncFromGist('mock-token', 'mock-gist-id');
+assert.strictEqual(useBudgetStore.getState().gistConflict, null, 'No false gistConflict flagged on local mutations');
+assert.strictEqual(syncResult, true, 'syncFromGist handles local mutation gracefully without conflict popup');
+
+globalThis.fetch = originalFetch;
+console.log('  ✓ Older cloud backup does not trigger false conflict warning on local mutations\n');
+
 console.log('===============================================================');
 console.log('🌟 100% OF ALL AFFECTED RECORDS MODAL TESTS PASSED! 🌟');
 console.log('===============================================================');
+
 

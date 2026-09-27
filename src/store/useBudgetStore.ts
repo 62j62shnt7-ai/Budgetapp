@@ -64,6 +64,7 @@ export const STORAGE_KEYS = {
   forecastQuarters: 'budget-control-forecast-quarters',
   importUndoBackup: 'budget-control-import-undo-backup',
   lastLocalModified: 'budget-control-last-local-modified',
+  lastGistUpload: 'budget-control-last-gist-upload',
 };
 
 function loadStorage<T>(key: string, fallback: T): T {
@@ -154,7 +155,7 @@ export interface BudgetStoreState {
   updateEntry: (id: string, updates: Partial<CashEntry>, seriesMode?: 'single' | 'future') => void;
   deleteEntry: (id: string, seriesMode?: 'single' | 'future', options?: { deleteLinkedLoan?: boolean; deleteInstallmentPlan?: boolean; revertStorage?: boolean; storageAssetId?: string; syncJob?: boolean }) => void;
   recordActual: (entryId: string, amount: number, date?: string, drawMeta?: { note?: string; tag?: string; account?: string }) => void;
-  clearActual: (entryId: string) => void;
+  clearActual: (entryId: string, options?: { revertStorage?: boolean; storageAssetId?: string; syncJob?: boolean }) => void;
   addDraw: (entryId: string, draw: { id?: string; date: string; amount: number; note?: string; tag?: string; account?: string }) => void;
   updateDraw: (entryId: string, drawIndex: number, draw: { date: string; amount: number; note?: string; tag?: string; account?: string }) => void;
   deleteDraw: (entryId: string, drawIndex: number, options?: { updateCashflow?: boolean; syncJob?: boolean; revertStorage?: boolean; storageAssetId?: string }) => void;
@@ -212,11 +213,14 @@ export interface BudgetStoreState {
   importJSON: (jsonString: string) => boolean;
 }
 
-let lastLocalMutationTimestamp = 0;
-let lastGistUploadTimestamp = 0;
+let lastLocalMutationTimestamp = typeof localStorage !== 'undefined' ? Number(localStorage.getItem(STORAGE_KEYS.lastLocalModified) || 0) || 0 : 0;
+let lastGistUploadTimestamp = typeof localStorage !== 'undefined' ? Number(localStorage.getItem(STORAGE_KEYS.lastGistUpload) || 0) || 0 : 0;
 
 function scheduleAutoGistSync(getState: () => BudgetStoreState, immediate = false): void {
   lastLocalMutationTimestamp = Date.now();
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(STORAGE_KEYS.lastLocalModified, String(lastLocalMutationTimestamp));
+  }
   if (gistSyncTimer) {
     clearTimeout(gistSyncTimer);
     gistSyncTimer = null;
@@ -255,6 +259,9 @@ function scheduleAutoGistSync(getState: () => BudgetStoreState, immediate = fals
         throw new Error(`Gist auto-sync failed: ${response.status} ${response.statusText}`);
       }
       lastGistUploadTimestamp = Date.now();
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(STORAGE_KEYS.lastGistUpload, String(lastGistUploadTimestamp));
+      }
       useBudgetStore.setState({ gistSyncStatus: 'synced' });
     } catch (error) {
       console.error(error);
@@ -810,7 +817,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     scheduleAutoGistSync(get);
   },
 
-  clearActual: (entryId) => {
+  clearActual: (entryId, options) => {
     const actuals = { ...get().entryActuals };
     delete actuals[entryId];
     const dates = { ...get().entryActualDates };
@@ -859,91 +866,100 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       entryActualDates: dates,
     });
 
-    // If this entry was linked to a job forecast payment, revert job status & storage deposit
-    let jobType: 'partTime' | 'asf' | 'irq' = 'partTime';
-    let targetJob = get().partTimeJobs.find((j) => j.forecastEntryId === entryId || j.payments?.some((p) => p.entryId === entryId));
-    if (!targetJob) {
-      targetJob = get().asfJobs.find((j) => j.forecastEntryId === entryId || j.payments?.some((p) => p.entryId === entryId));
-      if (targetJob) jobType = 'asf';
-    }
-    if (!targetJob) {
-      targetJob = get().irqJobs.find((j) => j.forecastEntryId === entryId || j.payments?.some((p) => p.entryId === entryId));
-      if (targetJob) jobType = 'irq';
-    }
+    if (options?.syncJob !== false) {
+      // If this entry was linked to a job forecast payment, revert job status & storage deposit
+      let jobType: 'partTime' | 'asf' | 'irq' = 'partTime';
+      let targetJob = get().partTimeJobs.find((j) => j.forecastEntryId === entryId || j.payments?.some((p) => p.entryId === entryId));
+      if (!targetJob) {
+        targetJob = get().asfJobs.find((j) => j.forecastEntryId === entryId || j.payments?.some((p) => p.entryId === entryId));
+        if (targetJob) jobType = 'asf';
+      }
+      if (!targetJob) {
+        targetJob = get().irqJobs.find((j) => j.forecastEntryId === entryId || j.payments?.some((p) => p.entryId === entryId));
+        if (targetJob) jobType = 'irq';
+      }
 
-    if (targetJob) {
-      const entry = get().entries.find((e) => e.id === entryId) || get().archivedEntries.find((e) => e.id === entryId);
-      const linkedPayment = targetJob.payments?.find((p) => p.entryId === entryId);
+      if (targetJob) {
+        const entry = get().entries.find((e) => e.id === entryId) || get().archivedEntries.find((e) => e.id === entryId);
+        const linkedPayment = targetJob.payments?.find((p) => p.entryId === entryId);
 
-      // Revert deposited funds from Storage or Bank balance (if it was deposited)
-      const isNoDeposit = (entry?.account || linkedPayment?.account || linkedPayment?.settlementAccount || '').toLowerCase().includes('no deposit') || (entry?.account || linkedPayment?.account || linkedPayment?.settlementAccount || '').toLowerCase().includes('recorded only');
-      if (linkedPayment && linkedPayment.amount > 0 && !isNoDeposit) {
-        const paidAmt = Number(linkedPayment.amount) || 0;
-        const jobCurrency = (targetJob.currency || linkedPayment.currency || 'USD').toUpperCase();
-        const isForeign = jobCurrency !== 'EGP';
-        const dest = (targetJob.forecastDestination || '').trim();
-        const accountField = (entry?.account || linkedPayment.account || linkedPayment.settlementAccount || '').toLowerCase().trim();
+        // Revert deposited funds from Storage or Bank balance (if it was deposited and not unticked)
+        if (options?.revertStorage !== false) {
+          const isNoDeposit = (entry?.account || linkedPayment?.account || linkedPayment?.settlementAccount || '').toLowerCase().includes('no deposit') || (entry?.account || linkedPayment?.account || linkedPayment?.settlementAccount || '').toLowerCase().includes('recorded only');
+          if (linkedPayment && linkedPayment.amount > 0 && !isNoDeposit) {
+            const paidAmt = Number(linkedPayment.amount) || 0;
+            const jobCurrency = (targetJob.currency || linkedPayment.currency || 'USD').toUpperCase();
+            const isForeign = jobCurrency !== 'EGP';
+            const dest = (targetJob.forecastDestination || '').trim();
+            const accountField = (entry?.account || linkedPayment.account || linkedPayment.settlementAccount || '').toLowerCase().trim();
 
-        if (dest === 'storage:hsbc_usd' || (!dest && isForeign && jobCurrency === 'USD' && accountField.includes('hsbc')) || accountField.includes('hsbc_usd') || accountField.includes('hsbc usd')) {
-          const existing = get().storageAssets.find((a) => a.name.toLowerCase().includes('hsbc') && a.unit.toUpperCase() === 'USD');
-          if (existing) {
-            get().updateStorageAsset(existing.id, { quantity: Math.max(0, (Number(existing.quantity) || 0) - paidAmt) });
-          }
-        } else if (dest === 'storage:cash_usd' || (!dest && isForeign && jobCurrency === 'USD' && (accountField.includes('cash') || !accountField.includes('hsbc'))) || accountField.includes('cash_usd') || accountField.includes('usd cash')) {
-          const existing = get().storageAssets.find((a) => a.name.toLowerCase().includes('cash') && a.unit.toUpperCase() === 'USD');
-          if (existing) {
-            get().updateStorageAsset(existing.id, { quantity: Math.max(0, (Number(existing.quantity) || 0) - paidAmt) });
-          }
-        } else if (dest === 'storage:hsbc_eur' || (!dest && isForeign && jobCurrency === 'EUR' && accountField.includes('hsbc')) || accountField.includes('hsbc_eur') || accountField.includes('hsbc eur')) {
-          const existing = get().storageAssets.find((a) => a.name.toLowerCase().includes('hsbc') && a.unit.toUpperCase() === 'EUR');
-          if (existing) {
-            get().updateStorageAsset(existing.id, { quantity: Math.max(0, (Number(existing.quantity) || 0) - paidAmt) });
-          }
-        } else if (dest.startsWith('storage:existing-')) {
-          const assetId = dest.replace('storage:existing-', '');
-          const existing = get().storageAssets.find((a) => a.id === assetId);
-          if (existing) {
-            get().updateStorageAsset(assetId, { quantity: Math.max(0, (Number(existing.quantity) || 0) - paidAmt) });
-          }
-        } else if (dest.startsWith('account:') || get().accounts[accountField]) {
-          const accKey = dest.startsWith('account:') ? dest.replace('account:', '') : accountField;
-          const egpAmt = linkedPayment.egpAmount || Math.round(paidAmt * (entry?.fxRateAtEntry || getCurrencyRate(get().rates, jobCurrency)));
-          if (get().accounts[accKey]) {
-            const currentBal = get().accounts[accKey].balance || 0;
-            get().updateAccountBalance(accKey, Math.max(0, currentBal - egpAmt));
-          }
-        } else if (isForeign) {
-          const existing = get().storageAssets.find((a) => a.unit.toUpperCase() === jobCurrency);
-          if (existing) {
-            get().updateStorageAsset(existing.id, { quantity: Math.max(0, (Number(existing.quantity) || 0) - paidAmt) });
+            if (options?.storageAssetId) {
+              const existing = get().storageAssets.find((a) => a.id === options.storageAssetId);
+              if (existing) {
+                get().updateStorageAsset(existing.id, { quantity: Math.max(0, (Number(existing.quantity) || 0) - paidAmt) });
+              }
+            } else if (dest === 'storage:hsbc_usd' || (!dest && isForeign && jobCurrency === 'USD' && accountField.includes('hsbc')) || accountField.includes('hsbc_usd') || accountField.includes('hsbc usd')) {
+              const existing = get().storageAssets.find((a) => a.name.toLowerCase().includes('hsbc') && a.unit.toUpperCase() === 'USD');
+              if (existing) {
+                get().updateStorageAsset(existing.id, { quantity: Math.max(0, (Number(existing.quantity) || 0) - paidAmt) });
+              }
+            } else if (dest === 'storage:cash_usd' || (!dest && isForeign && jobCurrency === 'USD' && (accountField.includes('cash') || !accountField.includes('hsbc'))) || accountField.includes('cash_usd') || accountField.includes('usd cash')) {
+              const existing = get().storageAssets.find((a) => a.name.toLowerCase().includes('cash') && a.unit.toUpperCase() === 'USD');
+              if (existing) {
+                get().updateStorageAsset(existing.id, { quantity: Math.max(0, (Number(existing.quantity) || 0) - paidAmt) });
+              }
+            } else if (dest === 'storage:hsbc_eur' || (!dest && isForeign && jobCurrency === 'EUR' && accountField.includes('hsbc')) || accountField.includes('hsbc_eur') || accountField.includes('hsbc eur')) {
+              const existing = get().storageAssets.find((a) => a.name.toLowerCase().includes('hsbc') && a.unit.toUpperCase() === 'EUR');
+              if (existing) {
+                get().updateStorageAsset(existing.id, { quantity: Math.max(0, (Number(existing.quantity) || 0) - paidAmt) });
+              }
+            } else if (dest.startsWith('storage:existing-')) {
+              const assetId = dest.replace('storage:existing-', '');
+              const existing = get().storageAssets.find((a) => a.id === assetId);
+              if (existing) {
+                get().updateStorageAsset(assetId, { quantity: Math.max(0, (Number(existing.quantity) || 0) - paidAmt) });
+              }
+            } else if (dest.startsWith('account:') || get().accounts[accountField]) {
+              const accKey = dest.startsWith('account:') ? dest.replace('account:', '') : accountField;
+              const egpAmt = linkedPayment.egpAmount || Math.round(paidAmt * (entry?.fxRateAtEntry || getCurrencyRate(get().rates, jobCurrency)));
+              if (get().accounts[accKey]) {
+                const currentBal = get().accounts[accKey].balance || 0;
+                get().updateAccountBalance(accKey, Math.max(0, currentBal - egpAmt));
+              }
+            } else if (isForeign) {
+              const existing = get().storageAssets.find((a) => a.unit.toUpperCase() === jobCurrency);
+              if (existing) {
+                get().updateStorageAsset(existing.id, { quantity: Math.max(0, (Number(existing.quantity) || 0) - paidAmt) });
+              }
+            }
           }
         }
+
+        // Filter out this payment from job
+        const remainingPayments = (targetJob.payments || []).filter((p) => p.entryId !== entryId);
+        const remainingJob = { ...targetJob, payments: remainingPayments };
+        const fin = calculateJobFinancials(remainingJob, get().rates);
+        const totalPaid = remainingPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+
+        let newStatus: JobItem['status'] = targetJob.status;
+        if (remainingPayments.length === 0) {
+          newStatus = (targetJob.daysWorked && targetJob.daysWorked.length > 0) || (targetJob.logs && targetJob.logs.length > 0) ? 'invoiced' : 'invoiced';
+        } else {
+          newStatus = totalPaid >= fin.totalInvoice ? 'paid' : 'partial';
+        }
+
+        const updatedJob: JobItem = {
+          ...targetJob,
+          payments: remainingPayments,
+          status: newStatus,
+          forecastDueDate: entry?.date || targetJob.forecastDueDate || DateUtils.todayString(),
+          forecastEntryId: entryId,
+          forecastAmount: entry?.originalAmount || fin.remainingBalance || targetJob.forecastAmount,
+          forecastDestination: targetJob.forecastDestination || (entry?.account ? `account:${entry.account}` : undefined),
+        };
+
+        get().saveJob(jobType, updatedJob);
       }
-
-      // Filter out this payment from job
-      const remainingPayments = (targetJob.payments || []).filter((p) => p.entryId !== entryId);
-      const remainingJob = { ...targetJob, payments: remainingPayments };
-      const fin = calculateJobFinancials(remainingJob, get().rates);
-      const totalPaid = remainingPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
-
-      let newStatus: JobItem['status'] = targetJob.status;
-      if (remainingPayments.length === 0) {
-        newStatus = (targetJob.daysWorked && targetJob.daysWorked.length > 0) || (targetJob.logs && targetJob.logs.length > 0) ? 'invoiced' : 'invoiced';
-      } else {
-        newStatus = totalPaid >= fin.totalInvoice ? 'paid' : 'partial';
-      }
-
-      const updatedJob: JobItem = {
-        ...targetJob,
-        payments: remainingPayments,
-        status: newStatus,
-        forecastDueDate: entry?.date || targetJob.forecastDueDate || DateUtils.todayString(),
-        forecastEntryId: entryId,
-        forecastAmount: entry?.originalAmount || fin.remainingBalance || targetJob.forecastAmount,
-        forecastDestination: targetJob.forecastDestination || (entry?.account ? `account:${entry.account}` : undefined),
-      };
-
-      get().saveJob(jobType, updatedJob);
     }
 
     scheduleAutoGistSync(get);
@@ -1502,7 +1518,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     if (options?.syncCashflow !== false && payment?.entryId) {
       const shouldDeleteCashEntry = options?.deleteCashEntry === true;
       if (shouldDeleteCashEntry) {
-        get().deleteEntry(payment.entryId);
+        get().deleteEntry(payment.entryId, undefined, { syncJob: false, revertStorage: false });
       } else {
         // Sync cashflow entry draws and actual amount
         const entry = get().entries.find((e) => e.id === payment.entryId);
@@ -1517,7 +1533,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
             isClosed: false,
           });
           if (newActual === 0) {
-            get().clearActual(payment.entryId);
+            get().clearActual(payment.entryId, { revertStorage: false, syncJob: false });
           }
         }
       }
@@ -1748,24 +1764,51 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       }
 
       const remoteExportedAt = parsedRemote?.exportedAt || parsedRemote?.data?.exportedAt;
-      if (
-        remoteExportedAt &&
-        lastLocalMutationTimestamp > 0 &&
-        lastLocalMutationTimestamp > lastGistUploadTimestamp
-      ) {
-        set({
-          gistConflict: {
-            remoteTime: remoteExportedAt,
-            remoteData: content,
-          },
-          gistSyncStatus: 'idle',
-        });
-        return false;
+      const remoteTime = remoteExportedAt ? new Date(remoteExportedAt).getTime() : 0;
+
+      // Remote is genuinely newer than our last known sync if remoteTime > lastGistUploadTimestamp + 1000
+      const remoteIsNewerThanLastSync = remoteTime > 0 && remoteTime > (lastGistUploadTimestamp + 1000);
+      const localHasUnuploadedChanges = lastLocalMutationTimestamp > 0 && lastLocalMutationTimestamp > lastGistUploadTimestamp;
+
+      if (remoteIsNewerThanLastSync && localHasUnuploadedChanges) {
+        // Both local and remote have mutated since last sync. Check if content actually differs
+        const currentLocalExport = get().exportJSON();
+        let isActuallyDifferent = true;
+        try {
+          const parsedLocal = JSON.parse(currentLocalExport);
+          isActuallyDifferent = JSON.stringify(parsedRemote?.data || parsedRemote) !== JSON.stringify(parsedLocal?.data || parsedLocal);
+        } catch {
+          isActuallyDifferent = content.trim() !== currentLocalExport.trim();
+        }
+
+        if (isActuallyDifferent) {
+          set({
+            gistConflict: {
+              remoteTime: remoteExportedAt,
+              remoteData: content,
+            },
+            gistSyncStatus: 'idle',
+          });
+          return false;
+        }
+      }
+
+      // If local has un-uploaded changes and remote is not newer than our last sync,
+      // upload local data to Gist rather than overwriting with older remote data
+      if (localHasUnuploadedChanges && !remoteIsNewerThanLastSync) {
+        scheduleAutoGistSync(get, true);
+        return true;
       }
 
       if (!get().importJSON(content)) {
         throw new Error('No valid budget JSON content could be restored from this Gist');
       }
+      const newSyncTimestamp = remoteTime > 0 ? remoteTime : Date.now();
+      lastGistUploadTimestamp = newSyncTimestamp;
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(STORAGE_KEYS.lastGistUpload, String(lastGistUploadTimestamp));
+      }
+      lastLocalMutationTimestamp = 0;
       set({ gistSyncStatus: 'synced', gistConflict: null });
       return true;
     } catch (error) {
@@ -1782,6 +1825,11 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       scheduleAutoGistSync(get, true);
     } else if (resolution === 'remote' && conflict?.remoteData) {
       get().importJSON(conflict.remoteData);
+      lastGistUploadTimestamp = Date.now();
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(STORAGE_KEYS.lastGistUpload, String(lastGistUploadTimestamp));
+      }
+      lastLocalMutationTimestamp = 0;
       set({ gistConflict: null, gistSyncStatus: 'synced' });
     } else {
       set({ gistConflict: null });

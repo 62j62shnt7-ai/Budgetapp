@@ -660,10 +660,20 @@ export const JobsView: React.FC<JobsViewProps> = ({
               : []),
           ]}
           onConfirm={(selectedOptionIds) => {
+            const targetAccount = (deletePaymentTarget.payment.settlementAccount || deletePaymentTarget.payment.account || '').trim().toLowerCase();
+            const paymentCurr = (deletePaymentTarget.payment.currency || deletePaymentTarget.job.currency || 'USD').toUpperCase();
+            const isForeign = paymentCurr !== 'EGP';
+            const matchingStorage = storageAssets.find(
+              (a) =>
+                a.name.trim().toLowerCase() === targetAccount ||
+                (isForeign &&
+                  ((a.unit || '').toUpperCase() === paymentCurr || (a.currency || '').toUpperCase() === paymentCurr))
+            );
             deleteJobPayment('partTime', deletePaymentTarget.job.id, deletePaymentTarget.payment.id, {
               syncCashflow: selectedOptionIds.includes('cashflow'),
               deleteCashEntry: false,
               revertStorage: selectedOptionIds.includes('storage'),
+              storageAssetId: matchingStorage?.id,
             });
             setDeletePaymentTarget(null);
           }}
