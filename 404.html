@@ -3,18 +3,17 @@
   <head>
     <meta charset="utf-8">
     <title>Budget Control</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <script>
-      // GitHub Pages SPA Redirect:
-      // If a route/file isn't found (e.g., when launched from iOS home screen or subpath),
-      // determine the repository base and redirect smoothly to index.html.
       (function () {
         var path = window.location.pathname;
         var segments = path.split('/').filter(Boolean);
-        // If hosted on https://<user>.github.io/<repo>/, segments[0] is the repo name
-        var repoBase = segments.length > 0 ? '/' + segments[0] + '/' : '/';
+        var repoBase = segments.length > 0 ? '/' + segments[0] + '/' : '/Budgetapp/';
         var search = window.location.search || '';
         var hash = window.location.hash || '';
-        window.location.replace(repoBase + search + hash);
+        window.location.replace(repoBase + 'index.html' + search + hash);
       })();
     </script>
   </head>

@@ -2,10 +2,12 @@
   "name": "Budget Control",
   "short_name": "Budget",
   "description": "Personal financial planning, cashflow forecasting, and multi-asset vault",
-  "id": "./",
-  "start_url": "./",
-  "scope": "./",
+  "start_url": "./index.html",
   "display": "standalone",
+  "display_override": [
+    "standalone",
+    "fullscreen"
+  ],
   "background_color": "#0f1614",
   "theme_color": "#18211f",
   "orientation": "any",
