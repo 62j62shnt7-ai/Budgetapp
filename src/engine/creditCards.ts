@@ -310,10 +310,12 @@ export function getCoveredCreditSettlementKeys(
   entries: CashEntry[],
   entryActuals: Record<string, number> = {},
   entryActualDates: Record<string, string> = {},
-  creditSettlementOverrides?: Record<string, { amount?: number; date?: string; note?: string }>
+  creditSettlementOverrides?: Record<string, { amount?: number; date?: string; note?: string }>,
+  archivedEntries: CashEntry[] = []
 ): Set<string> {
   const coveredKeys = new Set<string>();
-  (entries || []).forEach((entry) => {
+  const all = [...(entries || []), ...(archivedEntries || [])];
+  all.forEach((entry) => {
     const act = (entryActuals && entryActuals[entry.id] !== undefined)
       ? Number(entryActuals[entry.id]) || 0
       : Number(entry.actualAmount) || 0;

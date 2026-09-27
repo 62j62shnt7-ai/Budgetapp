@@ -28,6 +28,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
     creditSettlementOverrides,
     entryActuals,
     entryActualDates,
+    deletedForecasts,
     recordActual,
     clearActual,
     deleteEntry,
@@ -120,10 +121,14 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
       entries || [],
       entryActuals || {},
       entryActualDates || {},
-      creditSettlementOverrides || {}
+      creditSettlementOverrides || {},
+      archivedEntries || []
     );
 
+    const deletedSet = new Set(deletedForecasts || []);
+
     const validCreditDues = creditEntries.filter((entry) => {
+      if (deletedSet.has(entry.id)) return false;
       if (getEntryActualAmount(entry) <= 0) return false;
       const parts = (entry.id || '').split('-');
       if (parts[0] === 'credit' && parts[1] === 'settlement') {
@@ -138,7 +143,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
       ...(entries || []),
       ...installmentEntries,
       ...validCreditDues,
-    ].filter((entry) => getEntryActualAmount(entry) > 0);
+    ].filter((entry) => !deletedSet.has(entry.id) && getEntryActualAmount(entry) > 0);
 
     const seenIds = new Set<string>();
     const dedupedActive: CashEntry[] = [];
@@ -150,11 +155,11 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
     });
 
     const archivedWithActuals = (archivedEntries || []).filter(
-      (entry) => getEntryActualAmount(entry) > 0 && !seenIds.has(entry.id)
+      (entry) => getEntryActualAmount(entry) > 0 && !seenIds.has(entry.id) && !deletedSet.has(entry.id)
     );
 
     return [...dedupedActive, ...archivedWithActuals];
-  }, [entries, archivedEntries, installments, accounts, creditDues, creditSettlementOverrides, entryActuals, entryActualDates, getEntryActualAmount]);
+  }, [entries, archivedEntries, installments, accounts, creditDues, creditSettlementOverrides, entryActuals, entryActualDates, deletedForecasts, getEntryActualAmount]);
 
   // 1. Monthly Summary Calculation
   const monthsSet = new Set<string>();

@@ -182,7 +182,8 @@ export interface BudgetStoreState {
   resetData: () => void;
   restoreResetBackup: () => boolean;
   undoImport: () => boolean;
-  setHistoryAdminUnlocked: (unlocked: boolean) => void;
+  restoreDeletedForecast: (id: string) => void;
+  clearAllDeletedForecasts: () => void;
 
   exportJSON: () => string;
   importJSON: (jsonString: string) => boolean;
@@ -421,44 +422,93 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
   },
 
   deleteEntry: (id, seriesMode = 'single') => {
-    const target = get().entries.find((e) => e.id === id);
-    if (!target) return;
+    const inEntries = get().entries.find((e) => e.id === id);
+    const inArchived = get().archivedEntries.find((e) => e.id === id);
+    const target = inEntries || inArchived;
 
-    if (seriesMode === 'future' && (target.seriesId || target.isRecurring)) {
+    // 1. Series deletion
+    let updatedEntries = get().entries;
+    let updatedArchived = get().archivedEntries;
+
+    if (seriesMode === 'future' && target && (target.seriesId || target.isRecurring)) {
       const seriesId = target.seriesId || id;
       const targetDate = target.date;
-      const updated = get().entries.filter((e) => {
+      updatedEntries = updatedEntries.filter((e) => {
         const matchesSeries = (e.seriesId && e.seriesId === seriesId) || (e.id === id);
         const isFutureOrCurrent = e.date >= targetDate;
         const isActualized = Number(get().entryActuals[e.id] ?? e.actualAmount ?? 0) > 0;
-        if (matchesSeries && isFutureOrCurrent && !isActualized) {
-          return false;
-        }
-        return true;
+        return !(matchesSeries && isFutureOrCurrent && !isActualized);
       });
-      saveStorage(STORAGE_KEYS.entries, updated);
-      set({ entries: updated });
-      scheduleAutoGistSync(get);
-      return;
+      updatedArchived = updatedArchived.filter((e) => {
+        const matchesSeries = (e.seriesId && e.seriesId === seriesId) || (e.id === id);
+        const isFutureOrCurrent = e.date >= targetDate;
+        const isActualized = Number(get().entryActuals[e.id] ?? e.actualAmount ?? 0) > 0;
+        return !(matchesSeries && isFutureOrCurrent && !isActualized);
+      });
+    } else {
+      updatedEntries = updatedEntries.filter((e) => e.id !== id);
+      updatedArchived = updatedArchived.filter((e) => e.id !== id);
     }
 
+    // 2. Handle linked loans
     const linkedLoanId = target?.type === 'income' ? target.loanId : undefined;
     const shouldDeleteLinked = Boolean(
       linkedLoanId &&
       typeof window !== 'undefined' &&
       window.confirm('This entry has a linked loan repayment. Delete the repayment too?')
     );
-    const updated = get().entries.filter(
-      (e) => e.id !== id && !(shouldDeleteLinked && e.loanId === linkedLoanId)
-    );
+    if (shouldDeleteLinked && linkedLoanId) {
+      updatedEntries = updatedEntries.filter((e) => e.loanId !== linkedLoanId);
+      updatedArchived = updatedArchived.filter((e) => e.loanId !== linkedLoanId);
+    }
     const updatedInstallments = shouldDeleteLinked && linkedLoanId
       ? get().installments.filter((installment) => installment.loanId !== linkedLoanId)
       : get().installments;
-    saveStorage(STORAGE_KEYS.entries, updated);
+
+    // 3. If credit settlement entry, clean up manual lump payment and overrides
+    let updatedOverrides = { ...get().creditSettlementOverrides };
+    if (id.startsWith('credit-settlement-')) {
+      const parts = id.split('-');
+      const accountKey = parts[2];
+      const monthKey = `${parts[3]}-${parts[4]}`;
+      updatedEntries = updatedEntries.filter((e) => !(isLumpCreditDueForAccount(e, accountKey) && DateUtils.getMonthKey(e.date) === monthKey));
+      updatedArchived = updatedArchived.filter((e) => !(isLumpCreditDueForAccount(e, accountKey) && DateUtils.getMonthKey(e.date) === monthKey));
+      delete updatedOverrides[id];
+    } else if (updatedOverrides[id]) {
+      delete updatedOverrides[id];
+    }
+
+    // 4. Clean up entryActuals and entryActualDates
+    const actuals = { ...get().entryActuals };
+    delete actuals[id];
+    const dates = { ...get().entryActualDates };
+    delete dates[id];
+
+    // 5. Track in deletedForecasts so virtual/calculated forecasts won't regenerate
+    const deletedForecasts = get().deletedForecasts.includes(id)
+      ? get().deletedForecasts
+      : [...get().deletedForecasts, id];
+
+    // 6. Persist
+    saveStorage(STORAGE_KEYS.entries, updatedEntries);
+    saveStorage(STORAGE_KEYS.archivedEntries, updatedArchived);
     if (updatedInstallments !== get().installments) {
       saveStorage(STORAGE_KEYS.installments, updatedInstallments);
     }
-    set({ entries: updated, installments: updatedInstallments });
+    saveStorage(STORAGE_KEYS.creditSettlementOverrides, updatedOverrides);
+    saveStorage(STORAGE_KEYS.entryActuals, actuals);
+    saveStorage(STORAGE_KEYS.entryActualDates, dates);
+    saveStorage(STORAGE_KEYS.deletedForecasts, deletedForecasts);
+
+    set({
+      entries: updatedEntries,
+      archivedEntries: updatedArchived,
+      installments: updatedInstallments,
+      creditSettlementOverrides: updatedOverrides,
+      entryActuals: actuals,
+      entryActualDates: dates,
+      deletedForecasts,
+    });
     scheduleAutoGistSync(get);
   },
 
@@ -470,6 +520,8 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
 
     const existingIndex = get().entries.findIndex((e) => e.id === entryId);
     let updatedEntries = get().entries;
+    let updatedArchived = get().archivedEntries;
+
     if (existingIndex !== -1) {
       const entry = get().entries[existingIndex];
       const prevActual = Number(get().entryActuals[entryId] ?? entry.actualAmount ?? 0);
@@ -506,11 +558,55 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       updatedEntries = [...get().entries];
       updatedEntries[existingIndex] = updatedEntry;
       saveStorage(STORAGE_KEYS.entries, updatedEntries);
+    } else {
+      const archivedIndex = get().archivedEntries.findIndex((e) => e.id === entryId);
+      if (archivedIndex !== -1) {
+        const entry = get().archivedEntries[archivedIndex];
+        const prevActual = Number(get().entryActuals[entryId] ?? entry.actualAmount ?? 0);
+        const tranche = amount > prevActual ? amount - prevActual : amount;
+
+        let draws = Array.isArray(entry.draws) ? [...entry.draws] : [];
+        if (draws.length === 0 && prevActual > 0) {
+          draws.push({
+            id: `draw-${Date.now()}-0`,
+            date: entry.actualDate || entry.date || actDate,
+            amount: prevActual,
+            tag: entry.tag || '',
+            account: entry.account || 'cash',
+          });
+        }
+
+        if (tranche > 0 && amount > prevActual) {
+          draws.push({
+            id: `draw-${Date.now()}-${draws.length}`,
+            date: actDate,
+            amount: tranche,
+            tag: drawMeta?.tag || entry.tag || '',
+            account: drawMeta?.account || entry.account || 'cash',
+            note: drawMeta?.note,
+          });
+        }
+
+        const updatedEntry: CashEntry = {
+          ...entry,
+          actualAmount: amount,
+          actualDate: actDate,
+          draws,
+        };
+        updatedArchived = [...get().archivedEntries];
+        updatedArchived[archivedIndex] = updatedEntry;
+        saveStorage(STORAGE_KEYS.archivedEntries, updatedArchived);
+      }
     }
 
     saveStorage(STORAGE_KEYS.entryActuals, actuals);
     saveStorage(STORAGE_KEYS.entryActualDates, dates);
-    set({ entries: updatedEntries, entryActuals: actuals, entryActualDates: dates });
+    set({
+      entries: updatedEntries,
+      archivedEntries: updatedArchived,
+      entryActuals: actuals,
+      entryActualDates: dates,
+    });
     scheduleAutoGistSync(get);
   },
 
@@ -537,9 +633,31 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       saveStorage(STORAGE_KEYS.entries, updatedEntries);
     }
 
+    const archivedIndex = get().archivedEntries.findIndex((e) => e.id === entryId);
+    let updatedArchived = get().archivedEntries;
+    if (archivedIndex !== -1) {
+      const entry = get().archivedEntries[archivedIndex];
+      const updatedEntry: CashEntry = {
+        ...entry,
+        actualAmount: undefined,
+        actualDate: undefined,
+        draws: [],
+        isClosed: false,
+      };
+      delete (updatedEntry as any).keepOngoing;
+      updatedArchived = [...get().archivedEntries];
+      updatedArchived[archivedIndex] = updatedEntry;
+      saveStorage(STORAGE_KEYS.archivedEntries, updatedArchived);
+    }
+
     saveStorage(STORAGE_KEYS.entryActuals, actuals);
     saveStorage(STORAGE_KEYS.entryActualDates, dates);
-    set({ entries: updatedEntries, entryActuals: actuals, entryActualDates: dates });
+    set({
+      entries: updatedEntries,
+      archivedEntries: updatedArchived,
+      entryActuals: actuals,
+      entryActualDates: dates,
+    });
     scheduleAutoGistSync(get);
   },
 
@@ -1298,9 +1416,17 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     }
   },
 
-  setHistoryAdminUnlocked: (unlocked) => {
-    localStorage.setItem(STORAGE_KEYS.historyAdminUnlocked, String(unlocked));
-    set({ historyAdminUnlocked: unlocked });
+  restoreDeletedForecast: (id) => {
+    const updated = get().deletedForecasts.filter((fId) => fId !== id);
+    saveStorage(STORAGE_KEYS.deletedForecasts, updated);
+    set({ deletedForecasts: updated });
+    scheduleAutoGistSync(get);
+  },
+
+  clearAllDeletedForecasts: () => {
+    saveStorage(STORAGE_KEYS.deletedForecasts, []);
+    set({ deletedForecasts: [] });
+    scheduleAutoGistSync(get);
   },
 
   exportJSON: () => {

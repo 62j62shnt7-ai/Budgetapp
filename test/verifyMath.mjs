@@ -1,4 +1,5 @@
 import assert from 'node:assert';
+import fs from 'node:fs';
 
 // Lightweight in-memory storage for test harness
 if (typeof globalThis.localStorage === 'undefined') {
@@ -477,7 +478,82 @@ useBudgetStore.setState({
 await useBudgetStore.getState().resolveGistConflict('remote');
 assert.strictEqual(useBudgetStore.getState().gistConflict, null, 'Gist conflict cleared');
 assert.strictEqual(useBudgetStore.getState().entries[0].category, 'Cloud Entry', 'Remote data restored on user resolution');
-console.log('✓ Migration pipeline and Gist conflict resolution verified');
+// H. History Deduplication with Archived Entries and Deleted Forecasts
+const testArchivePayload = {
+  version: '2.1',
+  entries: [
+    { id: 'cur-1', date: '2026-09-15', category: 'CIB Credit Due', amount: 3056, actualAmount: 3056, type: 'expense', account: 'cib', creditType: 'cib' },
+  ],
+  archivedEntries: [
+    { id: 'arch-1', date: '2026-07-15', category: 'Credit Due', amount: 1068, actualAmount: 1068, type: 'expense', account: 'CIB', creditType: 'cib' },
+    { id: 'arch-2', date: '2026-08-15', category: 'Credit Due', amount: 35070, actualAmount: 35070, type: 'expense', account: 'CIB', creditType: 'cib' },
+    { id: 'arch-3', date: '2026-07-29', category: 'Credit Due', amount: 3352, actualAmount: 3352, type: 'expense', account: 'HSBC', creditType: 'hsbc' },
+    { id: 'arch-4', date: '2026-08-27', category: 'Credit Due', amount: 116977, actualAmount: 116977, type: 'expense', account: 'HSBC', creditType: 'hsbc' },
+  ],
+  deletedForecasts: ['credit-settlement-cib-2026-07', 'credit-settlement-hsbc-2026-07'],
+  entryActuals: {
+    'cur-1': 3056,
+    'arch-1': 1068,
+    'arch-2': 35070,
+    'arch-3': 3352,
+    'arch-4': 116977,
+    'credit-settlement-cib-2026-07': 1068,
+    'credit-settlement-cib-2026-08': 35070,
+    'credit-settlement-hsbc-2026-07': 3352,
+    'credit-settlement-hsbc-2026-08': 116977,
+  }
+};
+const userImportSuccess = useBudgetStore.getState().importJSON(testArchivePayload);
+assert.strictEqual(userImportSuccess, true, 'User test dataset imported');
+
+const uState = useBudgetStore.getState();
+const uCovered = getCoveredCreditSettlementKeys(
+  uState.entries,
+  uState.entryActuals,
+  uState.entryActualDates,
+  uState.creditSettlementOverrides,
+  uState.archivedEntries
+);
+assert.ok(uCovered.has('cib-2026-07'), 'Archived CIB July settlement is covered');
+assert.ok(uCovered.has('hsbc-2026-07'), 'Archived HSBC July settlement is covered');
+assert.ok(uCovered.has('cib-2026-08'), 'Archived CIB August settlement is covered');
+assert.ok(uCovered.has('hsbc-2026-08'), 'Archived HSBC August settlement is covered');
+
+const uCreditEntries = buildCreditDueEntries({
+  accounts: uState.accounts,
+  creditDues: uState.creditDues,
+  cashEntries: uState.entries,
+  archivedEntries: uState.archivedEntries,
+  entryActuals: uState.entryActuals,
+  entryActualDates: uState.entryActualDates,
+  creditSettlementOverrides: uState.creditSettlementOverrides,
+});
+const uDeletedSet = new Set(uState.deletedForecasts || []);
+const getUActual = (entry) => {
+  if (!entry) return 0;
+  if (uState.entryActuals[entry.id] !== undefined) return Math.round(Number(uState.entryActuals[entry.id]) || 0);
+  if (entry.actualAmount !== undefined && entry.actualAmount !== null) return Math.round(Number(entry.actualAmount) || 0);
+  return 0;
+};
+const uValidCreditDues = uCreditEntries.filter((entry) => {
+  if (uDeletedSet.has(entry.id)) return false;
+  if (getUActual(entry) <= 0) return false;
+  const parts = (entry.id || '').split('-');
+  if (parts[0] === 'credit' && parts[1] === 'settlement') {
+    const accKey = parts[2];
+    const mKey = `${parts[3]}-${parts[4]}`;
+    if (uCovered.has(`${accKey}-${mKey}`)) return false;
+  }
+  return true;
+});
+assert.strictEqual(uValidCreditDues.length, 0, 'No duplicate credit dues generated for archived or deleted periods');
+
+// Test restore and clear deleted forecasts
+useBudgetStore.getState().restoreDeletedForecast('credit-settlement-cib-2026-07');
+assert.strictEqual(useBudgetStore.getState().deletedForecasts.includes('credit-settlement-cib-2026-07'), false, 'Forecast restored from deleted list');
+useBudgetStore.getState().clearAllDeletedForecasts();
+assert.strictEqual(useBudgetStore.getState().deletedForecasts.length, 0, 'All deleted forecasts cleared');
+console.log('✓ History deduplication, restore forecast & clear deleted forecasts verified');
 
 console.log('\n=================================================================');
 console.log('🌟 100% OF ENGINE, STORE, AND BUSINESS LOGIC TESTS PASSED! 🌟');
