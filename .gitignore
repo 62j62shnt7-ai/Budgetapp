@@ -25,3 +25,7 @@ dist-ssr
 
 # Test artifacts
 test/screenshots/
+
+# Personal finance backups (never commit user data exports)
+budget-control-backup*.json
+*-backup-????-??-??.json
