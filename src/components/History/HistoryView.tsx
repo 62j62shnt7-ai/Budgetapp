@@ -1037,10 +1037,19 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
             amountFormatted={affectedData.amountFormatted}
             options={affectedData.options}
             onConfirm={(selectedIds) => {
+              // Credit settlements are synthetic due rows: clearing must always revert
+              // them to a single planned (overdue) due date, never an ongoing budget.
+              const isSettlement = clearEntryTarget.id.startsWith('credit-settlement-');
+              // Unchecked "Recorded Tranches" = restore the entry to Cash Flow as an
+              // ongoing open budget, keeping its tranches and recorded actual intact.
+              const keepDraws = !isSettlement
+                && Boolean(clearEntryTarget.draws && clearEntryTarget.draws.length > 0)
+                && !selectedIds.includes('draws');
               clearActual(clearEntryTarget.id, {
-                revertStorage: selectedIds.includes('storage'),
+                keepDraws,
+                revertStorage: isSettlement || selectedIds.includes('storage'),
                 storageAssetId: matchingStorage?.id,
-                syncJob: selectedIds.includes('job'),
+                syncJob: keepDraws ? false : selectedIds.includes('job'),
               });
               setClearEntryTarget(null);
             }}

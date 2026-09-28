@@ -3,6 +3,10 @@ import { useBudgetStore } from '../../store/useBudgetStore';
 import {
   getLowestProjectedBalance,
   simulateSpend,
+  isOngoingEntry,
+  isPartialTracked,
+  getRemainingForecastAmount,
+  getEntryActualAmount,
 } from '../../engine/forecast';
 import { computeFinancialHealthScore, generateSmartInsights } from '../../engine/healthScore';
 import { computeAssetEgpValue, computeTotalStorageValue, formatNativeCurrency } from '../../engine/currency';
@@ -138,6 +142,23 @@ export const DashboardView: React.FC = () => {
     worstDeficit: Math.max(0, ...deficitPeriods.map((item) => Math.abs(item.lowestBalance))),
   };
 
+  // Overdue & unpaid obligations (same resolution as the Deficits view) so the
+  // Cashflow status metric reacts the moment an obligation slips past due.
+  const overdueNow = allCandidateEntries
+    .filter((entry) => entry.date && entry.date < DateUtils.todayString())
+    .filter((entry) => !isOngoingEntry(entry, entryActuals))
+    .map((entry) => {
+      const partial = isPartialTracked(entry);
+      const remaining = partial
+        ? getRemainingForecastAmount(entry, entryActuals)
+        : Number(entry.amount || 0);
+      const settled = Boolean(entry.isClosed) || (partial
+        ? remaining <= 0
+        : getEntryActualAmount(entry, entryActuals) > 0);
+      return { entry, remaining, settled };
+    })
+    .filter((item) => !item.settled && item.remaining > 0);
+
   const lowestProjection = getLowestProjectedBalance(allCandidateEntries, totalCash);
   const lowestPoint = lowestProjection.balance;
 
@@ -230,6 +251,7 @@ export const DashboardView: React.FC = () => {
               Balance turns negative on {DateUtils.formatDisplayDate(firstDeficit?.startDate || DateUtils.todayString())}
               {' · '}peak deficit {formatMoney(deficits.worstDeficit)}
               {firstDeficit?.isResolved ? ` · recovers on ${DateUtils.formatDisplayDate(firstDeficit.resolvedDate || firstDeficit.lowestDate)}` : ' · remains unresolved'}
+              {overdueNow.length > 0 ? ` · ${overdueNow.length} overdue obligation${overdueNow.length === 1 ? '' : 's'}` : ''}
             </p>
             <div id="deficitRemediationAdvice" className="deficit-remediation-pill" style={{ display: 'block' }}>
               {remediationAdvice}
@@ -433,11 +455,29 @@ export const DashboardView: React.FC = () => {
 
         <article className="metric">
           <span>Cashflow status</span>
-          <strong id="cashflowStatus" style={{ color: deficits.hasDeficit ? 'var(--red, #f43f5e)' : 'var(--green, #10b981)', fontWeight: 800 }}>
-            {deficits.hasDeficit ? 'Deficit Risk' : 'OK'}
+          <strong
+            id="cashflowStatus"
+            style={{
+              color: overdueNow.length > 0
+                ? 'var(--amber, #f59e0b)'
+                : deficits.hasDeficit
+                ? 'var(--red, #f43f5e)'
+                : 'var(--green, #10b981)',
+              fontWeight: 800,
+            }}
+          >
+            {overdueNow.length > 0
+              ? 'Overdue'
+              : deficits.hasDeficit
+              ? 'Deficit Risk'
+              : 'OK'}
           </strong>
           <small id="cashflowStatusNote">
-            {deficits.hasDeficit ? 'Review upcoming obligations' : 'Cash stays positive across entire forecast'}
+            {overdueNow.length > 0
+              ? `${overdueNow.length} past due obligation${overdueNow.length === 1 ? '' : 's'} · ${formatMoney(overdueNow.reduce((s, o) => s + o.remaining, 0))} unpaid`
+              : deficits.hasDeficit
+              ? 'Review upcoming obligations'
+              : 'Cash stays positive across entire forecast'}
           </small>
         </article>
       </div>

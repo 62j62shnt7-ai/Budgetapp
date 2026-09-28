@@ -9,12 +9,14 @@ import {
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { AlertCircle, Clock, CheckCircle } from 'lucide-react';
 import { useForecastCandidates } from '../../hooks/useForecastCandidates';
+import type { CashEntry } from '../../types';
 
 interface DeficitsViewProps {
   onBridgeDeficit?: () => void;
+  onDeductPrompt?: (entry: CashEntry, actualAmount: number) => void;
 }
 
-export const DeficitsView: React.FC<DeficitsViewProps> = ({ onBridgeDeficit }) => {
+export const DeficitsView: React.FC<DeficitsViewProps> = ({ onBridgeDeficit, onDeductPrompt }) => {
   const {
     entryActuals,
     recordActual,
@@ -180,6 +182,9 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({ onBridgeDeficit }) =
                           tag: entry.tag || '',
                           account: entry.account || 'cash',
                         });
+                        // Offer to deduct the paid amount from the operating account
+                        // (same flow as recording an actual spend elsewhere).
+                        onDeductPrompt?.(entry, plannedAmt);
                       }}
                     >
                       Mark Paid

@@ -162,7 +162,7 @@ export interface BudgetStoreState {
   updateEntry: (id: string, updates: Partial<CashEntry>, seriesMode?: 'single' | 'future') => void;
   deleteEntry: (id: string, seriesMode?: 'single' | 'future', options?: { deleteLinkedLoan?: boolean; deleteInstallmentPlan?: boolean; revertStorage?: boolean; storageAssetId?: string; syncJob?: boolean; restoreForeignAsset?: boolean }) => void;
   recordActual: (entryId: string, amount: number, date?: string, drawMeta?: { note?: string; tag?: string; account?: string }) => void;
-  clearActual: (entryId: string, options?: { revertStorage?: boolean; storageAssetId?: string; syncJob?: boolean }) => void;
+  clearActual: (entryId: string, options?: { revertStorage?: boolean; storageAssetId?: string; syncJob?: boolean; keepDraws?: boolean }) => void;
   addDraw: (entryId: string, draw: { id?: string; date: string; amount: number; note?: string; tag?: string; account?: string }) => void;
   updateDraw: (entryId: string, drawIndex: number, draw: { date: string; amount: number; note?: string; tag?: string; account?: string }) => void;
   deleteDraw: (entryId: string, drawIndex: number, options?: { updateCashflow?: boolean; syncJob?: boolean; revertStorage?: boolean; storageAssetId?: string }) => void;
@@ -936,18 +936,66 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     const dates = { ...get().entryActualDates };
     delete dates[entryId];
 
+    // Credit settlement entries are synthetic rows backed by creditSettlementOverrides.
+    // Clearing must always return the settlement to a single planned due row (overdue,
+    // one date) — never an "ongoing" budget — so the actual AND the override's recorded
+    // tranches are wiped, with an optional bank refund of what was actually paid.
+    if (entryId.startsWith('credit-settlement-')) {
+      const settlementOverride = get().creditSettlementOverrides[entryId];
+      if (settlementOverride && Array.isArray(settlementOverride.draws) && settlementOverride.draws.length > 0) {
+        const nextOverrides: Record<string, typeof settlementOverride> = {
+          ...get().creditSettlementOverrides,
+          [entryId]: { ...settlementOverride, draws: [] },
+        };
+        saveStorage(STORAGE_KEYS.creditSettlementOverrides, nextOverrides);
+        set({ creditSettlementOverrides: nextOverrides });
+      }
+
+      if (options?.revertStorage && prevActualAmt > 0) {
+        // Synthetic settlement rows have no stored entry; the owning account key is
+        // encoded in the id: credit-settlement-{accountKey}-{year}-{month}.
+        const settlementAccountKey = entryId.split('-')[2] || 'cib';
+        revertStorageOrAccountBalance(get, {
+          account: settlementOverride?.account || settlementAccountKey,
+          currency: 'EGP',
+          amount: prevActualAmt,
+          isEgpAmount: true,
+          entryType: 'expense',
+        });
+      }
+
+      saveStorage(STORAGE_KEYS.entryActuals, actuals);
+      saveStorage(STORAGE_KEYS.entryActualDates, dates);
+      set({ entryActuals: actuals, entryActualDates: dates });
+      scheduleAutoGistSync(get);
+      return;
+    }
+
+    // keepDraws: restore the entry back to Cash Flow as an ongoing open budget
+    // while preserving its recorded tranches (draws) and the actual they sum to.
+    // This is the "undo a Fulfill / reopen with history intact" path.
+    const keepDraws = options?.keepDraws === true;
+    const existingDraws = (target && Array.isArray(target.draws)) ? target.draws : [];
+    const drawsTotal = existingDraws.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+
     const existingIndex = get().entries.findIndex((e) => e.id === entryId);
     let updatedEntries = get().entries;
     if (existingIndex !== -1) {
       const entry = get().entries[existingIndex];
       const updatedEntry: CashEntry = {
         ...entry,
-        actualAmount: undefined,
-        actualDate: undefined,
-        draws: [],
+        actualAmount: keepDraws && drawsTotal > 0 ? drawsTotal : undefined,
+        actualDate: keepDraws && existingDraws.length > 0
+          ? (existingDraws.map((d) => d.date).filter(Boolean).sort().slice(-1)[0] || entry.actualDate || entry.date)
+          : undefined,
+        draws: keepDraws ? existingDraws : [],
         isClosed: false,
       };
-      delete updatedEntry.keepOngoing;
+      if (keepDraws && existingDraws.length > 0) {
+        updatedEntry.keepOngoing = true;
+      } else {
+        delete updatedEntry.keepOngoing;
+      }
       updatedEntries = [...get().entries];
       updatedEntries[existingIndex] = updatedEntry;
       saveStorage(STORAGE_KEYS.entries, updatedEntries);
@@ -959,15 +1007,29 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       const entry = get().archivedEntries[archivedIndex];
       const updatedEntry: CashEntry = {
         ...entry,
-        actualAmount: undefined,
-        actualDate: undefined,
-        draws: [],
+        actualAmount: keepDraws && drawsTotal > 0 ? drawsTotal : undefined,
+        actualDate: keepDraws && existingDraws.length > 0
+          ? (existingDraws.map((d) => d.date).filter(Boolean).sort().slice(-1)[0] || entry.actualDate || entry.date)
+          : undefined,
+        draws: keepDraws ? existingDraws : [],
         isClosed: false,
       };
-      delete updatedEntry.keepOngoing;
+      if (keepDraws && existingDraws.length > 0) {
+        updatedEntry.keepOngoing = true;
+      } else {
+        delete updatedEntry.keepOngoing;
+      }
       updatedArchived = [...get().archivedEntries];
       updatedArchived[archivedIndex] = updatedEntry;
       saveStorage(STORAGE_KEYS.archivedEntries, updatedArchived);
+    }
+
+    if (keepDraws && existingDraws.length > 0) {
+      // Keep the entry's realized history visible in History: its actual equals the
+      // recorded tranche sum and its actual date is the latest tranche date.
+      if (drawsTotal > 0) actuals[entryId] = drawsTotal;
+      const lastDrawDate = existingDraws.map((d) => d.date).filter(Boolean).sort().slice(-1)[0];
+      if (lastDrawDate) dates[entryId] = lastDrawDate;
     }
 
     saveStorage(STORAGE_KEYS.entryActuals, actuals);
@@ -978,6 +1040,14 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       entryActuals: actuals,
       entryActualDates: dates,
     });
+
+    if (keepDraws && existingDraws.length > 0) {
+      // The recorded tranches (and any linked job payment / storage deposit) remain
+      // real money movements — nothing to revert. The entry is simply reopened in
+      // Cash Flow as an ongoing open budget with its tranche history intact.
+      scheduleAutoGistSync(get);
+      return;
+    }
 
     let targetJob = undefined;
     let jobType: 'partTime' | 'asf' | 'irq' = 'partTime';

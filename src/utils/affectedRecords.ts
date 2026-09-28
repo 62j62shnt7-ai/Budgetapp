@@ -594,7 +594,9 @@ export function buildEntryClearOptions(
     {
       id: 'revert_actual',
       label: 'Revert Actual to Planned Forecast',
-      sublabel: isInstallmentOccurrence
+      sublabel: entry.draws && entry.draws.length > 0
+        ? `Reopen the fulfilled entry and restore its planned forecast (${formatMoney(entry.amount)}). Pair with the Recorded Tranches option below to choose whether paid tranches are wiped or kept.`
+        : isInstallmentOccurrence
         ? `Reset recorded payment (${amountFormatted}) and restore planned installment forecast (${formatMoney(entry.amount)}).`
         : `Reset recorded actual (${amountFormatted}) to 0 and restore planned forecast (${formatMoney(entry.amount)}).`,
       icon: '🔄',
@@ -691,13 +693,16 @@ export function buildEntryClearOptions(
   }
 
   if (entry.draws && entry.draws.length > 0) {
+    const isSettlementEntry = entry.id.startsWith('credit-settlement-') || (entry.source || '').toLowerCase().includes('recurring credit');
     options.push({
       id: 'draws',
       label: `Recorded Tranches (${entry.draws.length})`,
-      sublabel: `All ${entry.draws.length} recorded draw installments and actual payouts are cleared along with the actual.`,
+      sublabel: isSettlementEntry
+        ? `All ${entry.draws.length} recorded settlement payments are cleared and the settlement returns to a single planned due amount on its original due date.`
+        : `Uncheck to restore this entry to Cash Flow as an ongoing open budget with its ${entry.draws.length} recorded tranche${entry.draws.length > 1 ? 's' : ''} and paid actual (${amountFormatted}) intact. Checked: tranches are cleared and only the planned forecast remains.`,
       icon: '📑',
       badge: 'Draws',
-      required: true,
+      required: isSettlementEntry,
       defaultChecked: true,
     });
   }

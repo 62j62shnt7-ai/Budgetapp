@@ -311,7 +311,7 @@ export const App: React.FC = () => {
       case 'dashboard':
         return <DashboardView />;
       case 'deficits':
-        return <DeficitsView onBridgeDeficit={() => setLoanModalOpen(true)} />;
+        return <DeficitsView onBridgeDeficit={() => setLoanModalOpen(true)} onDeductPrompt={handleDeductPrompt} />;
       case 'cashflow':
         return (
           <CashflowView

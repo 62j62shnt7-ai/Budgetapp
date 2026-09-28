@@ -41,6 +41,7 @@ import { calculateJobFinancials } from '../src/engine/jobs.ts';
 import { useBudgetStore } from '../src/store/useBudgetStore.ts';
 import {
   buildEntryDeleteOptions,
+  buildEntryClearOptions,
   buildInstallmentDeleteOptions,
   buildStorageDeleteOptions,
 } from '../src/utils/affectedRecords.ts';
@@ -1038,6 +1039,140 @@ assert.strictEqual(noHistory.budgetScore, 20, 'Neutral budget factor without his
 assert.strictEqual(noHistory.savingsScore, 15, 'Neutral savings factor without history');
 
 console.log('✓ Measured health score: settled-month analysis, loan/FX exclusion & neutral fallback verified');
+
+// ---------------------------------------------------------------------------
+// Clear Actual with Tranches: keepDraws restore-to-cashflow path
+// ---------------------------------------------------------------------------
+// Setup: a fulfilled expense with 3 recorded tranches (closed, amount overwritten)
+useBudgetStore.setState({
+  entries: [
+    {
+      id: 'clear-keep-entry',
+      date: '2026-09-01',
+      amount: 4500,
+      initialAmount: 8000,
+      currency: 'EGP',
+      category: 'Furniture',
+      account: 'cib',
+      type: 'expense',
+      isClosed: true,
+      keepOngoing: false,
+      actualAmount: 4500,
+      actualDate: '2026-09-20',
+      draws: [
+        { id: 'd-keep-1', date: '2026-09-05', amount: 2000, account: 'cib' },
+        { id: 'd-keep-2', date: '2026-09-12', amount: 1500, account: 'cib' },
+        { id: 'd-keep-3', date: '2026-09-20', amount: 1000, account: 'cib' },
+      ],
+    },
+  ],
+  entryActuals: { 'clear-keep-entry': 4500 },
+  entryActualDates: { 'clear-keep-entry': '2026-09-20' },
+});
+
+useBudgetStore.getState().clearActual('clear-keep-entry', { keepDraws: true });
+
+const keptEntry = useBudgetStore.getState().entries.find((e) => e.id === 'clear-keep-entry');
+assert.ok(keptEntry, 'Entry still exists after keepDraws clear');
+assert.strictEqual(keptEntry.draws?.length, 3, 'All 3 tranches preserved on keepDraws clear');
+assert.strictEqual(keptEntry.draws[0].amount, 2000, 'Tranche amounts intact');
+assert.strictEqual(keptEntry.isClosed, false, 'Entry reopened (not closed)');
+assert.strictEqual(keptEntry.keepOngoing, true, 'Entry marked keepOngoing so it shows as Ongoing in Cash Flow');
+assert.strictEqual(keptEntry.amount, 4500, 'Planned amount untouched (tranches remain the source of truth for what was spent)');
+assert.strictEqual(keptEntry.actualAmount, 4500, 'Recorded actual (tranche sum) kept');
+assert.strictEqual(keptEntry.actualDate, '2026-09-20', 'Actual date is latest tranche date');
+assert.strictEqual(useBudgetStore.getState().entryActuals['clear-keep-entry'], 4500, 'entryActuals keeps tranche sum');
+assert.strictEqual(useBudgetStore.getState().entryActualDates['clear-keep-entry'], '2026-09-20', 'entryActualDates keeps latest tranche date');
+console.log('✓ Clear with tranches: keepDraws restores entry to Cash Flow ongoing with tranches intact');
+
+// Cashflow inclusion: a partially-spent ongoing entry must still be forecastable
+const ongoingActualsMap = { 'clear-keep-entry': 4500 };
+assert.strictEqual(isOngoingEntry(keptEntry, ongoingActualsMap), true, 'Restored entry is recognized as ongoing by forecast engine');
+
+// Default clear (no keepDraws) still wipes tranches as before
+useBudgetStore.getState().clearActual('clear-keep-entry');
+const wipedEntry = useBudgetStore.getState().entries.find((e) => e.id === 'clear-keep-entry');
+assert.strictEqual(wipedEntry.draws.length, 0, 'Default clear still wipes tranches');
+assert.strictEqual(useBudgetStore.getState().entryActuals['clear-keep-entry'], undefined, 'Default clear removes actual');
+assert.strictEqual(useBudgetStore.getState().entryActualDates['clear-keep-entry'], undefined, 'Default clear removes actual date');
+console.log('✓ Clear with tranches: default clear behavior unchanged (tranches wiped)');
+
+// Clear-options builder exposes the now-optional tranches toggle
+const clearOptsEntry = {
+  id: 'clear-opts-entry',
+  date: '2026-09-01',
+  amount: 5000,
+  currency: 'EGP',
+  category: 'Appliances',
+  account: 'cib',
+  type: 'expense',
+  draws: [
+    { date: '2026-09-05', amount: 2500, account: 'cib' },
+    { date: '2026-09-15', amount: 2500, account: 'cib' },
+  ],
+};
+const clearOpts = buildEntryClearOptions(clearOptsEntry, {
+  installments: [],
+  storageAssets: [],
+  partTimeJobs: [],
+  asfJobs: [],
+  irqJobs: [],
+});
+const drawsOpt = clearOpts.options.find((o) => o.id === 'draws');
+assert.ok(drawsOpt, 'Clear options contain a Recorded Tranches option');
+assert.strictEqual(drawsOpt.required, false, 'Recorded Tranches option is optional for regular entries (user can keep tranches)');
+
+// keepDraws clear with no tranches falls back to a plain clear (no keepOngoing)
+useBudgetStore.setState({
+  entries: [
+    {
+      id: 'clear-nodraws-entry',
+      date: '2026-09-01',
+      amount: 1200,
+      currency: 'EGP',
+      category: 'Groceries',
+      account: 'cib',
+      type: 'expense',
+      isClosed: true,
+      actualAmount: 1200,
+      actualDate: '2026-09-03',
+    },
+  ],
+  entryActuals: { 'clear-nodraws-entry': 1200 },
+  entryActualDates: { 'clear-nodraws-entry': '2026-09-03' },
+});
+useBudgetStore.getState().clearActual('clear-nodraws-entry', { keepDraws: true });
+const noDrawsEntry = useBudgetStore.getState().entries.find((e) => e.id === 'clear-nodraws-entry');
+assert.strictEqual(noDrawsEntry.keepOngoing, undefined, 'keepDraws without tranches behaves like a plain clear (no keepOngoing)');
+assert.strictEqual(noDrawsEntry.actualAmount, undefined, 'Actual cleared when there are no tranches to keep');
+console.log('✓ Clear with tranches: optional toggle exposed and no-draw fallback verified');
+
+// Settlement rows: clearing always reverts to a single planned due (overdue), never
+// ongoing, and refunds the paid amount to the bank when requested.
+useBudgetStore.setState({
+  accounts: { cib: { id: 'cib', name: 'CIB', balance: 1000 } },
+  creditSettlementOverrides: {
+    'credit-settlement-cib-2026-09': {
+      amount: 9000,
+      draws: [
+        { id: 'sd-1', date: '2026-09-10', amount: 4000, account: 'cib' },
+        { id: 'sd-2', date: '2026-09-22', amount: 5000, account: 'cib' },
+      ],
+    },
+  },
+  entryActuals: { 'credit-settlement-cib-2026-09': 9000 },
+  entryActualDates: { 'credit-settlement-cib-2026-09': '2026-09-22' },
+});
+
+useBudgetStore.getState().clearActual('credit-settlement-cib-2026-09', { revertStorage: true });
+
+const clearedOverride = useBudgetStore.getState().creditSettlementOverrides['credit-settlement-cib-2026-09'];
+assert.ok(clearedOverride, 'Settlement override retained (planned amount/date preserved)');
+assert.strictEqual(clearedOverride.draws.length, 0, 'Settlement recorded payment tranches wiped on clear');
+assert.strictEqual(clearedOverride.amount, 9000, 'Settlement planned due amount preserved');
+assert.strictEqual(useBudgetStore.getState().entryActuals['credit-settlement-cib-2026-09'], undefined, 'Settlement actual cleared');
+assert.strictEqual(useBudgetStore.getState().accounts.cib.balance, 10000, 'Paid settlement amount refunded to bank (1000 + 9000)');
+console.log('✓ Settlement clear: reverts to single planned due (overdue) and refunds bank balance');
 
 console.log('\n=================================================================');
 console.log('🌟 100% OF ENGINE, STORE, AND BUSINESS LOGIC TESTS PASSED! 🌟');

@@ -286,8 +286,11 @@ export function getActiveForecastEntries(
     })
     .map((entry) => {
       let effDate = entry.date;
-      // Carry forward undrawn/unspent to today
-      if (isPartialTracked(entry) && effDate && effDate < today && getRemainingForecastAmount(entry, entryActuals) > 0) {
+      // Carry forward undrawn/unspent to today. Credit due rows (settlements and
+      // lump-sum dues) are single-dated obligations: their due date must be preserved
+      // so they surface as OVERDUE in the deficits view instead of sliding to today.
+      const isSingleDatedCreditDue = entry.id.startsWith('credit-settlement-') || isCreditDueLumpSum(entry);
+      if (!isSingleDatedCreditDue && isPartialTracked(entry) && effDate && effDate < today && getRemainingForecastAmount(entry, entryActuals) > 0) {
         effDate = today;
       }
       if (isPartialTracked(entry) && getEntryActualAmount(entry, entryActuals) > 0) {
