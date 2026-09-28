@@ -11,6 +11,8 @@ export interface EntryDraw {
   note?: string;
   tag?: string;
   account?: string;
+  /** Storage asset this draw was paid from/into (foreign holdings / vault). */
+  storageAssetId?: string;
 }
 
 export interface CreditSettlementOverride {
@@ -52,6 +54,8 @@ export interface CashEntry {
   cardExpenseCount?: number;
   isCreditSettlement?: boolean;
   isCustomized?: boolean;
+  // Read-only synthetic rows (e.g. opening balances) that must never be edited/deleted.
+  locked?: boolean;
   linkedInflowId?: string;
   archivedAt?: string;
   currency?: string;
@@ -234,6 +238,28 @@ export interface HealthScoreResult {
   label?: string;
   tone?: string;
   hardScoreCap?: number;
+  /** Number of settled months the budget/savings factors were measured from. */
+  monthsAnalyzed?: number;
+  /** Realized spend as a percentage of planned budget across measured months (100 = exactly on plan). */
+  budgetAdherencePct?: number;
+  /** Average realized savings rate (%) across measured months. */
+  savingsRatePct?: number;
+  /** Months of expenses covered by non-liquid reserves (storage assets). */
+  reserveMonths?: number;
+}
+
+/** Realized performance for one fully-elapsed month (health score input detail). */
+export interface SettledMonthRow {
+  month: string;
+  plannedExpense: number;
+  realizedExpense: number;
+  realizedIncome: number;
+  /** (income - expense) / income, or null when no income was recorded. */
+  savingsRate: number | null;
+  /** realizedExpense / plannedExpense, or null when nothing was planned. */
+  ratio: number | null;
+  /** Budget-adherence points (0-25) for this month, or null when nothing was planned. */
+  adherenceScore: number | null;
 }
 
 export interface SmartInsight {

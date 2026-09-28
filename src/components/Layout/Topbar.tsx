@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useBudgetStore, type ViewTab } from '../../store/useBudgetStore';
+import { useAppUpdateStatus } from '../../hooks/useAppUpdateStatus';
 import { 
   Menu, 
   Sun, 
@@ -38,7 +39,7 @@ export const Topbar: React.FC<TopbarProps> = ({
   onOpenGistSync,
 }) => {
   const { theme, setTheme, activeTab, toggleSidebar, gistId, gistAutoSync, gistSyncStatus } = useBudgetStore();
-  const [updateStatus, setUpdateStatus] = useState('Latest');
+  const updateStatus = useAppUpdateStatus();
   const syncLabel = !gistId
     ? 'Setup'
     : !gistAutoSync
@@ -57,28 +58,6 @@ export const Topbar: React.FC<TopbarProps> = ({
       : gistSyncStatus === 'synced'
         ? 'synced'
         : '';
-
-  useEffect(() => {
-    const checkStatus = async () => {
-      if (!navigator.onLine) {
-        setUpdateStatus('Offline');
-        return;
-      }
-      if (!('serviceWorker' in navigator)) {
-        setUpdateStatus('Latest');
-        return;
-      }
-      const registration = await navigator.serviceWorker.getRegistration();
-      setUpdateStatus(registration?.waiting ? 'Update ready' : 'Latest');
-    };
-    void checkStatus();
-    window.addEventListener('online', checkStatus);
-    window.addEventListener('offline', checkStatus);
-    return () => {
-      window.removeEventListener('online', checkStatus);
-      window.removeEventListener('offline', checkStatus);
-    };
-  }, []);
 
   return (
     <>

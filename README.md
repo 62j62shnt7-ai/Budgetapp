@@ -148,15 +148,17 @@ Budgetapp/
 │   │   ├── healthScore.ts
 │   │   ├── jobs.ts
 │   │   └── salaryAndInstallments.ts
+│   ├── hooks/              # Shared React hooks (forecast candidates, update status)
 │   ├── store/
 │   │   └── useBudgetStore.ts # Central Zustand store with localStorage sync
 │   ├── types/
 │   │   └── index.ts         # TypeScript domain models & interfaces
 │   └── utils/
 │       └── appRefresh.ts    # Service Worker cache purge & update utilities
+├── public/                 # Static PWA assets (manifest, service worker, 404)
 ├── test/
 │   └── verifyMath.mjs       # Comprehensive financial math test suite
-└── legacy/                  # Legacy reference implementation
+└── styles.css              # Design tokens, layout & component styling
 ```
 
 ---

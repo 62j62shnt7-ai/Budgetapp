@@ -57,7 +57,7 @@ export function getEntryActualDate(
   }
   const id = entry.id || '';
   if (entryActualDates && entryActualDates[id]) return entryActualDates[id];
-  if ((entry as any).actualDate) return (entry as any).actualDate;
+  if (entry.actualDate) return entry.actualDate;
   return entry.date || DateUtils.todayString();
 }
 
@@ -107,7 +107,7 @@ export function isOngoingEntry(
 ): boolean {
   if (!entry) return false;
   if (entry.isClosed) return false;
-  if ((entry as any).keepOngoing) return true;
+  if (entry.keepOngoing) return true;
   if (isLoanInflow(entry)) return true;
   if (
     isPartialTracked(entry) &&

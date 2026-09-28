@@ -388,7 +388,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
                       {DateUtils.formatDisplayDate(d.date)}:{' '}
                       <strong>
                         {entryIsForeign
-                          ? `${formatNativeCurrency(nativeDrawQty, activeEntry.currency!)} (≈ ${formatMoney(d.amount)})`
+                          ? `${formatNativeCurrency(nativeDrawQty, activeEntry.currency)} (≈ ${formatMoney(d.amount)})`
                           : formatMoney(d.amount)}
                       </strong>{' '}
                       {d.tag ? ` #${d.tag}` : ''}
@@ -399,7 +399,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
                         partTimeJobs.find((j) => j.forecastEntryId === activeEntry.id || j.payments?.some((p) => p.entryId === activeEntry.id || p.id === d.id)) ||
                         asfJobs.find((j) => j.forecastEntryId === activeEntry.id || j.payments?.some((p) => p.entryId === activeEntry.id || p.id === d.id)) ||
                         irqJobs.find((j) => j.forecastEntryId === activeEntry.id || j.payments?.some((p) => p.entryId === activeEntry.id || p.id === d.id));
-                      const hasAffectedDraw = Boolean(linkedJob || (storageAssets.length > 0 && ((d as any).storageAssetId || d.account?.toLowerCase().includes('storage') || entryIsForeign)));
+                      const hasAffectedDraw = Boolean(linkedJob || (storageAssets.length > 0 && (d.storageAssetId || d.account?.toLowerCase().includes('storage') || entryIsForeign)));
                       return (
                         <button
                           type="button"
@@ -533,7 +533,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
 
           <label id="typeField" className="entry-field">
             Type
-            <select value={type} onChange={(e) => setType(e.target.value as any)}>
+            <select value={type} onChange={(e) => setType(e.target.value as 'income' | 'expense')}>
               <option value="income">Income</option>
               <option value="expense">Expense</option>
             </select>
@@ -609,7 +609,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
                   Frequency
                   <select
                     value={recurringFrequency}
-                    onChange={(e) => setRecurringFrequency(e.target.value as any)}
+                    onChange={(e) => setRecurringFrequency(e.target.value as 'monthly' | 'weekly' | 'biweekly')}
                   >
                     <option value="monthly">Monthly</option>
                     <option value="weekly">Weekly</option>
@@ -698,7 +698,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
         const drawRate = activeEntry.fxRateAtEntry || getCurrencyRate(rates, activeEntry.currency || 'USD') || 48.5;
         const nativeDrawQty = entryIsForeign ? Math.round((deleteDrawTarget.draw.amount / drawRate) * 100) / 100 : deleteDrawTarget.draw.amount;
         const amountDisplay = entryIsForeign
-          ? `${formatNativeCurrency(nativeDrawQty, activeEntry.currency!)} (≈ ${formatMoney(deleteDrawTarget.draw.amount)})`
+          ? `${formatNativeCurrency(nativeDrawQty, activeEntry.currency)} (≈ ${formatMoney(deleteDrawTarget.draw.amount)})`
           : formatMoney(deleteDrawTarget.draw.amount);
 
         const deleteDrawOptions: AffectedPartyOption[] = [
@@ -725,7 +725,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
             const currUpper = (activeEntry.currency || 'USD').toUpperCase();
             const matchingStorage = storageAssets.find(
               (a) =>
-                a.id === (deleteDrawTarget.draw as any).storageAssetId ||
+                a.id === deleteDrawTarget.draw.storageAssetId ||
                 a.name.trim().toLowerCase() === targetAccount ||
                 (entryIsForeign &&
                   ((a.unit || '').toUpperCase() === currUpper || (a.currency || '').toUpperCase() === currUpper))
@@ -743,8 +743,8 @@ export const EntryModal: React.FC<EntryModalProps> = ({
               ? ` (Current: ${formatMoney(matchedAccount.balance || 0)})`
               : '';
             const actionText = isExpense
-              ? `Refund / restore +${entryIsForeign ? formatNativeCurrency(nativeDrawQty, activeEntry.currency!) : formatMoney(deleteDrawTarget.draw.amount)} to`
-              : `Revert / deduct -${entryIsForeign ? formatNativeCurrency(nativeDrawQty, activeEntry.currency!) : formatMoney(deleteDrawTarget.draw.amount)} from`;
+              ? `Refund / restore +${entryIsForeign ? formatNativeCurrency(nativeDrawQty, activeEntry.currency) : formatMoney(deleteDrawTarget.draw.amount)} to`
+              : `Revert / deduct -${entryIsForeign ? formatNativeCurrency(nativeDrawQty, activeEntry.currency) : formatMoney(deleteDrawTarget.draw.amount)} from`;
 
             return {
               id: 'storage',

@@ -93,7 +93,7 @@ export function detectRecurringCandidateGroups(
     const first = groupedEntries[0];
     const isForeign = (first.currency || 'EGP').toUpperCase() !== 'EGP';
     const amountFormatted = isForeign
-      ? `${formatNativeCurrency(first.originalAmount || first.amount, first.currency!)} (≈ ${formatMoney(first.amount)})`
+      ? `${formatNativeCurrency(first.originalAmount || first.amount, first.currency)} (≈ ${formatMoney(first.amount)})`
       : formatMoney(first.amount);
 
     const sortedEntries = [...groupedEntries].sort((a, b) => a.date.localeCompare(b.date));

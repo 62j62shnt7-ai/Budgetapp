@@ -58,7 +58,7 @@ export function isCreditCardExpense(entry: CashEntry): boolean {
   if (!entry || entry.type !== 'expense') return false;
   const id = entry.id || '';
   if (id.startsWith('credit-settlement-') || id.startsWith('installment-')) return false;
-  if (entry.source === 'recurring credit' || entry.source === 'installment' || (entry as any).isCreditSettlement) return false;
+  if (entry.source === 'recurring credit' || entry.source === 'installment' || entry.isCreditSettlement) return false;
   const cat = (entry.category || '').toLowerCase();
   if (
     cat.includes('credit due') ||

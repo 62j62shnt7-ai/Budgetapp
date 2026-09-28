@@ -20,16 +20,15 @@ export const defaultRates: RatesData = {
   ],
 };
 
-export function getCurrencyRate(rates: RatesData | any, code: string): number {
-  if (!rates) return 1.0;
-  if (Array.isArray(rates?.currencies)) {
-    const c = rates.currencies.find((item: any) => item?.name && item.name.toUpperCase() === code.toUpperCase());
+export function getCurrencyRate(rates: RatesData | null | undefined, code?: string): number {
+  if (!rates || !code) return 1.0;
+  const wanted = code.toUpperCase();
+  if (Array.isArray(rates.currencies)) {
+    const c = rates.currencies.find((item) => item?.name && item.name.toUpperCase() === wanted);
     if (c) return Number(c.buy ?? c.sell) || 1.0;
   }
-  if (typeof rates === 'object') {
-    if (code in rates) return Number(rates[code]) || 1.0;
-    if (code.toUpperCase() in rates) return Number(rates[code.toUpperCase()]) || 1.0;
-  }
+  const legacy = rates as unknown as Record<string, unknown>;
+  if (wanted in legacy) return Number(legacy[wanted]) || 1.0;
   return 1.0;
 }
 
@@ -59,7 +58,7 @@ export function resolveRateSourceValue(sourceValue: string | undefined, rates: R
 
 export function storageValue(item: StorageAsset, rates?: RatesData): number {
   const qty = Number(item.quantity) || 0;
-  let rate = Number((item as any).rate ?? item.buyPrice ?? 0);
+  let rate = Number(item.rate ?? item.buyPrice ?? 0);
   if (rates && item.rateSource && item.rateSource !== 'manual') {
     const resolved = resolveRateSourceValue(item.rateSource, rates);
     if (resolved !== null) rate = resolved;
@@ -87,7 +86,7 @@ export function getCurrencySymbol(code: string): string {
   }
 }
 
-export function formatNativeCurrency(quantity: number, unitOrCode: string): string {
+export function formatNativeCurrency(quantity: number, unitOrCode?: string): string {
   const qty = Number(quantity) || 0;
   const upper = (unitOrCode || '').toUpperCase().trim();
 

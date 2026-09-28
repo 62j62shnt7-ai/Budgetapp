@@ -13,33 +13,12 @@ if (typeof globalThis.localStorage === 'undefined') {
   };
 }
 
-import {
-  calculateCreditSettlementDate,
-  isCreditCardExpense,
-  buildCreditDueEntries,
-  getCoveredCreditSettlementKeys,
-} from '../src/engine/creditCards.ts';
-import {
-  buildSalaryEntries,
-  buildInstallmentEntries,
-} from '../src/engine/salaryAndInstallments.ts';
-import {
-  calculateForecast,
-  detectDeficits,
-  getEntryActualAmount,
-  getRemainingForecastAmount,
-  isOngoingEntry,
-  simulateSpend,
-} from '../src/engine/forecast.ts';
-import { storageValue, computeTotalStorageValue } from '../src/engine/currency.ts';
-import { DateUtils } from '../src/engine/dateUtils.ts';
+import { buildInstallmentEntries } from '../src/engine/salaryAndInstallments.ts';
+import { calculateForecast, simulateSpend } from '../src/engine/forecast.ts';
+import { computeTotalStorageValue } from '../src/engine/currency.ts';
 import { calculateJobFinancials } from '../src/engine/jobs.ts';
 import { useBudgetStore } from '../src/store/useBudgetStore.ts';
-import {
-  buildEntryDeleteOptions,
-  buildInstallmentDeleteOptions,
-  buildStorageDeleteOptions,
-} from '../src/utils/affectedRecords.ts';
+import { buildEntryDeleteOptions } from '../src/utils/affectedRecords.ts';
 
 // Full exact User JSON Payload provided in user request
 const fullUserBackupPayload = {

@@ -31,12 +31,21 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   handleExportEmergencyBackup = () => {
     try {
-      const rawState = localStorage.getItem('budget-app-state');
+      // The app persists each slice under its own `budget-control-*` key, so dump
+      // everything this app owns instead of looking for a single state blob.
+      const rawLocalStorage: Record<string, string> = {};
+      for (let i = 0; i < localStorage.length; i += 1) {
+        const key = localStorage.key(i);
+        if (!key) continue;
+        if (key.startsWith('budget-control-') || key.includes('gist')) {
+          rawLocalStorage[key] = localStorage.getItem(key) ?? '';
+        }
+      }
       const backupData = {
         exportedAt: new Date().toISOString(),
         version: '2.1-emergency',
-        state: rawState ? JSON.parse(rawState) : null,
-        rawLocalStorage: { ...localStorage },
+        error: this.state.error ? this.state.error.toString() : null,
+        rawLocalStorage,
       };
 
       const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
@@ -59,7 +68,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         localStorage.clear();
         sessionStorage.clear();
         window.location.reload();
-      } catch (_e) {
+      } catch {
         window.location.reload();
       }
     }

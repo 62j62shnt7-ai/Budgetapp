@@ -29,6 +29,7 @@ import {
 } from '../engine/creditCards';
 import { buildSalaryEntries } from '../engine/salaryAndInstallments';
 import { DateUtils } from '../engine/dateUtils';
+import { inferTag } from '../engine/tags';
 import { migrateBackupPayload } from '../engine/migration';
 import {
   linkEntriesToSeries,
@@ -306,23 +307,9 @@ const defaultSalaryPattern: SalaryPayment[] = [
   { monthOffset: 2, day: 30, amount: 0 },
 ];
 
-export function inferTag(entry: Partial<CashEntry>): string {
-  const category = (entry.category || '').toLowerCase();
-  const source = (entry.source || '').toLowerCase();
-  const creditType = (entry.creditType || '').toLowerCase();
-  if (creditType === 'cib' || creditType === 'hsbc' || category.includes('credit due')) return 'Credit';
-  if (source.includes('loan') || category.includes('loan') || category.includes('repayment')) return 'Loan';
-  if (source === 'salary' || category === 'salary' || category.includes('bonus')) return 'Salary';
-  if (source.includes('part-time') || category.includes('freelance')) return 'Part-Time';
-  if (/electric|mobile|phone|internet|wifi|gas|water|utility|bills/.test(category)) return 'Bills';
-  if (/kids|school|tuition|nursery|course/.test(category)) return 'Kids';
-  if (/food|grocer|supermarket|market|^home$/.test(category)) return 'Food';
-  if (/fix|repair|maintenance/.test(category)) return 'Maintenance';
-  if (/amazon|noon|shopping/.test(category)) return 'Shopping';
-  if (/medical|pharmacy|doctor|hospital|medicine/.test(category)) return 'Medical';
-  if (source === 'installment' || category.includes('installment')) return 'Installment';
-  return '';
-}
+// inferTag now lives in src/engine/tags.ts (pure) so engine modules can use it
+// without importing the store. Kept re-exported here for existing callers.
+export { inferTag };
 
 function revertStorageOrAccountBalance(
   get: () => BudgetStoreState,
@@ -653,7 +640,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     if (shouldDeleteInstallmentPlan) {
       updatedInstallments = updatedInstallments.filter((inst) => {
         if (id.includes(inst.id)) return false;
-        if (target?.loanId && (inst.id === target.loanId || (inst as any).loanId === target.loanId)) return false;
+        if (target?.loanId && (inst.id === target.loanId || inst.loanId === target.loanId)) return false;
         if (target?.category && inst.name.toLowerCase().trim() === target.category.toLowerCase().trim()) return false;
         return true;
       });
@@ -817,7 +804,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       let draws = Array.isArray(existingOverride.draws) ? [...existingOverride.draws] : [];
       if (draws.length === 0 && prevActual > 0) {
         draws.push({
-          id: `draw-${Date.now()}-0`,
+          id: `draw-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
           date: actDate,
           amount: prevActual,
           tag: existingOverride.tag || 'Credit',
@@ -859,7 +846,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       let draws = Array.isArray(entry.draws) ? [...entry.draws] : [];
       if (draws.length === 0 && prevActual > 0) {
         draws.push({
-          id: `draw-${Date.now()}-0`,
+          id: `draw-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
           date: entry.actualDate || entry.date || actDate,
           amount: prevActual,
           tag: entry.tag || '',
@@ -960,7 +947,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         draws: [],
         isClosed: false,
       };
-      delete (updatedEntry as any).keepOngoing;
+      delete updatedEntry.keepOngoing;
       updatedEntries = [...get().entries];
       updatedEntries[existingIndex] = updatedEntry;
       saveStorage(STORAGE_KEYS.entries, updatedEntries);
@@ -977,7 +964,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         draws: [],
         isClosed: false,
       };
-      delete (updatedEntry as any).keepOngoing;
+      delete updatedEntry.keepOngoing;
       updatedArchived = [...get().archivedEntries];
       updatedArchived[archivedIndex] = updatedEntry;
       saveStorage(STORAGE_KEYS.archivedEntries, updatedArchived);
@@ -1069,7 +1056,8 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
 
         let newStatus: JobItem['status'] = targetJob.status;
         if (remainingPayments.length === 0) {
-          newStatus = (targetJob.daysWorked && targetJob.daysWorked.length > 0) || (targetJob.logs && targetJob.logs.length > 0) ? 'invoiced' : 'invoiced';
+          // No payments remain: the job is back to an invoiceable (unpaid) state.
+          newStatus = 'invoiced';
         } else {
           newStatus = totalPaid >= fin.totalInvoice ? 'paid' : 'partial';
         }
@@ -1109,7 +1097,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       const existingOverride = get().creditSettlementOverrides[entryId] || {};
       const newDraws = [
         ...(existingOverride.draws || []),
-        { ...draw, id: draw.id || `draw-${Date.now()}-${(existingOverride.draws || []).length}` },
+        { ...draw, id: draw.id || `draw-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` },
       ];
       const totalAmount = newDraws.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
       const validDates = newDraws.map((d) => d.date).filter(Boolean).sort();
@@ -1143,7 +1131,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     const entry = isArchived ? get().archivedEntries[inArchived] : get().entries[inEntries];
     const newDraws = [
       ...(entry.draws || []),
-      { ...draw, id: draw.id || `draw-${Date.now()}-${(entry.draws || []).length}` },
+      { ...draw, id: draw.id || `draw-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` },
     ];
     const totalAmount = newDraws.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
     const validDates = newDraws.map((d) => d.date).filter(Boolean).sort();
@@ -1282,7 +1270,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
 
       if (options?.revertStorage && deletedDraw) {
         revertStorageOrAccountBalance(get, {
-          assetId: options.storageAssetId || (deletedDraw as any).storageAssetId,
+          assetId: options.storageAssetId || deletedDraw.storageAssetId,
           account: deletedDraw.account || existingOverride.account || 'cib',
           currency: 'EGP',
           amount: deletedDraw.amount,
@@ -1349,7 +1337,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
 
     if (options?.revertStorage && deletedDraw) {
       revertStorageOrAccountBalance(get, {
-        assetId: options.storageAssetId || (deletedDraw as any).storageAssetId,
+        assetId: options.storageAssetId || deletedDraw.storageAssetId,
         account: deletedDraw.account || entry.account,
         currency: entry.currency || 'USD',
         amount: deletedDraw.amount,
@@ -1365,7 +1353,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
   updateCreditSettlementOverride: (id, override) => {
     const next = { ...get().creditSettlementOverrides };
     if (Object.keys(override).length === 0) delete next[id];
-    else next[id] = override;
+    else next[id] = { ...next[id], ...override }; // merge so partial edits never wipe draws/tag/account
     saveStorage(STORAGE_KEYS.creditSettlementOverrides, next);
     set({ creditSettlementOverrides: next });
     scheduleAutoGistSync(get);
@@ -1451,7 +1439,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
   updateAccountBalance: (accountKey, newBalance) => {
     const accounts = { ...get().accounts };
     if (accounts[accountKey]) {
-      accounts[accountKey].balance = Math.round(newBalance);
+      accounts[accountKey] = { ...accounts[accountKey], balance: Math.round(newBalance) };
       saveStorage(STORAGE_KEYS.accounts, accounts);
       set({ accounts });
         scheduleAutoGistSync(get);
@@ -1482,8 +1470,12 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
           entry.type === template.type,
       );
       if (existing) {
-        existing.amount = template.amount;
-        existing.category = template.category;
+        const existingIndex = currentEntries.indexOf(existing);
+        currentEntries[existingIndex] = {
+          ...existing,
+          amount: template.amount,
+          category: template.category,
+        };
       } else {
         currentEntries.push({
           ...template,
@@ -1568,7 +1560,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
 
     if (options?.deleteCashEntries && inst) {
       const matchKey = (inst.name || '').toLowerCase().trim();
-      const matchLoanId = (inst as any).loanId || inst.id;
+      const matchLoanId = inst.loanId || inst.id;
       updatedEntries = updatedEntries.filter((e) => {
         if (e.loanId && (e.loanId === matchLoanId || e.loanId === inst.id)) return false;
         if (e.category && e.category.toLowerCase().trim() === matchKey) return false;
@@ -1598,8 +1590,8 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     const activeRates = customRates || get().rates;
     let changed = false;
     const updated = get().storageAssets.map((item) => {
-      const resolved = resolveRateSourceValue((item as any).rateSource, activeRates);
-      if (resolved !== null && resolved !== (item as any).rate) {
+      const resolved = resolveRateSourceValue(item.rateSource, activeRates);
+      if (resolved !== null && resolved !== item.rate) {
         changed = true;
         return { ...item, rate: resolved, buyPrice: resolved };
       }
@@ -1625,8 +1617,8 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     saveStorage(STORAGE_KEYS.rates, ratesToSave);
     let changed = false;
     const updatedStorage = get().storageAssets.map((item) => {
-      const resolved = resolveRateSourceValue((item as any).rateSource, ratesToSave);
-      if (resolved !== null && resolved !== (item as any).rate) {
+      const resolved = resolveRateSourceValue(item.rateSource, ratesToSave);
+      if (resolved !== null && resolved !== item.rate) {
         changed = true;
         return { ...item, rate: resolved, buyPrice: resolved };
       }
@@ -1732,6 +1724,8 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     const toAsset = get().storageAssets.find((a) => a.id === toAssetId);
     if (!fromAsset || !toAsset) return false;
     if ((Number(fromAsset.quantity) || 0) < amount) return false;
+    // 1:1 transfers are only valid inside the same unit (e.g. grams -> grams).
+    if ((fromAsset.unit || '').toLowerCase() !== (toAsset.unit || '').toLowerCase()) return false;
 
     const updated = get().storageAssets.map((a) => {
       if (a.id === fromAssetId) {
@@ -1853,7 +1847,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     const updatedJob = {
       ...targetJob,
       payments: remainingPayments,
-      status: (totalPaid >= fin.totalInvoice && fin.totalInvoice > 0 ? 'paid' : (totalPaid > 0 ? 'partial' : 'invoiced')) as any,
+      status: (totalPaid >= fin.totalInvoice && fin.totalInvoice > 0 ? 'paid' : (totalPaid > 0 ? 'partial' : 'invoiced')) as JobItem['status'],
       forecastAmount: Math.max(0, fin.totalInvoice - totalPaid),
     };
 

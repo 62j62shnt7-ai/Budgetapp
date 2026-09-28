@@ -24,7 +24,6 @@ import {
   hasInstallmentAffectedParties,
   hasStorageAffectedParties,
   hasJobAffectedParties,
-  hasJobPaymentAffectedParties,
 } from '../src/utils/affectedRecords.ts';
 import {
   calculateInstallmentProgress,

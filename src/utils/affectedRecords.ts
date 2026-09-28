@@ -39,7 +39,7 @@ export function findLinkedInstallmentByNameOrId(
     const normSource = (entry.source || '').toLowerCase().trim();
     return (
       entry.id.includes(i.id) ||
-      (entry.loanId && (i.id === entry.loanId || (i as any).loanId === entry.loanId)) ||
+      (entry.loanId && (i.id === entry.loanId || i.loanId === entry.loanId)) ||
       (normName &&
         (normCategory === normName ||
           normSubcategory === normName ||
@@ -61,7 +61,7 @@ export function resolveLinkedLoan(
   const isInstallmentOccurrence = isInstallmentOccurrenceEntry(entry, linkedInstallment);
 
   const byLoanId = entry.loanId
-    ? installments.find((i) => i.id === entry.loanId || (i as any).loanId === entry.loanId)
+    ? installments.find((i) => i.id === entry.loanId || i.loanId === entry.loanId)
     : undefined;
 
   return byLoanId || (!isInstallmentOccurrence ? linkedInstallment : undefined);
@@ -90,7 +90,7 @@ export function buildEntryDeleteOptions(
     : entry.amount;
 
   const amountFormatted = isForeign
-    ? `${formatNativeCurrency(nativeQty, entry.currency!)} (≈ ${formatMoney(entry.amount)})`
+    ? `${formatNativeCurrency(nativeQty, entry.currency)} (≈ ${formatMoney(entry.amount)})`
     : formatMoney(entry.amount);
 
   const normCategory = (entry.category || '').toLowerCase().trim();
@@ -243,13 +243,13 @@ export function buildEntryDeleteOptions(
     if (!isFxConversion && entry.storageAssetId && a.id === entry.storageAssetId) return true;
     if (a.name.trim().toLowerCase() === targetAccount) return true;
     if (isForeign && ((a.unit || '').toUpperCase() === currUpper || (a.currency || '').toUpperCase() === currUpper)) return true;
-    if (entry.draws && entry.draws.some((d) => (d as any).storageAssetId === a.id || (d.account && d.account.trim().toLowerCase() === a.name.trim().toLowerCase()))) return true;
+    if (entry.draws && entry.draws.some((d) => d.storageAssetId === a.id || (d.account && d.account.trim().toLowerCase() === a.name.trim().toLowerCase()))) return true;
     return false;
   });
 
   if (hasActualMoneyTransacted) {
     const actualFormatted = isForeign
-      ? `${formatNativeCurrency(entry.fxRateAtEntry ? Math.round((actualAmount / entry.fxRateAtEntry) * 100) / 100 : (entry.originalAmount || actualAmount), entry.currency!)} (≈ ${formatMoney(actualAmount)})`
+      ? `${formatNativeCurrency(entry.fxRateAtEntry ? Math.round((actualAmount / entry.fxRateAtEntry) * 100) / 100 : (entry.originalAmount || actualAmount), entry.currency)} (≈ ${formatMoney(actualAmount)})`
       : formatMoney(actualAmount);
 
     if (matchingStorage && (isForeign || targetAccount.includes('storage') || targetAccount.includes('vault') || entry.storageAssetId)) {
@@ -327,7 +327,7 @@ export function buildInstallmentDeleteOptions(
   const amountFormatted = `${formatMoney(installment.amount)} / mo (${installment.remainingMonths || 0} mos remaining — ≈ ${formatMoney(remainingTotal)})`;
 
   const matchKey = (installment.name || '').toLowerCase().trim();
-  const matchLoanId = (installment as any).loanId || installment.id;
+  const matchLoanId = installment.loanId || installment.id;
 
   const hasLinkedEntries = context.entries.some(
     (e) =>
@@ -517,7 +517,7 @@ export function buildEntryClearOptions(
     : rawActual;
 
   const amountFormatted = isForeign
-    ? `${formatNativeCurrency(nativeQty, entry.currency!)} (≈ ${formatMoney(rawActual)})`
+    ? `${formatNativeCurrency(nativeQty, entry.currency)} (≈ ${formatMoney(rawActual)})`
     : formatMoney(rawActual);
 
   const normCategory = (entry.category || '').toLowerCase().trim();
@@ -529,7 +529,7 @@ export function buildEntryClearOptions(
     const normName = (i.name || '').toLowerCase().trim();
     return (
       entry.id.includes(i.id) ||
-      (entry.loanId && (i.id === entry.loanId || (i as any).loanId === entry.loanId)) ||
+      (entry.loanId && (i.id === entry.loanId || i.loanId === entry.loanId)) ||
       (normName &&
         (normCategory === normName ||
           normSubcategory === normName ||
@@ -631,7 +631,7 @@ export function buildEntryClearOptions(
       entry.draws &&
       entry.draws.some(
         (d) =>
-          (d as any).storageAssetId === a.id ||
+          d.storageAssetId === a.id ||
           (d.account && d.account.trim().toLowerCase() === a.name.trim().toLowerCase())
       )
     )

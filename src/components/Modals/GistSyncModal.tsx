@@ -262,10 +262,10 @@ export const GistSyncModal: React.FC<GistSyncModalProps> = ({ isOpen, onClose })
   };
 
   const handleCopySyncLink = () => {
+    // App.tsx reads the gist id from the URL hash, so build a hash link (not a query string).
     const url = new URL(window.location.href);
-    if (idInput) {
-      url.searchParams.set('gist', idInput);
-    }
+    url.searchParams.delete('gist');
+    url.hash = idInput ? `gist=${encodeURIComponent(idInput)}` : '';
     navigator.clipboard.writeText(url.toString());
     showMsg('Copied sync link to clipboard!');
   };

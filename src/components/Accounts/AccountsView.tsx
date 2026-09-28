@@ -6,13 +6,14 @@ import { ArrowRightLeft, Coins } from 'lucide-react';
 import { StorageTransferModal } from '../Modals/StorageTransferModal';
 import { StorageFxModal } from '../Modals/StorageFxModal';
 
-const accountOrder = ['cib', 'hsbc'] as const;
+// Preferred display order; any other configured account is appended automatically.
+const preferredAccountOrder = ['cib', 'hsbc'];
 
 export const AccountsView: React.FC = () => {
   const { accounts, updateAccountBalance, storageAssets, rates } = useBudgetStore();
 
-  const [transferFrom, setTransferFrom] = useState<string>('cib');
-  const [transferTo, setTransferTo] = useState<string>('hsbc');
+  const [transferFrom, setTransferFrom] = useState<string>('');
+  const [transferTo, setTransferTo] = useState<string>('');
   const [transferAmount, setTransferAmount] = useState<string>('');
   const [transferSuccess, setTransferSuccess] = useState<string | null>(null);
 
@@ -20,9 +21,20 @@ export const AccountsView: React.FC = () => {
   const [storageFxOpen, setStorageFxOpen] = useState(false);
 
   const totalOpening = Object.values(accounts).reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
-  const displayedAccounts = accountOrder.flatMap((id) =>
-    accounts[id] ? [[id, accounts[id]] as const] : []
-  );
+  const displayedAccounts: Array<readonly [string, (typeof accounts)[string]]> = [
+    ...preferredAccountOrder.flatMap((id) => (accounts[id] ? [[id, accounts[id]] as const] : [])),
+    ...Object.entries(accounts)
+      .filter(([id]) => !preferredAccountOrder.includes(id))
+      .map(([id, acc]) => [id, acc] as const),
+  ];
+  const accountIds = displayedAccounts.map(([id]) => id);
+  // Resolve transfer endpoints against the accounts that actually exist so the
+  // form never starts on a deleted/hardcoded account key.
+  const activeFrom = transferFrom && accounts[transferFrom] ? transferFrom : accountIds[0] || '';
+  const activeTo =
+    transferTo && accounts[transferTo]
+      ? transferTo
+      : accountIds.find((id) => id !== activeFrom) || '';
 
   // Filter foreign holdings by institution
   const hsbcForeignAssets = storageAssets.filter((a) => {
@@ -43,14 +55,14 @@ export const AccountsView: React.FC = () => {
     e.preventDefault();
     const amt = Number(transferAmount);
     if (!amt || amt <= 0) return;
-    if (transferFrom === transferTo) return;
+    if (activeFrom === activeTo) return;
 
-    const fromAcc = accounts[transferFrom];
-    const toAcc = accounts[transferTo];
+    const fromAcc = accounts[activeFrom];
+    const toAcc = accounts[activeTo];
     if (!fromAcc || !toAcc) return;
 
-    updateAccountBalance(transferFrom, (fromAcc.balance || 0) - amt);
-    updateAccountBalance(transferTo, (toAcc.balance || 0) + amt);
+    updateAccountBalance(activeFrom, (fromAcc.balance || 0) - amt);
+    updateAccountBalance(activeTo, (toAcc.balance || 0) + amt);
 
     setTransferSuccess(`Successfully transferred ${formatMoney(amt)} from ${fromAcc.name} to ${toAcc.name}`);
     setTransferAmount('');
@@ -165,7 +177,7 @@ export const AccountsView: React.FC = () => {
             <div className="quick-transfer-row">
               <label className="transfer-field">
                 <span className="field-label-text">From Account</span>
-                <select className="form-select" value={transferFrom} onChange={(e) => setTransferFrom(e.target.value)}>
+                <select className="form-select" value={activeFrom} onChange={(e) => setTransferFrom(e.target.value)}>
                   {Object.entries(accounts).map(([id, a]) => (
                     <option key={id} value={id}>{a.name} ({formatMoney(a.balance)})</option>
                   ))}
@@ -173,7 +185,7 @@ export const AccountsView: React.FC = () => {
               </label>
               <label className="transfer-field">
                 <span className="field-label-text">To Account</span>
-                <select className="form-select" value={transferTo} onChange={(e) => setTransferTo(e.target.value)}>
+                <select className="form-select" value={activeTo} onChange={(e) => setTransferTo(e.target.value)}>
                   {Object.entries(accounts).map(([id, a]) => (
                     <option key={id} value={id}>{a.name} ({formatMoney(a.balance)})</option>
                   ))}

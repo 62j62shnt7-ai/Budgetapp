@@ -34,10 +34,14 @@ export const JobFormModal: React.FC<JobFormModalProps> = ({ isOpen, jobToEdit, o
       setStartDate(jobToEdit.startDate || '');
       setEndDate(jobToEdit.endDate || '');
       setCurrency(jobToEdit.currency || 'USD');
-      setType((jobToEdit.type as any) === 'lumpsum' ? 'lumpsum' : 'daily_rate');
+      setType(jobToEdit.type === 'lumpsum' ? 'lumpsum' : 'daily_rate');
       setDailyRate(jobToEdit.dailyRate ? String(jobToEdit.dailyRate) : '');
       setLumpSumAmount(jobToEdit.lumpSumAmount ? String(jobToEdit.lumpSumAmount) : '');
-      setStatus((jobToEdit.status as any) || 'active');
+      setStatus(
+        jobToEdit.status === 'invoiced' || jobToEdit.status === 'partial' || jobToEdit.status === 'paid'
+          ? jobToEdit.status
+          : 'active'
+      );
       setNotes(jobToEdit.notes || '');
     } else {
       setTitle('');
@@ -149,7 +153,7 @@ export const JobFormModal: React.FC<JobFormModalProps> = ({ isOpen, jobToEdit, o
           </label>
           <label>
             Compensation Type
-            <select value={type} onChange={(e) => setType(e.target.value as any)}>
+            <select value={type} onChange={(e) => setType(e.target.value as 'daily_rate' | 'lumpsum')}>
               <option value="daily_rate">Daily Rate</option>
               <option value="lumpsum">Lump Sum (Fixed)</option>
             </select>
@@ -188,7 +192,7 @@ export const JobFormModal: React.FC<JobFormModalProps> = ({ isOpen, jobToEdit, o
 
         <label>
           Status
-          <select value={status} onChange={(e) => setStatus(e.target.value as any)}>
+          <select value={status} onChange={(e) => setStatus(e.target.value as 'active' | 'invoiced' | 'partial' | 'paid')}>
             <option value="active">Active (In Progress)</option>
             <option value="invoiced">Invoiced (Waiting Payment)</option>
             <option value="partial">Partial (Partially Paid)</option>
@@ -283,7 +287,7 @@ export const JobLogDayModal: React.FC<JobLogDayModalProps> = ({ isOpen, jobId, o
 
         <label>
           Duration / Day Unit
-          <select value={preset} onChange={(e) => setPreset(e.target.value as any)}>
+          <select value={preset} onChange={(e) => setPreset(e.target.value as '1' | '0.5' | 'custom')}>
             <option value="1">Full Day (1.0)</option>
             <option value="0.5">Half Day (0.5)</option>
             <option value="custom">Custom Units / Shifts</option>

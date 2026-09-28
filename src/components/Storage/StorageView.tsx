@@ -212,9 +212,9 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenStorageModal }) 
               </div>
             ) : (
               filteredAssets.map((item) => {
-                const currentSource = (item as any).rateSource || 'manual';
+                const currentSource = item.rateSource || 'manual';
                 const resolvedLive = currentSource !== 'manual' ? resolveRateSourceValue(currentSource, rates) : null;
-                const currentRate = resolvedLive !== null ? resolvedLive : ((item as any).rate || item.buyPrice || 0);
+                const currentRate = resolvedLive !== null ? resolvedLive : (item.rate || item.buyPrice || 0);
                 const assetVal = getAssetValue(item);
                 const loc = inferAssetLocation(item);
 

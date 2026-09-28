@@ -16,7 +16,11 @@ export const DashboardView: React.FC = () => {
   const {
     rates,
     storageAssets,
+    entries,
+    archivedEntries,
     entryActuals,
+    entryActualDates,
+    creditSettlementOverrides,
     setActiveTab,
   } = useBudgetStore();
 
@@ -116,6 +120,11 @@ export const DashboardView: React.FC = () => {
     actualCashNow: totalCash,
     storageTotal,
     entryActuals,
+    // Settled ledger rows so budget adherence and savings rate can be measured.
+    historyEntries: entries,
+    archivedEntries,
+    entryActualDates,
+    creditSettlementOverrides,
   });
   const insights = generateSmartInsights({
     entries: allCandidateEntries,
@@ -458,6 +467,35 @@ export const DashboardView: React.FC = () => {
                 <small id="healthScoreSummary" className="health-score-summary">
                   {health.summaryNote}
                 </small>
+                <div className="health-score-breakdown" id="healthScoreBreakdown">
+                  <span title="Deficit safety & proximity (0-25)">Deficit {health.deficitScore}/25</span>
+                  <span title="Liquid cash & runway (0-25)">Runway {health.runwayScore}/25</span>
+                  <span
+                    title={
+                      health.budgetAdherencePct !== undefined
+                        ? `Realized spend ${health.budgetAdherencePct}% of planned budget across ${health.monthsAnalyzed} settled month(s)`
+                        : 'Neutral until a full month of history exists'
+                    }
+                  >
+                    Budget {health.budgetScore}/25
+                  </span>
+                  <span
+                    title={
+                      health.savingsRatePct !== undefined
+                        ? `Saved ${health.savingsRatePct}% of income across the measured window · reserves cover ${health.reserveMonths ?? 0} month(s) of expenses`
+                        : 'Neutral until a full month of history exists'
+                    }
+                  >
+                    Savings {health.savingsScore}/25
+                  </span>
+                  {health.monthsAnalyzed ? (
+                    <span className="health-score-breakdown-note">
+                      measured over {health.monthsAnalyzed} settled month{health.monthsAnalyzed === 1 ? '' : 's'}
+                    </span>
+                  ) : (
+                    <span className="health-score-breakdown-note">no settled history yet</span>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -548,7 +586,7 @@ export const DashboardView: React.FC = () => {
                   </div>
                   <span className={`pill ${entry.type}`}>
                     {entry.type === 'income' ? '+' : '-'}
-                    {isForeign ? formatNativeCurrency(nativeQty, entry.currency!) : formatMoney(entry.amount)}
+                    {isForeign ? formatNativeCurrency(nativeQty, entry.currency) : formatMoney(entry.amount)}
                   </span>
                 </div>
               );

@@ -1,5 +1,4 @@
 import assert from 'node:assert';
-import fs from 'node:fs';
 
 // Lightweight in-memory storage for test harness
 if (typeof globalThis.localStorage === 'undefined') {
@@ -36,7 +35,7 @@ import {
   simulateSpend,
 } from '../src/engine/forecast.ts';
 import { computeSpreadPct, computeAssetEgpValue, defaultRates, autoFetchLatestRates } from '../src/engine/currency.ts';
-import { computeFinancialHealthScore } from '../src/engine/healthScore.ts';
+import { computeFinancialHealthScore, analyzeSettledMonths } from '../src/engine/healthScore.ts';
 import { DateUtils } from '../src/engine/dateUtils.ts';
 import { calculateJobFinancials } from '../src/engine/jobs.ts';
 import { useBudgetStore } from '../src/store/useBudgetStore.ts';
@@ -966,6 +965,79 @@ assert.strictEqual(postImportAsset.locationType, 'cash', 'LocationType still cas
 assert.strictEqual(postImportAsset.location, 'cash', 'Location still cash after import');
 
 console.log('✓ Storage Asset location persistence across mutations, Gist export, and migration verified');
+
+// ---------------------------------------------------------------------------
+// Measured Financial Health Score (budget adherence + savings from settled months)
+// ---------------------------------------------------------------------------
+const healthLedger = [
+  // 2026-06 (settled): earned 30,000 (20,000 salary + 10,000 loan proceeds), spent 12,000 vs 12,000 planned
+  { id: 'h-jun-sal', date: '2026-06-01', category: 'salary', account: 'hsbc', type: 'income', amount: 20000, source: 'salary' },
+  { id: 'h-jun-loan', date: '2026-06-05', category: 'Loan Inflow: bridge', account: 'hsbc', type: 'income', amount: 10000, source: 'loan' },
+  { id: 'h-jun-exp', date: '2026-06-10', category: 'Home', account: 'hsbc', type: 'expense', amount: 12000, source: 'expense' },
+  // 2026-07 (settled): earned 20,000, spent 25,000 vs 20,000 planned (25% overspend)
+  { id: 'h-jul-sal', date: '2026-07-01', category: 'salary', account: 'hsbc', type: 'income', amount: 20000, source: 'salary' },
+  { id: 'h-jul-exp', date: '2026-07-10', category: 'Home', account: 'hsbc', type: 'expense', amount: 20000, source: 'expense' },
+  // 2026-08 (settled): an FX conversion must be ignored (internal transfer, not income)
+  { id: 'h-aug-fx', date: '2026-08-02', category: 'FX Conversion', account: 'hsbc', type: 'income', amount: 90000, source: 'fx', conversionType: 'fx-sale', excludeFromForecast: true },
+  // 2027-01 (future, must NOT be measured)
+  { id: 'h-future', date: '2027-01-05', category: 'Home', account: 'hsbc', type: 'expense', amount: 99999, source: 'expense' },
+];
+
+// July's plan was 20,000 but 25,000 was actually spent.
+const healthActuals = { 'h-jul-exp': 25000 };
+
+const settled = analyzeSettledMonths({
+  historyEntries: healthLedger,
+  entryActuals: healthActuals,
+  entryActualDates: {},
+  creditSettlementOverrides: {},
+  today: '2026-09-15',
+  maxMonths: 3,
+});
+assert.strictEqual(settled.length, 2, 'Only fully-elapsed months are measured (2026-06, 2026-07)');
+const [june, july] = settled;
+assert.strictEqual(june.month, '2026-06');
+assert.strictEqual(june.plannedExpense, 12000);
+assert.strictEqual(june.realizedExpense, 12000);
+assert.strictEqual(june.realizedIncome, 20000, 'Loan proceeds are financing, not income');
+assert.strictEqual(june.adherenceScore, 22, 'Exactly on plan scores 22/25');
+assert.strictEqual(july.month, '2026-07', 'FX-conversion-only month is excluded from measurement');
+assert.strictEqual(july.realizedIncome, 20000);
+assert.strictEqual(july.adherenceScore, 13, '25% overspend scores 13/25');
+
+// Aggregated scoring: earned 40,000, spent 37,000 -> 7.5% savings rate
+const measured = computeFinancialHealthScore({
+  entries: healthLedger,
+  forecast: [],
+  deficitPeriods: [],
+  actualCashNow: 60000,
+  storageTotal: 30000,
+  entryActuals: healthActuals,
+  historyEntries: healthLedger,
+  today: '2026-09-15',
+});
+assert.strictEqual(measured.monthsAnalyzed, 2);
+assert.strictEqual(measured.budgetScore, 18, 'Budget factor = mean of monthly adherence scores (22+13)/2');
+assert.strictEqual(measured.savingsRatePct, 8, 'Savings rate measured over the whole window');
+// 7.5% savings rate -> 9 points; 30,000 reserve vs 45,666 avg monthly expense (<1 month) -> 3 points
+assert.strictEqual(measured.savingsScore, 12, 'Savings points (9) + reserve points (3)');
+
+// With no settled history the two factors stay neutral instead of guessing
+const noHistory = computeFinancialHealthScore({
+  entries: [{ id: 'fut', date: '2027-03-01', category: 'Home', account: 'hsbc', type: 'expense', amount: 5000 }],
+  forecast: [],
+  deficitPeriods: [],
+  actualCashNow: 10000,
+  storageTotal: 0,
+  entryActuals: {},
+  historyEntries: [{ id: 'fut', date: '2027-03-01', category: 'Home', account: 'hsbc', type: 'expense', amount: 5000 }],
+  today: '2026-09-15',
+});
+assert.strictEqual(noHistory.monthsAnalyzed, 0);
+assert.strictEqual(noHistory.budgetScore, 20, 'Neutral budget factor without history');
+assert.strictEqual(noHistory.savingsScore, 15, 'Neutral savings factor without history');
+
+console.log('✓ Measured health score: settled-month analysis, loan/FX exclusion & neutral fallback verified');
 
 console.log('\n=================================================================');
 console.log('🌟 100% OF ENGINE, STORE, AND BUSINESS LOGIC TESTS PASSED! 🌟');

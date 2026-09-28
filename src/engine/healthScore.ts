@@ -8,18 +8,39 @@
 //   4. Savings & Reserve Target (0-25 pts)
 // ==========================================================================
 import { DateUtils } from './dateUtils';
-import { groupByMonth } from './forecast';
-import type { CashEntry, DeficitSummary, MonthlyForecast, HealthScoreResult, SmartInsight } from '../types';
+import { groupByMonth, getEntryActualAmount, isLoanInflow } from './forecast';
+import { isCreditCardExpense, getCreditSettlementMonth } from './creditCards';
+import type {
+  CashEntry,
+  CreditSettlementOverride,
+  DeficitSummary,
+  MonthlyForecast,
+  HealthScoreResult,
+  SettledMonthRow,
+  SmartInsight,
+} from '../types';
 import type { DailyDeficitPeriod } from './forecast';
 
-export function computeFinancialHealthScore(params: {
+/** Months of settled history used to measure budget adherence and savings behaviour. */
+const MEASURED_MONTHS = 3;
+
+export interface HealthScoreParams {
   entries: CashEntry[];
   forecast: MonthlyForecast[];
   deficitPeriods: DailyDeficitPeriod[];
   actualCashNow: number;
   storageTotal: number;
   entryActuals: Record<string, number>;
-}): HealthScoreResult;
+  /** Full ledger (including settled history) used for realized-month measurement. Falls back to `entries`. */
+  historyEntries?: CashEntry[];
+  archivedEntries?: CashEntry[];
+  entryActualDates?: Record<string, string>;
+  creditSettlementOverrides?: Record<string, CreditSettlementOverride>;
+  /** Injectable "today" (YYYY-MM-DD) for deterministic tests. */
+  today?: string;
+}
+
+export function computeFinancialHealthScore(params: HealthScoreParams): HealthScoreResult;
 /** Backward-compatible adapter for the original positional engine API. */
 export function computeFinancialHealthScore(
   forecast: MonthlyForecast[],
@@ -28,14 +49,7 @@ export function computeFinancialHealthScore(
   storageTotal: number
 ): HealthScoreResult;
 export function computeFinancialHealthScore(
-  paramsOrForecast: {
-    entries: CashEntry[];
-    forecast: MonthlyForecast[];
-    deficitPeriods: DailyDeficitPeriod[];
-    actualCashNow: number;
-    storageTotal: number;
-    entryActuals: Record<string, number>;
-  } | MonthlyForecast[],
+  paramsOrForecast: HealthScoreParams | MonthlyForecast[],
   legacyDeficits?: DeficitSummary,
   legacyActualCashNow?: number,
   legacyStorageTotal?: number
@@ -56,7 +70,13 @@ export function computeFinancialHealthScore(
     deficitPeriods,
     actualCashNow,
     storageTotal,
+    entryActuals = {},
+    entryActualDates = {},
+    creditSettlementOverrides = {},
   } = params;
+  const historyEntries = (params.historyEntries && params.historyEntries.length > 0
+    ? params.historyEntries
+    : entries) || [];
   const effectiveDeficitPeriods = Array.isArray(paramsOrForecast)
     ? (legacyDeficits?.deficitPeriods || []).map((period) => ({
         startDate: period.startDate,
@@ -74,8 +94,8 @@ export function computeFinancialHealthScore(
       }))
     : deficitPeriods;
 
-  const today = DateUtils.todayString();
-  const currentMonth = DateUtils.currentYearMonth();
+  const today = params.today || DateUtils.todayString();
+  const currentMonth = today.slice(0, 7);
 
   // Negative-balance months from the forecast
   const forecastNegMonths = forecast.filter((f) => f.balance < 0);
@@ -139,11 +159,55 @@ export function computeFinancialHealthScore(
     }
   }
 
-  // 3. Budget Adherence (0 - 25 pts) — neutral default
-  const budgetScore = 20;
+  // 3 + 4. Budget Adherence & Savings/Reserve — measured from settled months.
+  const settledRows = analyzeSettledMonths({
+    historyEntries,
+    archivedEntries: params.archivedEntries,
+    entryActuals,
+    entryActualDates,
+    creditSettlementOverrides,
+    today,
+    maxMonths: MEASURED_MONTHS,
+  });
+  const adherenceScores = settledRows
+    .map((row) => row.adherenceScore)
+    .filter((value): value is number => value !== null);
+  const plannedExpenseTotal = settledRows.reduce((sum, row) => sum + row.plannedExpense, 0);
+  const realizedExpenseTotal = settledRows.reduce((sum, row) => sum + row.realizedExpense, 0);
+  const realizedIncomeTotal = settledRows.reduce((sum, row) => sum + row.realizedIncome, 0);
+  const monthsAnalyzed = settledRows.length;
 
-  // 4. Savings & Reserve Target (0 - 25 pts) — neutral default
-  const savingsScore = 15;
+  // Budget adherence = mean of each settled month's plan-vs-actual score, so a single
+  // huge month cannot dominate the factor.
+  let budgetScore = 20;
+  let budgetAdherencePct: number | undefined;
+  if (adherenceScores.length > 0) {
+    budgetScore = Math.round(adherenceScores.reduce((a, b) => a + b, 0) / adherenceScores.length);
+    if (plannedExpenseTotal > 0) {
+      budgetAdherencePct = Math.round((realizedExpenseTotal / plannedExpenseTotal) * 100);
+    }
+  }
+
+  // Savings = aggregate rate across the measured window (income and expense totalled), which
+  // is stable and easy to explain: "earned X, spent Y, kept Z% of income".
+  const reserveMonths = avgMonthlyExpense > 0 ? Math.round((storageTotal / avgMonthlyExpense) * 10) / 10 : 0;
+  let savingsScore = 15;
+  let savingsRatePct: number | undefined;
+  if (monthsAnalyzed > 0 && realizedIncomeTotal > 0) {
+    const aggregateSavingsRate = (realizedIncomeTotal - realizedExpenseTotal) / realizedIncomeTotal;
+    savingsRatePct = Math.round(aggregateSavingsRate * 100);
+    const savingsPoints =
+      aggregateSavingsRate >= 0.25 ? 15
+        : aggregateSavingsRate >= 0.15 ? 13
+          : aggregateSavingsRate >= 0.1 ? 11
+            : aggregateSavingsRate >= 0.05 ? 9
+              : aggregateSavingsRate >= 0 ? 6
+                : aggregateSavingsRate >= -0.1 ? 3
+                  : 0;
+    const reservePoints =
+      reserveMonths >= 3 ? 10 : reserveMonths >= 2 ? 8 : reserveMonths >= 1 ? 5 : storageTotal > 0 ? 3 : 0;
+    savingsScore = Math.min(25, savingsPoints + reservePoints);
+  }
 
   const rawScore = Math.round(deficitScore + runwayScore + budgetScore + savingsScore);
   const score = Math.min(hardScoreCap, Math.max(0, rawScore));
@@ -167,6 +231,10 @@ export function computeFinancialHealthScore(
 
   const runwayMonths = avgMonthlyExpense > 0 ? Math.round(((actualCashNow + storageTotal) / avgMonthlyExpense) * 10) / 10 : 0;
 
+  if (monthsAnalyzed === 0) {
+    summaryNote = `${summaryNote} Budget and savings factors are neutral until a full month of history is recorded.`;
+  }
+
   return {
     score,
     grade,
@@ -179,7 +247,118 @@ export function computeFinancialHealthScore(
     label,
     tone,
     hardScoreCap,
+    monthsAnalyzed,
+    budgetAdherencePct,
+    savingsRatePct,
+    reserveMonths,
   };
+}
+
+/**
+ * Measure realized performance for each fully-elapsed month.
+ *
+ * Rules:
+ *  - Only months strictly before the current month count (a month is "settled" once it ends).
+ *  - An amount uses its recorded actual when one exists, otherwise the planned amount
+ *    (past-dated ledger rows are treated as realized at plan value, like the forecast engine).
+ *  - Internal movements (FX conversions) are ignored — they are not income or spending.
+ *  - A credit-card settlement lump sum is skipped when that settlement month's purchases are
+ *    already counted, so card spending is never counted twice.
+ */
+export function analyzeSettledMonths(params: {
+  historyEntries: CashEntry[];
+  archivedEntries?: CashEntry[];
+  entryActuals?: Record<string, number>;
+  entryActualDates?: Record<string, string>;
+  creditSettlementOverrides?: Record<string, CreditSettlementOverride>;
+  /** Injectable "today" (YYYY-MM-DD) for deterministic tests. */
+  today?: string;
+  maxMonths?: number;
+}): SettledMonthRow[] {
+  const {
+    historyEntries,
+    archivedEntries = [],
+    entryActuals = {},
+    entryActualDates = {},
+    creditSettlementOverrides = {},
+    today = DateUtils.todayString(),
+    maxMonths = MEASURED_MONTHS,
+  } = params;
+  const currentMonth = today.slice(0, 7);
+  const ledger = [...(historyEntries || []), ...archivedEntries];
+
+  const realizedAmount = (entry: CashEntry) => {
+    const actual = getEntryActualAmount(entry, entryActuals);
+    if (actual > 0) return actual;
+    return Math.max(0, Math.round(Number(entry.amount) || 0));
+  };
+  const isCreditDueLump = (entry: CashEntry) =>
+    Boolean(entry.isCreditSettlement) ||
+    entry.source === 'recurring credit' ||
+    (entry.id || '').startsWith('credit-settlement-');
+
+  // Settlement months whose card purchases are already counted on their own purchase dates.
+  const coveredSettlementKeys = new Set<string>();
+  ledger.filter((entry) => isCreditCardExpense(entry)).forEach((entry) => {
+    const accountKey = (entry.account || entry.creditType || '').toLowerCase();
+    const settlementMonth = getCreditSettlementMonth(entry, creditSettlementOverrides, entryActualDates);
+    if (!settlementMonth) return;
+    ['cib', 'hsbc'].forEach((key) => {
+      if (accountKey.includes(key)) coveredSettlementKeys.add(`${key}-${settlementMonth}`);
+    });
+  });
+
+  // Loan inflows and loan repayments are financing, not earnings or consumption:
+  // borrowed money must not read as income and repayment must not read as spending.
+  const isLoanRepayment = (entry: CashEntry) =>
+    entry.type === 'expense' && (entry.source === 'loan' || /loan/i.test(entry.category || ''));
+
+  const countableEntries = ledger.filter((entry) => {
+    if (entry.excludeFromForecast || entry.conversionType) return false;
+    if (isLoanInflow(entry) || isLoanRepayment(entry)) return false;
+    if (!isCreditDueLump(entry)) return true;
+    const accountKey = (entry.account || entry.creditType || '').toLowerCase().includes('hsbc') ? 'hsbc' : 'cib';
+    const month = DateUtils.getMonthKey(entry.date);
+    return !(month && coveredSettlementKeys.has(`${accountKey}-${month}`));
+  });
+
+  const settledMonths = Array.from(
+    new Set(
+      countableEntries
+        .map((entry) => DateUtils.getMonthKey(entry.date))
+        .filter((month) => month && month < currentMonth)
+    )
+  )
+    .sort()
+    .slice(-Math.max(1, maxMonths));
+
+  return settledMonths.map((month) => {
+    const monthEntries = countableEntries.filter((entry) => DateUtils.getMonthKey(entry.date) === month);
+    const expenseEntries = monthEntries.filter((entry) => entry.type === 'expense');
+    const plannedExpense = expenseEntries.reduce((sum, entry) => sum + Math.max(0, Number(entry.amount) || 0), 0);
+    const realizedExpense = expenseEntries.reduce((sum, entry) => sum + realizedAmount(entry), 0);
+    const realizedIncome = monthEntries
+      .filter((entry) => entry.type === 'income')
+      .reduce((sum, entry) => sum + realizedAmount(entry), 0);
+    const ratio = plannedExpense > 0 ? realizedExpense / plannedExpense : null;
+
+    return {
+      month,
+      plannedExpense,
+      realizedExpense,
+      realizedIncome,
+      savingsRate: realizedIncome > 0 ? (realizedIncome - realizedExpense) / realizedIncome : null,
+      ratio,
+      adherenceScore:
+        ratio === null ? null
+          : ratio <= 0.95 ? 25
+            : ratio <= 1 ? 22
+              : ratio <= 1.1 ? 18
+                : ratio <= 1.25 ? 13
+                  : ratio <= 1.5 ? 8
+                    : 4,
+    };
+  });
 }
 
 export function generateSmartInsights(params: {

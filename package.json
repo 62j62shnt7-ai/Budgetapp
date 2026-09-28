@@ -7,7 +7,9 @@
     "dev": "vite",
     "test": "tsx test/verifyMath.mjs && tsx test/testUserJson.mjs && tsx test/testAffectedModalOnly.mjs",
     "test:ui": "node test/ui-audit.mjs",
-    "build": "npm run test && tsc -b && vite build",
+    "typecheck": "tsc -b",
+    "score": "tsx test/healthReport.mjs",
+    "build": "npm run test && npm run typecheck && vite build",
     "lint": "oxlint src test",
     "preview": "vite preview"
   },

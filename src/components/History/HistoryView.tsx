@@ -4,7 +4,7 @@ import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { formatNativeCurrency } from '../../engine/currency';
 import {
   isCreditCardExpense,
-  calculateCreditSettlementDate,
+  getCreditSettlementMonth,
   buildCreditDueEntries,
   isLumpCreditDueForAccount,
   getCoveredCreditSettlementKeys,
@@ -203,12 +203,14 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
       let expenses = 0;
 
       // Track credit card actuals maturing in this settlement month to prevent double counting
+      // Settlement overrides (moved due dates) must be respected here, otherwise the
+      // card spend and its credit-due lump sum land in different months.
       let cibOffset = actualEntries
-        .filter((e) => isCreditCardExpense(e) && (e.account || e.creditType || '').toLowerCase().includes('cib') && DateUtils.getMonthKey(calculateCreditSettlementDate(e.actualDate || e.date, 'cib')) === month)
+        .filter((e) => isCreditCardExpense(e) && (e.account || e.creditType || '').toLowerCase().includes('cib') && getCreditSettlementMonth(e, creditSettlementOverrides, entryActualDates) === month)
         .reduce((sum, e) => sum + getEntryActualAmount(e), 0);
 
       let hsbcOffset = actualEntries
-        .filter((e) => isCreditCardExpense(e) && (e.account || e.creditType || '').toLowerCase().includes('hsbc') && DateUtils.getMonthKey(calculateCreditSettlementDate(e.actualDate || e.date, 'hsbc')) === month)
+        .filter((e) => isCreditCardExpense(e) && (e.account || e.creditType || '').toLowerCase().includes('hsbc') && getCreditSettlementMonth(e, creditSettlementOverrides, entryActualDates) === month)
         .reduce((sum, e) => sum + getEntryActualAmount(e), 0);
 
       actualEntries.forEach((entry) => {
@@ -256,7 +258,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
         savingsRate,
       };
     });
-  }, [orderedMonths, actualEntries, getEntryActualAmount, getEntryActualDate]);
+  }, [orderedMonths, actualEntries, getEntryActualAmount, getEntryActualDate, creditSettlementOverrides, entryActualDates]);
 
   const totalLifetimeIncome = monthlySummaryRows.reduce((sum, r) => sum + r.income, 0);
   const totalLifetimeExpenses = monthlySummaryRows.reduce((sum, r) => sum + r.expenses, 0);
@@ -364,7 +366,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
         const covered = actualEntries
           .filter((card) => isCreditCardExpense(card)
             && (card.account || card.creditType || '').toLowerCase().includes(account)
-            && DateUtils.getMonthKey(calculateCreditSettlementDate(card.date, account)) === month)
+            && getCreditSettlementMonth(card, creditSettlementOverrides, entryActualDates) === month)
           .reduce((total, card) => total + getEntryActualAmount(card), 0);
         return sum + Math.max(0, amount - covered);
       }
@@ -415,7 +417,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
       const covered = actualEntries
         .filter((card) => isCreditCardExpense(card)
           && (card.account || card.creditType || '').toLowerCase().includes(account)
-          && DateUtils.getMonthKey(calculateCreditSettlementDate(card.date, account)) === month)
+          && getCreditSettlementMonth(card, creditSettlementOverrides, entryActualDates) === month)
         .reduce((total, card) => total + getEntryActualAmount(card), 0);
       amt = Math.max(0, amt - covered);
     }
@@ -1019,7 +1021,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
           if (clearEntryTarget.storageAssetId && a.id === clearEntryTarget.storageAssetId) return true;
           if (a.name.trim().toLowerCase() === targetAccount) return true;
           if (isForeign && ((a.unit || '').toUpperCase() === currUpper || (a.currency || '').toUpperCase() === currUpper)) return true;
-          if (clearEntryTarget.draws && clearEntryTarget.draws.some((d) => (d as any).storageAssetId === a.id || (d.account && d.account.trim().toLowerCase() === a.name.trim().toLowerCase()))) return true;
+          if (clearEntryTarget.draws && clearEntryTarget.draws.some((d) => d.storageAssetId === a.id || (d.account && d.account.trim().toLowerCase() === a.name.trim().toLowerCase()))) return true;
           return false;
         });
 

@@ -92,7 +92,8 @@ export function calculateJobFinancials(job: JobItem, rates: RatesData): JobFinan
   const remainingBalance = Math.max(0, Math.round((totalInvoice - totalPaid) * 100) / 100);
   const percentPaid = totalInvoice > 0 ? Math.min(100, Math.round((totalPaid / totalInvoice) * 100)) : (totalPaid > 0 ? 100 : 0);
 
-  let computedStatus: 'active' | 'invoiced' | 'partial' | 'paid' = (job.status as any) || 'active';
+  let computedStatus: 'active' | 'invoiced' | 'partial' | 'paid' =
+    job.status === 'invoiced' || job.status === 'partial' || job.status === 'paid' ? job.status : 'active';
   if (totalPaid >= totalInvoice && totalInvoice > 0 && job.status !== 'active') {
     computedStatus = 'paid';
   } else if (totalPaid > 0 && remainingBalance > 0 && job.status !== 'active' && job.status !== 'invoiced') {

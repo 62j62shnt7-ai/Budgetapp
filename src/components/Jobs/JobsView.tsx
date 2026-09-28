@@ -207,7 +207,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
 
             <select
               value={activeSort}
-              onChange={(e) => setActiveSort(e.target.value as any)}
+              onChange={(e) => setActiveSort(e.target.value as 'newest' | 'oldest')}
               className="job-filter-select"
             >
               <option value="newest">📅 Newest Date</option>

@@ -68,6 +68,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     deleteInstallment,
     creditDues,
     creditSettlementOverrides,
+    archivedEntries,
     entryActuals,
     entryActualDates,
     deletedForecasts,
@@ -268,7 +269,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     accounts,
     creditDues,
     cashEntries: entries,
-    archivedEntries: [],
+    archivedEntries,
     entryActuals,
     creditSettlementOverrides,
   });
@@ -436,7 +437,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
       const progress = getInstallmentProgress(installment);
       return {
         paid: summary.paid + progress.paid,
-        dismissed: ((summary as any).dismissed || 0) + progress.dismissed,
+        dismissed: summary.dismissed + (progress.dismissed || 0),
         total: summary.total + progress.total,
         remaining: summary.remaining + progress.remaining,
       };
@@ -597,7 +598,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
               id="typeFilter"
               className="form-select"
               value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value as any)}
+              onChange={(e) => setTypeFilter(e.target.value as 'all' | 'income' | 'expense')}
             >
               <option value="all">All types</option>
               <option value="income">Income</option>
@@ -733,7 +734,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                         </div>
                       )}
                     </td>
-                    <td className="cell-account">{e.account.toUpperCase()}</td>
+                    <td className="cell-account">{(e.account || '').toUpperCase() || '—'}</td>
                     <td className="cell-type">
                       <span className={`pill ${e.type}`}>{e.type}</span>
                     </td>
@@ -754,7 +755,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                       {isForeign ? (
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
                           <span>
-                            {e.type === 'income' ? '+' : '-'}{formatNativeCurrency(nativeQty, e.currency!)}
+                            {e.type === 'income' ? '+' : '-'}{formatNativeCurrency(nativeQty, e.currency)}
                           </span>
                           <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 500 }}>
                             ≈ {formatMoney(e.amount)}
@@ -806,7 +807,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                                 : isCreditSettlement
                                 ? `Paid so far: ${formatMoney(actualValue)} ${isFull ? '(Settled in full)' : `(Remaining: ${formatMoney(remainingAmt)})`}`
                                 : isForeign
-                                ? `Spent so far: ${formatNativeCurrency(Math.round((actualValue / (e.fxRateAtEntry || getCurrencyRate(rates, e.currency!))) * 100) / 100, e.currency!)} (≈ ${formatMoney(actualValue)}) ${isFull ? '(Full budget reached · Ongoing)' : `(Remaining: ≈ ${formatMoney(remainingAmt)})`}`
+                                ? `Spent so far: ${formatNativeCurrency(Math.round((actualValue / (e.fxRateAtEntry || getCurrencyRate(rates, e.currency))) * 100) / 100, e.currency)} (≈ ${formatMoney(actualValue)}) ${isFull ? '(Full budget reached · Ongoing)' : `(Remaining: ≈ ${formatMoney(remainingAmt)})`}`
                                 : `Spent so far: ${formatMoney(actualValue)} ${isFull ? '(Full budget reached · Ongoing)' : `(Remaining: ${formatMoney(remainingAmt)})`}`}
                             </small>
                           )}

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useBudgetStore } from './store/useBudgetStore';
+import { STORAGE_KEYS, useBudgetStore } from './store/useBudgetStore';
+import { useAppUpdateStatus } from './hooks/useAppUpdateStatus';
 import { Topbar } from './components/Layout/Topbar';
 import { Sidebar } from './components/Layout/Sidebar';
 import { BottomNav } from './components/Layout/BottomNav';
@@ -53,7 +54,7 @@ export const App: React.FC = () => {
 
   // Modals state
   const [actionSheetOpen, setActionSheetOpen] = useState(false);
-  const [updateStatus, setUpdateStatus] = useState('Latest');
+  const updateStatus = useAppUpdateStatus();
   const [entryModalOpen, setEntryModalOpen] = useState(false);
   const [entryModalType, setEntryModalType] = useState<'expense' | 'income'>('expense');
   const [entryToEdit, setEntryToEdit] = useState<CashEntry | null>(null);
@@ -93,32 +94,29 @@ export const App: React.FC = () => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
+  // Multi-tab sync coordination. Only real user data counts as a conflict —
+  // timestamp/bookkeeping keys (rate fetches, sync stamps, UI prefs) are ignored.
   useEffect(() => {
-    const checkStatus = async () => {
-      if (!navigator.onLine) {
-        setUpdateStatus('Offline');
-        return;
-      }
-      if (!('serviceWorker' in navigator)) {
-        setUpdateStatus('Latest');
-        return;
-      }
-      const registration = await navigator.serviceWorker.getRegistration();
-      setUpdateStatus(registration?.waiting ? 'Update ready' : 'Latest');
-    };
-    void checkStatus();
-    window.addEventListener('online', checkStatus);
-    window.addEventListener('offline', checkStatus);
-    return () => {
-      window.removeEventListener('online', checkStatus);
-      window.removeEventListener('offline', checkStatus);
-    };
-  }, []);
-
-  // Multi-tab sync coordination
-  useEffect(() => {
+    const dataKeys = new Set<string>([
+      STORAGE_KEYS.entries,
+      STORAGE_KEYS.archivedEntries,
+      STORAGE_KEYS.installments,
+      STORAGE_KEYS.storage,
+      STORAGE_KEYS.accounts,
+      STORAGE_KEYS.asf,
+      STORAGE_KEYS.irq,
+      STORAGE_KEYS.partTimeJobs,
+      STORAGE_KEYS.creditDues,
+      STORAGE_KEYS.creditDueMonths,
+      STORAGE_KEYS.creditSettlementOverrides,
+      STORAGE_KEYS.entryActuals,
+      STORAGE_KEYS.entryActualDates,
+      STORAGE_KEYS.deletedForecasts,
+      STORAGE_KEYS.salary,
+      STORAGE_KEYS.salaryAnchor,
+    ]);
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key && e.key.startsWith('budget-control-') && !e.key.includes('gist')) {
+      if (e.key && dataKeys.has(e.key)) {
         setTabConflictDetected(true);
       }
     };
@@ -224,6 +222,9 @@ export const App: React.FC = () => {
       // Don't trigger if user is typing in an input/textarea
       const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
       if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+      // Ignore auto-repeat and never fire app shortcuts while a modal is open.
+      if (e.repeat) return;
+      if (document.querySelector('dialog.native-dialog[open]')) return;
 
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
         e.preventDefault();

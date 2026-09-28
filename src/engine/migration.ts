@@ -8,8 +8,8 @@ import type {
   JobItem,
 } from '../types';
 import { DateUtils } from './dateUtils';
-import { inferTag } from '../store/useBudgetStore';
-import { inferAssetLocation } from './currency';
+import { inferTag } from './tags';
+import { defaultRates as currencyDefaultRates, inferAssetLocation } from './currency';
 
 export interface MigratedBudgetDataset {
   schemaVersion: string;
@@ -48,19 +48,9 @@ const defaultSalaryPattern: SalaryPayment[] = [
   { monthOffset: 2, day: 30, amount: 0 },
 ];
 
-const defaultRates: RatesData = {
-  currencies: [
-    { name: 'USD', buy: 48.5, sell: 48.6 },
-    { name: 'EUR', buy: 52.0, sell: 52.2 },
-    { name: 'SAR', buy: 12.9, sell: 13.0 },
-    { name: 'AED', buy: 13.2, sell: 13.3 },
-  ],
-  gold: [
-    { name: '24K', buy: 4100, sell: 4150 },
-    { name: '21K', buy: 3600, sell: 3650 },
-    { name: '18K', buy: 3080, sell: 3120 },
-  ],
-};
+// Reuse the single source of truth for fallback rates so migrated/legacy
+// backups are seeded with the same currencies and gold names as the app.
+const defaultRates: RatesData = currencyDefaultRates;
 
 export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
   if (!raw || typeof raw !== 'object') {
@@ -153,11 +143,12 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
     const accMap: Record<string, AccountBalance> = {};
     for (const [k, v] of Object.entries(rawAccounts)) {
       if (k === 'cash') continue; // omit legacy cash pool
-      if (v && typeof v === 'object' && 'balance' in (v as any)) {
+      const accRecord = v && typeof v === 'object' ? (v as Record<string, unknown>) : null;
+      if (accRecord && 'balance' in accRecord) {
         accMap[k] = {
-          name: (v as any).name || k.toUpperCase(),
-          balance: Number((v as any).balance) || 0,
-          maturityDay: Number((v as any).maturityDay) || (k.toLowerCase().includes('hsbc') ? 30 : 15),
+          name: typeof accRecord.name === 'string' ? accRecord.name : k.toUpperCase(),
+          balance: Number(accRecord.balance) || 0,
+          maturityDay: Number(accRecord.maturityDay) || (k.toLowerCase().includes('hsbc') ? 30 : 15),
         };
       } else if (typeof v === 'number') {
         accMap[k] = {

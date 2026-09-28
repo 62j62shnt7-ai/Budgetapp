@@ -54,6 +54,12 @@ export const StorageTransferModal: React.FC<StorageTransferModalProps> = ({
       setErrorMsg(`Insufficient balance in ${fromAsset.name}. Available: ${fromAsset.quantity} ${fromAsset.unit}`);
       return;
     }
+    if ((fromAsset.unit || '').toLowerCase() !== (toAsset.unit || '').toLowerCase()) {
+      setErrorMsg(
+        `Cannot move ${fromAsset.unit || 'units'} into ${toAsset.unit || 'units'} 1:1. Sell the ${fromAsset.name} to EGP first, or transfer into a holding with the same unit.`
+      );
+      return;
+    }
 
     const success = transferStorageAsset(fromAsset.id, toAsset.id, numAmt);
     if (success) {
