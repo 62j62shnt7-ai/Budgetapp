@@ -9,6 +9,13 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
+// Allow the page (executeAppRefresh) to promote a waiting worker immediately.
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.action === 'skipWaiting') {
+    self.skipWaiting();
+  }
+});
+
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {

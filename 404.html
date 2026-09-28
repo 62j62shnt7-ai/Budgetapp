@@ -3,9 +3,10 @@
   <head>
     <meta charset="utf-8">
     <title>Budget Control</title>
-    <meta http-equiv="refresh" content="0; url=/Budgetapp/">
+    <meta http-equiv="refresh" content="0; url=./">
     <script>
-      window.location.replace('/Budgetapp/' + (window.location.search || '') + (window.location.hash || ''));
+      // Relative redirect: resolves to the app root whatever base path it is hosted under.
+      window.location.replace('./' + (window.location.search || '') + (window.location.hash || ''));
     </script>
   </head>
   <body>
