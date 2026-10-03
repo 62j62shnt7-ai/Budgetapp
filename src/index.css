@@ -2157,7 +2157,7 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     flex-direction: column !important;
     align-items: stretch !important;
     gap: 12px !important;
-    padding: 14px !important;
+    padding: 12px !important;
   }
 
   .jobs-filters-group {
@@ -2169,9 +2169,9 @@ dialog.modern-top-layer-dialog .dialog-actions button {
 
   .jobs-filter-chips {
     display: flex;
-    gap: 8px;
+    gap: 6px;
     overflow-x: auto;
-    padding-bottom: 4px;
+    padding-bottom: 2px;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
     width: 100%;
@@ -2184,10 +2184,10 @@ dialog.modern-top-layer-dialog .dialog-actions button {
   .job-filter-pill {
     white-space: nowrap !important;
     flex-shrink: 0 !important;
-    padding: 6px 14px !important;
-    border-radius: 999px !important;
-    font-size: 12.5px !important;
-    min-height: 36px !important;
+    padding: 6px 12px !important;
+    border-radius: 8px !important;
+    font-size: 12px !important;
+    min-height: 34px !important;
     display: inline-flex !important;
     align-items: center;
   }
@@ -2201,17 +2201,17 @@ dialog.modern-top-layer-dialog .dialog-actions button {
 
   .job-filter-select {
     width: 100% !important;
-    min-height: 42px !important;
-    border-radius: 10px !important;
+    min-height: 38px !important;
+    border-radius: 8px !important;
   }
 
   .jobs-add-btn {
     width: 100% !important;
     justify-content: center !important;
-    min-height: 46px !important;
-    font-size: 14.5px !important;
-    font-weight: 700 !important;
-    border-radius: 12px !important;
+    min-height: 42px !important;
+    font-size: 13.5px !important;
+    font-weight: 600 !important;
+    border-radius: 10px !important;
   }
 
   .jobs-card-header {
@@ -2234,7 +2234,6 @@ dialog.modern-top-layer-dialog .dialog-actions button {
   .jobs-card-heading {
     font-size: 1.15rem;
     font-weight: 700;
-    color: var(--ink);
     margin: 4px 0 6px;
     word-break: break-word;
   }
@@ -2244,33 +2243,46 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     flex-wrap: wrap;
     gap: 6px 10px;
     font-size: 11.5px;
-    color: var(--muted);
   }
 
   .jobs-card-total-val {
-    font-size: 1.3rem;
+    font-size: 1.35rem;
     font-weight: 800;
-    color: var(--ink);
     font-variant-numeric: tabular-nums;
   }
 
   .jobs-card-total-egp {
     font-size: 11px;
-    color: var(--muted);
     font-variant-numeric: tabular-nums;
   }
 
-  .jobs-card-quick-actions {
-    display: flex;
-    gap: 6px;
-    justify-content: flex-end;
-    margin-top: 6px;
+  .jobs-card-action-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
   }
 
-  .job-client-tag {
+  .jobs-card-action-buttons {
+    width: 100%;
+    justify-content: space-between;
+    margin-left: 0;
+  }
+
+  .jobs-card-action-buttons button {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .jobs-subtabs-nav {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .jobs-subtab-pill {
+    flex: 1;
+    justify-content: center;
+    padding: 6px 8px;
     font-size: 11.5px;
-    font-weight: 600;
-    color: var(--muted);
   }
 
   /* Rates View Mobile Ergonomics */
