@@ -2,7 +2,8 @@
    Modern Financial Dashboard — Design Tokens & Core Theme
    ========================================================================== */
 
-:root {
+:root,
+[data-theme="dark"] {
   /* OLED Dark Theme Tokens (Default) */
   --bg-app: #000000;
   --bg-surface: #0a0a0c;
@@ -14,9 +15,10 @@
   --border-active: rgba(99, 102, 241, 0.4);
   --border-focus: #6366f1;
   
+  /* WCAG AA Compliant High Contrast Typography */
   --text-main: #f8fafc;
-  --text-muted: #94a3b8;
-  --text-dim: #64748b;
+  --text-muted: #cbd5e1;
+  --text-dim: #94a3b8;
   
   --brand-primary: #6366f1;
   --brand-gradient: linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%);
@@ -34,6 +36,7 @@
   --font-main: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-heading: 'Outfit', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
+  --font-numeric: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   
   --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.55);
@@ -49,6 +52,18 @@
   --transition-normal: 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 
   /* Design token compatibility aliases */
+  --bg: var(--bg-app);
+  --surface: var(--bg-surface);
+  --surface-soft: var(--bg-surface-elevated);
+  --ink: var(--text-main);
+  --muted: var(--text-muted);
+  --line: var(--border-subtle);
+  --green: var(--color-success);
+  --green-dark: #059669;
+  --red: var(--color-danger);
+  --blue: var(--brand-primary);
+  --amber: var(--color-warning);
+  --teal: var(--color-cyan);
   --primary: var(--brand-primary);
   --primary-soft: rgba(99, 102, 241, 0.15);
   --accent: var(--brand-primary);
@@ -66,6 +81,13 @@
   --surface-hover: var(--bg-surface-hover);
   --surface-subtle: var(--bg-surface-elevated);
   --surface-sunken: #050507;
+
+  /* Glass tokens */
+  --topbar-glass-bg: rgba(10, 10, 12, 0.85);
+  --glass-bg: rgba(10, 10, 12, 0.78);
+  --glass-bg-soft: rgba(18, 19, 24, 0.6);
+  --glass-border: rgba(255, 255, 255, 0.09);
+  --glass-border-subtle: rgba(255, 255, 255, 0.05);
 }
 
 [data-theme="light"] {
@@ -78,15 +100,28 @@
   --border-subtle: #e2e8f0;
   --border-active: rgba(99, 102, 241, 0.4);
   
+  /* Light Theme WCAG AA High Contrast */
   --text-main: #0f172a;
-  --text-muted: #64748b;
-  --text-dim: #94a3b8;
+  --text-muted: #475569;
+  --text-dim: #64748b;
   
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
   --shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.12);
 
   /* Design token compatibility aliases */
+  --bg: var(--bg-app);
+  --surface: var(--bg-surface);
+  --surface-soft: var(--bg-surface-elevated);
+  --ink: var(--text-main);
+  --muted: var(--text-muted);
+  --line: var(--border-subtle);
+  --green: var(--color-success);
+  --green-dark: #047857;
+  --red: var(--color-danger);
+  --blue: #2563eb;
+  --amber: #d97706;
+  --teal: #0891b2;
   --primary: var(--brand-primary);
   --primary-soft: rgba(99, 102, 241, 0.12);
   --accent: var(--brand-primary);
@@ -104,6 +139,13 @@
   --surface-hover: var(--bg-surface-hover);
   --surface-subtle: var(--bg-surface-elevated);
   --surface-sunken: #e2e8f0;
+
+  /* Glass tokens */
+  --topbar-glass-bg: rgba(248, 250, 252, 0.85);
+  --glass-bg: rgba(255, 255, 255, 0.82);
+  --glass-bg-soft: rgba(241, 245, 249, 0.65);
+  --glass-border: rgba(0, 0, 0, 0.08);
+  --glass-border-subtle: rgba(0, 0, 0, 0.04);
 }
 
 /* Base Reset & Global Styles */
@@ -896,12 +938,12 @@ dialog.modern-top-layer-dialog::backdrop {
 
 dialog.native-dialog[open]::backdrop,
 dialog.modern-top-layer-dialog[open]::backdrop {
-  background: rgba(10, 16, 14, 0.65);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 
   @starting-style {
-    background: rgba(10, 16, 14, 0);
+    background: rgba(0, 0, 0, 0);
     backdrop-filter: blur(0px);
     -webkit-backdrop-filter: blur(0px);
   }
@@ -921,6 +963,58 @@ dialog.modern-top-layer-dialog[open]::backdrop {
       transform: none !important;
     }
   }
+}
+
+/* ==========================================================================
+   Fintech Precision Typography — Tabular Figures & Numerics
+   ========================================================================== */
+.tabular-nums,
+.num,
+.amount,
+.currency,
+.stat-value,
+.kpi-value,
+.balance,
+.deficit-amount,
+.deficit-step-val,
+.overdue-entry-amount,
+.metric-value,
+.history-entry-amount,
+.account-card-balance,
+.cashflow-table td,
+.cashflow-table th,
+.table-modern td,
+.table-modern th,
+table td,
+table th,
+.badge-numeric {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+
+/* ==========================================================================
+   Tactile Micro-Interactions & Hover Polish
+   ========================================================================== */
+button:active:not(:disabled),
+.button:active:not(:disabled),
+.primary-button:active:not(:disabled),
+.ghost-button:active:not(:disabled),
+.icon-button:active:not(:disabled) {
+  transform: scale(0.97);
+  transition: transform 0.08s ease;
+}
+
+.kpi-card,
+.card,
+.deficit-card-item,
+.account-card {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.kpi-card:hover,
+.card:hover,
+.account-card:hover {
+  border-color: rgba(255, 255, 255, 0.14);
 }
 
 /* ==========================================================================
@@ -3229,17 +3323,60 @@ input[type="date"]::-webkit-date-and-time-value {
     display: flex !important;
     flex-wrap: nowrap !important;
     align-items: center !important;
-    gap: 6px !important;
+    gap: 8px !important;
     overflow-x: auto !important;
     max-width: 100% !important;
+  }
+
+  .top-actions-cluster {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    flex-shrink: 0 !important;
+  }
+
+  .topbar-divider {
+    width: 1px !important;
+    height: 22px !important;
+    background: var(--border-subtle) !important;
+    margin: 0 4px !important;
+    flex-shrink: 0 !important;
   }
 
   .desktop-top-actions .ghost-button,
   .desktop-top-actions .primary-button {
     white-space: nowrap !important;
-    padding: 6px 10px !important;
+    padding: 6px 11px !important;
     font-size: 13px !important;
+    font-weight: 500 !important;
     flex-shrink: 0 !important;
+  }
+
+  .topbar-income-button {
+    color: var(--color-success) !important;
+    border-color: rgba(16, 185, 129, 0.3) !important;
+    background: rgba(16, 185, 129, 0.08) !important;
+  }
+
+  .topbar-income-button:hover {
+    background: rgba(16, 185, 129, 0.16) !important;
+    border-color: var(--color-success) !important;
+  }
+
+  .topbar-expense-button {
+    background: var(--brand-primary) !important;
+    color: #ffffff !important;
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35) !important;
+  }
+
+  .topbar-expense-button:hover {
+    box-shadow: 0 4px 14px rgba(99, 102, 241, 0.5) !important;
+  }
+
+  @media (max-width: 1200px) and (min-width: 769px) {
+    .top-actions-utilities .topbar-btn-label {
+      display: none !important;
+    }
   }
 
   /* --- Dialog & Modal Desktop Overhaul --- */

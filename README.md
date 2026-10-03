@@ -153,12 +153,14 @@ Budgetapp/
 │   │   └── useBudgetStore.ts # Central Zustand store with localStorage sync
 │   ├── types/
 │   │   └── index.ts         # TypeScript domain models & interfaces
+│   ├── styles/             # Modular base stylesheets (base.css)
+│   ├── index.css           # Design tokens, modern glassmorphism & responsive overrides
 │   └── utils/
 │       └── appRefresh.ts    # Service Worker cache purge & update utilities
 ├── public/                 # Static PWA assets (manifest, service worker, 404)
-├── test/
-│   └── verifyMath.mjs       # Comprehensive financial math test suite
-└── styles.css              # Design tokens, layout & component styling
+└── test/
+    ├── verifyMath.mjs       # Comprehensive financial math test suite
+    └── ui-audit.mjs         # Playwright visual audit test suite
 ```
 
 ---

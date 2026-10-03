@@ -7,7 +7,7 @@ This file provides context and operational rules for AI agents working in this r
 ## 1. Project Overview & Tech Stack
 * **Framework:** React 19 (`react`, `react-dom`) + TypeScript ~6.0 + Vite 8
 * **State Management:** Zustand 5 (`src/store/useBudgetStore.ts`)
-* **Styling:** Vanilla CSS (`src/index.css` & `styles.css`) using custom design tokens, modern glassmorphism, responsive grid/flex layouts. No Tailwind.
+* **Styling:** Vanilla CSS (`src/index.css` & `src/styles/base.css`) using custom design tokens, modern glassmorphism, responsive grid/flex layouts. No Tailwind. (Root `styles.css` is deprecated and removed).
 * **Icons:** `lucide-react`
 * **Linter:** `oxlint`
 * **Testing & Verification:** `tsx` + Playwright (`test/verifyMath.mjs`, `test/ui-audit.mjs`)

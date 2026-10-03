@@ -107,95 +107,101 @@ export const Topbar: React.FC<TopbarProps> = ({
         </div>
 
         {/* Desktop-only comprehensive toolbar */}
-        <div className="top-actions desktop-top-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          <button
-            className="ghost-button"
-            id="themeToggle"
-            type="button"
-            aria-pressed={theme === 'dark'}
-            aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-          >
-            {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
-            <span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
-          </button>
-
-          <button
-            className="ghost-button"
-            id="refreshAppBtn"
-            type="button"
-            aria-label="Refresh application"
-            title="Check for updates, clear cache & reload app"
-            onClick={() => executeAppRefresh()}
-          >
-            <RotateCw size={14} />
-            <span>Refresh</span>
-            <span className={`sync-pill ${updateStatus === 'Update ready' ? 'update-ready' : 'synced'}`} id="appUpdateStatus" role="status" aria-live="polite">
-              {updateStatus}
-            </span>
-          </button>
-
-          <button
-            className="ghost-button"
-            id="gistSyncBtn"
-            type="button"
-            title="Configure Cloud Sync"
-            onClick={onOpenGistSync}
-          >
-            <Cloud size={14} />
-            <span>Sync</span>
-            <span
-              className={`sync-pill ${syncPillClass}`}
-              id="gistSyncStatus"
-              role="status"
-              aria-live="polite"
-              title={gistSyncStatus === 'idle' && gistAutoSync ? 'Automatic sync is enabled and waiting for a data change.' : undefined}
+        <div className="top-actions desktop-top-actions">
+          <div className="top-actions-cluster top-actions-utilities">
+            <button
+              className="ghost-button"
+              id="themeToggle"
+              type="button"
+              aria-pressed={theme === 'dark'}
+              aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
             >
-              {syncLabel}
-            </span>
-          </button>
+              {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+              <span className="topbar-btn-label">{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
+            </button>
 
-          <button
-            className="ghost-button"
-            id="openDataToolsBtn"
-            type="button"
-            title="Data Backup, CSV/JSON & Tools"
-            onClick={onOpenDataTools}
-          >
-            <Database size={14} />
-            <span>Manage Data</span>
-          </button>
+            <button
+              className="ghost-button"
+              id="refreshAppBtn"
+              type="button"
+              aria-label="Refresh application"
+              title="Check for updates, clear cache & reload app"
+              onClick={() => executeAppRefresh()}
+            >
+              <RotateCw size={14} />
+              <span className="topbar-btn-label">Refresh</span>
+              <span className={`sync-pill ${updateStatus === 'Update ready' ? 'update-ready' : 'synced'}`} id="appUpdateStatus" role="status" aria-live="polite">
+                {updateStatus}
+              </span>
+            </button>
 
-          <button
-            className="ghost-button"
-            id="addLoanBtn"
-            type="button"
-            title="Bridge deficit or take loan"
-            onClick={onOpenLoanModal}
-          >
-            <CreditCard size={14} />
-            <span>Take loan</span>
-          </button>
+            <button
+              className="ghost-button"
+              id="gistSyncBtn"
+              type="button"
+              title="Configure Cloud Sync"
+              onClick={onOpenGistSync}
+            >
+              <Cloud size={14} />
+              <span className="topbar-btn-label">Sync</span>
+              <span
+                className={`sync-pill ${syncPillClass}`}
+                id="gistSyncStatus"
+                role="status"
+                aria-live="polite"
+                title={gistSyncStatus === 'idle' && gistAutoSync ? 'Automatic sync is enabled and waiting for a data change.' : undefined}
+              >
+                {syncLabel}
+              </span>
+            </button>
+          </div>
 
-          <button
-            className="ghost-button topbar-income-button"
-            id="addIncome"
-            type="button"
-            onClick={() => onOpenEntryModal('income')}
-          >
-            <Plus size={14} />
-            <span>Income</span>
-          </button>
+          <div className="topbar-divider" role="separator" />
 
-          <button
-            className="primary-button topbar-expense-button"
-            id="addEntry"
-            type="button"
-            onClick={() => onOpenEntryModal('expense')}
-          >
-            <Plus size={14} />
-            <span>Expense</span>
-          </button>
+          <div className="top-actions-cluster top-actions-operations">
+            <button
+              className="ghost-button"
+              id="openDataToolsBtn"
+              type="button"
+              title="Data Backup, CSV/JSON & Tools"
+              onClick={onOpenDataTools}
+            >
+              <Database size={14} />
+              <span className="topbar-btn-label">Manage Data</span>
+            </button>
+
+            <button
+              className="ghost-button"
+              id="addLoanBtn"
+              type="button"
+              title="Bridge deficit or take loan"
+              onClick={onOpenLoanModal}
+            >
+              <CreditCard size={14} />
+              <span className="topbar-btn-label">Take loan</span>
+            </button>
+
+            <button
+              className="ghost-button topbar-income-button"
+              id="addIncome"
+              type="button"
+              onClick={() => onOpenEntryModal('income')}
+            >
+              <Plus size={14} />
+              <span>Income</span>
+            </button>
+
+            <button
+              className="primary-button topbar-expense-button"
+              id="addEntry"
+              type="button"
+              onClick={() => onOpenEntryModal('expense')}
+            >
+              <Plus size={14} />
+              <span>Expense</span>
+            </button>
+          </div>
         </div>
       </header>
     </>

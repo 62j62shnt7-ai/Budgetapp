@@ -137,7 +137,7 @@ export const App: React.FC = () => {
         event.clientY < bounds.top ||
         event.clientY > bounds.bottom
       ) {
-        dialog.querySelector<HTMLButtonElement>('button[aria-label="Close"]')?.click();
+        dialog.querySelector<HTMLButtonElement>('button[aria-label="Close"], button[aria-label="Close dialog"], button.close-dialog-btn')?.click();
       }
     };
 
@@ -223,7 +223,18 @@ export const App: React.FC = () => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        const openDialogs = Array.from(document.querySelectorAll<HTMLDialogElement>('dialog.native-dialog[open]'));
+        const dialog = openDialogs.at(-1);
+        if (dialog) {
+          e.preventDefault();
+          const closeBtn = dialog.querySelector<HTMLButtonElement>('button[aria-label="Close"], button[aria-label="Close dialog"], button.close-dialog-btn');
+          if (closeBtn) {
+            closeBtn.click();
+            return;
+          }
+        }
         closeMobileSidebar();
+        return;
       }
 
       // Don't trigger if user is typing in an input/textarea
