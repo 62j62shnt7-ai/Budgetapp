@@ -141,15 +141,29 @@ async function runJobsVisualTest() {
     console.log('\nTesting Mobile Viewport (390x844)...');
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(400);
+
+    // Click Payments subtab on mobile
+    const mobileSubtabs = await page.$$('.jobs-subtab-pill');
+    if (mobileSubtabs[2]) {
+      await mobileSubtabs[2].click();
+      await page.waitForTimeout(300);
+    }
+
     const mobilePath = path.join(screenshotDir, 'jobs-mobile.png');
     await page.screenshot({ path: mobilePath, fullPage: true });
     console.log(`Saved mobile screenshot to ${mobilePath}`);
 
     const mobileAudit = await page.evaluate(() => {
+      const activePill = document.querySelector('.jobs-subtab-pill.is-active');
+      const nav = document.querySelector('.jobs-subtabs-nav');
+      const table = document.querySelector('.jobs-clean-table');
       return {
         hasHorizontalScroll: document.documentElement.scrollWidth > window.innerWidth + 1,
         scrollWidth: document.documentElement.scrollWidth,
-        innerWidth: window.innerWidth
+        innerWidth: window.innerWidth,
+        activePillText: activePill ? activePill.textContent.trim() : null,
+        navWidth: nav ? nav.offsetWidth : null,
+        tableWidth: table ? table.offsetWidth : null,
       };
     });
     console.log('Mobile Audit Result:', JSON.stringify(mobileAudit, null, 2));

@@ -2156,14 +2156,14 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     display: flex !important;
     flex-direction: column !important;
     align-items: stretch !important;
-    gap: 12px !important;
+    gap: 10px !important;
     padding: 12px !important;
   }
 
   .jobs-filters-group {
     display: flex !important;
     flex-direction: column !important;
-    gap: 10px !important;
+    gap: 8px !important;
     width: 100% !important;
   }
 
@@ -2184,10 +2184,10 @@ dialog.modern-top-layer-dialog .dialog-actions button {
   .job-filter-pill {
     white-space: nowrap !important;
     flex-shrink: 0 !important;
-    padding: 6px 12px !important;
+    padding: 5px 12px !important;
     border-radius: 8px !important;
     font-size: 12px !important;
-    min-height: 34px !important;
+    min-height: 32px !important;
     display: inline-flex !important;
     align-items: center;
   }
@@ -2201,24 +2201,30 @@ dialog.modern-top-layer-dialog .dialog-actions button {
 
   .job-filter-select {
     width: 100% !important;
-    min-height: 38px !important;
+    min-height: 36px !important;
     border-radius: 8px !important;
+    font-size: 12px !important;
   }
 
   .jobs-add-btn {
     width: 100% !important;
     justify-content: center !important;
-    min-height: 42px !important;
+    min-height: 40px !important;
     font-size: 13.5px !important;
     font-weight: 600 !important;
     border-radius: 10px !important;
+  }
+
+  .jobs-job-card {
+    padding: 16px 14px !important;
+    border-radius: 14px !important;
   }
 
   .jobs-card-header {
     display: flex !important;
     justify-content: space-between !important;
     align-items: flex-start !important;
-    gap: 10px !important;
+    gap: 8px !important;
   }
 
   .jobs-card-header-left {
@@ -2257,32 +2263,60 @@ dialog.modern-top-layer-dialog .dialog-actions button {
   }
 
   .jobs-card-action-bar {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 8px;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
   }
 
   .jobs-card-action-buttons {
-    width: 100%;
-    justify-content: space-between;
-    margin-left: 0;
+    display: flex !important;
+    width: 100% !important;
+    justify-content: space-between !important;
+    gap: 8px !important;
+    margin-left: 0 !important;
   }
 
   .jobs-card-action-buttons button {
-    flex: 1;
-    justify-content: center;
+    flex: 1 !important;
+    justify-content: center !important;
+    min-height: 38px !important;
+    font-size: 12px !important;
+  }
+
+  /* Segmented Controls on Mobile — Full Width, Clear Tabs */
+  .jobs-tabs-header {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
   }
 
   .jobs-subtabs-nav {
-    width: 100%;
-    justify-content: space-between;
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    width: 100% !important;
+    gap: 4px !important;
+    padding: 3px !important;
   }
 
   .jobs-subtab-pill {
-    flex: 1;
-    justify-content: center;
-    padding: 6px 8px;
-    font-size: 11.5px;
+    width: 100% !important;
+    justify-content: center !important;
+    padding: 6px 4px !important;
+    font-size: 11px !important;
+    min-height: 34px !important;
+    white-space: nowrap !important;
+    text-overflow: ellipsis !important;
+    overflow: hidden !important;
+    gap: 4px !important;
+  }
+
+  .jobs-subtab-action-btn {
+    width: 100% !important;
+    justify-content: center !important;
+    min-height: 38px !important;
+    font-size: 13px !important;
   }
 
   /* Rates View Mobile Ergonomics */
@@ -4738,8 +4772,9 @@ input[type="date"]::-webkit-date-and-time-value {
   width: 100%;
   border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
   border-radius: 12px;
-  overflow: hidden;
   background: var(--bg-surface-elevated, #121316);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .jobs-clean-table {
@@ -4848,6 +4883,156 @@ input[type="date"]::-webkit-date-and-time-value {
   background: rgba(244, 63, 94, 0.16);
   border-color: rgba(244, 63, 94, 0.4);
 }
+
+/* ==========================================================================
+   Jobs Mobile Responsive Design (< 680px)
+   ========================================================================== */
+
+@media (max-width: 680px) {
+  .jobs-job-card {
+    padding: 14px;
+    border-radius: 14px;
+  }
+
+  .jobs-tabs-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .jobs-subtabs-nav {
+    display: flex;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: 4px;
+    padding: 3px;
+    border-radius: 9px;
+    scrollbar-width: none;
+  }
+
+  .jobs-subtabs-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .jobs-subtab-pill {
+    flex: 1 1 auto;
+    justify-content: center;
+    padding: 6px 10px;
+    font-size: 11.5px;
+    white-space: nowrap;
+  }
+
+  .jobs-subtab-action-btn {
+    width: 100%;
+    justify-content: center;
+    padding: 8px 12px;
+    font-size: 12.5px;
+  }
+
+  /* Responsive Mobile Card Layout for Jobs Sub-tables */
+  .jobs-clean-table-wrap {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    overflow: visible;
+  }
+
+  .jobs-clean-table {
+    display: block;
+    width: 100%;
+  }
+
+  .jobs-clean-table thead {
+    display: none;
+  }
+
+  .jobs-clean-table tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+  }
+
+  .jobs-clean-table tbody tr {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    background: var(--bg-surface-elevated, #121316);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    border-radius: 12px;
+    padding: 12px 14px;
+    position: relative;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  }
+
+  .jobs-clean-table tbody tr:hover td {
+    background: transparent;
+  }
+
+  .jobs-clean-table td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 2px 0;
+    border-bottom: none;
+    font-size: 12px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .jobs-clean-table td::before {
+    content: attr(data-label);
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-dim, #94a3b8);
+    margin-right: 12px;
+    flex-shrink: 0;
+  }
+
+  .jobs-clean-table td.jobs-table-date {
+    font-size: 13px;
+    font-weight: 700;
+    padding-bottom: 6px;
+    padding-right: 36px; /* space for delete button in top right */
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    margin-bottom: 2px;
+  }
+
+  .jobs-clean-table td.jobs-table-date::before {
+    font-size: 10.5px;
+    color: var(--text-dim, #94a3b8);
+  }
+
+  .jobs-clean-table td.jobs-table-note {
+    font-size: 11.5px;
+    white-space: normal;
+    word-break: break-word;
+    text-align: right;
+  }
+
+  .jobs-clean-table td.jobs-table-actions {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: auto !important;
+    padding: 0 !important;
+    justify-content: flex-end;
+  }
+
+  .jobs-clean-table td.jobs-table-actions::before {
+    display: none !important;
+  }
+
+  .jobs-clean-table .jobs-row-delete-btn {
+    opacity: 0.85;
+    background: rgba(255, 255, 255, 0.04) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  }
+}
+
 
 
 

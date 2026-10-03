@@ -513,7 +513,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
                           </div>
                         ) : (
                           <div className="jobs-clean-table-wrap">
-                            <table className="jobs-clean-table">
+                            <table className="jobs-clean-table jobs-shifts-table">
                               <thead>
                                 <tr>
                                   <th>Date</th>
@@ -525,16 +525,16 @@ export const JobsView: React.FC<JobsViewProps> = ({
                               <tbody>
                                 {days.map((d, dIdx) => (
                                   <tr key={dIdx}>
-                                    <td className="jobs-table-date">
+                                    <td className="jobs-table-date" data-label="Date">
                                       {DateUtils.formatDisplayDate(d.date)}
                                     </td>
-                                    <td>
+                                    <td data-label="Units">
                                       <span className="jobs-units-badge">
                                         {d.units || 1.0} {d.units === 1 ? 'unit' : 'units'}
                                       </span>
                                     </td>
-                                    <td className="jobs-table-note">{d.note || '—'}</td>
-                                    <td style={{ textAlign: 'right' }}>
+                                    <td className="jobs-table-note" data-label="Note">{d.note || '—'}</td>
+                                    <td className="jobs-table-actions" style={{ textAlign: 'right' }}>
                                       <button
                                         className="ghost-button icon-button jobs-row-delete-btn"
                                         type="button"
@@ -567,7 +567,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
                           </div>
                         ) : (
                           <div className="jobs-clean-table-wrap">
-                            <table className="jobs-clean-table">
+                            <table className="jobs-clean-table jobs-expenses-table">
                               <thead>
                                 <tr>
                                   <th>Date</th>
@@ -580,19 +580,19 @@ export const JobsView: React.FC<JobsViewProps> = ({
                               <tbody>
                                 {expenses.map((e) => (
                                   <tr key={e.id}>
-                                    <td className="jobs-table-date">
+                                    <td className="jobs-table-date" data-label="Date">
                                       {DateUtils.formatDisplayDate(e.date)}
                                     </td>
-                                    <td><strong>{e.title || e.description}</strong></td>
-                                    <td className="number jobs-table-num">
+                                    <td data-label="Expense"><strong>{e.title || e.description}</strong></td>
+                                    <td className="number jobs-table-num" data-label="Amount">
                                       {formatJobCurrency(e.amount, job.currency)}
                                     </td>
-                                    <td>
+                                    <td data-label="Status">
                                       <span className={`badge ${e.isReimbursable !== false ? 'badge-income' : 'badge-neutral'}`}>
                                         {e.isReimbursable !== false ? '✓ Billed to Client' : 'Internal'}
                                       </span>
                                     </td>
-                                    <td style={{ textAlign: 'right' }}>
+                                    <td className="jobs-table-actions" style={{ textAlign: 'right' }}>
                                       <button
                                         className="ghost-button icon-button jobs-row-delete-btn"
                                         type="button"
@@ -625,7 +625,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
                           </div>
                         ) : (
                           <div className="jobs-clean-table-wrap">
-                            <table className="jobs-clean-table">
+                            <table className="jobs-clean-table jobs-payments-table">
                               <thead>
                                 <tr>
                                   <th>Date</th>
@@ -640,19 +640,19 @@ export const JobsView: React.FC<JobsViewProps> = ({
                                   const hasAffectedPay = hasJobPaymentAffectedParties(p, storageAssets);
                                   return (
                                     <tr key={p.id}>
-                                      <td className="jobs-table-date">
+                                      <td className="jobs-table-date" data-label="Date">
                                         {DateUtils.formatDisplayDate(p.date)}
                                       </td>
-                                      <td className="number jobs-table-num text-green" style={{ fontWeight: 700 }}>
+                                      <td className="number jobs-table-num text-green" style={{ fontWeight: 700 }} data-label="Amount">
                                         +{formatJobCurrency(p.amount, job.currency)}
                                       </td>
-                                      <td>
+                                      <td data-label="Account">
                                         <span className="account-pill">
                                           {(p.settlementAccount || p.account || 'Bank').toUpperCase()}
                                         </span>
                                       </td>
-                                      <td className="jobs-table-note">{p.paymentNote || p.note || '—'}</td>
-                                      <td style={{ textAlign: 'right' }}>
+                                      <td className="jobs-table-note" data-label="Note">{p.paymentNote || p.note || '—'}</td>
+                                      <td className="jobs-table-actions" style={{ textAlign: 'right' }}>
                                         <button
                                           className="ghost-button icon-button jobs-row-delete-btn"
                                           type="button"
