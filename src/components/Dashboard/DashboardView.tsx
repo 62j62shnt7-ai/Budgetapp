@@ -939,14 +939,42 @@ export const DashboardView: React.FC = () => {
               <h3 style={{ margin: 0 }}>Forecast warning</h3>
             </div>
             {deficits.hasDeficit ? (
-              <div className="list-row danger-row">
-                <span>Cashflow deficit projected</span>
-                <strong>{formatMoney(deficits.worstDeficit)}</strong>
+              <div className="stack-list">
+                <div className="list-row danger-row">
+                  <span>Projected deficit peak</span>
+                  <strong>{formatMoney(deficits.worstDeficit)}</strong>
+                </div>
+                <div className="list-row">
+                  <span>Trigger date</span>
+                  <strong>{DateUtils.formatDisplayDate(firstDeficit?.startDate || DateUtils.todayString())}</strong>
+                </div>
+                <div className="list-row">
+                  <span>Recovery date</span>
+                  <strong>{targetPeriod?.resolvedDate ? DateUtils.formatDisplayDate(targetPeriod.resolvedDate) : 'Unresolved'}</strong>
+                </div>
+                <div className="list-row">
+                  <span>Status</span>
+                  <strong style={{ color: 'var(--red)' }}>Action Required</strong>
+                </div>
               </div>
             ) : (
-              <div className="list-row success-row">
-                <span>Cashflow is covered</span>
-                <strong>No deficit</strong>
+              <div className="stack-list">
+                <div className="list-row success-row">
+                  <span>Cashflow status</span>
+                  <strong>Fully Covered</strong>
+                </div>
+                <div className="list-row">
+                  <span>Projected cash floor</span>
+                  <strong>{formatMoney(lowestPoint)}</strong>
+                </div>
+                <div className="list-row">
+                  <span>Forecast horizon</span>
+                  <strong>{visibleForecast.length} months safe</strong>
+                </div>
+                <div className="list-row">
+                  <span>Deficit risk</span>
+                  <strong style={{ color: 'var(--green)' }}>None detected</strong>
+                </div>
               </div>
             )}
           </section>

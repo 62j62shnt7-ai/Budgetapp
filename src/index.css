@@ -1004,17 +1004,51 @@ button:active:not(:disabled),
   transition: transform 0.08s ease;
 }
 
-.kpi-card,
+.panel,
 .card,
-.deficit-card-item,
-.account-card {
+.kpi-card,
+.forecast-kpi-card,
+.account-card,
+.deficit-card-item {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.06);
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .kpi-card:hover,
 .card:hover,
-.account-card:hover {
+.account-card:hover,
+.panel:hover {
   border-color: rgba(255, 255, 255, 0.14);
+}
+
+/* ==========================================================================
+   Touch Target Ergonomics (44px Minimum Touch Targets)
+   ========================================================================== */
+.icon-button,
+.compact-pill-btn,
+.sidebar-toggle-btn,
+.sidebar-open-btn,
+.mobile-refresh-btn,
+.mobile-quick-add-btn {
+  position: relative;
+}
+
+.icon-button::after,
+.compact-pill-btn::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  min-width: 44px;
+  min-height: 44px;
+  pointer-events: auto;
+}
+
+/* Bento Dashboard Layout */
+@media (min-width: 1024px) {
+  .dashboard-summary-grid {
+    grid-template-columns: 1.2fr 1fr 1fr !important;
+    gap: 16px !important;
+  }
 }
 
 /* ==========================================================================
@@ -3541,6 +3575,27 @@ input[type="date"]::-webkit-date-and-time-value {
     padding: 5px 8px !important;
     height: 32px !important;
     border-radius: 8px !important;
+    background: var(--bg-surface-elevated, #121316) !important;
+    border: 1px solid var(--border-subtle) !important;
+    color: var(--text-main) !important;
+    transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease !important;
+  }
+
+  .cell-actual .inline-actual-input:hover {
+    border-color: rgba(255, 255, 255, 0.22) !important;
+    background: var(--bg-surface-hover, #1a1c22) !important;
+  }
+
+  .cell-actual .inline-actual-input:focus {
+    border-color: var(--border-focus, #6366f1) !important;
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25) !important;
+    background: var(--bg-surface-elevated, #121316) !important;
+    outline: none !important;
+  }
+
+  .cell-actual .inline-actual-input::placeholder {
+    color: var(--text-muted) !important;
+    opacity: 0.75 !important;
   }
 
   .cell-actual .actual-spend-note {
