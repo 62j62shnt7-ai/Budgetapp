@@ -576,7 +576,11 @@ body.sidebar-collapsed .sidebar-open-btn {
 }
 
 .top-actions > .primary-button,
-.top-actions > .ghost-button {
+.top-actions > .ghost-button,
+.top-actions-cluster > .primary-button,
+.top-actions-cluster > .ghost-button,
+.top-actions .primary-button,
+.top-actions .ghost-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -585,13 +589,23 @@ body.sidebar-collapsed .sidebar-open-btn {
 }
 
 .top-actions > .primary-button > svg,
-.top-actions > .ghost-button > svg {
+.top-actions > .ghost-button > svg,
+.top-actions-cluster > .primary-button > svg,
+.top-actions-cluster > .ghost-button > svg,
+.top-actions .primary-button > svg,
+.top-actions .ghost-button > svg {
   flex: 0 0 auto;
-  display: block;
+  display: inline-block;
+  vertical-align: middle;
+  margin: 0;
 }
 
 .top-actions > .primary-button > span,
-.top-actions > .ghost-button > span {
+.top-actions > .ghost-button > span,
+.top-actions-cluster > .primary-button > span,
+.top-actions-cluster > .ghost-button > span,
+.top-actions .primary-button > span,
+.top-actions .ghost-button > span {
   display: inline-flex;
   align-items: center;
   line-height: 1;

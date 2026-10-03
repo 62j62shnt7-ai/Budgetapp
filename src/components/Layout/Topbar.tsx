@@ -91,7 +91,7 @@ export const Topbar: React.FC<TopbarProps> = ({
             onClick={() => onOpenEntryModal('expense')}
             aria-label="Add Expense"
           >
-            <Plus size={15} style={{ marginRight: '4px' }} />
+            <Plus size={15} />
             <span>Expense</span>
           </button>
           <button
@@ -129,7 +129,7 @@ export const Topbar: React.FC<TopbarProps> = ({
               title="Check for updates, clear cache & reload app"
               onClick={() => executeAppRefresh()}
             >
-              <RotateCw size={14} />
+              <RotateCw size={15} />
               <span className="topbar-btn-label">Refresh</span>
               <span className={`sync-pill ${updateStatus === 'Update ready' ? 'update-ready' : 'synced'}`} id="appUpdateStatus" role="status" aria-live="polite">
                 {updateStatus}
@@ -143,7 +143,7 @@ export const Topbar: React.FC<TopbarProps> = ({
               title="Configure Cloud Sync"
               onClick={onOpenGistSync}
             >
-              <Cloud size={14} />
+              <Cloud size={15} />
               <span className="topbar-btn-label">Sync</span>
               <span
                 className={`sync-pill ${syncPillClass}`}
@@ -167,7 +167,7 @@ export const Topbar: React.FC<TopbarProps> = ({
               title="Data Backup, CSV/JSON & Tools"
               onClick={onOpenDataTools}
             >
-              <Database size={14} />
+              <Database size={15} />
               <span className="topbar-btn-label">Manage Data</span>
             </button>
 
@@ -178,7 +178,7 @@ export const Topbar: React.FC<TopbarProps> = ({
               title="Bridge deficit or take loan"
               onClick={onOpenLoanModal}
             >
-              <CreditCard size={14} />
+              <CreditCard size={15} />
               <span className="topbar-btn-label">Take loan</span>
             </button>
 
@@ -188,8 +188,8 @@ export const Topbar: React.FC<TopbarProps> = ({
               type="button"
               onClick={() => onOpenEntryModal('income')}
             >
-              <Plus size={14} />
-              <span>Income</span>
+              <Plus size={15} />
+              <span className="topbar-btn-label">Income</span>
             </button>
 
             <button
@@ -198,8 +198,8 @@ export const Topbar: React.FC<TopbarProps> = ({
               type="button"
               onClick={() => onOpenEntryModal('expense')}
             >
-              <Plus size={14} />
-              <span>Expense</span>
+              <Plus size={15} />
+              <span className="topbar-btn-label">Expense</span>
             </button>
           </div>
         </div>

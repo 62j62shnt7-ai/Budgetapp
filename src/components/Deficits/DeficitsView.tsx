@@ -7,7 +7,7 @@ import {
   isOngoingEntry,
 } from '../../engine/forecast';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
-import { AlertCircle, Clock, CheckCircle } from 'lucide-react';
+import { AlertCircle, Clock, CheckCircle, CreditCard } from 'lucide-react';
 import { useForecastCandidates } from '../../hooks/useForecastCandidates';
 import type { CashEntry } from '../../types';
 
@@ -120,7 +120,8 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({ onBridgeDeficit, onD
                   </div>
                   {onBridgeDeficit && (
                     <button className="ghost-button deficit-bridge-btn" type="button" onClick={onBridgeDeficit}>
-                      💳 Bridge with Loan
+                      <CreditCard size={14} />
+                      <span>Bridge with Loan</span>
                     </button>
                   )}
                   <div className="deficit-progression-wrap">
