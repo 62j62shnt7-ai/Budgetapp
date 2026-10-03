@@ -7,9 +7,10 @@ import {
   isPartialTracked,
   getRemainingForecastAmount,
   getEntryActualAmount,
+  type DailyDeficitPeriod,
 } from '../../engine/forecast';
 import { computeFinancialHealthScore, generateSmartInsights } from '../../engine/healthScore';
-import { computeAssetEgpValue, computeTotalStorageValue, formatNativeCurrency } from '../../engine/currency';
+import { computeAssetEgpValue, computeTotalStorageValue, formatNativeCurrency, getCurrencyRate } from '../../engine/currency';
 import { DateUtils, formatMoney, formatLastUpdated } from '../../engine/dateUtils';
 import { ForecastChart } from '../Forecast/ForecastChart';
 import { CreditCard, CheckCircle2, Clock } from 'lucide-react';
@@ -225,20 +226,66 @@ export const DashboardView: React.FC = () => {
   };
 
   const firstDeficit = deficitPeriods[0];
-  const remediationAdvice = firstDeficit
+  const worstDeficitPeriod = deficitPeriods.reduce<DailyDeficitPeriod | null>((worst, curr) => {
+    if (!worst) return curr;
+    return curr.lowestBalance < worst.lowestBalance ? curr : worst;
+  }, null);
+
+  const targetPeriod = worstDeficitPeriod || firstDeficit;
+  const lowestDeficitNumber = targetPeriod
+    ? targetPeriod.lowestBalance
+    : (forecast.length > 0 ? Math.min(0, ...forecast.map((f) => f.balance)) : 0);
+  const peakDeficit = Math.ceil(Math.abs(lowestDeficitNumber));
+
+  const remediationAdvice = targetPeriod && peakDeficit > 0
     ? (() => {
-        const peak = Math.ceil(Math.abs(firstDeficit.lowestBalance));
-        const fx = storageAssets.find((asset) => /eur|euro|usd|dollar|currency|foreign/i.test(asset.name) && Number(asset.quantity) > 0);
-        const flexible = firstDeficit.steps.find((step) => step.type === 'expense' && !/installment|credit due|loan repayment|bill/i.test(step.category) && step.amount > 0);
+        const peak = peakDeficit;
+        const fx = storageAssets.find(
+          (asset) =>
+            /eur|euro|usd|dollar|currency|foreign/i.test(`${asset.name || ''} ${asset.unit || ''}`) &&
+            Number(asset.quantity ?? (asset as any).amount ?? 0) > 0
+        );
+        const goldAsset = storageAssets.find(
+          (asset) =>
+            /gold/i.test(`${asset.name || ''} ${asset.unit || ''}`) &&
+            Number(asset.quantity ?? (asset as any).amount ?? 0) > 0
+        );
+        const goldRate = goldAsset
+          ? Number(goldAsset.rate || goldAsset.currentPrice || (goldAsset as any).buyPrice || 0)
+          : 0;
+        const goldGramsNeeded = goldRate > 0 ? (peak / goldRate).toFixed(1) : null;
+
+        const flexible = targetPeriod.steps.find(
+          (step) =>
+            step.type === 'expense' &&
+            !/installment|credit due|loan repayment|bill/i.test(step.category) &&
+            step.amount > 0
+        ) || deficitPeriods.flatMap((p) => p.steps).find(
+          (step) =>
+            step.type === 'expense' &&
+            !/installment|credit due|loan repayment|bill/i.test(step.category) &&
+            step.amount > 0
+        );
+
+        const fxRate = fx
+          ? Math.max(1, Number(fx.rate || fx.currentPrice || (fx as any).buyPrice || getCurrencyRate(rates, fx.unit || 'USD') || 1))
+          : 1;
+        const fxAmountNeeded = Math.ceil(peak / fxRate);
+        const fxLabel = fx ? (fx.unit || fx.name || 'USD') : 'foreign currency';
+
         const options = [
-          fx ? `Exchange approximately ${Math.ceil(peak / Math.max(1, Number(fx.rate || fx.currentPrice || 1)))} ${fx.unit || fx.name}` : 'Exchange foreign currency if available',
-          'Liquidate gold or another liquid asset',
-          flexible ? `Postpone ${flexible.category}` : 'Postpone a flexible expense',
-          firstDeficit.resolvedDate
-            ? `Bridge until ${DateUtils.formatDisplayDate(firstDeficit.resolvedDate)}`
+          fx
+            ? `Exchange approx. ${fxAmountNeeded.toLocaleString()} ${fxLabel}`
+            : 'Exchange foreign currency if available',
+          goldGramsNeeded
+            ? `Liquidate approx. ${goldGramsNeeded}g gold (${formatMoney(peak)})`
+            : 'Liquidate gold or another liquid asset',
+          flexible ? `Postpone ${flexible.category} (${formatMoney(flexible.amount)})` : 'Postpone a flexible expense',
+          targetPeriod.resolvedDate
+            ? `Bridge ${formatMoney(peak)} until ${DateUtils.formatDisplayDate(targetPeriod.resolvedDate)}`
             : `Bridge ${formatMoney(peak)} via short-term loan or credit`,
         ];
-        return `Remediation: ${options.join(' · ')}`;
+        return `Remediation (peak deficit ${formatMoney(peak)}): ${options.join(' · ')}`;
       })()
     : '';
 
@@ -253,7 +300,7 @@ export const DashboardView: React.FC = () => {
             <p id="deficitBannerSummary">
               Balance turns negative on {DateUtils.formatDisplayDate(firstDeficit?.startDate || DateUtils.todayString())}
               {' · '}peak deficit {formatMoney(deficits.worstDeficit)}
-              {firstDeficit?.isResolved ? ` · recovers on ${DateUtils.formatDisplayDate(firstDeficit.resolvedDate || firstDeficit.lowestDate)}` : ' · remains unresolved'}
+              {targetPeriod?.isResolved ? ` · recovers on ${DateUtils.formatDisplayDate(targetPeriod.resolvedDate || targetPeriod.lowestDate)}` : ' · remains unresolved'}
               {overdueNow.length > 0 ? ` · ${overdueNow.length} overdue obligation${overdueNow.length === 1 ? '' : 's'}` : ''}
             </p>
             <div id="deficitRemediationAdvice" className="deficit-remediation-pill" style={{ display: 'block' }}>

@@ -377,6 +377,8 @@ export function generateSmartInsights(params: {
   // 1. Deficit Horizon or Clean Projection
   if (deficitPeriods && deficitPeriods.length > 0) {
     const nextDeficit = deficitPeriods[0];
+    const worstPeriod = deficitPeriods.reduce((worst, curr) => curr.lowestBalance < worst.lowestBalance ? curr : worst, nextDeficit);
+    const peakDeficitVal = Math.abs(worstPeriod.lowestBalance);
     const startFmt = DateUtils.formatDisplayDate(nextDeficit.startDate);
     const durStr = nextDeficit.daysInDeficit > 0 ? ` for ~${nextDeficit.daysInDeficit} days` : '';
     const fixStr = nextDeficit.resolvedBy ? ` until recovered by ${nextDeficit.resolvedBy}` : '';
@@ -384,7 +386,7 @@ export function generateSmartInsights(params: {
       id: 'deficit-alert',
       type: 'critical',
       title: 'Deficit Horizon',
-      message: `Projected balance turns negative on ${startFmt}${durStr}${fixStr} (Peak deficit: ${formatMoney(Math.abs(nextDeficit.lowestBalance))}).`,
+      message: `Projected balance turns negative on ${startFmt}${durStr}${fixStr} (Peak deficit: ${formatMoney(peakDeficitVal)}).`,
       actionText: 'View Deficits',
     });
   } else {
