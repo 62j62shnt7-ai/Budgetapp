@@ -3,7 +3,22 @@ import { useBudgetStore } from '../../store/useBudgetStore';
 import { calculateJobFinancials, formatJobCurrency } from '../../engine/jobs';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import type { JobItem, JobPayment } from '../../types';
-import { Plus, ChevronDown, ChevronUp } from 'lucide-react';
+import {
+  Plus,
+  ChevronDown,
+  ChevronUp,
+  Briefcase,
+  Building2,
+  Calendar,
+  Clock,
+  DollarSign,
+  Receipt,
+  CreditCard,
+  Edit2,
+  Trash2,
+  AlertCircle,
+  CheckCircle2,
+} from 'lucide-react';
 import { DeleteAffectedPartiesModal } from '../Modals/DeleteAffectedPartiesModal';
 import { hasJobAffectedParties, hasJobPaymentAffectedParties } from '../../utils/affectedRecords';
 
@@ -28,6 +43,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
   const [activeCurrencyFilter, setActiveCurrencyFilter] = useState<string>('all');
   const [activeSort, setActiveSort] = useState<'newest' | 'oldest'>('newest');
   const [expandedJobIds, setExpandedJobIds] = useState<Set<string>>(new Set());
+  const [activeJobSubTab, setActiveJobSubTab] = useState<Record<string, 'days' | 'expenses' | 'payments'>>({});
 
   const [deletePaymentTarget, setDeletePaymentTarget] = useState<{ job: JobItem; payment: JobPayment } | null>(null);
   const [deleteJobTarget, setDeleteJobTarget] = useState<JobItem | null>(null);
@@ -39,6 +55,14 @@ export const JobsView: React.FC<JobsViewProps> = ({
       else next.add(jobId);
       return next;
     });
+  };
+
+  const getSubTab = (jobId: string): 'days' | 'expenses' | 'payments' => {
+    return activeJobSubTab[jobId] || 'days';
+  };
+
+  const setSubTab = (jobId: string, tab: 'days' | 'expenses' | 'payments') => {
+    setActiveJobSubTab((prev) => ({ ...prev, [jobId]: tab }));
   };
 
   // 1. Calculate Aggregated Metrics across all jobs
@@ -122,54 +146,58 @@ export const JobsView: React.FC<JobsViewProps> = ({
       {/* Top Metrics Cards */}
       <div className="jobs-kpis-grid">
         <div className="job-kpi-card glass-panel jobs-kpi-pending">
-          <span className="job-kpi-label">
-            Pending Invoices
-          </span>
-          <div className="job-kpi-val">
+          <div className="job-kpi-header">
+            <span className="job-kpi-label">Pending Receivables</span>
+            <AlertCircle size={16} className="text-amber" />
+          </div>
+          <div className="job-kpi-val text-amber">
             {formatMoney(totalPendingEgp)}
           </div>
-          <div className="job-kpi-sub">
+          <div className="job-kpi-sub" title={Object.entries(pendingByCurrency).map(([curr, amt]) => `${formatJobCurrency(amt, curr)} due`).join(' + ')}>
             {Object.keys(pendingByCurrency).length === 0
-              ? 'No pending receivables'
+              ? 'All invoices settled'
               : Object.entries(pendingByCurrency)
                   .map(([curr, amt]) => `${formatJobCurrency(amt, curr)} due`)
-                  .join(' + ')}
+                  .join(' · ')}
           </div>
         </div>
 
         <div className="job-kpi-card glass-panel jobs-kpi-paid">
-          <span className="job-kpi-label">
-            Collected / Paid
-          </span>
+          <div className="job-kpi-header">
+            <span className="job-kpi-label">Collected / Paid</span>
+            <CheckCircle2 size={16} className="text-green" />
+          </div>
           <div className="job-kpi-val text-green">
             {formatMoney(totalPaidEgp)}
           </div>
           <div className="job-kpi-sub">
-            {paidJobsCount} {paidJobsCount === 1 ? 'job' : 'jobs'} settled
+            {paidJobsCount} {paidJobsCount === 1 ? 'project' : 'projects'} settled
           </div>
         </div>
 
         <div className="job-kpi-card glass-panel jobs-kpi-active">
-          <span className="job-kpi-label">
-            Active Work
-          </span>
+          <div className="job-kpi-header">
+            <span className="job-kpi-label">Active Work</span>
+            <Clock size={16} className="text-blue" />
+          </div>
           <div className="job-kpi-val text-blue">
             {activeJobsCount}
           </div>
           <div className="job-kpi-sub">
-            {activeJobsCount} {activeJobsCount === 1 ? 'job' : 'jobs'} in progress
+            {activeJobsCount} {activeJobsCount === 1 ? 'project' : 'projects'} ongoing
           </div>
         </div>
 
         <div className="job-kpi-card glass-panel jobs-kpi-expenses">
-          <span className="job-kpi-label">
-            Reimbursable Expenses
-          </span>
-          <div className="job-kpi-val text-amber">
+          <div className="job-kpi-header">
+            <span className="job-kpi-label">Reimbursable Expenses</span>
+            <Receipt size={16} style={{ color: 'var(--color-cyan, #06b6d4)' }} />
+          </div>
+          <div className="job-kpi-val" style={{ color: 'var(--color-cyan, #06b6d4)' }}>
             {formatMoney(totalReimbursableEgp)}
           </div>
           <div className="job-kpi-sub">
-            Billed to clients
+            To bill or claim back
           </div>
         </div>
       </div>
@@ -185,7 +213,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
                 type="button"
                 onClick={() => setActiveFilter(filter)}
               >
-                {filter === 'all' ? 'All Jobs' : filter}
+                {filter === 'all' ? 'All Projects' : filter.charAt(0).toUpperCase() + filter.slice(1)}
               </button>
             ))}
           </div>
@@ -196,7 +224,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
               onChange={(e) => setActiveCurrencyFilter(e.target.value)}
               className="job-filter-select"
             >
-              <option value="all">All Currencies</option>
+              <option value="all">🌐 All Currencies</option>
               <option value="USD">USD ($)</option>
               <option value="EUR">EUR (€)</option>
               <option value="EGP">EGP (Local)</option>
@@ -217,24 +245,27 @@ export const JobsView: React.FC<JobsViewProps> = ({
         </div>
 
         <button className="primary-button jobs-add-btn" type="button" onClick={() => onOpenJobModal()}>
-          <Plus size={15} style={{ marginRight: '4px' }} />
-          <span>New Job / Project</span>
+          <Plus size={16} />
+          <span>New Project</span>
         </button>
       </div>
 
       {/* Jobs Stream */}
       <div id="jobsList" className="jobs-stream">
         {filteredJobs.length === 0 ? (
-          <div className="glass-panel" style={{ textAlign: 'center', padding: '48px 20px', borderRadius: '12px' }}>
-            <div style={{ fontSize: '38px', marginBottom: '12px' }}>💼</div>
-            <h3 style={{ fontSize: '18px', marginBottom: '6px', color: 'var(--ink)' }}>No part-time jobs found</h3>
-            <p style={{ color: 'var(--muted)', fontSize: '13px', maxWidth: '440px', margin: '0 auto 16px' }}>
+          <div className="glass-panel jobs-empty-state">
+            <div className="jobs-empty-icon">
+              <Briefcase size={36} />
+            </div>
+            <h3 style={{ fontSize: '18px', marginBottom: '6px', color: 'var(--ink)' }}>No projects found</h3>
+            <p style={{ color: 'var(--muted)', fontSize: '13px', maxWidth: '440px', margin: '0 auto 18px', lineHeight: 1.5 }}>
               {partTimeJobs.length === 0
-                ? "You haven't added any part-time jobs yet. Track your daily rates, milestones, client expenses, and multi-currency income."
-                : 'No jobs match the current filter selection.'}
+                ? "Track part-time jobs, consulting gigs, daily rates, reimbursable expenses, and scheduled invoices."
+                : 'No projects match your current filters.'}
             </p>
             <button className="primary-button" type="button" onClick={() => onOpenJobModal()}>
-              + Create New Job
+              <Plus size={15} style={{ marginRight: '6px' }} />
+              Create First Project
             </button>
           </div>
         ) : (
@@ -244,38 +275,58 @@ export const JobsView: React.FC<JobsViewProps> = ({
             const days = job.daysWorked || [];
             const expenses = job.expenses || [];
             const payments = job.payments || [];
+            const currentSubTab = getSubTab(job.id);
+
+            const isForecastActive = Boolean(
+              job.forecastDueDate &&
+              fin.remainingBalance > 0 &&
+              (!job.forecastEntryId || (entries.some((e) => e.id === job.forecastEntryId) && !deletedForecasts.includes(job.forecastEntryId)))
+            );
 
             return (
               <article
                 key={job.id}
-                className="job-card glass-panel jobs-job-card"
+                className={`job-card glass-panel jobs-job-card ${isExpanded ? 'is-expanded' : ''}`}
               >
                 {/* Header Row */}
                 <div className="jobs-card-header">
                   <div className="jobs-card-header-left">
                     <div className="jobs-card-status-row">
-                      <span className={`badge ${fin.computedStatus === 'paid' ? 'badge-income' : fin.computedStatus === 'invoiced' ? 'badge-warning' : 'badge-neutral'}`}>
+                      <span className={`badge ${fin.computedStatus === 'paid' ? 'badge-income' : fin.computedStatus === 'invoiced' || fin.computedStatus === 'partial' ? 'badge-warning' : 'badge-neutral'}`}>
                         {fin.computedStatus.toUpperCase()}
                       </span>
                       {job.client && (
                         <span className="job-client-tag">
-                          🏢 {job.client}
+                          <Building2 size={13} />
+                          {job.client}
                         </span>
                       )}
+                      <span className="job-currency-badge">
+                        {job.currency || 'USD'}
+                      </span>
                     </div>
+
                     <h3 className="job-card-heading">{job.title}</h3>
+
                     <div className="jobs-card-meta">
                       {job.startDate && (
-                        <span>📅 {DateUtils.formatDisplayDate(job.startDate)} {job.endDate ? `to ${DateUtils.formatDisplayDate(job.endDate)}` : '– Ongoing'}</span>
+                        <span>
+                          <Calendar size={13} />
+                          {DateUtils.formatDisplayDate(job.startDate)} {job.endDate ? `to ${DateUtils.formatDisplayDate(job.endDate)}` : '– Ongoing'}
+                        </span>
                       )}
                       <span>
-                        💰 {job.type === 'lumpsum'
+                        <DollarSign size={13} />
+                        {job.type === 'lumpsum'
                           ? `Fixed ${formatJobCurrency(job.lumpSumAmount || 0, job.currency)}`
                           : job.type === 'hourly' || job.rateType === 'hourly'
-                            ? `${formatJobCurrency(job.rateAmount || 0, job.currency)} / hour`
+                            ? `${formatJobCurrency(job.rateAmount || 0, job.currency)} / hr`
                             : `${formatJobCurrency(job.dailyRate || job.rateAmount || 0, job.currency)} / day`}
                       </span>
-                      <span>⏱️ {fin.totalDays} days worked</span>
+                      <span>
+                        <Clock size={13} />
+                        {fin.totalDays} {fin.totalDays === 1 ? 'shift' : 'shifts'}
+                      </span>
                     </div>
                   </div>
 
@@ -290,15 +341,15 @@ export const JobsView: React.FC<JobsViewProps> = ({
                       <button
                         className="ghost-button icon-button"
                         type="button"
-                        title="Edit Job"
+                        title="Edit Project"
                         onClick={() => onOpenJobModal(job)}
                       >
-                        ✏️
+                        <Edit2 size={15} />
                       </button>
                       <button
                         className="ghost-button icon-button"
                         type="button"
-                        title="Expand Details"
+                        title={isExpanded ? "Collapse Details" : "Expand Details"}
                         onClick={() => toggleExpand(job.id)}
                       >
                         {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -307,251 +358,309 @@ export const JobsView: React.FC<JobsViewProps> = ({
                   </div>
                 </div>
 
-                {/* Progress Bar */}
-                <div className="jobs-progress" style={{ marginTop: '14px', marginBottom: '8px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', marginBottom: '4px' }}>
-                    <span>Paid: {formatJobCurrency(fin.totalPaid, job.currency)} ({fin.percentPaid}%)</span>
-                    <span style={{ color: fin.remainingBalance > 0 ? 'var(--amber)' : 'var(--green)' }}>
-                      Remaining: {formatJobCurrency(fin.remainingBalance, job.currency)}
+                {/* Progress Bar & Settlement Status */}
+                <div className="jobs-progress">
+                  <div className="jobs-progress-labels">
+                    <span className="jobs-progress-paid">
+                      Paid: <strong>{formatJobCurrency(fin.totalPaid, job.currency)}</strong> ({fin.percentPaid}%)
+                    </span>
+                    <span className={fin.remainingBalance > 0 ? 'jobs-progress-remaining text-amber' : 'jobs-progress-remaining text-green'}>
+                      {fin.remainingBalance > 0
+                        ? `Balance Due: ${formatJobCurrency(fin.remainingBalance, job.currency)}`
+                        : 'Fully Settled ✓'}
                     </span>
                   </div>
-                  <div style={{ height: '6px', borderRadius: '3px', background: 'var(--line)', overflow: 'hidden' }}>
+                  <div className="jobs-progress-track">
                     <div
-                      style={{
-                        height: '100%',
-                        width: `${fin.percentPaid}%`,
-                        background: fin.percentPaid >= 100 ? 'var(--green)' : 'var(--blue)',
-                        transition: 'width 0.3s ease',
-                      }}
+                      className={`jobs-progress-fill ${fin.percentPaid >= 100 ? 'is-complete' : ''}`}
+                      style={{ width: `${Math.min(100, fin.percentPaid)}%` }}
                     />
                   </div>
                 </div>
 
-                {/* Forecast Banner if scheduled */}
-                {(() => {
-                  const isForecastActive = Boolean(
-                    job.forecastDueDate &&
-                    fin.remainingBalance > 0 &&
-                    (!job.forecastEntryId || (entries.some((e) => e.id === job.forecastEntryId) && !deletedForecasts.includes(job.forecastEntryId)))
-                  );
+                {/* Forecast Banner & Action Bar */}
+                <div className="jobs-card-action-bar">
+                  {isForecastActive ? (
+                    <div className="jobs-forecast-banner">
+                      <div className="jobs-forecast-banner-text">
+                        <Calendar size={14} className="text-blue" />
+                        <span>
+                          Expected in Forecast on <strong>{DateUtils.formatDisplayDate(job.forecastDueDate)}</strong> ({formatJobCurrency(job.forecastAmount || fin.remainingBalance, job.currency)} ≈ {formatMoney(Math.round((job.forecastAmount || fin.remainingBalance) * fin.fxRate))})
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="ghost-button jobs-forecast-edit-btn"
+                        onClick={() => onOpenForecastModal(job.id)}
+                      >
+                        Reschedule
+                      </button>
+                    </div>
+                  ) : fin.remainingBalance > 0 ? (
+                    <button
+                      type="button"
+                      className="ghost-button jobs-schedule-btn"
+                      onClick={() => onOpenForecastModal(job.id)}
+                    >
+                      <Calendar size={13} />
+                      Schedule in Forecast
+                    </button>
+                  ) : <div />}
 
-                  return (
-                    <>
-                      {isForecastActive && (
-                        <div
-                          style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            background: 'rgba(59, 130, 246, 0.08)',
-                            border: '1px solid rgba(59, 130, 246, 0.25)',
-                            borderRadius: '6px',
-                            padding: '6px 10px',
-                            marginTop: '8px',
-                            fontSize: '12px',
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span>🗓️</span>
-                            <span>
-                              <strong>In Forecast:</strong> Expected on <strong>{DateUtils.formatDisplayDate(job.forecastDueDate)}</strong> ({formatJobCurrency(job.forecastAmount || fin.remainingBalance, job.currency)} ≈ {formatMoney(Math.round((job.forecastAmount || fin.remainingBalance) * fin.fxRate))})
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            className="ghost-button"
-                            style={{ padding: '2px 8px', fontSize: '11px' }}
-                            onClick={() => onOpenForecastModal(job.id)}
-                          >
-                            Edit Date
-                          </button>
-                        </div>
-                      )}
+                  <div className="jobs-card-action-buttons">
+                    {fin.remainingBalance > 0 && (
+                      <button
+                        type="button"
+                        className="primary-button jobs-record-payment-btn"
+                        onClick={() => onOpenPaymentModal(job.id)}
+                      >
+                        <CreditCard size={14} />
+                        Record Payment
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="ghost-button jobs-toggle-details-btn"
+                      onClick={() => toggleExpand(job.id)}
+                    >
+                      {isExpanded ? 'Hide Records' : `View Records (${days.length + expenses.length + payments.length})`}
+                      {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </button>
+                  </div>
+                </div>
 
-                      {/* Quick Action Buttons on Card */}
-                      {fin.remainingBalance > 0 && (
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '8px' }}>
-                          {!isForecastActive && (
-                            <button
-                              type="button"
-                              className="ghost-button"
-                              style={{ padding: '4px 10px', fontSize: '11.5px', color: '#2563eb', borderColor: '#93c5fd' }}
-                              onClick={() => onOpenForecastModal(job.id)}
-                            >
-                              📅 Schedule in Forecast
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            className="primary-button"
-                            style={{ padding: '4px 12px', fontSize: '11.5px' }}
-                            onClick={() => onOpenPaymentModal(job.id)}
-                          >
-                            💵 Record Payment
-                          </button>
-                        </div>
-                      )}
-                    </>
-                  );
-                })()}
-
-                {/* Expanded Sections */}
+                {/* Clean Segmented Sub-View (Eliminating 3 crowded columns and mini-scrollbars) */}
                 {isExpanded && (
                   <div className="jobs-expanded-details">
-                    {/* Days Worked Section */}
-                    <div className="jobs-detail-section">
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                        <strong style={{ fontSize: '13px' }}>📅 Days / Shifts Worked ({days.length})</strong>
+                    {/* Segmented Controls Header */}
+                    <div className="jobs-tabs-header">
+                      <div className="jobs-subtabs-nav">
                         <button
-                          className="ghost-button"
                           type="button"
-                          style={{ padding: '3px 8px', fontSize: '11.5px' }}
-                          onClick={() => onOpenLogDayModal(job.id)}
+                          className={`jobs-subtab-pill ${currentSubTab === 'days' ? 'is-active' : ''}`}
+                          onClick={() => setSubTab(job.id, 'days')}
                         >
-                          + Log Day
+                          <Clock size={14} />
+                          Shifts ({days.length})
+                        </button>
+                        <button
+                          type="button"
+                          className={`jobs-subtab-pill ${currentSubTab === 'expenses' ? 'is-active' : ''}`}
+                          onClick={() => setSubTab(job.id, 'expenses')}
+                        >
+                          <Receipt size={14} />
+                          Expenses ({expenses.length})
+                        </button>
+                        <button
+                          type="button"
+                          className={`jobs-subtab-pill ${currentSubTab === 'payments' ? 'is-active' : ''}`}
+                          onClick={() => setSubTab(job.id, 'payments')}
+                        >
+                          <CreditCard size={14} />
+                          Payments ({payments.length})
                         </button>
                       </div>
-                      {days.length === 0 ? (
-                        <div style={{ fontSize: '12px', color: 'var(--muted)', padding: '8px 12px', background: 'var(--surface-soft)', borderRadius: '6px' }}>
-                          No shifts logged yet. Click "+ Log Day" to track days worked.
-                        </div>
-                      ) : (
-                        <div className="table-wrap compact jobs-detail-table">
-                          <table>
-                            <thead>
-                              <tr>
-                                <th>Date</th>
-                                <th>Units</th>
-                                <th>Note</th>
-                                <th style={{ width: '30px' }}></th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {days.map((d, dIdx) => (
-                                <tr key={dIdx}>
-                                  <td>{DateUtils.formatDisplayDate(d.date)}</td>
-                                  <td>{d.units || 1.0}</td>
-                                  <td style={{ color: 'var(--muted)', fontSize: '12px' }}>{d.note || '—'}</td>
-                                  <td>
-                                    <button
-                                      className="delete-button icon-button"
-                                      type="button"
-                                      onClick={() => handleDeleteDay(job, dIdx)}
-                                    >
-                                      x
-                                    </button>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
+
+                      {/* Sub-tab quick add button */}
+                      <div>
+                        {currentSubTab === 'days' && (
+                          <button
+                            className="primary-button jobs-subtab-action-btn"
+                            type="button"
+                            onClick={() => onOpenLogDayModal(job.id)}
+                          >
+                            <Plus size={13} />
+                            Log Shift
+                          </button>
+                        )}
+                        {currentSubTab === 'expenses' && (
+                          <button
+                            className="primary-button jobs-subtab-action-btn"
+                            type="button"
+                            onClick={() => onOpenExpenseModal(job.id)}
+                          >
+                            <Plus size={13} />
+                            Log Expense
+                          </button>
+                        )}
+                        {currentSubTab === 'payments' && (
+                          <button
+                            className="primary-button jobs-subtab-action-btn jobs-pay-btn"
+                            type="button"
+                            onClick={() => onOpenPaymentModal(job.id)}
+                          >
+                            <Plus size={13} />
+                            Record Payment
+                          </button>
+                        )}
+                      </div>
                     </div>
 
-                    {/* Expenses Section */}
-                    <div className="jobs-detail-section">
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                        <strong style={{ fontSize: '13px' }}>🧾 Project Expenses ({expenses.length})</strong>
-                        <button
-                          className="ghost-button"
-                          type="button"
-                          style={{ padding: '3px 8px', fontSize: '11.5px' }}
-                          onClick={() => onOpenExpenseModal(job.id)}
-                        >
-                          + Log Expense
-                        </button>
-                      </div>
-                      {expenses.length === 0 ? (
-                        <div style={{ fontSize: '12px', color: 'var(--muted)', padding: '8px 12px', background: 'var(--surface-soft)', borderRadius: '6px' }}>
-                          No expenses recorded for this project.
-                        </div>
-                      ) : (
-                        <div className="table-wrap compact jobs-detail-table">
-                          <table>
-                            <thead>
-                              <tr>
-                                <th>Date</th>
-                                <th>Description</th>
-                                <th className="number">Amount</th>
-                                <th>Reimbursable</th>
-                                <th style={{ width: '30px' }}></th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {expenses.map((e) => (
-                                <tr key={e.id}>
-                                  <td>{DateUtils.formatDisplayDate(e.date)}</td>
-                                  <td>{e.title || e.description}</td>
-                                  <td className="number">{formatJobCurrency(e.amount, job.currency)}</td>
-                                  <td>{e.isReimbursable !== false ? '✓ Yes' : 'No'}</td>
-                                  <td>
-                                    <button
-                                      className="delete-button icon-button"
-                                      type="button"
-                                      onClick={() => handleDeleteExpense(job, e.id)}
-                                    >
-                                      x
-                                    </button>
-                                  </td>
+                    {/* Sub-tab Content: Full-width, clean table without forced max-height scrollbars */}
+                    <div className="jobs-subtab-content">
+                      {currentSubTab === 'days' && (
+                        days.length === 0 ? (
+                          <div className="jobs-subtab-empty">
+                            <Clock size={24} className="text-dim" />
+                            <p>No shifts logged for this project yet.</p>
+                            <button
+                              className="ghost-button"
+                              type="button"
+                              onClick={() => onOpenLogDayModal(job.id)}
+                            >
+                              + Log First Shift
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="jobs-clean-table-wrap">
+                            <table className="jobs-clean-table">
+                              <thead>
+                                <tr>
+                                  <th>Date</th>
+                                  <th style={{ width: '100px' }}>Units</th>
+                                  <th>Description / Note</th>
+                                  <th style={{ width: '40px', textAlign: 'right' }}></th>
                                 </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
+                              </thead>
+                              <tbody>
+                                {days.map((d, dIdx) => (
+                                  <tr key={dIdx}>
+                                    <td className="jobs-table-date">
+                                      {DateUtils.formatDisplayDate(d.date)}
+                                    </td>
+                                    <td>
+                                      <span className="jobs-units-badge">
+                                        {d.units || 1.0} {d.units === 1 ? 'unit' : 'units'}
+                                      </span>
+                                    </td>
+                                    <td className="jobs-table-note">{d.note || '—'}</td>
+                                    <td style={{ textAlign: 'right' }}>
+                                      <button
+                                        className="ghost-button icon-button jobs-row-delete-btn"
+                                        type="button"
+                                        title="Delete shift"
+                                        onClick={() => handleDeleteDay(job, dIdx)}
+                                      >
+                                        <Trash2 size={14} />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )
                       )}
-                    </div>
 
-                    {/* Payments Section */}
-                    <div className="jobs-detail-section">
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                        <strong style={{ fontSize: '13px' }}>💵 Payments Received ({payments.length})</strong>
-                        <button
-                          className="ghost-button"
-                          type="button"
-                          style={{ padding: '3px 8px', fontSize: '11.5px', color: 'var(--green)', borderColor: 'var(--green)' }}
-                          onClick={() => onOpenPaymentModal(job.id)}
-                        >
-                          + Record Payment
-                        </button>
-                      </div>
-                      {payments.length === 0 ? (
-                        <div style={{ fontSize: '12px', color: 'var(--muted)', padding: '8px 12px', background: 'var(--surface-soft)', borderRadius: '6px' }}>
-                          No payments recorded yet. Click "+ Record Payment" when client pays.
-                        </div>
-                      ) : (
-                        <div className="table-wrap compact jobs-detail-table">
-                          <table>
-                            <thead>
-                              <tr>
-                                <th>Date</th>
-                                <th className="number">Amount</th>
-                                <th>Account</th>
-                                <th>Note</th>
-                                <th style={{ width: '30px' }}></th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {payments.map((p) => (
-                                <tr key={p.id}>
-                                  <td>{DateUtils.formatDisplayDate(p.date)}</td>
-                                  <td className="number" style={{ fontWeight: 700, color: 'var(--green)' }}>
-                                    {formatJobCurrency(p.amount, job.currency)}
-                                  </td>
-                                  <td><span className="account-pill">{p.settlementAccount || p.account || 'cib'}</span></td>
-                                  <td style={{ color: 'var(--muted)', fontSize: '12px' }}>{p.paymentNote || p.note || '—'}</td>
-                                  <td>
-                                    {(() => {
-                                      const hasAffectedPay = hasJobPaymentAffectedParties(p, storageAssets);
-                                      return (
+                      {currentSubTab === 'expenses' && (
+                        expenses.length === 0 ? (
+                          <div className="jobs-subtab-empty">
+                            <Receipt size={24} className="text-dim" />
+                            <p>No client or project expenses recorded.</p>
+                            <button
+                              className="ghost-button"
+                              type="button"
+                              onClick={() => onOpenExpenseModal(job.id)}
+                            >
+                              + Record Project Expense
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="jobs-clean-table-wrap">
+                            <table className="jobs-clean-table">
+                              <thead>
+                                <tr>
+                                  <th>Date</th>
+                                  <th>Expense Description</th>
+                                  <th className="number">Amount</th>
+                                  <th>Reimbursable</th>
+                                  <th style={{ width: '40px', textAlign: 'right' }}></th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {expenses.map((e) => (
+                                  <tr key={e.id}>
+                                    <td className="jobs-table-date">
+                                      {DateUtils.formatDisplayDate(e.date)}
+                                    </td>
+                                    <td><strong>{e.title || e.description}</strong></td>
+                                    <td className="number jobs-table-num">
+                                      {formatJobCurrency(e.amount, job.currency)}
+                                    </td>
+                                    <td>
+                                      <span className={`badge ${e.isReimbursable !== false ? 'badge-income' : 'badge-neutral'}`}>
+                                        {e.isReimbursable !== false ? '✓ Billed to Client' : 'Internal'}
+                                      </span>
+                                    </td>
+                                    <td style={{ textAlign: 'right' }}>
+                                      <button
+                                        className="ghost-button icon-button jobs-row-delete-btn"
+                                        type="button"
+                                        title="Delete expense"
+                                        onClick={() => handleDeleteExpense(job, e.id)}
+                                      >
+                                        <Trash2 size={14} />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )
+                      )}
+
+                      {currentSubTab === 'payments' && (
+                        payments.length === 0 ? (
+                          <div className="jobs-subtab-empty">
+                            <CreditCard size={24} className="text-dim" />
+                            <p>No payments recorded yet for this project.</p>
+                            <button
+                              className="ghost-button"
+                              type="button"
+                              onClick={() => onOpenPaymentModal(job.id)}
+                            >
+                              + Record Received Payment
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="jobs-clean-table-wrap">
+                            <table className="jobs-clean-table">
+                              <thead>
+                                <tr>
+                                  <th>Date</th>
+                                  <th className="number">Amount</th>
+                                  <th>Destination Account</th>
+                                  <th>Payment Note</th>
+                                  <th style={{ width: '40px', textAlign: 'right' }}></th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {payments.map((p) => {
+                                  const hasAffectedPay = hasJobPaymentAffectedParties(p, storageAssets);
+                                  return (
+                                    <tr key={p.id}>
+                                      <td className="jobs-table-date">
+                                        {DateUtils.formatDisplayDate(p.date)}
+                                      </td>
+                                      <td className="number jobs-table-num text-green" style={{ fontWeight: 700 }}>
+                                        +{formatJobCurrency(p.amount, job.currency)}
+                                      </td>
+                                      <td>
+                                        <span className="account-pill">
+                                          {(p.settlementAccount || p.account || 'Bank').toUpperCase()}
+                                        </span>
+                                      </td>
+                                      <td className="jobs-table-note">{p.paymentNote || p.note || '—'}</td>
+                                      <td style={{ textAlign: 'right' }}>
                                         <button
-                                          className="delete-button icon-button"
+                                          className="ghost-button icon-button jobs-row-delete-btn"
                                           type="button"
                                           style={{ position: 'relative' }}
                                           title={hasAffectedPay ? 'Delete payment (linked to cashflow or storage)' : 'Delete payment'}
                                           onClick={() => handleDeletePayment(job, p.id)}
                                         >
-                                          x
+                                          <Trash2 size={14} />
                                           {hasAffectedPay && (
                                             <span
                                               className="affected-parties-dot"
@@ -559,17 +668,18 @@ export const JobsView: React.FC<JobsViewProps> = ({
                                             />
                                           )}
                                         </button>
-                                      );
-                                    })()}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )
                       )}
                     </div>
 
+                    {/* Section Footer Actions */}
                     <div className="jobs-detail-actions">
                       {(() => {
                         const hasAffectedJob = hasJobAffectedParties(job);
@@ -578,10 +688,11 @@ export const JobsView: React.FC<JobsViewProps> = ({
                             className="delete-button"
                             type="button"
                             style={{ position: 'relative' }}
-                            title={hasAffectedJob ? 'Delete Job (has linked payments or forecast records)' : 'Delete Job'}
+                            title={hasAffectedJob ? 'Delete Project (has linked payments or forecast records)' : 'Delete Project'}
                             onClick={() => handleDeleteJob(job)}
                           >
-                            Delete Job
+                            <Trash2 size={13} style={{ marginRight: '6px' }} />
+                            Delete Project
                             {hasAffectedJob && (
                               <span
                                 className="affected-parties-dot"
