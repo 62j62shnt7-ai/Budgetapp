@@ -317,16 +317,14 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
   }));
 
   // Categories list for dropdown
-  const allCategories = React.useMemo(() => {
-    const set = new Set<string>();
-    Object.values(accounts || {}).forEach((acc) => {
-      if (acc.name) set.add(`${acc.name} Opening Balance`);
-    });
-    allCandidate.forEach((e) => {
-      if (e.category) set.add(e.category);
-    });
-    return Array.from(set).sort();
-  }, [accounts, allCandidate]);
+  const categorySet = new Set<string>();
+  Object.values(accounts || {}).forEach((acc) => {
+    if (acc.name) categorySet.add(`${acc.name} Opening Balance`);
+  });
+  allCandidate.forEach((e) => {
+    if (e.category) categorySet.add(e.category);
+  });
+  const allCategories = Array.from(categorySet).sort();
 
   // Filter entries
   const filteredForecastRows = allCandidate.filter((e) => {

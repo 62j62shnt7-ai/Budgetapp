@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useBudgetStore } from '../../store/useBudgetStore';
 
 interface RateModalProps {
@@ -16,13 +16,16 @@ export const RateModal: React.FC<RateModalProps> = ({ isOpen, rateType = 'curren
 
   const items = rateType === 'currency' ? rates.currencies : rates.gold;
 
-  useEffect(() => {
-    if (items.length > 0) {
+  const [prevRateKey, setPrevRateKey] = useState<string>('');
+  const currentRateKey = `${isOpen}-${rateType}`;
+  if (currentRateKey !== prevRateKey) {
+    setPrevRateKey(currentRateKey);
+    if (isOpen && items.length > 0) {
       setSelectedItemName(items[0].name);
       setSell(String(items[0].sell));
       setBuy(String(items[0].buy));
     }
-  }, [rateType, isOpen, items]);
+  }
 
   const handleItemSelect = (name: string) => {
     setSelectedItemName(name);

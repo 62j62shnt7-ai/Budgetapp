@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useBudgetStore } from '../../store/useBudgetStore';
 
 interface GistSyncModalProps {
@@ -33,11 +33,15 @@ export const GistSyncModal: React.FC<GistSyncModalProps> = ({ isOpen, onClose })
     storageAssets?: number;
   } | null>(null);
 
-  useEffect(() => {
-    setTokenInput(gistToken);
-    setIdInput(gistId);
-    setAutoSync(gistAutoSync);
-  }, [gistToken, gistId, gistAutoSync, isOpen]);
+  const [prevOpen, setPrevOpen] = useState(false);
+  if (isOpen !== prevOpen) {
+    setPrevOpen(isOpen);
+    if (isOpen) {
+      setTokenInput(gistToken);
+      setIdInput(gistId);
+      setAutoSync(gistAutoSync);
+    }
+  }
 
   if (!isOpen) return null;
 

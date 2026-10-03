@@ -41,6 +41,7 @@ import { resolveLinkedLoan } from '../utils/affectedRecords';
 let gistSyncTimer: ReturnType<typeof setTimeout> | null = null;
 let gistSyncInFlight = false;
 let quotaAlertShown = false;
+let suppressAutoSync = false;
 
 export const STORAGE_KEYS = {
   salary: 'budget-control-salary-pattern',
@@ -220,7 +221,7 @@ export interface BudgetStoreState {
   autoLinkAllRecurringCandidates: () => { linkedGroupsCount: number; modifiedEntriesCount: number };
 
   exportJSON: () => string;
-  importJSON: (jsonString: string) => boolean;
+  importJSON: (jsonString: string, options?: { isRemoteSync?: boolean }) => boolean;
 }
 
 let lastLocalMutationTimestamp = typeof localStorage !== 'undefined' ? Number(localStorage.getItem(STORAGE_KEYS.lastLocalModified) || 0) || 0 : 0;
@@ -370,7 +371,7 @@ function revertStorageOrAccountBalance(
     const currentQty = Number(targetAsset.quantity) || 0;
     const nextQty = entryType === 'expense'
       ? currentQty + nativeQty // Reverting an expense refunds/adds back to storage
-      : Math.max(0, currentQty - nativeQty); // Reverting an income deducts the deposited funds
+      : currentQty - nativeQty; // Reverting an income deducts the deposited funds
     get().updateStorageAsset(targetAsset.id, { quantity: nextQty });
     return;
   }
@@ -380,7 +381,7 @@ function revertStorageOrAccountBalance(
     const currentBal = get().accounts[accountLower].balance || 0;
     const nextBal = entryType === 'expense'
       ? currentBal + amount // Reverting an expense refunds/adds back to bank balance
-      : Math.max(0, currentBal - amount); // Reverting an income deducts the deposited money
+      : currentBal - amount; // Reverting an income deducts the deposited money
     get().updateAccountBalance(accountLower, nextBal);
   }
 }
@@ -417,7 +418,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
   creditDues: loadStorage<Record<string, Record<string, number>>>(STORAGE_KEYS.creditDues, {}),
   creditDueMonths: loadStorage<Record<string, string[]>>(STORAGE_KEYS.creditDueMonths, {}),
   creditSettlementOverrides: loadStorage<Record<string, { amount?: number; date?: string; note?: string; tag?: string; account?: string; draws?: EntryDraw[] }>>(STORAGE_KEYS.creditSettlementOverrides, {}),
-  salaryAnchorMonth: loadStorage<string>(STORAGE_KEYS.salaryAnchor, new Date().toISOString().slice(0, 7)),
+  salaryAnchorMonth: loadStorage<string>(STORAGE_KEYS.salaryAnchor, DateUtils.currentYearMonth()),
 
   gistToken: typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.gistToken) || '' : '',
   gistId: typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.gistId) || '' : '',
@@ -549,6 +550,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
 
     const updated = get().entries.map((e) => (e.id === id ? { ...e, ...updates } : e));
     const updatedEntry = updated.find((e) => e.id === id);
+    let finalEntries = updated;
     if (
       current &&
       updatedEntry &&
@@ -557,22 +559,28 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       Number(updates.amount) > 0 &&
       Number(updates.amount) !== Number(current.amount)
     ) {
-      const ratio = Number(updates.amount) / Number(current.amount || 1);
+      const baseDisbursement = Number(current.initialAmount || current.amount || 1);
+      const ratio = Number(updates.amount) / baseDisbursement;
       const shouldScale = typeof window === 'undefined' || window.confirm(
         'This loan disbursement has a linked repayment. Scale the repayment to match the new disbursement amount?'
       );
-      const linkedEntries = updated.map((entry) =>
-        shouldScale && entry.loanId === current.loanId && entry.type === 'expense'
-          ? { ...entry, amount: Math.round(Number(entry.initialAmount || entry.amount) * ratio), initialAmount: entry.initialAmount || entry.amount }
-          : entry
-      );
-      saveStorage(STORAGE_KEYS.entries, linkedEntries);
-      set({ entries: linkedEntries });
-      scheduleAutoGistSync(get);
-      return;
+      finalEntries = updated.map((entry) => {
+        if (entry.id === id) {
+          return { ...entry, initialAmount: baseDisbursement };
+        }
+        if (shouldScale && entry.loanId === current.loanId && entry.type === 'expense') {
+          const baseRepayment = Number(entry.initialAmount || entry.amount);
+          return {
+            ...entry,
+            amount: Math.round(baseRepayment * ratio),
+            initialAmount: baseRepayment,
+          };
+        }
+        return entry;
+      });
     }
-    saveStorage(STORAGE_KEYS.entries, updated);
-    set({ entries: updated });
+    saveStorage(STORAGE_KEYS.entries, finalEntries);
+    set({ entries: finalEntries });
     if (updates.actualAmount !== undefined) {
       const actuals = { ...get().entryActuals, [id]: updates.actualAmount };
       const dates = { ...get().entryActualDates, [id]: updates.actualDate || DateUtils.todayString() };
@@ -626,7 +634,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     // case, where no other entries are expected to carry that loanId anyway).
     const linkedLoanId = target?.loanId || resolvedLinkedLoan?.id;
     const shouldDeleteLinked = Boolean(
-      linkedLoanId && (options?.deleteLinkedLoan !== undefined ? options.deleteLinkedLoan : true)
+      linkedLoanId && (options?.deleteLinkedLoan !== undefined ? options.deleteLinkedLoan : false)
     );
     const shouldDeleteInstallmentPlan = Boolean(options?.deleteInstallmentPlan);
     if (shouldDeleteLinked && linkedLoanId) {
@@ -1600,15 +1608,25 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     const current = get().installments.find((i) => i.id === id);
     const updated = get().installments.map((i) => (i.id === id ? { ...i, ...updates } : i));
     if (current?.loanId && Number(updates.amount) > 0 && Number(updates.amount) !== Number(current.amount)) {
-      const ratio = Number(updates.amount) / Number(current.amount || 1);
+      const baseDisbursement = Number(current.initialAmount || current.amount || 1);
+      const ratio = Number(updates.amount) / baseDisbursement;
       const shouldScale = typeof window === 'undefined' || window.confirm(
         'This loan has linked installments. Scale the installments to match the new disbursement amount?'
       );
-      const linked = updated.map((i) =>
-        shouldScale && i.loanId === current.loanId
-          ? { ...i, amount: Math.round(Number(i.initialAmount || i.amount) * ratio), initialAmount: i.initialAmount || i.amount }
-          : i
-      );
+      const linked = updated.map((i) => {
+        if (i.id === id) {
+          return { ...i, initialAmount: baseDisbursement };
+        }
+        if (shouldScale && i.loanId === current.loanId) {
+          const baseRepayment = Number(i.initialAmount || i.amount);
+          return {
+            ...i,
+            amount: Math.round(baseRepayment * ratio),
+            initialAmount: baseRepayment,
+          };
+        }
+        return i;
+      });
       saveStorage(STORAGE_KEYS.installments, linked);
       set({ installments: linked });
       scheduleAutoGistSync(get);
@@ -1663,7 +1681,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       const resolved = resolveRateSourceValue(item.rateSource, activeRates);
       if (resolved !== null && resolved !== item.rate) {
         changed = true;
-        return { ...item, rate: resolved, buyPrice: resolved };
+        return { ...item, rate: resolved, buyPrice: item.buyPrice ?? resolved };
       }
       return item;
     });
@@ -1690,7 +1708,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       const resolved = resolveRateSourceValue(item.rateSource, ratesToSave);
       if (resolved !== null && resolved !== item.rate) {
         changed = true;
-        return { ...item, rate: resolved, buyPrice: resolved };
+        return { ...item, rate: resolved, buyPrice: item.buyPrice ?? resolved };
       }
       return item;
     });
@@ -2179,27 +2197,37 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       const remoteIsNewerThanLastSync = remoteTime > 0 && remoteTime > (lastGistUploadTimestamp + 1000);
       const localHasUnuploadedChanges = lastLocalMutationTimestamp > 0 && lastLocalMutationTimestamp > lastGistUploadTimestamp;
 
-      if (remoteIsNewerThanLastSync && localHasUnuploadedChanges) {
-        // Both local and remote have mutated since last sync. Check if content actually differs
-        const currentLocalExport = get().exportJSON();
-        let isActuallyDifferent = true;
-        try {
-          const parsedLocal = JSON.parse(currentLocalExport);
-          isActuallyDifferent = JSON.stringify(parsedRemote?.data || parsedRemote) !== JSON.stringify(parsedLocal?.data || parsedLocal);
-        } catch {
-          isActuallyDifferent = content.trim() !== currentLocalExport.trim();
-        }
+      // Compare content differences between local state and incoming remote Gist
+      const currentLocalExport = get().exportJSON();
+      let isActuallyDifferent = true;
+      try {
+        const parsedLocal = JSON.parse(currentLocalExport);
+        isActuallyDifferent = JSON.stringify(parsedRemote?.data || parsedRemote) !== JSON.stringify(parsedLocal?.data || parsedLocal);
+      } catch {
+        isActuallyDifferent = content.trim() !== currentLocalExport.trim();
+      }
 
-        if (isActuallyDifferent) {
-          set({
-            gistConflict: {
-              remoteTime: remoteExportedAt,
-              remoteData: content,
-            },
-            gistSyncStatus: 'idle',
-          });
-          return false;
+      // If remote and local have the exact same content, mark as synced and avoid redundant import & upload loop
+      if (!isActuallyDifferent && !localHasUnuploadedChanges) {
+        const newSyncTimestamp = remoteTime > 0 ? remoteTime : (lastGistUploadTimestamp || Date.now());
+        lastGistUploadTimestamp = newSyncTimestamp;
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem(STORAGE_KEYS.lastGistUpload, String(lastGistUploadTimestamp));
         }
+        lastLocalMutationTimestamp = 0;
+        set({ gistSyncStatus: 'synced', gistConflict: null });
+        return true;
+      }
+
+      if (remoteIsNewerThanLastSync && localHasUnuploadedChanges && isActuallyDifferent) {
+        set({
+          gistConflict: {
+            remoteTime: remoteExportedAt,
+            remoteData: content,
+          },
+          gistSyncStatus: 'idle',
+        });
+        return false;
       }
 
       // If local has un-uploaded changes and remote is not newer than our last sync,
@@ -2209,7 +2237,15 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         return true;
       }
 
-      if (!get().importJSON(content)) {
+      suppressAutoSync = true;
+      let importSuccess = false;
+      try {
+        importSuccess = get().importJSON(content, { isRemoteSync: true });
+      } finally {
+        suppressAutoSync = false;
+      }
+
+      if (!importSuccess) {
         throw new Error('No valid budget JSON content could be restored from this Gist');
       }
       const newSyncTimestamp = remoteTime > 0 ? remoteTime : Date.now();
@@ -2233,7 +2269,17 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       set({ gistConflict: null });
       scheduleAutoGistSync(get, true);
     } else if (resolution === 'remote' && conflict?.remoteData) {
-      get().importJSON(conflict.remoteData);
+      suppressAutoSync = true;
+      let importSuccess = false;
+      try {
+        importSuccess = get().importJSON(conflict.remoteData, { isRemoteSync: true });
+      } finally {
+        suppressAutoSync = false;
+      }
+      if (!importSuccess) {
+        set({ gistSyncStatus: 'error' });
+        return;
+      }
       lastGistUploadTimestamp = Date.now();
       if (typeof localStorage !== 'undefined') {
         localStorage.setItem(STORAGE_KEYS.lastGistUpload, String(lastGistUploadTimestamp));
@@ -2570,7 +2616,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     return JSON.stringify(payload, null, 2);
   },
 
-  importJSON: (jsonString: string) => {
+  importJSON: (jsonString: string, options?: { isRemoteSync?: boolean }) => {
     try {
       const parsed = typeof jsonString === 'string' ? JSON.parse(jsonString) : jsonString;
       if (!parsed || typeof parsed !== 'object') {
@@ -2579,26 +2625,29 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       }
 
       // 1. Create a full snapshot before mutating state (for Undo Import)
-      const currentSnapshot = {
-        entries: get().entries,
-        archivedEntries: get().archivedEntries,
-        deletedForecasts: get().deletedForecasts,
-        accounts: get().accounts,
-        salaryPattern: get().salaryPattern,
-        installments: get().installments,
-        rates: get().rates,
-        storageAssets: get().storageAssets,
-        asfJobs: get().asfJobs,
-        irqJobs: get().irqJobs,
-        partTimeJobs: get().partTimeJobs,
-        entryActuals: get().entryActuals,
-        entryActualDates: get().entryActualDates,
-        creditDues: get().creditDues,
-        creditDueMonths: get().creditDueMonths,
-        creditSettlementOverrides: get().creditSettlementOverrides,
-        salaryAnchorMonth: get().salaryAnchorMonth,
-      };
-      saveStorage(STORAGE_KEYS.importUndoBackup, currentSnapshot);
+      // Only record undo snapshot if this is a user-initiated import, NOT an automated remote sync
+      if (!options?.isRemoteSync) {
+        const currentSnapshot = {
+          entries: get().entries,
+          archivedEntries: get().archivedEntries,
+          deletedForecasts: get().deletedForecasts,
+          accounts: get().accounts,
+          salaryPattern: get().salaryPattern,
+          installments: get().installments,
+          rates: get().rates,
+          storageAssets: get().storageAssets,
+          asfJobs: get().asfJobs,
+          irqJobs: get().irqJobs,
+          partTimeJobs: get().partTimeJobs,
+          entryActuals: get().entryActuals,
+          entryActualDates: get().entryActualDates,
+          creditDues: get().creditDues,
+          creditDueMonths: get().creditDueMonths,
+          creditSettlementOverrides: get().creditSettlementOverrides,
+          salaryAnchorMonth: get().salaryAnchorMonth,
+        };
+        saveStorage(STORAGE_KEYS.importUndoBackup, currentSnapshot);
+      }
 
       // 2. Run versioned migration pipeline
       const migrated = migrateBackupPayload(parsed);
@@ -2643,7 +2692,9 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         deletedForecasts: migrated.deletedForecasts,
       });
 
-      scheduleAutoGistSync(get);
+      if (!options?.isRemoteSync) {
+        scheduleAutoGistSync(get);
+      }
       return true;
     } catch (e) {
       console.error('Failed to import JSON data:', e);
@@ -2673,6 +2724,7 @@ const syncedDataKeys: Array<keyof BudgetStoreState> = [
 ];
 
 useBudgetStore.subscribe((state, previousState) => {
+  if (suppressAutoSync) return;
   if (syncedDataKeys.some((key) => state[key] !== previousState[key])) {
     scheduleAutoGistSync(() => useBudgetStore.getState());
   }

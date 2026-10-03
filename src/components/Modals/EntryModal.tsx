@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { inferTag, useBudgetStore } from '../../store/useBudgetStore';
 import { calculateCreditSettlementDate, getCreditCycleHint } from '../../engine/creditCards';
 import { getCurrencyRate, formatNativeCurrency } from '../../engine/currency';
@@ -6,6 +6,10 @@ import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { getEntryActualAmount } from '../../engine/forecast';
 import type { CashEntry, EntryDraw } from '../../types';
 import { DeleteAffectedPartiesModal, type AffectedPartyOption } from './DeleteAffectedPartiesModal';
+
+function generateSeriesId(): string {
+  return `series-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
 
 interface EntryModalProps {
   isOpen: boolean;
@@ -63,9 +67,15 @@ export const EntryModal: React.FC<EntryModalProps> = ({
   const [isRecurring, setIsRecurring] = useState<boolean>(false);
   const [recurringFrequency, setRecurringFrequency] = useState<'monthly' | 'weekly' | 'biweekly'>('monthly');
   const [recurringCount, setRecurringCount] = useState<number>(12);
-  const [recurringDayOfWeek, setRecurringDayOfWeek] = useState<number>(new Date().getDay());
+  const [recurringDayOfWeek, setRecurringDayOfWeek] = useState<number>(() => new Date().getDay());
 
-  useEffect(() => {
+  const currentEntryKey = isOpen
+    ? `${entryToEdit?.id || 'new'}-${activeEntry?.draws?.length || 0}-${activeEntry ? (entryActuals[activeEntry.id] ?? '') : ''}`
+    : 'closed';
+  const [prevEntryKey, setPrevEntryKey] = useState(currentEntryKey);
+
+  if (prevEntryKey !== currentEntryKey) {
+    setPrevEntryKey(currentEntryKey);
     if (activeEntry) {
       const entryCurr = activeEntry.currency || 'EGP';
       setCreditType(activeEntry.creditType || '');
@@ -95,6 +105,13 @@ export const EntryModal: React.FC<EntryModalProps> = ({
       setSeriesEditMode('single');
       setIsRecurring(false);
       setRecalcStatus('');
+      setCreditSettlementHint(
+        activeEntry.creditType === 'cib_card'
+          ? getCreditCycleHint(activeEntry.date, 'cib')
+          : activeEntry.creditType === 'hsbc_card'
+            ? getCreditCycleHint(activeEntry.date, 'hsbc')
+            : ''
+      );
     } else {
       setType(initialType);
       setCreditType('');
@@ -106,45 +123,67 @@ export const EntryModal: React.FC<EntryModalProps> = ({
       setAmount('');
       setActualAmount('');
       setCreditSettlementDate('');
+      setCreditSettlementHint('');
       setStatementNote('');
       setSeriesEditMode('single');
       setRecurringDayOfWeek(new Date(`${DateUtils.todayString()}T00:00:00`).getDay());
       setIsRecurring(false);
       setRecalcStatus('');
     }
-  }, [entryToEdit, activeEntry?.draws?.length, initialType, isOpen, entryActuals]);
+  }
 
-  // Recalculate settlement date when credit card or date changes
-  useEffect(() => {
-    if (creditType === 'cib_card') {
+  const handleCreditTypeChange = (nextCreditType: string) => {
+    setCreditType(nextCreditType);
+    if (nextCreditType === 'cib_card') {
       const settDate = calculateCreditSettlementDate(date, 'cib');
       setCreditSettlementDate(settDate);
       setCreditSettlementHint(getCreditCycleHint(date, 'cib'));
       setAccount('cib');
-    } else if (creditType === 'hsbc_card') {
+    } else if (nextCreditType === 'hsbc_card') {
       const settDate = calculateCreditSettlementDate(date, 'hsbc');
       setCreditSettlementDate(settDate);
       setCreditSettlementHint(getCreditCycleHint(date, 'hsbc'));
       setAccount('hsbc');
-    } else if (creditType === 'cib') {
+    } else if (nextCreditType === 'cib') {
       setCategory('CIB Credit Due');
       setAccount('cib');
       setCreditSettlementHint('');
-    } else if (creditType === 'hsbc') {
+    } else if (nextCreditType === 'hsbc') {
       setCategory('HSBC Credit Due');
       setAccount('hsbc');
       setCreditSettlementHint('');
     } else {
       setCreditSettlementHint('');
     }
-  }, [creditType, date]);
-
-  useEffect(() => {
     if (!tag.trim()) {
-      const inferred = inferTag({ category, creditType, account, type });
+      const inferred = inferTag({
+        category,
+        creditType: nextCreditType,
+        account: nextCreditType.includes('hsbc') ? 'hsbc' : 'cib',
+        type,
+      });
       if (inferred) setTag(inferred);
     }
-  }, [category, creditType, account, type, tag]);
+  };
+
+  const handleDateChange = (nextDate: string) => {
+    setDate(nextDate);
+    if (creditType === 'cib_card') {
+      setCreditSettlementDate(calculateCreditSettlementDate(nextDate, 'cib'));
+      setCreditSettlementHint(getCreditCycleHint(nextDate, 'cib'));
+    } else if (creditType === 'hsbc_card') {
+      setCreditSettlementDate(calculateCreditSettlementDate(nextDate, 'hsbc'));
+      setCreditSettlementHint(getCreditCycleHint(nextDate, 'hsbc'));
+    }
+  };
+
+  const handleCategoryChange = (nextCategory: string) => {
+    setCategory(nextCategory);
+    if (!tag.trim()) {
+      const inferred = inferTag({ category: nextCategory, creditType, account, type });
+      if (inferred) setTag(inferred);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -227,7 +266,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
     } else {
       const newActual = actualAmount ? Math.round(Number(actualAmount) * fxRate) : 0;
       if (isRecurring && recurringCount > 1) {
-        const seriesId = `series-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const seriesId = generateSeriesId();
         let firstCreatedId = '';
         for (let i = 0; i < recurringCount; i++) {
           let recDate = date;
@@ -301,7 +340,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
 
         <label>
           Payment / Credit Mode
-          <select value={creditType} onChange={(e) => setCreditType(e.target.value)}>
+          <select value={creditType} onChange={(e) => handleCreditTypeChange(e.target.value)}>
             <option value="">Direct (Cash / Bank account)</option>
             <option value="cib_card">💳 Card Spend: Charged to CIB Card (Settles next cycle)</option>
             <option value="hsbc_card">💳 Card Spend: Charged to HSBC Card (Settles next cycle)</option>
@@ -434,7 +473,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
             type="date"
             required
             value={date}
-            onChange={(e) => setDate(e.target.value)}
+            onChange={(e) => handleDateChange(e.target.value)}
           />
         </label>
 
@@ -463,7 +502,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
             list="expenseCategories"
             placeholder="Home, Training, Kids, Food, Bills..."
             value={category}
-            onChange={(e) => setCategory(e.target.value)}
+            onChange={(e) => handleCategoryChange(e.target.value)}
           />
         </label>
         <datalist id="expenseCategories">

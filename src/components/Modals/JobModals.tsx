@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { calculateJobFinancials, formatJobCurrency } from '../../engine/jobs';
@@ -27,7 +27,11 @@ export const JobFormModal: React.FC<JobFormModalProps> = ({ isOpen, jobToEdit, o
   const [status, setStatus] = useState<'active' | 'invoiced' | 'partial' | 'paid'>('active');
   const [notes, setNotes] = useState('');
 
-  useEffect(() => {
+  const currentJobKey = isOpen ? (jobToEdit?.id || 'new') : 'closed';
+  const [prevJobKey, setPrevJobKey] = useState(currentJobKey);
+
+  if (prevJobKey !== currentJobKey) {
+    setPrevJobKey(currentJobKey);
     if (jobToEdit) {
       setTitle(jobToEdit.title || '');
       setClient(jobToEdit.client || '');
@@ -55,7 +59,7 @@ export const JobFormModal: React.FC<JobFormModalProps> = ({ isOpen, jobToEdit, o
       setStatus('active');
       setNotes('');
     }
-  }, [jobToEdit, isOpen]);
+  }
 
   if (!isOpen) return null;
 
@@ -464,6 +468,10 @@ export const JobExpenseModal: React.FC<JobExpenseModalProps> = ({ isOpen, jobId,
 // ==========================================
 // 4. Job Payment Modal
 // ==========================================
+function generatePaymentId(): string {
+  return `pay-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
 interface JobPaymentModalProps {
   isOpen: boolean;
   jobId: string | null;
@@ -500,7 +508,11 @@ export const JobPaymentModal: React.FC<JobPaymentModalProps> = ({ isOpen, jobId,
   const [paymentNote, setPaymentNote] = useState('');
 
   // Synchronize initial state when modal opens
-  useEffect(() => {
+  const currentPayKey = isOpen && jobId ? `${jobId}-${fin?.remainingBalance ?? ''}-${fin?.totalInvoice ?? ''}` : 'closed';
+  const [prevPayKey, setPrevPayKey] = useState(currentPayKey);
+
+  if (prevPayKey !== currentPayKey) {
+    setPrevPayKey(currentPayKey);
     if (job && fin) {
       setPaidDate(DateUtils.todayString());
       setActualPaidAmount(fin.remainingBalance > 0 ? String(fin.remainingBalance) : String(fin.totalInvoice || ''));
@@ -515,7 +527,7 @@ export const JobPaymentModal: React.FC<JobPaymentModalProps> = ({ isOpen, jobId,
         setSelectedEgpAccount(accKeys[0]);
       }
     }
-  }, [isOpen, jobId]);
+  }
 
   // Update EGP amount when foreign amount or fx rate changes
   const handleAmountChange = (val: string) => {
@@ -627,7 +639,7 @@ export const JobPaymentModal: React.FC<JobPaymentModalProps> = ({ isOpen, jobId,
     // 2. Record Job Payment
     let linkedEntryId = job.forecastEntryId;
     const newPayment: JobPayment = {
-      id: `pay-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      id: generatePaymentId(),
       entryId: linkedEntryId,
       date: paidDate,
       amount: amt,
@@ -989,17 +1001,21 @@ export const JobForecastModal: React.FC<JobForecastModalProps> = ({ isOpen, jobI
 
   const job = partTimeJobs.find((j) => j.id === jobId);
 
-  useEffect(() => {
+  const currentForecastKey = isOpen && job ? `${job.id}-${job.forecastDueDate || ''}-${job.forecastAmount || ''}` : 'closed';
+  const [prevForecastKey, setPrevForecastKey] = useState(currentForecastKey);
+
+  if (prevForecastKey !== currentForecastKey) {
+    setPrevForecastKey(currentForecastKey);
     if (job) {
-      const fin = calculateJobFinancials(job, rates);
+      const jobFin = calculateJobFinancials(job, rates);
       setExpectedDate(job.forecastDueDate || job.endDate || DateUtils.todayString());
-      setForecastAmount(String(job.forecastAmount || fin.remainingBalance || fin.totalInvoice || 0));
+      setForecastAmount(String(job.forecastAmount || jobFin.remainingBalance || jobFin.totalInvoice || 0));
       setDestination(
         job.forecastDestination ||
           ((job.currency || '').toUpperCase() === 'EUR' ? 'storage:hsbc_eur' : 'storage:hsbc_usd')
       );
     }
-  }, [job, rates, isOpen]);
+  }
 
   if (!isOpen || !job) return null;
 

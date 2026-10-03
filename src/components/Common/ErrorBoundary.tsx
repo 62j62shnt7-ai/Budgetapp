@@ -1,4 +1,5 @@
 import React, { Component, type ReactNode } from 'react';
+import { DateUtils } from '../../engine/dateUtils';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -52,7 +53,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `budget-emergency-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `budget-emergency-backup-${DateUtils.todayString()}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

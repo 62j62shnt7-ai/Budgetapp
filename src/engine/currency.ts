@@ -23,13 +23,20 @@ export const defaultRates: RatesData = {
 export function getCurrencyRate(rates: RatesData | null | undefined, code?: string): number {
   if (!rates || !code) return 1.0;
   const wanted = code.toUpperCase();
+  if (wanted === 'EGP') return 1.0;
   if (Array.isArray(rates.currencies)) {
     const c = rates.currencies.find((item) => item?.name && item.name.toUpperCase() === wanted);
-    if (c) return Number(c.buy ?? c.sell) || 1.0;
+    if (c) return Number(c.sell ?? c.buy) || 1.0;
   }
   const legacy = rates as unknown as Record<string, unknown>;
   if (wanted in legacy) return Number(legacy[wanted]) || 1.0;
   return 1.0;
+}
+
+export function resolveCurrencyRate(rates: RatesData | null | undefined, code?: string, fallback = 48.5): number {
+  if (!code || code.toUpperCase() === 'EGP') return 1.0;
+  const rate = getCurrencyRate(rates, code);
+  return rate > 0 && rate !== 1.0 ? rate : fallback;
 }
 
 export function computeSpreadPct(sell: number, buy: number): number {

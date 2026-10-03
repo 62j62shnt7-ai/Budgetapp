@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { formatMoney } from '../../engine/dateUtils';
 import { formatNativeCurrency, resolveRateSourceValue } from '../../engine/currency';
@@ -26,21 +26,35 @@ export const StorageFxModal: React.FC<StorageFxModalProps> = ({
 
   const selectedAsset = storageAssets.find((a) => a.id === assetId);
 
-  useEffect(() => {
-    if (initialAsset) {
-      setAssetId(initialAsset.id);
+  const [prevFxKey, setPrevFxKey] = useState<string>('');
+  const currentFxKey = `${isOpen}-${initialAsset?.id || ''}`;
+  if (currentFxKey !== prevFxKey) {
+    setPrevFxKey(currentFxKey);
+    if (isOpen) {
+      const activeId = initialAsset?.id || (storageAssets[0]?.id ?? '');
+      setAssetId(activeId);
+      const target = storageAssets.find((a) => a.id === activeId);
+      if (target) {
+        const liveRate = target.rateSource
+          ? resolveRateSourceValue(target.rateSource, rates)
+          : null;
+        const initialRate = liveRate || target.rate || target.buyPrice || 0;
+        setRate(String(initialRate));
+      }
     }
-  }, [initialAsset]);
+  }
 
-  useEffect(() => {
-    if (selectedAsset) {
-      const liveRate = selectedAsset.rateSource
-        ? resolveRateSourceValue(selectedAsset.rateSource, rates)
+  const handleAssetSelect = (newId: string) => {
+    setAssetId(newId);
+    const target = storageAssets.find((a) => a.id === newId);
+    if (target) {
+      const liveRate = target.rateSource
+        ? resolveRateSourceValue(target.rateSource, rates)
         : null;
-      const initialRate = liveRate || selectedAsset.rate || selectedAsset.buyPrice || 0;
+      const initialRate = liveRate || target.rate || target.buyPrice || 0;
       setRate(String(initialRate));
     }
-  }, [selectedAsset, rates]);
+  };
 
   if (!isOpen) return null;
 
@@ -99,7 +113,7 @@ export const StorageFxModal: React.FC<StorageFxModalProps> = ({
 
         <label>
           Asset to Convert / Sell
-          <select value={assetId} onChange={(e) => setAssetId(e.target.value)}>
+          <select value={assetId} onChange={(e) => handleAssetSelect(e.target.value)}>
             {storageAssets.map((asset) => (
               <option key={asset.id} value={asset.id}>
                 {asset.name} — Available: {formatNativeCurrency(asset.quantity, asset.unit)}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { DateUtils } from '../../engine/dateUtils';
 import type { Installment } from '../../types';
@@ -21,7 +21,10 @@ export const InstallmentModal: React.FC<InstallmentModalProps> = ({ isOpen, inst
   const [startMonth, setStartMonth] = useState<string>(DateUtils.currentYearMonth());
   const [months, setMonths] = useState<number>(12);
 
-  useEffect(() => {
+  const [prevEditKey, setPrevEditKey] = useState<string>('');
+  const currentEditKey = `${isOpen}-${installmentToEdit?.id || 'new'}`;
+  if (currentEditKey !== prevEditKey) {
+    setPrevEditKey(currentEditKey);
     if (installmentToEdit) {
       setName(installmentToEdit.name || '');
       setTag(installmentToEdit.tag || 'Installment');
@@ -41,7 +44,7 @@ export const InstallmentModal: React.FC<InstallmentModalProps> = ({ isOpen, inst
       setStartMonth(DateUtils.currentYearMonth());
       setMonths(12);
     }
-  }, [installmentToEdit, isOpen]);
+  }
 
   if (!isOpen) return null;
 

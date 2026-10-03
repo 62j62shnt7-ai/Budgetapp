@@ -156,8 +156,15 @@ export const App: React.FC = () => {
   useEffect(() => {
     const gistId = new URLSearchParams(window.location.hash.slice(1)).get('gist')?.trim();
     if (!gistId) return;
-    setGistConfig(gistToken, gistId, gistAutoSync);
     window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+    const currentGistId = useBudgetStore.getState().gistId;
+    if (gistId === currentGistId) return;
+    const shouldSwitch = window.confirm(
+      `Switch GitHub Gist synchronization to this ID?\n\n${gistId}\n\nThis will synchronize and link your app to this remote Gist.`
+    );
+    if (shouldSwitch) {
+      setGistConfig(gistToken, gistId, gistAutoSync);
+    }
   }, [gistAutoSync, gistToken, setGistConfig]);
 
   // Auto-fetch live currency & gold rates and continuous multi-device sync

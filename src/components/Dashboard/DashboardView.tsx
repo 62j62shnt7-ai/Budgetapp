@@ -163,7 +163,10 @@ export const DashboardView: React.FC = () => {
   const lowestPoint = lowestProjection.balance;
 
   const safeToSpend = Math.max(0, lowestPoint);
-  const plottedCutoff = DateUtils.addMonths(DateUtils.todayString(), forecastRangeMonths);
+  const targetCutoffYm = DateUtils.addMonths(DateUtils.todayString(), forecastRangeMonths);
+  const [cutoffY, cutoffM] = DateUtils.parseYearMonth(targetCutoffYm);
+  const lastDayOfCutoffMonth = DateUtils.getLastDayOfMonth(cutoffY, cutoffM);
+  const plottedCutoff = `${targetCutoffYm}-${String(lastDayOfCutoffMonth).padStart(2, '0')}`;
   const plottedEntryRows = allCandidateEntries.filter(
     (entry) => entry.date >= DateUtils.todayString() && entry.date <= plottedCutoff
   ).sort((a, b) => a.date.localeCompare(b.date));

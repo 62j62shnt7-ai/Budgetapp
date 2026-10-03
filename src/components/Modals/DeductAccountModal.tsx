@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { formatMoney, DateUtils } from '../../engine/dateUtils';
 import { getCurrencyRate, formatNativeCurrency } from '../../engine/currency';
@@ -74,8 +74,11 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
     return Array.from(new Set([...baseSuggestions, ...extractedTags])).sort((a, b) => a.localeCompare(b));
   }, [entries, archivedEntries]);
 
-  useEffect(() => {
-    if (entry) {
+  const [prevDeductKey, setPrevDeductKey] = useState<string>('');
+  const currentDeductKey = `${isOpen}-${entry?.id || ''}-${actualAmount}`;
+  if (currentDeductKey !== prevDeductKey) {
+    setPrevDeductKey(currentDeductKey);
+    if (entry && isOpen) {
       setSelectedAccountId(accounts[entry.account || ''] ? entry.account! : 'cib');
       setTag(entry.tag || entry.subcategory || '');
       setCustomFxRate(String(defaultRate));
@@ -84,7 +87,7 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
       setForeignDestination(defaultForeignDest);
       setSettlementMode(isForeign ? 'foreign' : 'convert_egp');
     }
-  }, [entry, isOpen, actualAmount]);
+  }
 
   if (!isOpen || !entry) return null;
 

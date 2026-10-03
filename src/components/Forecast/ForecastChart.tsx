@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useLayoutEffect, useId, useRef } from 'react';
+import React, { useState, useMemo, useLayoutEffect, useId, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import type { CashEntry } from '../../types';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
@@ -60,8 +60,12 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
   onSelectDate,
 }) => {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
-  const [animKey, setAnimKey] = useState(0);
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  const [wrapEl, setWrapEl] = useState<HTMLDivElement | null>(null);
+  const setWrapNode = useCallback((node: HTMLDivElement | null) => {
+    wrapRef.current = node;
+    setWrapEl(node);
+  }, []);
   const reactId = useId().replace(/[^a-zA-Z0-9]/g, '');
   const clipId = `fcClip-${reactId}`;
   const glowId = `fcGlow-${reactId}`;
@@ -69,7 +73,7 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
   const [dims, setDims] = useState<{ w: number; h: number }>({ w: 1000, h: 340 });
 
   useLayoutEffect(() => {
-    const el = wrapRef.current;
+    const el = wrapEl;
     if (!el) return;
     const measure = () => {
       const rect = el.getBoundingClientRect();
@@ -83,7 +87,7 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [wrapEl]);
 
   const today = DateUtils.todayString();
   const currentYm = DateUtils.currentYearMonth();
@@ -232,10 +236,8 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
     return list;
   }, [entries, totalCash, rangeMonths, mode, today, cutoffDate, currentYm, isSimActive, simAmount, simDate]);
 
-  // Replay the draw-in animation whenever the underlying trajectory meaningfully changes.
-  useEffect(() => {
-    setAnimKey((k) => k + 1);
-  }, [mode, rangeMonths, series.length, isSimActive]);
+  // Key to replay the draw-in animation whenever the underlying trajectory meaningfully changes.
+  const animKey = `${mode}-${rangeMonths}-${series.length}-${isSimActive ? 'sim' : 'nosim'}`;
 
   if (series.length === 0) {
     return (
@@ -369,7 +371,7 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
   };
 
   return (
-    <div ref={wrapRef} className="forecast-line-svg-wrap" style={{ position: 'relative', width: '100%', userSelect: 'none' }}>
+    <div ref={setWrapNode} className="forecast-line-svg-wrap" style={{ position: 'relative', width: '100%', userSelect: 'none' }}>
       <style>{`
         @keyframes fcPointIn {
           from { opacity: 0; transform: scale(0.25); }
@@ -676,9 +678,9 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
 
       {/* Floating Glass Tooltip — rendered into a portal, positioned in real screen
           pixels off the wrap's bounding box, so no ancestor's overflow:hidden can clip it */}
-      {activePoint && activeCoord && wrapRef.current && createPortal(
+      {activePoint && activeCoord && wrapEl && createPortal(
         (() => {
-          const rect = wrapRef.current!.getBoundingClientRect();
+          const rect = wrapEl.getBoundingClientRect();
           const leftPct = (activeCoord.x / viewBoxW) * 100;
           const topPct = (activeCoord.y / viewBoxH) * 100;
           const pxX = rect.left + (leftPct / 100) * rect.width;

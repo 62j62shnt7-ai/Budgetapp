@@ -2,6 +2,7 @@ import React, { useState, useRef, useMemo } from 'react';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { executeAppRefresh } from '../../utils/appRefresh';
 import { detectRecurringCandidateGroups } from '../../utils/recurringDetector';
+import { DateUtils } from '../../engine/dateUtils';
 
 interface DataToolsModalProps {
   isOpen: boolean;
@@ -117,7 +118,7 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `budget-control-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `budget-control-backup-${DateUtils.todayString()}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -142,7 +143,7 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `budget-control-entries-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `budget-control-entries-${DateUtils.todayString()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
