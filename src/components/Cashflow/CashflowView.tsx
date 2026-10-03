@@ -22,6 +22,8 @@ import {
   isLoanInflow,
   findLinkedLoanRepayment,
   calculateLoanRepaymentScale,
+  getDeficitPeriods,
+  getEntryId,
 } from '../../engine/forecast';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { formatNativeCurrency, getCurrencyRate } from '../../engine/currency';
@@ -362,6 +364,24 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
 
   const allDisplayRows = [...filteredOpeningRows, ...filteredForecastRows];
 
+  const totalCash = Object.values(accounts || {}).reduce(
+    (sum, acc) => sum + (Number(acc.balance) || 0),
+    0
+  );
+  const deficitPeriods = getDeficitPeriods(allCandidate, totalCash);
+  const entryStatusMap = new Map<string, { type: 'deficit' | 'recovery'; balance: number }>();
+  deficitPeriods.forEach((period) => {
+    (period.steps || []).forEach((step) => {
+      if (step.entryId) {
+        if (step.isRecoveryStep) {
+          entryStatusMap.set(step.entryId, { type: 'recovery', balance: step.balance });
+        } else {
+          entryStatusMap.set(step.entryId, { type: 'deficit', balance: step.balance });
+        }
+      }
+    });
+  });
+
   const totalIncome = forecastRows
     .filter((e) => (!dateFrom || e.date >= dateFrom) && (!dateTo || e.date <= dateTo))
     .filter((e) => e.type === 'income')
@@ -682,10 +702,27 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                     : 'Today'}`
                   : DateUtils.formatDisplayDate(e.date);
 
+                const statusInfo = !isOpening ? (entryStatusMap.get(e.id) || entryStatusMap.get(getEntryId(e))) : null;
+                const isDeficit = statusInfo?.type === 'deficit';
+                const isRecovery = statusInfo?.type === 'recovery';
+
+                const rowClass = `entry-row ${isOpening ? 'opening-balance-row' : isLoan ? 'loan-entry-row' : ''} ${
+                  isDeficit ? 'deficit-entry-row danger-row' : isRecovery ? 'recovery-entry-row success-row' : ''
+                }`.trim();
+
+                const rowTitle = isOpening
+                  ? 'Edit on the Accounts page'
+                  : isDeficit
+                  ? `Deficit spell: Projected cash balance ${formatMoney(statusInfo.balance)}`
+                  : isRecovery
+                  ? `Recovery: Projected cash balance recovered to ${formatMoney(statusInfo.balance)}`
+                  : '';
+
                 return (
                   <tr
                     key={e.id}
-                    className={`entry-row ${isOpening ? 'opening-balance-row' : isLoan ? 'loan-entry-row' : ''}`}
+                    className={rowClass}
+                    title={rowTitle}
                     style={{ cursor: 'pointer' }}
                     onClick={(ev) => {
                       if ((ev.target as HTMLElement).closest('input, button, select, a')) return;
@@ -710,6 +747,24 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                     </td>
                     <td className="cell-category">
                       <strong>{e.category}</strong>
+                      {isDeficit && (
+                        <span
+                          className="deficit-badge active"
+                          style={{ marginLeft: '6px', fontSize: '10px', verticalAlign: 'middle' }}
+                          title={`Projected cash balance: ${formatMoney(statusInfo.balance)}`}
+                        >
+                          Deficit
+                        </span>
+                      )}
+                      {isRecovery && (
+                        <span
+                          className="deficit-badge resolved"
+                          style={{ marginLeft: '6px', fontSize: '10px', verticalAlign: 'middle' }}
+                          title={`Projected cash balance recovered to: ${formatMoney(statusInfo.balance)}`}
+                        >
+                          Recovery
+                        </span>
+                      )}
                       {[e.tag, ...(e.draws || []).map((draw) => draw.tag)]
                         .filter((tag, index, tags): tag is string => Boolean(tag) && tags.indexOf(tag) === index)
                         .map((tag) => (
