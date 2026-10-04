@@ -269,3 +269,27 @@ export interface SmartInsight {
   message: string;
   actionText?: string;
 }
+
+export type ViewTab =
+  | 'dashboard'
+  | 'deficits'
+  | 'cashflow'
+  | 'history'
+  | 'accounts'
+  | 'storage'
+  | 'jobs'
+  | 'rates';
+
+export interface NavigationIntent {
+  tab: ViewTab;
+  filters?: {
+    month?: string;
+    category?: string;
+    type?: 'all' | 'income' | 'expense';
+    search?: string;
+    tag?: string;
+    account?: string;
+    highlightId?: string;
+  };
+}
+

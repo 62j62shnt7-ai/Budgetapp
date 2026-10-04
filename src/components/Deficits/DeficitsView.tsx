@@ -20,6 +20,7 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({ onBridgeDeficit, onD
   const {
     entryActuals,
     recordActual,
+    navigateTo,
   } = useBudgetStore();
 
   const {
@@ -56,14 +57,48 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({ onBridgeDeficit, onD
   return (
     <section className="view" id="deficits" style={{ display: 'block' }}>
       <div className="metrics-grid" style={{ marginBottom: '18px' }}>
-        <article className="metric">
+        <article
+          className="metric history-summary-clickable-row"
+          style={{ cursor: 'pointer' }}
+          onClick={() => {
+            const list = document.getElementById('deficitForecastList');
+            if (list) list.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              const list = document.getElementById('deficitForecastList');
+              if (list) list.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+          }}
+          tabIndex={0}
+          role="button"
+          title="Click to jump to Forecast deficit timeline"
+        >
           <span>Forecast deficit spells</span>
           <strong id="deficitForecastCount" style={{ color: deficitPeriods.length > 0 ? 'var(--red, #f43f5e)' : 'var(--green, #10b981)', fontWeight: 800 }}>
             {deficitPeriods.length}
           </strong>
           <small id="deficitForecastNote">{deficitNote}</small>
         </article>
-        <article className="metric">
+        <article
+          className="metric history-summary-clickable-row"
+          style={{ cursor: 'pointer' }}
+          onClick={() => {
+            const list = document.getElementById('deficitOverdueList');
+            if (list) list.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              const list = document.getElementById('deficitOverdueList');
+              if (list) list.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+          }}
+          tabIndex={0}
+          role="button"
+          title="Click to jump to Overdue & unpaid obligations"
+        >
           <span>Overdue & unpaid</span>
           <strong id="deficitOverdueCount" style={{ color: overdueEntries.length > 0 ? 'var(--amber, #f59e0b)' : 'var(--green, #10b981)', fontWeight: 800 }}>
             {overdueEntries.length}
@@ -106,7 +141,19 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({ onBridgeDeficit, onD
                         <strong className="deficit-card-dates">
                           {DateUtils.formatDisplayDate(period.startDate)} → {period.resolvedDate ? DateUtils.formatDisplayDate(period.resolvedDate) : 'Ongoing'}
                         </strong>
-                        <span className="deficit-card-desc">
+                        <span
+                          className="deficit-card-desc"
+                          style={{ cursor: period.steps[0]?.entryId ? 'pointer' : 'default' }}
+                          onClick={() => {
+                            if (period.steps[0]?.entryId) {
+                              navigateTo('cashflow', {
+                                month: 'all',
+                                highlightId: period.steps[0].entryId,
+                              });
+                            }
+                          }}
+                          title={period.steps[0]?.entryId ? `Click to view trigger entry (${period.initialTrigger}) in Cash Flow` : undefined}
+                        >
                           Turns negative on {period.initialTrigger}
                           {period.isResolved ? ` · Fixed by ${period.resolvedBy}` : ' · Remains negative'}
                           {' · '}{period.daysInDeficit} days
@@ -127,7 +174,31 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({ onBridgeDeficit, onD
                   <div className="deficit-progression-wrap">
                     <small className="deficit-progression-title">Daily deficit progression</small>
                     {period.steps.map((step) => (
-                      <div key={`${step.entryId}-${step.date}`} className="deficit-step-row">
+                      <div
+                        key={`${step.entryId}-${step.date}`}
+                        className="deficit-step-row history-summary-clickable-row"
+                        style={{ cursor: step.entryId ? 'pointer' : 'default' }}
+                        onClick={() => {
+                          if (step.entryId) {
+                            navigateTo('cashflow', {
+                              month: 'all',
+                              highlightId: step.entryId,
+                            });
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if ((e.key === 'Enter' || e.key === ' ') && step.entryId) {
+                            e.preventDefault();
+                            navigateTo('cashflow', {
+                              month: 'all',
+                              highlightId: step.entryId,
+                            });
+                          }
+                        }}
+                        tabIndex={step.entryId ? 0 : undefined}
+                        role={step.entryId ? 'button' : undefined}
+                        title={step.entryId ? `Click to view ${step.category} in Cash Flow` : undefined}
+                      >
                         <span>
                           <strong>{DateUtils.formatDisplayDate(step.date)}</strong> · {step.isRecoveryStep ? `Fixed by ${step.category}` : step.category}
                           {' '}({step.delta >= 0 ? '+' : '-'}{formatMoney(step.amount)})
@@ -166,7 +237,28 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({ onBridgeDeficit, onD
                   key={entry.id}
                   className="overdue-entry-card"
                 >
-                  <div className="overdue-entry-info">
+                  <div
+                    className="overdue-entry-info history-summary-clickable-row"
+                    style={{ cursor: 'pointer' }}
+                    onClick={() =>
+                      navigateTo('cashflow', {
+                        month: 'all',
+                        highlightId: entry.id,
+                      })
+                    }
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        navigateTo('cashflow', {
+                          month: 'all',
+                          highlightId: entry.id,
+                        });
+                      }
+                    }}
+                    title={`Click to view ${entry.category} in Cash Flow`}
+                  >
                     <strong className="overdue-entry-title">{entry.category}</strong>
                     <span className="overdue-entry-meta">
                       Due: {DateUtils.formatDisplayDate(entry.date)} · {daysOverdue}d overdue · Account: {entry.account.toUpperCase()}

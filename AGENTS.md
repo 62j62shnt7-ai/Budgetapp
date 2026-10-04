@@ -82,11 +82,20 @@ test/
 * Use existing design system variables from `src/index.css` (e.g., `--bg-primary`, `--accent`, `--border-color`, glassmorphism utility classes).
 * Do not introduce arbitrary inline styles or external CSS libraries.
 
+### E. Navigation Intents & Interactive Deep-Linking (`NavigationIntent`)
+* Cross-view navigation must use `useBudgetStore.getState().navigateTo(tab, filters)`.
+* **Row Targeting & Glow Animation:** Consuming table views (`CashflowView`, `HistoryView`) must:
+  - Assign `id="<view>-row-${id}"`, `data-entry-id`, and `data-legacy-id` to the table row (`<tr>`).
+  - Attach `.entry-row-targeted` when `highlightedEntryId === entry.id || highlightedEntryId === legacyId`.
+  - Smooth-scroll the row to center (`scrollIntoView({ behavior: 'smooth', block: 'center' })`) with double-check fallback.
+* **Filter Reset Consistency:** When routing without explicit category or search filters (e.g. from Deficits View), consuming views must reset unspecified filters (`category: 'all'`, `type: 'all'`, `search: ''`) so the target row is rendered within its full ledger context.
+* **Interactive Summary Rows:** Make clickable metrics and cards keyboard accessible: include `.history-summary-clickable-row`, `tabIndex={0}`, `role="button"`, and both mouse and keyboard handlers (`onKeyDown` for Enter / Space).
+
 ---
 
 ## 4. Pre-Flight Verification Commands (Run Before Submitting)
 
 To avoid breaking runtime errors and maintain test parity:
 1. **Math & Logic Test:** `npm test`
-2. **Type Check:** `npx tsc -b`
+2. **Type Check:** `npm run typecheck`
 3. **Lint Check:** `npm run lint`

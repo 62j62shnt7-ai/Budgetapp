@@ -5,7 +5,7 @@
 
 const CACHE_NAME = 'budget-control-v2.1';
 
-self.addEventListener('install', (event) => {
+self.addEventListener('install', () => {
   self.skipWaiting();
 });
 

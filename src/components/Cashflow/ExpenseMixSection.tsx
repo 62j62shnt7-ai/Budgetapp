@@ -7,6 +7,8 @@ interface ExpenseMixSectionProps {
   setExpenseMixOpen: (open: boolean) => void;
   expensesByCategory: Record<string, number>;
   totalExpenses: number;
+  onSelectCategory?: (category: string) => void;
+  selectedCategory?: string;
 }
 
 export const ExpenseMixSection: React.FC<ExpenseMixSectionProps> = ({
@@ -14,6 +16,8 @@ export const ExpenseMixSection: React.FC<ExpenseMixSectionProps> = ({
   setExpenseMixOpen,
   expensesByCategory,
   totalExpenses,
+  onSelectCategory,
+  selectedCategory,
 }) => {
   const sortedCategories = Object.entries(expensesByCategory).sort(
     ([, amountA], [, amountB]) => amountB - amountA
@@ -45,10 +49,32 @@ export const ExpenseMixSection: React.FC<ExpenseMixSectionProps> = ({
           ) : (
             sortedCategories.map(([cat, amt]) => {
               const pct = totalExpenses > 0 ? Math.round((amt / totalExpenses) * 100) : 0;
+              const isSelected = selectedCategory === cat;
               return (
-                <div key={cat} style={{ marginBottom: '10px' }}>
+                <div
+                  key={cat}
+                  className={onSelectCategory ? 'history-summary-clickable-row' : undefined}
+                  style={{
+                    marginBottom: '10px',
+                    padding: '4px 6px',
+                    borderRadius: '6px',
+                    cursor: onSelectCategory ? 'pointer' : 'default',
+                    background: isSelected ? 'rgba(99, 102, 241, 0.12)' : 'transparent',
+                    border: isSelected ? '1px solid rgba(99, 102, 241, 0.35)' : '1px solid transparent',
+                  }}
+                  onClick={() => onSelectCategory?.(cat)}
+                  onKeyDown={(e) => {
+                    if ((e.key === 'Enter' || e.key === ' ') && onSelectCategory) {
+                      e.preventDefault();
+                      onSelectCategory(cat);
+                    }
+                  }}
+                  role={onSelectCategory ? 'button' : undefined}
+                  tabIndex={onSelectCategory ? 0 : undefined}
+                  title={onSelectCategory ? `Click to filter entries by category: ${cat}` : undefined}
+                >
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '4px' }}>
-                    <span>{cat}</span>
+                    <span style={{ fontWeight: isSelected ? 700 : 500 }}>{cat}</span>
                     <strong>
                       {formatMoney(amt)} ({pct}%)
                     </strong>

@@ -24,22 +24,28 @@ Budget Control v2 is a local-first, privacy-focused financial management web app
 - **Exact Amount Decision Prompt:** When an actual spend, income, or loan draw meets or exceeds 100% of planned, prompts whether to **Finish & Fulfill** (close entry and remove remainder from future forecast) or **Keep Ongoing** (keep open in Cash Flow to log further transactions).
 - **Loan Repayment Scaling:** When logging a partial draw against a credit or bridge facility, automatically calculates and offers to **Scale Repayment** obligations down proportionally to match what was actually borrowed.
 
-### 🏛️ 4. Multi-Currency Accounts, Storage & Gold Valuation
+### 🧭 4. Unified Interactive Navigation & Deep-Linking
+- **Direct Entry Redirection & Row Flashing:** Clicking any credit due hero card or sub-cycle ("THIS MO" / "NEXT MO") on the Dashboard jumps directly to the exact settlement entry in Cash Flow (`credit-settlement-cib-${month}` / `credit-settlement-hsbc-${month}`) with automatic scroll-centering and a double-pulse glow animation.
+- **Unfiltered Deficit-to-Cashflow Linking:** Clicking any entry in Deficits View (trigger text, daily progression steps, or overdue obligations) jumps right to that entry in Cash Flow without filtering out surrounding transactions, preserving complete ledger context.
+- **In-Table Quick Filtering:** Clicking category names, `#tag` pills, account badges, or type pills inside Cash Flow and History tables instantly toggles active filters on and off with visible dismiss pills (✕).
+- **Interactive Metric & Breakdown Cards:** 100% of Dashboard and Deficit summary cards are interactive — clicking total net worth, liquid cash, forecast low point, cashflow status, upcoming obligations, or category expense rows routes directly to the intended destination.
+
+### 🏛️ 5. Multi-Currency Accounts, Storage & Gold Valuation
 - **Liquid Accounts & CD Maturity:** Real-time visibility into bank accounts, cash reserves, and certificates of deposit (CDs) with maturity date tracking.
 - **Real-Time FX & Gold Conversion:** Converts USD, EUR, GBP, AED, SAR, and 21K/24K Gold grams into local currency (EGP) using live bid/ask spreads.
 - **Storage Assets:** Track physical or digital assets and gold holdings with live valuation and net worth contribution.
 
-### 💼 5. Project & Freelance Billing (Jobs View)
+### 💼 6. Project & Freelance Billing (Jobs View)
 - **Time & Day Logging:** Log billable project days, daily rates, and notes.
 - **Client Project Expenses:** Record project-related expenses to be reimbursed or deducted.
 - **Client Milestone Payments:** Track installment payments received in foreign currency (USD, EUR) and local currency (EGP), showing contract balances and remaining receivables.
 
-### 📈 6. Historical Auditing & Financial Health Index
+### 📈 7. Historical Auditing & Financial Health Index
 - **Composite Financial Health Score (0–100):** Real-time rating analyzing liquid runway, deficit safety, budget adherence, and reserve funding.
 - **Validated Entry Analytics:** Filter historical transactions by month, type, account, and subcategory tags, with automatic variance analysis (favorable vs. unfavorable).
 - **Admin Edit Mode:** Unlockable administrative table controls to quickly edit historical records, adjust actuals, or remove erroneous entries.
 
-### 🔒 7. Privacy-First Storage & GitHub Gist Sync
+### 🔒 8. Privacy-First Storage & GitHub Gist Sync
 - **Local-First Architecture:** All data stays directly in your browser's `localStorage` by default — zero mandatory backend accounts or third-party trackers.
 - **GitHub Gist Cloud Sync:** Seamless encrypted sync to a private GitHub Gist with auto-sync debouncing, manual pull/push, and `#gist=` URL deep-linking.
 - **Full Data Portability:** Instant JSON backup export/import (fully backward-compatible with legacy formats) and Excel CSV export.
@@ -94,6 +100,13 @@ npm run dev
 ```
 
 Visit `http://localhost:5173` in your browser.
+
+### ⚡ Quick-Launch Shortcuts (Mac & Windows)
+Double-click executable scripts are included in the repository root for one-click local launching:
+- **macOS:** Double-click [`run-app.command`](run-app.command)
+- **Windows:** Double-click [`run-app.bat`](run-app.bat)
+
+These scripts automatically ensure dependencies are installed, start the Vite development server, and open your default browser.
 
 ---
 

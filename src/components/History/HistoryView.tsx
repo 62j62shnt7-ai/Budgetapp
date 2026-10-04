@@ -44,23 +44,108 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
     partTimeJobs,
     asfJobs,
     irqJobs,
+    pendingNavigation,
+    clearPendingNavigation,
   } = useBudgetStore();
 
   const [deleteEntryTarget, setDeleteEntryTarget] = useState<CashEntry | null>(null);
   const [clearEntryTarget, setClearEntryTarget] = useState<CashEntry | null>(null);
 
-  const [activeHistoryTab, setActiveHistoryTab] = useState<'summary' | 'transactions'>('summary');
+  const initialMonth = pendingNavigation?.tab === 'history' && pendingNavigation.filters?.month
+    ? pendingNavigation.filters.month
+    : 'all';
+  const initialTab = pendingNavigation?.tab === 'history' && pendingNavigation.filters?.month
+    ? 'transactions'
+    : 'summary';
+
+  const [activeHistoryTab, setActiveHistoryTab] = useState<'summary' | 'transactions'>(initialTab);
   const [isAdminUnlocked, setIsAdminUnlocked] = useState<boolean>(() =>
     localStorage.getItem('budget-control-history-admin-unlocked') === 'true'
   );
 
   // Filters
-  const [selectedMonth, setSelectedMonth] = useState<string>('all');
-  const [selectedType, setSelectedType] = useState<string>('all');
-  const [selectedAccount, setSelectedAccount] = useState<string>('all');
-  const [selectedTag, setSelectedTag] = useState<string>('all');
-  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [selectedMonth, setSelectedMonth] = useState<string>(initialMonth);
+  const [selectedType, setSelectedType] = useState<string>(
+    pendingNavigation?.tab === 'history' && pendingNavigation.filters?.type ? pendingNavigation.filters.type : 'all'
+  );
+  const [selectedAccount, setSelectedAccount] = useState<string>(
+    pendingNavigation?.tab === 'history' && pendingNavigation.filters?.account ? pendingNavigation.filters.account : 'all'
+  );
+  const [selectedTag, setSelectedTag] = useState<string>(
+    pendingNavigation?.tab === 'history' && pendingNavigation.filters?.tag ? pendingNavigation.filters.tag : 'all'
+  );
+  const [selectedCategoryGroup, setSelectedCategoryGroup] = useState<string>('all');
+  const [searchTerm, setSearchTerm] = useState<string>(
+    pendingNavigation?.tab === 'history' && pendingNavigation.filters?.search ? pendingNavigation.filters.search : ''
+  );
   const [expandedDraws, setExpandedDraws] = useState<Set<string>>(new Set());
+
+  const initialHighlightId = pendingNavigation?.tab === 'history' && pendingNavigation.filters?.highlightId
+    ? pendingNavigation.filters.highlightId
+    : null;
+  const [highlightedEntryId, setHighlightedEntryId] = useState<string | null>(initialHighlightId);
+  const [highlightTrigger, setHighlightTrigger] = useState(0);
+
+  // Respond to programmatic navigation intents
+  const [prevNav, setPrevNav] = useState(pendingNavigation);
+  if (pendingNavigation && pendingNavigation.tab === 'history' && pendingNavigation !== prevNav) {
+    setPrevNav(pendingNavigation);
+    const f = pendingNavigation.filters;
+    if (f) {
+      setSelectedMonth(f.month !== undefined ? f.month : 'all');
+      setSelectedType(f.type !== undefined ? f.type : 'all');
+      setSelectedAccount(f.account !== undefined ? f.account : 'all');
+      setSelectedTag(f.tag !== undefined ? f.tag : 'all');
+      setSelectedCategoryGroup('all');
+      setSearchTerm(f.search !== undefined ? f.search : '');
+      if (f.month || f.highlightId || f.category || f.search || f.type || f.account || f.tag) {
+        setActiveHistoryTab('transactions');
+      }
+      if (f.highlightId) {
+        setHighlightedEntryId(f.highlightId);
+        setHighlightTrigger((c) => c + 1);
+      }
+    }
+  }
+
+  useEffect(() => {
+    if (pendingNavigation && pendingNavigation.tab === 'history') {
+      clearPendingNavigation();
+    }
+  }, [pendingNavigation, clearPendingNavigation]);
+
+  useEffect(() => {
+    if (!highlightedEntryId) return;
+
+    const scrollToTarget = () => {
+      const row =
+        document.getElementById(`history-row-${highlightedEntryId}`) ||
+        (typeof CSS !== 'undefined' && CSS?.escape
+          ? document.querySelector(`[data-entry-id="${CSS.escape(highlightedEntryId)}"]`) ||
+            document.querySelector(`[data-legacy-id="${CSS.escape(highlightedEntryId)}"]`)
+          : null);
+      if (row) {
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return true;
+      }
+      return false;
+    };
+
+    const timer = setTimeout(() => {
+      if (!scrollToTarget()) {
+        setTimeout(scrollToTarget, 180);
+      }
+    }, 100);
+
+    const clearGlowTimer = setTimeout(() => {
+      setHighlightedEntryId(null);
+    }, 3500);
+
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(clearGlowTimer);
+    };
+  }, [highlightedEntryId, highlightTrigger]);
 
   // Analytics UI state
   const [analyticsCollapsed, setAnalyticsCollapsed] = useState<boolean>(() =>
@@ -92,6 +177,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
     setSelectedType('all');
     setSelectedAccount('all');
     setSelectedTag('all');
+    setSelectedCategoryGroup('all');
     setSearchTerm('');
   };
 
@@ -304,6 +390,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
     const actDate = getEntryActualDate(entry);
     if (selectedMonth !== 'all' && DateUtils.getMonthKey(actDate) !== selectedMonth) return 0;
 
+    if (selectedCategoryGroup !== 'all' && getSmartGroupBucket(entry) !== selectedCategoryGroup) return 0;
+
     const eTag = (entry.tag || '').trim();
     if (selectedTag === '__untagged__') return eTag ? 0 : totalActual;
     if (selectedTag !== 'all' && eTag.toLowerCase() !== selectedTag.toLowerCase()) return 0;
@@ -324,6 +412,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
 
     if (selectedType !== 'all' && entry.type !== selectedType) return false;
     if (selectedAccount !== 'all' && (entry.account || 'cash').toLowerCase() !== selectedAccount.toLowerCase()) return false;
+    if (selectedCategoryGroup !== 'all' && getSmartGroupBucket(entry) !== selectedCategoryGroup) return false;
 
     if (selectedTag !== 'all') {
       const eTag = (entry.tag || '').toLowerCase();
@@ -465,6 +554,16 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
           lifetimeNet={lifetimeNet}
           lifetimeSavingsRate={lifetimeSavingsRate}
           monthlySummaryRows={monthlySummaryRows}
+          onSelectMonth={(month) => {
+            setSelectedMonth(month);
+            setActiveHistoryTab('transactions');
+            requestAnimationFrame(() => {
+              const el = document.getElementById('historyFilteredSummary') || document.getElementById('historyTransactionsPane');
+              if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }
+            });
+          }}
         />
       )}
 
@@ -533,6 +632,119 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                 Reset filters
               </button>
             </div>
+            {(selectedMonth !== 'all' || selectedCategoryGroup !== 'all' || selectedTag !== 'all' || selectedType !== 'all' || selectedAccount !== 'all' || searchTerm) && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '8px',
+                  marginTop: '10px',
+                  padding: '6px 12px',
+                  background: 'rgba(99, 102, 241, 0.08)',
+                  borderRadius: '6px',
+                  border: '1px solid rgba(99, 102, 241, 0.25)',
+                  fontSize: '12px',
+                  color: 'var(--text-main, var(--ink))',
+                }}
+              >
+                <span style={{ fontWeight: 600, color: 'var(--muted)' }}>Active filters:</span>
+                {selectedMonth !== 'all' && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
+                    📅 Month: <strong>{selectedMonth}</strong>
+                    <button
+                      type="button"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand-primary, #6366f1)', fontWeight: 700 }}
+                      onClick={() => setSelectedMonth('all')}
+                      title="Clear month filter"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                )}
+                {selectedCategoryGroup !== 'all' && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
+                    📁 Group: <strong>{selectedCategoryGroup}</strong>
+                    <button
+                      type="button"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand-primary, #6366f1)', fontWeight: 700 }}
+                      onClick={() => setSelectedCategoryGroup('all')}
+                      title="Clear category group filter"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                )}
+                {selectedTag !== 'all' && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
+                    🏷️ Tag: <strong>{selectedTag === '__untagged__' ? 'Untagged' : selectedTag}</strong>
+                    <button
+                      type="button"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand-primary, #6366f1)', fontWeight: 700 }}
+                      onClick={() => setSelectedTag('all')}
+                      title="Clear tag filter"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                )}
+                {selectedType !== 'all' && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
+                    Type: <strong>{selectedType}</strong>
+                    <button
+                      type="button"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand-primary, #6366f1)', fontWeight: 700 }}
+                      onClick={() => setSelectedType('all')}
+                      title="Clear type filter"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                )}
+                {selectedAccount !== 'all' && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
+                    Account: <strong>{selectedAccount.toUpperCase()}</strong>
+                    <button
+                      type="button"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand-primary, #6366f1)', fontWeight: 700 }}
+                      onClick={() => setSelectedAccount('all')}
+                      title="Clear account filter"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                )}
+                {searchTerm && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
+                    Search: <strong>&quot;{searchTerm}&quot;</strong>
+                    <button
+                      type="button"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand-primary, #6366f1)', fontWeight: 700 }}
+                      onClick={() => setSearchTerm('')}
+                      title="Clear search filter"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                )}
+                <button
+                  type="button"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--brand-primary, #6366f1)',
+                    textDecoration: 'underline',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                    padding: 0,
+                    marginLeft: 'auto',
+                  }}
+                  onClick={handleResetFilters}
+                >
+                  Clear all
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="metrics-grid history-summary-grid" id="historyFilteredSummary" style={{ marginBottom: '18px' }}>
@@ -565,11 +777,30 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
             setAnalyticsCollapsed={setAnalyticsCollapsed}
             sortedGroups={sortedGroups}
             totalAnalyticsAmount={totalAnalyticsAmount}
+            onSelectGroup={(groupName, currentGroupBy) => {
+              if (currentGroupBy === 'tag') {
+                setSelectedCategoryGroup('all');
+                if (groupName.toLowerCase() === 'untagged') {
+                  setSelectedTag('__untagged__');
+                } else {
+                  setSelectedTag(groupName);
+                }
+              } else {
+                setSelectedTag('all');
+                setSelectedCategoryGroup(groupName);
+              }
+              requestAnimationFrame(() => {
+                const el = document.getElementById('historyEntriesHeading') || document.getElementById('historyTransactionsPane');
+                if (el) {
+                  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+              });
+            }}
           />
 
           {/* Validated Entries Table */}
           <section className="panel">
-            <div className="panel-heading history-entries-heading">
+            <div className="panel-heading history-entries-heading" id="historyEntriesHeading">
               <h3 style={{ margin: 0 }}>Individual Validated Entries</h3>
               <button
                 className="ghost-button history-admin-toggle-btn"
@@ -659,14 +890,20 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                         }
                       }
 
-                      return (
-                        <React.Fragment key={entryId}>
-                        <tr
-                          className={isAdminUnlocked && onEditEntry ? 'history-entry-editable' : undefined}
-                          onClick={(event) => {
-                            if (!isAdminUnlocked || !onEditEntry) return;
-                            const target = event.target as HTMLElement;
-                            if (target.closest('button, input, select, textarea, a')) return;
+                        const isTargeted = highlightedEntryId === entry.id || highlightedEntryId === entryId;
+                        const rowClass = `${isAdminUnlocked && onEditEntry ? 'history-entry-editable' : ''} ${isTargeted ? 'entry-row-targeted' : ''}`.trim() || undefined;
+
+                        return (
+                          <React.Fragment key={entryId}>
+                          <tr
+                            id={`history-row-${entry.id || entryId}`}
+                            data-entry-id={entry.id}
+                            data-legacy-id={entryId}
+                            className={rowClass}
+                            onClick={(event) => {
+                              if (!isAdminUnlocked || !onEditEntry) return;
+                              const target = event.target as HTMLElement;
+                              if (target.closest('button, input, select, textarea, a')) return;
                             onEditEntry(entry);
                           }}
                           onKeyDown={(event) => {

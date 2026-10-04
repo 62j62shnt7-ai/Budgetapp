@@ -12,6 +12,8 @@ import type {
   RatesData,
   SalaryPayment,
   StorageAsset,
+  ViewTab,
+  NavigationIntent,
 } from '../types';
 import {
   defaultRates,
@@ -105,19 +107,12 @@ function saveStorage<T>(key: string, value: T): void {
   }
 }
 
-export type ViewTab =
-  | 'dashboard'
-  | 'deficits'
-  | 'cashflow'
-  | 'history'
-  | 'accounts'
-  | 'storage'
-  | 'jobs'
-  | 'rates';
+export type { ViewTab };
 
 export interface BudgetStoreState {
   theme: 'dark' | 'light';
   activeTab: ViewTab;
+  pendingNavigation: NavigationIntent | null;
   sidebarCollapsed: boolean;
 
   // Financial Data
@@ -156,6 +151,8 @@ export interface BudgetStoreState {
   // Actions
   setTheme: (theme: 'dark' | 'light') => void;
   setActiveTab: (tab: ViewTab) => void;
+  navigateTo: (tab: ViewTab, filters?: NavigationIntent['filters']) => void;
+  clearPendingNavigation: () => void;
   toggleSidebar: () => void;
   closeMobileSidebar: () => void;
 
@@ -389,6 +386,7 @@ function revertStorageOrAccountBalance(
 export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
   theme: loadStorage<'dark' | 'light'>(STORAGE_KEYS.theme, 'dark'),
   activeTab: 'dashboard',
+  pendingNavigation: null,
   sidebarCollapsed: loadStorage<boolean>(STORAGE_KEYS.sidebarCollapsed, false),
 
   entries: loadStorage<CashEntry[]>(STORAGE_KEYS.entries, []),
@@ -440,6 +438,15 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
   },
 
   setActiveTab: (activeTab) => set({ activeTab }),
+
+  navigateTo: (tab, filters) => {
+    set({
+      activeTab: tab,
+      pendingNavigation: filters ? { tab, filters } : null,
+    });
+  },
+
+  clearPendingNavigation: () => set({ pendingNavigation: null }),
 
   toggleSidebar: () => {
     if (typeof window !== 'undefined' && window.innerWidth <= 980) {

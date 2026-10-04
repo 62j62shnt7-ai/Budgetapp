@@ -82,13 +82,123 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     asfJobs,
     irqJobs,
     setActiveTab,
+    pendingNavigation,
+    clearPendingNavigation,
   } = useBudgetStore();
+
+  const initialMonth = pendingNavigation?.tab === 'cashflow' && pendingNavigation.filters?.month
+    ? pendingNavigation.filters.month
+    : 'all';
+  const initialType = pendingNavigation?.tab === 'cashflow' && pendingNavigation.filters?.type
+    ? pendingNavigation.filters.type
+    : 'all';
+  const initialCategory = pendingNavigation?.tab === 'cashflow' && pendingNavigation.filters?.category
+    ? pendingNavigation.filters.category
+    : 'all';
+  const initialAccount = pendingNavigation?.tab === 'cashflow' && pendingNavigation.filters?.account
+    ? pendingNavigation.filters.account
+    : 'all';
+  const initialTag = pendingNavigation?.tab === 'cashflow' && pendingNavigation.filters?.tag
+    ? pendingNavigation.filters.tag
+    : 'all';
+  const initialSearch = pendingNavigation?.tab === 'cashflow' && pendingNavigation.filters?.search
+    ? pendingNavigation.filters.search
+    : '';
+  const initialHighlightId = pendingNavigation?.tab === 'cashflow' && pendingNavigation.filters?.highlightId
+    ? pendingNavigation.filters.highlightId
+    : null;
 
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [typeFilter, setTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
-  const [categoryFilter, setCategoryFilter] = useState<string>('all');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState<string>(initialMonth);
+  const [typeFilter, setTypeFilter] = useState<'all' | 'income' | 'expense'>(initialType);
+  const [categoryFilter, setCategoryFilter] = useState<string>(initialCategory);
+  const [selectedAccount, setSelectedAccount] = useState<string>(initialAccount);
+  const [selectedTag, setSelectedTag] = useState<string>(initialTag);
+  const [searchTerm, setSearchTerm] = useState<string>(initialSearch);
+  const [highlightedEntryId, setHighlightedEntryId] = useState<string | null>(initialHighlightId);
+  const [highlightTrigger, setHighlightTrigger] = useState(0);
+
+  // Respond to programmatic navigation intents
+  const [prevNav, setPrevNav] = useState(pendingNavigation);
+  if (pendingNavigation && pendingNavigation.tab === 'cashflow' && pendingNavigation !== prevNav) {
+    setPrevNav(pendingNavigation);
+    const f = pendingNavigation.filters;
+    if (f) {
+      setSelectedMonth(f.month !== undefined ? f.month : 'all');
+      setCategoryFilter(f.category !== undefined ? f.category : 'all');
+      setTypeFilter(f.type !== undefined ? f.type : 'all');
+      setSelectedAccount(f.account !== undefined ? f.account : 'all');
+      setSelectedTag(f.tag !== undefined ? f.tag : 'all');
+      setSearchTerm(f.search !== undefined ? f.search : '');
+      setDateFrom('');
+      setDateTo('');
+      if (f.highlightId) {
+        setHighlightedEntryId(f.highlightId);
+        setHighlightTrigger((c) => c + 1);
+      }
+    }
+  }
+
+  useEffect(() => {
+    if (pendingNavigation && pendingNavigation.tab === 'cashflow') {
+      clearPendingNavigation();
+    }
+  }, [pendingNavigation, clearPendingNavigation]);
+
+  useEffect(() => {
+    if (!highlightedEntryId) return;
+
+    const scrollToTarget = () => {
+      const row =
+        document.getElementById(`cashflow-row-${highlightedEntryId}`) ||
+        (typeof CSS !== 'undefined' && CSS?.escape
+          ? document.querySelector(`[data-entry-id="${CSS.escape(highlightedEntryId)}"]`) ||
+            document.querySelector(`[data-legacy-id="${CSS.escape(highlightedEntryId)}"]`)
+          : null);
+      if (row) {
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return true;
+      }
+      return false;
+    };
+
+    const timer = setTimeout(() => {
+      if (!scrollToTarget()) {
+        setTimeout(scrollToTarget, 180);
+      }
+    }, 100);
+
+    const clearGlowTimer = setTimeout(() => {
+      setHighlightedEntryId(null);
+    }, 3500);
+
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(clearGlowTimer);
+    };
+  }, [highlightedEntryId, highlightTrigger]);
+
+  const handleResetFilters = () => {
+    setSelectedMonth('all');
+    setTypeFilter('all');
+    setCategoryFilter('all');
+    setSelectedAccount('all');
+    setSelectedTag('all');
+    setSearchTerm('');
+  };
+
+  const handleTagFilter = (tag: string) => {
+    setSelectedTag((current) => (current.toLowerCase() === tag.toLowerCase() ? 'all' : tag));
+  };
+
+  const handleCategoryFilter = (cat: string) => {
+    setCategoryFilter((current) => (current === cat ? 'all' : cat));
+  };
+
+  const handleAccountFilter = (acc: string) => {
+    setSelectedAccount((current) => (current.toLowerCase() === acc.toLowerCase() ? 'all' : acc.toLowerCase()));
+  };
 
   // Delete targets for AffectedRecordsModal
   const [deleteEntryTarget, setDeleteEntryTarget] = useState<CashEntry | null>(null);
@@ -318,6 +428,34 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     locked: true,
   }));
 
+  // Months list for dropdown
+  const monthSet = new Set<string>();
+  allCandidate.forEach((e) => {
+    if (e.date) {
+      const ym = DateUtils.getMonthKey(e.date);
+      if (ym) monthSet.add(ym);
+    }
+  });
+  const orderedMonths = Array.from(monthSet).sort();
+
+  // Accounts list for dropdown
+  const accountSet = new Set<string>();
+  Object.keys(accounts || {}).forEach((acc) => accountSet.add(acc.toLowerCase()));
+  allCandidate.forEach((e) => {
+    if (e.account) accountSet.add(e.account.toLowerCase());
+  });
+  const allAccounts = Array.from(accountSet).sort();
+
+  // Tags list for dropdown
+  const tagSet = new Set<string>();
+  let hasUntagged = false;
+  allCandidate.forEach((e) => {
+    const t = (e.tag || '').trim();
+    if (t) tagSet.add(t);
+    else hasUntagged = true;
+  });
+  const allTags = Array.from(tagSet).sort((a, b) => a.localeCompare(b));
+
   // Categories list for dropdown
   const categorySet = new Set<string>();
   Object.values(accounts || {}).forEach((acc) => {
@@ -330,8 +468,20 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
 
   // Filter entries
   const filteredForecastRows = allCandidate.filter((e) => {
+    if (selectedMonth !== 'all' && DateUtils.getMonthKey(e.date) !== selectedMonth) return false;
     if (typeFilter !== 'all' && e.type !== typeFilter) return false;
     if (categoryFilter !== 'all' && e.category !== categoryFilter) return false;
+    if (selectedAccount !== 'all' && (e.account || '').toLowerCase() !== selectedAccount.toLowerCase()) return false;
+
+    if (selectedTag !== 'all') {
+      const eTag = (e.tag || '').trim();
+      if (selectedTag === '__untagged__') {
+        if (eTag) return false;
+      } else if (eTag.toLowerCase() !== selectedTag.toLowerCase()) {
+        return false;
+      }
+    }
+
     if (dateFrom && e.date < dateFrom) return false;
     if (dateTo && e.date > dateTo) return false;
     if (searchTerm) {
@@ -353,8 +503,11 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
   });
 
   const filteredOpeningRows = openingRows.filter((e) => {
+    if (selectedMonth !== 'all' && DateUtils.getMonthKey(e.date) !== selectedMonth) return false;
     if (typeFilter === 'expense') return false;
     if (categoryFilter !== 'all' && e.category !== categoryFilter) return false;
+    if (selectedAccount !== 'all' && (e.account || '').toLowerCase() !== selectedAccount.toLowerCase()) return false;
+    if (selectedTag !== 'all' && selectedTag !== '__untagged__') return false;
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       return e.category.toLowerCase().includes(term) || e.account.toLowerCase().includes(term);
@@ -363,6 +516,24 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
   });
 
   const allDisplayRows = [...filteredOpeningRows, ...filteredForecastRows];
+
+  const filteredIncome = allDisplayRows
+    .filter((e) => e.type === 'income')
+    .reduce((sum, e) => sum + Number(e.amount || 0), 0);
+
+  const filteredExpenses = allDisplayRows
+    .filter((e) => e.type === 'expense')
+    .reduce((sum, e) => sum + Number(e.amount || 0), 0);
+
+  const filteredNet = filteredIncome - filteredExpenses;
+
+  const isAnyFilterActive =
+    selectedMonth !== 'all' ||
+    typeFilter !== 'all' ||
+    categoryFilter !== 'all' ||
+    selectedAccount !== 'all' ||
+    selectedTag !== 'all' ||
+    Boolean(searchTerm);
 
   const totalCash = Object.values(accounts || {}).reduce(
     (sum, acc) => sum + (Number(acc.balance) || 0),
@@ -594,55 +765,238 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
           setExpenseMixOpen={setExpenseMixOpen}
           expensesByCategory={expensesByCategory}
           totalExpenses={totalExpenses}
+          selectedCategory={categoryFilter}
+          onSelectCategory={(cat) => {
+            handleCategoryFilter(cat);
+            requestAnimationFrame(() => {
+              const panel = document.getElementById('forecastEntriesPanel');
+              if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+          }}
         />
       </div>
 
       {/* Forecast Entries Table */}
-      <section className="panel cashflow-table-panel" style={{ marginTop: '18px' }}>
-        <div className="panel-heading cashflow-table-header">
-          <div className="cashflow-table-header-top">
+      <section className="panel cashflow-table-panel" id="forecastEntriesPanel" style={{ marginTop: '18px' }}>
+        <div className="panel-heading cashflow-table-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <h3 style={{ margin: 0 }}>Forecast entries</h3>
-            <button
-              className="ghost-button cashflow-add-btn"
-              type="button"
-              onClick={() => onOpenEntryModal('expense')}
-            >
-              <Plus size={14} style={{ marginRight: '4px' }} />
-              <span>Add entry</span>
-            </button>
+            <span id="cashflowFilteredCount" style={{ fontSize: '13px', color: 'var(--muted)' }}>
+              {allDisplayRows.length} {allDisplayRows.length === 1 ? 'entry' : 'entries'}
+            </span>
           </div>
-          <div className="cashflow-filters-grid">
+          <button
+            className="ghost-button cashflow-add-btn"
+            type="button"
+            onClick={() => onOpenEntryModal('expense')}
+          >
+            <Plus size={14} style={{ marginRight: '4px' }} />
+            <span>Add entry</span>
+          </button>
+        </div>
+
+        <div className="history-filters-bar" style={{ marginTop: '10px' }}>
+          <label className="history-filter-field">
+            <span className="field-label-text">Month</span>
+            <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)}>
+              <option value="all">All months</option>
+              {orderedMonths.map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          </label>
+          <label className="history-filter-field">
+            <span className="field-label-text">Type</span>
             <select
-              id="typeFilter"
-              className="form-select"
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value as 'all' | 'income' | 'expense')}
             >
               <option value="all">All types</option>
+              <option value="expense">Expenses</option>
               <option value="income">Income</option>
-              <option value="expense">Expense</option>
             </select>
-            <select
-              id="categoryFilter"
-              className="form-select"
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-            >
+          </label>
+          <label className="history-filter-field">
+            <span className="field-label-text">Category</span>
+            <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
               <option value="all">All categories</option>
               {allCategories.map((cat) => (
                 <option key={cat} value={cat}>{cat}</option>
               ))}
             </select>
+          </label>
+          <label className="history-filter-field">
+            <span className="field-label-text">Account</span>
+            <select value={selectedAccount} onChange={(e) => setSelectedAccount(e.target.value)}>
+              <option value="all">All accounts</option>
+              {allAccounts.map((acc) => (
+                <option key={acc} value={acc}>{acc.toUpperCase()}</option>
+              ))}
+            </select>
+          </label>
+          <label className="history-filter-field">
+            <span className="field-label-text">Tag / Subcategory</span>
+            <select value={selectedTag} onChange={(e) => setSelectedTag(e.target.value)}>
+              <option value="all">All tags</option>
+              {hasUntagged && <option value="__untagged__">📁 Untagged</option>}
+              {allTags.map((tag) => (
+                <option key={tag} value={tag}>🏷️ {tag}</option>
+              ))}
+            </select>
+          </label>
+          <label className="history-filter-field history-search-field">
+            <span className="field-label-text">Search</span>
             <input
               id="searchEntries"
               type="search"
               placeholder="Search category, tag, account..."
-              className="form-input cashflow-search-input"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
-          </div>
+          </label>
+          <button
+            className="ghost-button history-reset-btn"
+            type="button"
+            onClick={handleResetFilters}
+          >
+            Reset filters
+          </button>
         </div>
+
+        {isAnyFilterActive && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '8px',
+              marginTop: '10px',
+              padding: '6px 12px',
+              background: 'rgba(99, 102, 241, 0.08)',
+              borderRadius: '6px',
+              border: '1px solid rgba(99, 102, 241, 0.25)',
+              fontSize: '12px',
+              color: 'var(--text-main, var(--ink))',
+            }}
+          >
+            <span style={{ fontWeight: 600, color: 'var(--muted)' }}>Active filters:</span>
+            {selectedMonth !== 'all' && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
+                📅 Month: <strong>{selectedMonth}</strong>
+                <button
+                  type="button"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand-primary, #6366f1)', fontWeight: 700 }}
+                  onClick={() => setSelectedMonth('all')}
+                  title="Clear month filter"
+                >
+                  ✕
+                </button>
+              </span>
+            )}
+            {typeFilter !== 'all' && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
+                Type: <strong>{typeFilter}</strong>
+                <button
+                  type="button"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand-primary, #6366f1)', fontWeight: 700 }}
+                  onClick={() => setTypeFilter('all')}
+                  title="Clear type filter"
+                >
+                  ✕
+                </button>
+              </span>
+            )}
+            {categoryFilter !== 'all' && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
+                📁 Category: <strong>{categoryFilter}</strong>
+                <button
+                  type="button"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand-primary, #6366f1)', fontWeight: 700 }}
+                  onClick={() => setCategoryFilter('all')}
+                  title="Clear category filter"
+                >
+                  ✕
+                </button>
+              </span>
+            )}
+            {selectedAccount !== 'all' && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
+                Account: <strong>{selectedAccount.toUpperCase()}</strong>
+                <button
+                  type="button"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand-primary, #6366f1)', fontWeight: 700 }}
+                  onClick={() => setSelectedAccount('all')}
+                  title="Clear account filter"
+                >
+                  ✕
+                </button>
+              </span>
+            )}
+            {selectedTag !== 'all' && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
+                🏷️ Tag: <strong>{selectedTag === '__untagged__' ? 'Untagged' : selectedTag}</strong>
+                <button
+                  type="button"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand-primary, #6366f1)', fontWeight: 700 }}
+                  onClick={() => setSelectedTag('all')}
+                  title="Clear tag filter"
+                >
+                  ✕
+                </button>
+              </span>
+            )}
+            {searchTerm && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
+                Search: <strong>&quot;{searchTerm}&quot;</strong>
+                <button
+                  type="button"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand-primary, #6366f1)', fontWeight: 700 }}
+                  onClick={() => setSearchTerm('')}
+                  title="Clear search filter"
+                >
+                  ✕
+                </button>
+              </span>
+            )}
+            <button
+              type="button"
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--brand-primary, #6366f1)',
+                textDecoration: 'underline',
+                cursor: 'pointer',
+                fontWeight: 600,
+                padding: 0,
+                marginLeft: 'auto',
+              }}
+              onClick={handleResetFilters}
+            >
+              Clear all
+            </button>
+          </div>
+        )}
+
+        <div className="metrics-grid" id="cashflowFilteredSummary" style={{ margin: '14px 0 16px' }}>
+          <article className="metric">
+            <span>{isAnyFilterActive ? 'Filtered Inflow' : 'Forecast Inflow'}</span>
+            <strong style={{ color: 'var(--green)' }}>+{formatMoney(filteredIncome)}</strong>
+            <small>{isAnyFilterActive ? 'Planned for active criteria' : 'Total candidate inflows'}</small>
+          </article>
+          <article className="metric">
+            <span>{isAnyFilterActive ? 'Filtered Outflow' : 'Forecast Outflow'}</span>
+            <strong style={{ color: 'var(--red)' }}>-{formatMoney(filteredExpenses)}</strong>
+            <small>{isAnyFilterActive ? 'Planned for active criteria' : 'Total candidate outflows'}</small>
+          </article>
+          <article className="metric">
+            <span>{isAnyFilterActive ? 'Filtered Net' : 'Forecast Net'}</span>
+            <strong style={{ color: filteredNet >= 0 ? 'var(--green)' : 'var(--red)' }}>
+              {filteredNet >= 0 ? '+' : ''}{formatMoney(filteredNet)}
+            </strong>
+            <small>Inflows minus outflows</small>
+          </article>
+        </div>
+
         <p style={{ color: 'var(--muted)', fontSize: '13px', margin: '-4px 0 12px' }}>
           Every planned income and expense, including starting balances, salary, installments, and credit dues. Type an <strong>Actual</strong> amount once something really happens.
         </p>
@@ -706,9 +1060,13 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                 const isDeficit = statusInfo?.type === 'deficit';
                 const isRecovery = statusInfo?.type === 'recovery';
 
+                const legacyId = getEntryId(e);
+                const isTargeted =
+                  highlightedEntryId === e.id ||
+                  (Boolean(highlightedEntryId) && legacyId === highlightedEntryId);
                 const rowClass = `entry-row ${isOpening ? 'opening-balance-row' : isLoan ? 'loan-entry-row' : ''} ${
                   isDeficit ? 'deficit-entry-row danger-row' : isRecovery ? 'recovery-entry-row success-row' : ''
-                }`.trim();
+                } ${isTargeted ? 'entry-row-targeted' : ''}`.trim();
 
                 const rowTitle = isOpening
                   ? 'Edit on the Accounts page'
@@ -721,6 +1079,9 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                 return (
                   <tr
                     key={e.id}
+                    id={`cashflow-row-${e.id}`}
+                    data-entry-id={e.id}
+                    data-legacy-id={legacyId}
                     className={rowClass}
                     title={rowTitle}
                     style={{ cursor: 'pointer' }}
@@ -746,7 +1107,33 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                       )}
                     </td>
                     <td className="cell-category">
-                      <strong>{e.category}</strong>
+                      <strong
+                        className="history-summary-clickable-row"
+                        style={{
+                          cursor: 'pointer',
+                          padding: '1px 5px',
+                          margin: '-1px -5px',
+                          borderRadius: '4px',
+                          display: 'inline-block',
+                          color: categoryFilter === e.category ? 'var(--brand-primary, #6366f1)' : undefined,
+                        }}
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          handleCategoryFilter(e.category);
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(ev) => {
+                          if (ev.key === 'Enter' || ev.key === ' ') {
+                            ev.preventDefault();
+                            ev.stopPropagation();
+                            handleCategoryFilter(e.category);
+                          }
+                        }}
+                        title={`Click to filter entries by category: ${e.category}`}
+                      >
+                        {e.category}
+                      </strong>
                       {isDeficit && (
                         <span
                           className="deficit-badge active"
@@ -768,9 +1155,19 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                       {[e.tag, ...(e.draws || []).map((draw) => draw.tag)]
                         .filter((tag, index, tags): tag is string => Boolean(tag) && tags.indexOf(tag) === index)
                         .map((tag) => (
-                        <span key={`${e.id}-${tag}`} className="cashflow-tag-pill">
-                          <span aria-hidden="true">#</span>{tag}
-                        </span>
+                          <button
+                            key={`${e.id}-${tag}`}
+                            type="button"
+                            className={`history-tag-filter ${selectedTag.toLowerCase() === tag.toLowerCase() ? 'active' : ''}`}
+                            onClick={(ev) => {
+                              ev.stopPropagation();
+                              handleTagFilter(tag);
+                            }}
+                            aria-pressed={selectedTag.toLowerCase() === tag.toLowerCase()}
+                            title={`Click to filter entries by tag: #${tag}`}
+                          >
+                            <span aria-hidden="true">#</span>{tag}
+                          </button>
                         ))}
                       {isForeign && (
                         <span className="source-pill" style={{ background: 'rgba(99, 102, 241, 0.12)', color: '#818cf8', fontWeight: 700, fontSize: '10px', marginLeft: '4px' }}>
@@ -791,9 +1188,55 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                         </div>
                       )}
                     </td>
-                    <td className="cell-account">{(e.account || '').toUpperCase() || '—'}</td>
+                    <td className="cell-account">
+                      <span
+                        className="account-pill history-summary-clickable-row"
+                        style={{
+                          cursor: 'pointer',
+                          border: selectedAccount.toLowerCase() === (e.account || 'cash').toLowerCase() ? '1px solid var(--brand-primary, #6366f1)' : undefined,
+                        }}
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          handleAccountFilter(e.account || 'cash');
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(ev) => {
+                          if (ev.key === 'Enter' || ev.key === ' ') {
+                            ev.preventDefault();
+                            ev.stopPropagation();
+                            handleAccountFilter(e.account || 'cash');
+                          }
+                        }}
+                        title={`Click to filter entries by account: ${(e.account || 'cash').toUpperCase()}`}
+                      >
+                        {(e.account || '').toUpperCase() || '—'}
+                      </span>
+                    </td>
                     <td className="cell-type">
-                      <span className={`pill ${e.type}`}>{e.type}</span>
+                      <span
+                        className={`pill ${e.type} history-summary-clickable-row`}
+                        style={{
+                          cursor: 'pointer',
+                          outline: typeFilter === e.type ? '2px solid var(--brand-primary, #6366f1)' : undefined,
+                        }}
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          setTypeFilter((current) => (current === e.type ? 'all' : e.type));
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(ev) => {
+                          if (ev.key === 'Enter' || ev.key === ' ') {
+                            ev.preventDefault();
+                            ev.stopPropagation();
+                            setTypeFilter((current) => (current === e.type ? 'all' : e.type));
+                          }
+                        }}
+                        title={`Click to filter entries by type: ${e.type}`}
+                      >
+                        {e.type}
+                      </span>
                     </td>
                     <td className="cell-source">
                       {isCardPurchase ? (

@@ -15,6 +15,7 @@ interface HistorySummaryTabProps {
   lifetimeNet: number;
   lifetimeSavingsRate: number;
   monthlySummaryRows: MonthlySummaryRow[];
+  onSelectMonth?: (month: string) => void;
 }
 
 export const HistorySummaryTab: React.FC<HistorySummaryTabProps> = ({
@@ -23,6 +24,7 @@ export const HistorySummaryTab: React.FC<HistorySummaryTabProps> = ({
   lifetimeNet,
   lifetimeSavingsRate,
   monthlySummaryRows,
+  onSelectMonth,
 }) => {
   return (
     <div className="history-tab-pane active" id="historySummaryPane">
@@ -85,8 +87,30 @@ export const HistorySummaryTab: React.FC<HistorySummaryTabProps> = ({
                   const rateBadgeClass =
                     row.savingsRate >= 20 ? 'favorable' : row.savingsRate >= 0 ? 'neutral' : 'unfavorable';
                   return (
-                    <tr key={row.month}>
-                      <td><strong>{row.month}</strong></td>
+                    <tr
+                      key={row.month}
+                      className={onSelectMonth ? 'history-summary-clickable-row' : undefined}
+                      onClick={() => onSelectMonth?.(row.month)}
+                      onKeyDown={(e) => {
+                        if ((e.key === 'Enter' || e.key === ' ') && onSelectMonth) {
+                          e.preventDefault();
+                          onSelectMonth(row.month);
+                        }
+                      }}
+                      tabIndex={onSelectMonth ? 0 : undefined}
+                      role={onSelectMonth ? 'button' : undefined}
+                      title={onSelectMonth ? `Click to view individual transactions for ${row.month}` : undefined}
+                    >
+                      <td className="cell-month-name">
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                          <strong>{row.month}</strong>
+                          {onSelectMonth && (
+                            <span className="history-row-action-hint" aria-hidden="true">
+                              →
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="number" style={{ color: 'var(--green)', fontWeight: 600 }}>
                         +{formatMoney(row.income)}
                       </td>

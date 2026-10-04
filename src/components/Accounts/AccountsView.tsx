@@ -10,7 +10,7 @@ import { StorageFxModal } from '../Modals/StorageFxModal';
 const preferredAccountOrder = ['cib', 'hsbc'];
 
 export const AccountsView: React.FC = () => {
-  const { accounts, updateAccountBalance, storageAssets, rates } = useBudgetStore();
+  const { accounts, updateAccountBalance, storageAssets, rates, navigateTo } = useBudgetStore();
 
   const [transferFrom, setTransferFrom] = useState<string>('');
   const [transferTo, setTransferTo] = useState<string>('');
@@ -86,7 +86,22 @@ export const AccountsView: React.FC = () => {
                     <div className="account-info">
                       <span className="account-badge">🏦</span>
                       <div>
-                        <strong className="account-title">{acc.name}</strong>
+                        <strong
+                          className="account-title history-summary-clickable-row"
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => navigateTo('cashflow', { account: id })}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              navigateTo('cashflow', { account: id });
+                            }
+                          }}
+                          tabIndex={0}
+                          role="button"
+                          title={`Click to view ${acc.name} entries in Cash Flow`}
+                        >
+                          {acc.name}
+                        </strong>
                         <span className="account-subtitle">Liquid Operating Account</span>
                       </div>
                     </div>
@@ -119,7 +134,29 @@ export const AccountsView: React.FC = () => {
                         HSBC Foreign Sub-Accounts (Reserves)
                       </span>
                       {hsbcForeignAssets.map((fAsset) => (
-                        <div key={fAsset.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
+                        <div
+                          key={fAsset.id}
+                          className="history-summary-clickable-row"
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            fontSize: '13px',
+                            cursor: 'pointer',
+                            padding: '4px 6px',
+                            borderRadius: '4px',
+                          }}
+                          onClick={() => navigateTo('storage')}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              navigateTo('storage');
+                            }
+                          }}
+                          tabIndex={0}
+                          role="button"
+                          title="Click to view and manage in Storage & Assets"
+                        >
                           <span>{fAsset.name}</span>
                           <div>
                             <strong style={{ marginRight: '8px' }}>{formatNativeCurrency(fAsset.quantity, fAsset.unit)}</strong>
@@ -153,7 +190,29 @@ export const AccountsView: React.FC = () => {
                   💵 Physical Cash Foreign Reserves
                 </span>
                 {cashForeignAssets.map((fAsset) => (
-                  <div key={fAsset.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
+                  <div
+                    key={fAsset.id}
+                    className="history-summary-clickable-row"
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      padding: '4px 6px',
+                      borderRadius: '4px',
+                    }}
+                    onClick={() => navigateTo('storage')}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        navigateTo('storage');
+                      }
+                    }}
+                    tabIndex={0}
+                    role="button"
+                    title="Click to view and manage in Storage & Assets"
+                  >
                     <span>{fAsset.name}</span>
                     <div>
                       <strong style={{ marginRight: '8px' }}>{formatNativeCurrency(fAsset.quantity, fAsset.unit)}</strong>

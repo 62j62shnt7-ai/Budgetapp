@@ -17,6 +17,7 @@ interface HistoryAnalyticsSectionProps {
   setAnalyticsCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
   sortedGroups: [string, GroupData][];
   totalAnalyticsAmount: number;
+  onSelectGroup?: (groupName: string, groupBy: 'category' | 'tag') => void;
 }
 
 const PALETTE = ['#0ea5e9', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#6366f1', '#14b8a6', '#f43f5e'];
@@ -30,6 +31,7 @@ export const HistoryAnalyticsSection: React.FC<HistoryAnalyticsSectionProps> = (
   setAnalyticsCollapsed,
   sortedGroups,
   totalAnalyticsAmount,
+  onSelectGroup,
 }) => {
   return (
     <section className="panel collapsible-panel history-analytics-panel" style={{ marginBottom: '18px' }}>
@@ -143,7 +145,30 @@ export const HistoryAnalyticsSection: React.FC<HistoryAnalyticsSectionProps> = (
                   const percent = totalAnalyticsAmount > 0 ? Math.round((data.total / totalAnalyticsAmount) * 100) : 0;
                   const color = PALETTE[idx % PALETTE.length];
                   return (
-                    <div key={name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', borderRadius: '6px', background: 'var(--surface-soft)', marginBottom: '4px' }}>
+                    <div
+                      key={name}
+                      className={onSelectGroup ? 'history-summary-clickable-row' : undefined}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '6px 10px',
+                        borderRadius: '6px',
+                        background: 'var(--surface-soft)',
+                        marginBottom: '4px',
+                        cursor: onSelectGroup ? 'pointer' : 'default',
+                      }}
+                      onClick={() => onSelectGroup?.(name, groupBy)}
+                      onKeyDown={(e) => {
+                        if ((e.key === 'Enter' || e.key === ' ') && onSelectGroup) {
+                          e.preventDefault();
+                          onSelectGroup(name, groupBy);
+                        }
+                      }}
+                      tabIndex={onSelectGroup ? 0 : undefined}
+                      role={onSelectGroup ? 'button' : undefined}
+                      title={onSelectGroup ? `Click to filter entries by ${groupBy}: ${name}` : undefined}
+                    >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: color }} />
                         <span style={{ fontSize: '13px', fontWeight: 600 }}>{name}</span>
@@ -176,7 +201,21 @@ export const HistoryAnalyticsSection: React.FC<HistoryAnalyticsSectionProps> = (
                   {sortedGroups.map(([name, data]) => {
                     const percent = totalAnalyticsAmount > 0 ? Math.round((data.total / totalAnalyticsAmount) * 100) : 0;
                     return (
-                      <tr key={name}>
+                      <tr
+                        key={name}
+                        className={onSelectGroup ? 'history-summary-clickable-row' : undefined}
+                        onClick={() => onSelectGroup?.(name, groupBy)}
+                        onKeyDown={(e) => {
+                          if ((e.key === 'Enter' || e.key === ' ') && onSelectGroup) {
+                            e.preventDefault();
+                            onSelectGroup(name, groupBy);
+                          }
+                        }}
+                        tabIndex={onSelectGroup ? 0 : undefined}
+                        role={onSelectGroup ? 'button' : undefined}
+                        style={{ cursor: onSelectGroup ? 'pointer' : 'default' }}
+                        title={onSelectGroup ? `Click to filter entries by ${groupBy}: ${name}` : undefined}
+                      >
                         <td><strong>{name}</strong></td>
                         <td><span className={`badge ${data.type === 'income' ? 'badge-income' : 'badge-expense'}`}>{data.type}</span></td>
                         <td className="number">{data.count}</td>

@@ -27,6 +27,7 @@ export const DashboardView: React.FC = () => {
     entryActualDates,
     creditSettlementOverrides,
     setActiveTab,
+    navigateTo,
   } = useBudgetStore();
 
   const [forecastRangeMonths, setForecastRangeMonths] = useState<number>(12);
@@ -320,7 +321,20 @@ export const DashboardView: React.FC = () => {
 
       {/* Metrics Grid */}
       <div className="metrics-grid">
-        <article className="metric highlight-metric">
+        <article
+          className="metric highlight-metric history-summary-clickable-row"
+          style={{ cursor: 'pointer' }}
+          onClick={() => setActiveTab('storage')}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setActiveTab('storage');
+            }
+          }}
+          tabIndex={0}
+          role="button"
+          title="Click to view Stored Assets & Valuations"
+        >
           <span>Total Net Worth</span>
           <strong id="totalNetWorth" style={{ color: 'var(--green, #10b981)', fontWeight: 800 }}>
             {formatMoney(netWorth)}
@@ -328,7 +342,20 @@ export const DashboardView: React.FC = () => {
           <small>Cash + Stored assets</small>
         </article>
 
-        <article className="metric">
+        <article
+          className="metric history-summary-clickable-row"
+          style={{ cursor: 'pointer' }}
+          onClick={() => setActiveTab('accounts')}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setActiveTab('accounts');
+            }
+          }}
+          tabIndex={0}
+          role="button"
+          title="Click to view and adjust Bank & Cash Accounts"
+        >
           <span>Actual cash today</span>
           <strong id="actualCashToday" style={{ color: '#38bdf8', fontWeight: 800 }}>
             {formatMoney(totalCash)}
@@ -337,7 +364,30 @@ export const DashboardView: React.FC = () => {
         </article>
 
         {/* CIB Dual Metric */}
-        <article className="metric credit-dual-metric cib-metric-card">
+        <article
+          className="metric credit-dual-metric cib-metric-card history-summary-clickable-row"
+          style={{ cursor: 'pointer' }}
+          onClick={() =>
+            navigateTo('cashflow', {
+              category: 'CIB Credit Due',
+              month: activeCibMonth,
+              highlightId: `credit-settlement-cib-${activeCibMonth}`,
+            })
+          }
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              navigateTo('cashflow', {
+                category: 'CIB Credit Due',
+                month: activeCibMonth,
+                highlightId: `credit-settlement-cib-${activeCibMonth}`,
+              });
+            }
+          }}
+          tabIndex={0}
+          role="button"
+          title={`Click to view CIB credit due for ${activeCibMonth} in Cash Flow`}
+        >
           <div className="metric-header-row">
             <div className="credit-card-title">
               <CreditCard size={15} className="credit-card-icon cib" />
@@ -376,13 +426,37 @@ export const DashboardView: React.FC = () => {
             </span>
           </div>
           <div className="credit-sub-grid">
-            <div className={`credit-sub-item ${cibThisMonth > 0 ? 'is-due' : 'is-settled'}`}>
+            <div
+              className={`credit-sub-item ${cibThisMonth > 0 ? 'is-due' : 'is-settled'}`}
+              style={{ cursor: 'pointer' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                navigateTo('cashflow', {
+                  category: 'CIB Credit Due',
+                  month: currentYm,
+                  highlightId: `credit-settlement-cib-${currentYm}`,
+                });
+              }}
+              title={`Click to view CIB credit due for ${currentYm}`}
+            >
               <span className="credit-sub-label" id="cibCurrentMonthLabel">{monthLabel(currentYm, 'THIS MO')}</span>
               <span className="credit-sub-val" id="cibCurrentDue">
                 {cibThisMonth > 0 ? formatMoney(cibThisMonth) : '0 EGP · Settled'}
               </span>
             </div>
-            <div className="credit-sub-item upcoming">
+            <div
+              className="credit-sub-item upcoming"
+              style={{ cursor: 'pointer' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                navigateTo('cashflow', {
+                  category: 'CIB Credit Due',
+                  month: nextYm,
+                  highlightId: `credit-settlement-cib-${nextYm}`,
+                });
+              }}
+              title={`Click to view CIB credit due for ${nextYm}`}
+            >
               <span className="credit-sub-label" id="cibNextMonthLabel">{monthLabel(nextYm, 'NEXT MO')}</span>
               <span className="credit-sub-val" id="cibNextDue">
                 {formatMoney(cibNextMonth)}
@@ -392,7 +466,30 @@ export const DashboardView: React.FC = () => {
         </article>
 
         {/* HSBC Dual Metric */}
-        <article className="metric credit-dual-metric hsbc-metric-card">
+        <article
+          className="metric credit-dual-metric hsbc-metric-card history-summary-clickable-row"
+          style={{ cursor: 'pointer' }}
+          onClick={() =>
+            navigateTo('cashflow', {
+              category: 'HSBC Credit Due',
+              month: activeHsbcMonth,
+              highlightId: `credit-settlement-hsbc-${activeHsbcMonth}`,
+            })
+          }
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              navigateTo('cashflow', {
+                category: 'HSBC Credit Due',
+                month: activeHsbcMonth,
+                highlightId: `credit-settlement-hsbc-${activeHsbcMonth}`,
+              });
+            }
+          }}
+          tabIndex={0}
+          role="button"
+          title={`Click to view HSBC credit due for ${activeHsbcMonth} in Cash Flow`}
+        >
           <div className="metric-header-row">
             <div className="credit-card-title">
               <CreditCard size={15} className="credit-card-icon hsbc" />
@@ -431,13 +528,37 @@ export const DashboardView: React.FC = () => {
             </span>
           </div>
           <div className="credit-sub-grid">
-            <div className={`credit-sub-item ${hsbcThisMonth > 0 ? 'is-due' : 'is-settled'}`}>
+            <div
+              className={`credit-sub-item ${hsbcThisMonth > 0 ? 'is-due' : 'is-settled'}`}
+              style={{ cursor: 'pointer' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                navigateTo('cashflow', {
+                  category: 'HSBC Credit Due',
+                  month: currentYm,
+                  highlightId: `credit-settlement-hsbc-${currentYm}`,
+                });
+              }}
+              title={`Click to view HSBC credit due for ${currentYm}`}
+            >
               <span className="credit-sub-label" id="hsbcCurrentMonthLabel">{monthLabel(currentYm, 'THIS MO')}</span>
               <span className="credit-sub-val" id="hsbcCurrentDue">
                 {hsbcThisMonth > 0 ? formatMoney(hsbcThisMonth) : '0 EGP · Settled'}
               </span>
             </div>
-            <div className="credit-sub-item upcoming">
+            <div
+              className="credit-sub-item upcoming"
+              style={{ cursor: 'pointer' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                navigateTo('cashflow', {
+                  category: 'HSBC Credit Due',
+                  month: nextYm,
+                  highlightId: `credit-settlement-hsbc-${nextYm}`,
+                });
+              }}
+              title={`Click to view HSBC credit due for ${nextYm}`}
+            >
               <span className="credit-sub-label" id="hsbcNextMonthLabel">{monthLabel(nextYm, 'NEXT MO')}</span>
               <span className="credit-sub-val" id="hsbcNextDue">
                 {formatMoney(hsbcNextMonth)}
@@ -446,7 +567,20 @@ export const DashboardView: React.FC = () => {
           </div>
         </article>
 
-        <article className="metric">
+        <article
+          className="metric history-summary-clickable-row"
+          style={{ cursor: 'pointer' }}
+          onClick={() => setActiveTab('storage')}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setActiveTab('storage');
+            }
+          }}
+          tabIndex={0}
+          role="button"
+          title="Click to view Stored Assets & Valuations"
+        >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
             <span>Stored assets</span>
             {rates.lastFetched && (
@@ -487,7 +621,20 @@ export const DashboardView: React.FC = () => {
           <small>Gold, USD, EUR</small>
         </article>
 
-        <article className="metric">
+        <article
+          className="metric history-summary-clickable-row"
+          style={{ cursor: 'pointer' }}
+          onClick={() => setActiveTab('deficits')}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setActiveTab('deficits');
+            }
+          }}
+          tabIndex={0}
+          role="button"
+          title="Click to view Deficit analysis and recovery plan"
+        >
           <span>Forecast low point</span>
           <strong
             id="forecastLow"
@@ -503,7 +650,36 @@ export const DashboardView: React.FC = () => {
           </small>
         </article>
 
-        <article className="metric">
+        <article
+          className="metric history-summary-clickable-row"
+          style={{ cursor: 'pointer' }}
+          onClick={() => {
+            if (overdueNow.length > 0 || deficits.hasDeficit) {
+              setActiveTab('deficits');
+            } else {
+              setActiveTab('cashflow');
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              if (overdueNow.length > 0 || deficits.hasDeficit) {
+                setActiveTab('deficits');
+              } else {
+                setActiveTab('cashflow');
+              }
+            }
+          }}
+          tabIndex={0}
+          role="button"
+          title={
+            overdueNow.length > 0
+              ? 'Click to view overdue obligations in Deficits view'
+              : deficits.hasDeficit
+              ? 'Click to view Deficit analysis and recovery plan'
+              : 'Click to view Cash Flow forecast'
+          }
+        >
           <span>Cashflow status</span>
           <strong
             id="cashflowStatus"
@@ -638,14 +814,64 @@ export const DashboardView: React.FC = () => {
             </strong>
             <small>{deficits.hasDeficit ? 'Review the remediation plan above' : 'No negative balance in the forecast'}</small>
           </div>
-          <div className="dashboard-focus-card">
+          <div
+            className={`dashboard-focus-card ${nextUpcomingExpense ? 'history-summary-clickable-row' : ''}`}
+            style={{ cursor: nextUpcomingExpense ? 'pointer' : 'default' }}
+            onClick={() => {
+              if (nextUpcomingExpense) {
+                navigateTo('cashflow', {
+                  category: nextUpcomingExpense.category,
+                  month: DateUtils.getMonthKey(nextUpcomingExpense.date),
+                  highlightId: nextUpcomingExpense.id,
+                });
+              }
+            }}
+            onKeyDown={(e) => {
+              if ((e.key === 'Enter' || e.key === ' ') && nextUpcomingExpense) {
+                e.preventDefault();
+                navigateTo('cashflow', {
+                  category: nextUpcomingExpense.category,
+                  month: DateUtils.getMonthKey(nextUpcomingExpense.date),
+                  highlightId: nextUpcomingExpense.id,
+                });
+              }
+            }}
+            tabIndex={nextUpcomingExpense ? 0 : undefined}
+            role={nextUpcomingExpense ? 'button' : undefined}
+            title={nextUpcomingExpense ? `Click to view ${nextUpcomingExpense.category} in Cash Flow` : undefined}
+          >
             <span className="dashboard-focus-label">Next expense</span>
             <strong style={{ color: nextUpcomingExpense ? 'var(--red, #f43f5e)' : 'var(--muted)', fontWeight: 700 }}>
               {nextUpcomingExpense ? `-${formatMoney(nextUpcomingExpense.amount)}` : 'None'}
             </strong>
             <small>{nextUpcomingExpense ? `${nextUpcomingExpense.category} · ${DateUtils.formatDisplayDate(nextUpcomingExpense.date)}` : 'No upcoming expense in range'}</small>
           </div>
-          <div className="dashboard-focus-card">
+          <div
+            className={`dashboard-focus-card ${nextUpcomingIncome ? 'history-summary-clickable-row' : ''}`}
+            style={{ cursor: nextUpcomingIncome ? 'pointer' : 'default' }}
+            onClick={() => {
+              if (nextUpcomingIncome) {
+                navigateTo('cashflow', {
+                  category: nextUpcomingIncome.category,
+                  month: DateUtils.getMonthKey(nextUpcomingIncome.date),
+                  highlightId: nextUpcomingIncome.id,
+                });
+              }
+            }}
+            onKeyDown={(e) => {
+              if ((e.key === 'Enter' || e.key === ' ') && nextUpcomingIncome) {
+                e.preventDefault();
+                navigateTo('cashflow', {
+                  category: nextUpcomingIncome.category,
+                  month: DateUtils.getMonthKey(nextUpcomingIncome.date),
+                  highlightId: nextUpcomingIncome.id,
+                });
+              }
+            }}
+            tabIndex={nextUpcomingIncome ? 0 : undefined}
+            role={nextUpcomingIncome ? 'button' : undefined}
+            title={nextUpcomingIncome ? `Click to view ${nextUpcomingIncome.category} in Cash Flow` : undefined}
+          >
             <span className="dashboard-focus-label">Next income</span>
             <strong style={{ color: nextUpcomingIncome ? 'var(--green, #10b981)' : 'var(--muted)', fontWeight: 700 }}>
               {nextUpcomingIncome ? `+${formatMoney(nextUpcomingIncome.amount)}` : 'None'}
@@ -664,7 +890,31 @@ export const DashboardView: React.FC = () => {
                 : entry.amount;
 
               return (
-                <div key={entry.id} className="dashboard-upcoming-row">
+                <div
+                  key={entry.id}
+                  className="dashboard-upcoming-row history-summary-clickable-row"
+                  style={{ cursor: 'pointer' }}
+                  onClick={() =>
+                    navigateTo('cashflow', {
+                      category: entry.category,
+                      month: DateUtils.getMonthKey(entry.date),
+                      highlightId: entry.id,
+                    })
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      navigateTo('cashflow', {
+                        category: entry.category,
+                        month: DateUtils.getMonthKey(entry.date),
+                        highlightId: entry.id,
+                      });
+                    }
+                  }}
+                  tabIndex={0}
+                  role="button"
+                  title={`Click to view ${entry.category} in Cash Flow`}
+                >
                   <span>{DateUtils.formatDisplayDate(entry.date)}</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <strong>{entry.category}</strong>
@@ -907,7 +1157,21 @@ export const DashboardView: React.FC = () => {
             ) : (
               <div className="stack-list">
                 {categoryRows.map(([category, amount]) => (
-                  <div key={category} className="list-row">
+                  <div
+                    key={category}
+                    className="list-row history-summary-clickable-row"
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => navigateTo('cashflow', { category })}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        navigateTo('cashflow', { category });
+                      }
+                    }}
+                    tabIndex={0}
+                    role="button"
+                    title={`Click to view ${category} in Cash Flow`}
+                  >
                     <span>{category}</span>
                     <strong>{formatMoney(amount)} ({categoryTotal ? Math.round((amount / categoryTotal) * 100) : 0}%)</strong>
                   </div>
@@ -923,15 +1187,32 @@ export const DashboardView: React.FC = () => {
             <div className="stack-list">
               {Object.entries(assetRows)
                 .filter(([, amount]) => amount > 0)
-                .map(([label, amount]) => (
-                  <div key={label} className="list-row">
-                    <span>
-                      {label === 'Foreign Currency' ? '💱 ' : label === 'Gold Assets' ? '🪙 ' : label === 'Liquid Cash / Bank' ? '💵 ' : ''}
-                      {label}
-                    </span>
-                    <strong>{formatMoney(amount)} ({assetTotal ? Math.round((amount / assetTotal) * 100) : 0}%)</strong>
-                  </div>
-                ))}
+                .map(([label, amount]) => {
+                  const targetTab = label === 'Liquid Cash / Bank' ? 'accounts' : 'storage';
+                  return (
+                    <div
+                      key={label}
+                      className="list-row history-summary-clickable-row"
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => setActiveTab(targetTab)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setActiveTab(targetTab);
+                        }
+                      }}
+                      tabIndex={0}
+                      role="button"
+                      title={`Click to view ${label === 'Liquid Cash / Bank' ? 'Accounts' : 'Storage'}`}
+                    >
+                      <span>
+                        {label === 'Foreign Currency' ? '💱 ' : label === 'Gold Assets' ? '🪙 ' : label === 'Liquid Cash / Bank' ? '💵 ' : ''}
+                        {label}
+                      </span>
+                      <strong>{formatMoney(amount)} ({assetTotal ? Math.round((amount / assetTotal) * 100) : 0}%)</strong>
+                    </div>
+                  );
+                })}
             </div>
           </section>
           <section className="panel">
@@ -939,7 +1220,20 @@ export const DashboardView: React.FC = () => {
               <h3 style={{ margin: 0 }}>Forecast warning</h3>
             </div>
             {deficits.hasDeficit ? (
-              <div className="stack-list">
+              <div
+                className="stack-list history-summary-clickable-row"
+                style={{ cursor: 'pointer', borderRadius: '6px' }}
+                onClick={() => setActiveTab('deficits')}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setActiveTab('deficits');
+                  }
+                }}
+                tabIndex={0}
+                role="button"
+                title="Click to view Deficit analysis and recovery plan"
+              >
                 <div className="list-row danger-row">
                   <span>Projected deficit peak</span>
                   <strong>{formatMoney(deficits.worstDeficit)}</strong>
@@ -954,7 +1248,7 @@ export const DashboardView: React.FC = () => {
                 </div>
                 <div className="list-row">
                   <span>Status</span>
-                  <strong style={{ color: 'var(--red)' }}>Action Required</strong>
+                  <strong style={{ color: 'var(--red)' }}>Action Required →</strong>
                 </div>
               </div>
             ) : (
