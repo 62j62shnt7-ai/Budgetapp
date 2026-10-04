@@ -5,7 +5,7 @@ import { getCurrencyRate, formatNativeCurrency } from '../../engine/currency';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { getEntryActualAmount } from '../../engine/forecast';
 import type { CashEntry, EntryDraw } from '../../types';
-import { DeleteAffectedPartiesModal, type AffectedPartyOption } from './DeleteAffectedPartiesModal';
+import { AffectedRecordsModal, type AffectedPartyOption } from './AffectedRecordsModal';
 
 function generateSeriesId(): string {
   return `series-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -805,7 +805,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
         ];
 
         return (
-          <DeleteAffectedPartiesModal
+          <AffectedRecordsModal
             isOpen={Boolean(deleteDrawTarget)}
             title="Delete Tranche Draw"
             subtitle="Choose which records and balances should be updated upon deleting this tranche."

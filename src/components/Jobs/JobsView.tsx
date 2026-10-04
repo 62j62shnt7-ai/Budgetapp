@@ -19,7 +19,7 @@ import {
   AlertCircle,
   CheckCircle2,
 } from 'lucide-react';
-import { DeleteAffectedPartiesModal } from '../Modals/DeleteAffectedPartiesModal';
+import { AffectedRecordsModal } from '../Modals/AffectedRecordsModal';
 import { hasJobAffectedParties, hasJobPaymentAffectedParties } from '../../utils/affectedRecords';
 
 interface JobsViewProps {
@@ -713,7 +713,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
 
       {/* Selective Payment Deletion Modal */}
       {deletePaymentTarget && (
-        <DeleteAffectedPartiesModal
+        <AffectedRecordsModal
           isOpen={Boolean(deletePaymentTarget)}
           title="Delete Job Payment"
           subtitle="Choose which records and balances should be updated upon deleting this payment."
@@ -794,7 +794,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
 
       {/* Selective Job Deletion Modal */}
       {deleteJobTarget && (
-        <DeleteAffectedPartiesModal
+        <AffectedRecordsModal
           isOpen={Boolean(deleteJobTarget)}
           title="Delete Job"
           subtitle="Choose what records should be affected when deleting this job."
