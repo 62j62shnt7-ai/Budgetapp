@@ -341,3 +341,51 @@ export function getCoveredCreditSettlementKeys(
   });
   return coveredKeys;
 }
+
+export function getCreditAccountKey(entry: CashEntry): 'hsbc' | 'cib' {
+  const acc = `${entry.account || ''} ${entry.creditType || ''}`.toLowerCase();
+  return acc.includes('hsbc') ? 'hsbc' : 'cib';
+}
+
+export function isCreditSettlementRow(entry: CashEntry): boolean {
+  if (!entry || entry.type !== 'expense') return false;
+  if (isCreditCardExpense(entry)) return false;
+  if (entry.source === 'recurring credit') return true;
+  if (isLumpCreditDueForAccount(entry, 'hsbc') || isLumpCreditDueForAccount(entry, 'cib')) return true;
+  return (entry.category || '').toLowerCase().includes('credit due');
+}
+
+/**
+ * Returns, for every credit settlement row, the amount that is NOT already covered
+ * by card spends (card spends are counted in the month they were spent, so the
+ * settlement only contributes its excess, e.g. fees/interest/older balance).
+ * Covered amount per account+settlement-month is allocated once, in date/id order.
+ */
+export function computeSettlementUncovered(
+  entries: CashEntry[],
+  getAmount: (entry: CashEntry) => number,
+  getDate: (entry: CashEntry) => string,
+  creditSettlementOverrides?: Record<string, CreditSettlementOverride>,
+  entryActualDates?: Record<string, string>
+): Map<string, number> {
+  const pool = new Map<string, number>();
+  entries.forEach((e) => {
+    if (!isCreditCardExpense(e)) return;
+    const month = getCreditSettlementMonth(e, creditSettlementOverrides, entryActualDates);
+    const key = `${getCreditAccountKey(e)}|${month}`;
+    pool.set(key, (pool.get(key) || 0) + getAmount(e));
+  });
+
+  const result = new Map<string, number>();
+  entries
+    .filter(isCreditSettlementRow)
+    .sort((a, b) => (getDate(a) || '').localeCompare(getDate(b) || '') || (a.id || '').localeCompare(b.id || ''))
+    .forEach((s) => {
+      const amt = getAmount(s);
+      const key = `${getCreditAccountKey(s)}|${DateUtils.getMonthKey(getDate(s))}`;
+      const covered = Math.min(amt, pool.get(key) || 0);
+      pool.set(key, (pool.get(key) || 0) - covered);
+      result.set(s.id, amt - covered);
+    });
+  return result;
+}

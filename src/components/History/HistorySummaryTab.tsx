@@ -5,6 +5,7 @@ interface MonthlySummaryRow {
   month: string;
   income: number;
   expenses: number;
+  creditSettled?: number;
   net: number;
   savingsRate: number;
 }
@@ -12,6 +13,7 @@ interface MonthlySummaryRow {
 interface HistorySummaryTabProps {
   totalLifetimeIncome: number;
   totalLifetimeExpenses: number;
+  totalLifetimeCredit?: number;
   lifetimeNet: number;
   lifetimeSavingsRate: number;
   monthlySummaryRows: MonthlySummaryRow[];
@@ -21,6 +23,7 @@ interface HistorySummaryTabProps {
 export const HistorySummaryTab: React.FC<HistorySummaryTabProps> = ({
   totalLifetimeIncome,
   totalLifetimeExpenses,
+  totalLifetimeCredit = 0,
   lifetimeNet,
   lifetimeSavingsRate,
   monthlySummaryRows,
@@ -40,6 +43,9 @@ export const HistorySummaryTab: React.FC<HistorySummaryTabProps> = ({
           <span>Lifetime Expenses</span>
           <strong id="historyLifetimeExpenses" style={{ color: 'var(--red)' }}>
             {formatMoney(totalLifetimeExpenses)}
+            {totalLifetimeCredit > 0 && (
+              <span style={{ color: 'var(--muted)', fontWeight: 500, fontSize: '0.6em' }}> ({formatMoney(totalLifetimeExpenses - totalLifetimeCredit)} + {formatMoney(totalLifetimeCredit)} credit settled)</span>
+            )}
           </strong>
           <small>Total realized expenses</small>
         </article>
@@ -116,6 +122,9 @@ export const HistorySummaryTab: React.FC<HistorySummaryTabProps> = ({
                       </td>
                       <td className="number" style={{ color: 'var(--red)', fontWeight: 600 }}>
                         -{formatMoney(row.expenses)}
+                        {!!row.creditSettled && row.creditSettled > 0 && (
+                          <span style={{ color: 'var(--muted)', fontWeight: 500, fontSize: '0.85em' }}> ({formatMoney(row.expenses - row.creditSettled)} + {formatMoney(row.creditSettled)} credit settled)</span>
+                        )}
                       </td>
                       <td
                         className="number"

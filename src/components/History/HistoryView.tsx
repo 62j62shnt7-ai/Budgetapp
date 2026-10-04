@@ -4,9 +4,8 @@ import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { formatNativeCurrency } from '../../engine/currency';
 import {
   isCreditCardExpense,
-  getCreditSettlementMonth,
   buildCreditDueEntries,
-  isLumpCreditDueForAccount,
+  isCreditSettlementRow,
   getCoveredCreditSettlementKeys,
 } from '../../engine/creditCards';
 import { buildInstallmentEntries } from '../../engine/salaryAndInstallments';
@@ -298,28 +297,26 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
   });
   const orderedMonths = Array.from(monthsSet).sort();
 
+  // Cash basis: card spends are not counted when swiped; the settlement is counted
+  // in full in the month it is paid, so nothing is double counted. The settled
+  // credit amount is reported separately (shown in brackets in the UI).
   const monthlySummaryRows = React.useMemo(() => {
     return orderedMonths.map((month) => {
       let income = 0;
       let expenses = 0;
-
-      // Track credit card actuals maturing in this settlement month to prevent double counting
-      // Settlement overrides (moved due dates) must be respected here, otherwise the
-      // card spend and its credit-due lump sum land in different months.
-      let cibOffset = actualEntries
-        .filter((e) => isCreditCardExpense(e) && (e.account || e.creditType || '').toLowerCase().includes('cib') && getCreditSettlementMonth(e, creditSettlementOverrides, entryActualDates) === month)
-        .reduce((sum, e) => sum + getEntryActualAmount(e), 0);
-
-      let hsbcOffset = actualEntries
-        .filter((e) => isCreditCardExpense(e) && (e.account || e.creditType || '').toLowerCase().includes('hsbc') && getCreditSettlementMonth(e, creditSettlementOverrides, entryActualDates) === month)
-        .reduce((sum, e) => sum + getEntryActualAmount(e), 0);
+      let creditSettled = 0;
 
       actualEntries.forEach((entry) => {
+        if (entry.type !== 'income' && isCreditCardExpense(entry)) return;
+        const settlement = isCreditSettlementRow(entry);
         if (entry.draws && entry.draws.length > 0) {
           const monthDraws = entry.draws.filter((d) => DateUtils.getMonthKey(d.date) === month);
           const monthTotal = monthDraws.reduce((sum, d) => sum + Number(d.amount || 0), 0);
           if (entry.type === 'income') income += monthTotal;
-          else expenses += monthTotal;
+          else {
+            expenses += monthTotal;
+            if (settlement) creditSettled += monthTotal;
+          }
         } else {
           const actDate = getEntryActualDate(entry);
           if (DateUtils.getMonthKey(actDate) === month) {
@@ -327,22 +324,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
             if (entry.type === 'income') {
               income += amt;
             } else {
-              if (entry.source === 'recurring credit' || (entry.category || '').toLowerCase().includes('credit due')) {
-                const acc = (entry.account || entry.creditType || '').toLowerCase();
-                if (acc.includes('cib')) {
-                  const ded = Math.min(amt, cibOffset);
-                  cibOffset = Math.max(0, cibOffset - ded);
-                  expenses += (amt - ded);
-                } else if (acc.includes('hsbc')) {
-                  const ded = Math.min(amt, hsbcOffset);
-                  hsbcOffset = Math.max(0, hsbcOffset - ded);
-                  expenses += (amt - ded);
-                } else {
-                  expenses += amt;
-                }
-              } else {
-                expenses += amt;
-              }
+              expenses += amt;
+              if (settlement) creditSettled += amt;
             }
           }
         }
@@ -355,14 +338,16 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
         month,
         income,
         expenses,
+        creditSettled,
         net,
         savingsRate,
       };
     });
-  }, [orderedMonths, actualEntries, getEntryActualAmount, getEntryActualDate, creditSettlementOverrides, entryActualDates]);
+  }, [orderedMonths, actualEntries, getEntryActualAmount, getEntryActualDate]);
 
   const totalLifetimeIncome = monthlySummaryRows.reduce((sum, r) => sum + r.income, 0);
   const totalLifetimeExpenses = monthlySummaryRows.reduce((sum, r) => sum + r.expenses, 0);
+  const totalLifetimeCredit = monthlySummaryRows.reduce((sum, r) => sum + r.creditSettled, 0);
   const lifetimeNet = totalLifetimeIncome - totalLifetimeExpenses;
   const lifetimeSavingsRate = totalLifetimeIncome > 0 ? Math.round((lifetimeNet / totalLifetimeIncome) * 100) : 0;
 
@@ -466,22 +451,17 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
     .filter((e) => e.type === 'income')
     .reduce((sum, e) => sum + getFilteredEntryAmount(e), 0);
 
+  // Cash basis: card spends are excluded; settlements count in full.
+  const getNettedExpenseAmount = (e: CashEntry): number =>
+    isCreditCardExpense(e) ? 0 : getFilteredEntryAmount(e);
+
   const filteredExpenses = filteredEntries
     .filter((e) => e.type === 'expense')
-    .reduce((sum, e) => {
-      const amount = getFilteredEntryAmount(e);
-      if (e.source === 'recurring credit' || isLumpCreditDueForAccount(e, 'hsbc') || isLumpCreditDueForAccount(e, 'cib')) {
-        const account = (e.account || e.creditType || '').toLowerCase().includes('hsbc') ? 'hsbc' : 'cib';
-        const month = DateUtils.getMonthKey(getEntryActualDate(e));
-        const covered = actualEntries
-          .filter((card) => isCreditCardExpense(card)
-            && (card.account || card.creditType || '').toLowerCase().includes(account)
-            && getCreditSettlementMonth(card, creditSettlementOverrides, entryActualDates) === month)
-          .reduce((total, card) => total + getEntryActualAmount(card), 0);
-        return sum + Math.max(0, amount - covered);
-      }
-      return sum + amount;
-    }, 0);
+    .reduce((sum, e) => sum + getNettedExpenseAmount(e), 0);
+
+  const filteredCredit = filteredEntries
+    .filter((e) => isCreditSettlementRow(e))
+    .reduce((sum, e) => sum + getFilteredEntryAmount(e), 0);
 
   const filteredNet = filteredIncome - filteredExpenses;
 
@@ -519,18 +499,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
       return;
     }
     const key = `${groupBy === 'category' ? getSmartGroupBucket(e) : (e.tag || 'Untagged')}|${e.type}`;
-    let amt = getFilteredEntryAmount(e);
-    if (e.type === 'expense' && (e.source === 'recurring credit'
-      || isLumpCreditDueForAccount(e, 'hsbc') || isLumpCreditDueForAccount(e, 'cib'))) {
-      const account = (e.account || e.creditType || '').toLowerCase().includes('hsbc') ? 'hsbc' : 'cib';
-      const month = DateUtils.getMonthKey(getEntryActualDate(e));
-      const covered = actualEntries
-        .filter((card) => isCreditCardExpense(card)
-          && (card.account || card.creditType || '').toLowerCase().includes(account)
-          && getCreditSettlementMonth(card, creditSettlementOverrides, entryActualDates) === month)
-        .reduce((total, card) => total + getEntryActualAmount(card), 0);
-      amt = Math.max(0, amt - covered);
-    }
+    const amt = e.type === 'expense' ? getNettedExpenseAmount(e) : getFilteredEntryAmount(e);
     if (!groups[key]) groups[key] = { count: 0, total: 0, type: e.type };
     groups[key].count += 1;
     groups[key].total += amt;
@@ -572,6 +541,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
         <HistorySummaryTab
           totalLifetimeIncome={totalLifetimeIncome}
           totalLifetimeExpenses={totalLifetimeExpenses}
+          totalLifetimeCredit={totalLifetimeCredit}
           lifetimeNet={lifetimeNet}
           lifetimeSavingsRate={lifetimeSavingsRate}
           monthlySummaryRows={monthlySummaryRows}
@@ -798,7 +768,12 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
             </article>
             <article className="metric history-metric">
               <span>Filtered Expenses</span>
-              <strong style={{ color: 'var(--red)' }}>{formatMoney(filteredExpenses)}</strong>
+              <strong style={{ color: 'var(--red)' }}>
+                {formatMoney(filteredExpenses)}
+                {filteredCredit > 0 && (
+                  <span style={{ color: 'var(--muted)', fontWeight: 500, fontSize: '0.8em' }}> ({formatMoney(filteredExpenses - filteredCredit)} + {formatMoney(filteredCredit)} credit settled)</span>
+                )}
+              </strong>
               <small>Total for selected criteria</small>
             </article>
             <article className="metric history-metric">

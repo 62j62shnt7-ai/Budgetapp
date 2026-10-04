@@ -1174,6 +1174,25 @@ assert.strictEqual(useBudgetStore.getState().entryActuals['credit-settlement-cib
 assert.strictEqual(useBudgetStore.getState().accounts.cib.balance, 10000, 'Paid settlement amount refunded to bank (1000 + 9000)');
 console.log('✓ Settlement clear: reverts to single planned due (overdue) and refunds bank balance');
 
+{
+  const { computeSettlementUncovered } = await import('../src/engine/creditCards.ts');
+  const card = (id, date, amount, acc) => ({ id, type: 'expense', date, actualDate: date, amount, category: 'Food', account: acc, source: 'credit card', creditType: `${acc}_card` });
+  const settle = (id, date, amount) => ({ id, type: 'expense', date, amount, category: 'Credit Due', account: 'cib', source: 'recurring credit', creditType: 'cib' });
+  const amt = (e) => e.amount;
+  const dt = (e) => e.date;
+  const run = (list) => computeSettlementUncovered(list, amt, dt, {}, {});
+
+  // Spend 1000 (Sep 1) settles Oct 15 -> fully covered
+  assert.strictEqual(run([card('c1', '2026-09-01', 1000, 'cib'), settle('credit-settlement-cib-2026-10', '2026-10-15', 1000)]).get('credit-settlement-cib-2026-10'), 0, 'Exact settlement adds nothing');
+  // Settlement with fees -> only the excess counts
+  assert.strictEqual(run([card('c1', '2026-09-01', 1000, 'cib'), settle('credit-settlement-cib-2026-10', '2026-10-15', 1050)]).get('credit-settlement-cib-2026-10'), 50, 'Settlement fees count');
+  // No matching spend -> counted in full
+  assert.strictEqual(run([settle('credit-settlement-cib-2026-10', '2026-10-15', 700)]).get('credit-settlement-cib-2026-10'), 700, 'Uncovered settlement counts in full');
+  // Another account does not offset
+  assert.strictEqual(run([card('h1', '2026-09-01', 1000, 'hsbc'), settle('credit-settlement-cib-2026-10', '2026-10-15', 500)]).get('credit-settlement-cib-2026-10'), 500, 'HSBC spend does not offset CIB settlement');
+  console.log('✓ History credit netting: spend counted once, settlement only counts its excess');
+}
+
 console.log('\n=================================================================');
 console.log('🌟 100% OF ENGINE, STORE, AND BUSINESS LOGIC TESTS PASSED! 🌟');
 console.log('=================================================================');
