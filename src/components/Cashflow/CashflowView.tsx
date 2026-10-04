@@ -76,6 +76,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     deletedForecasts,
     recordActual,
     settleJobForecastPayment,
+    runTransaction,
     rates,
     storageAssets,
     partTimeJobs,
@@ -218,10 +219,19 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     plannedAmount: number;
   } | null>(null);
 
+  const pendingDeductRef = React.useRef<{ entry: CashEntry; amount: number } | null>(null);
+  const flushPendingDeduct = () => {
+    const pending = pendingDeductRef.current;
+    pendingDeductRef.current = null;
+    if (pending && onDeductPrompt) onDeductPrompt(pending.entry, pending.amount);
+  };
+
   const handleActualSpend = (entry: CashEntry, addedAmount: number, currentActual: number) => {
     const newActual = currentActual + addedAmount;
     recordActual(entry.id, newActual, DateUtils.todayString());
-    if (onDeductPrompt) onDeductPrompt(entry, addedAmount);
+    // Decision modals are top-layer and would hide the deduct dialog, so the
+    // deduct prompt is queued and flushed once those modals are resolved.
+    pendingDeductRef.current = { entry, amount: addedAmount };
 
     const plannedAmount = Number(entry.amount || 0);
 
@@ -267,17 +277,21 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
         actualAmount: newActual,
         plannedAmount: effectivePlannedAmount,
       });
+      return;
     }
+    flushPendingDeduct();
   };
 
   const handleScaleLoanRepayment = (scaledAmount: number) => {
     if (!loanAdjustmentData) return;
     const { inflowEntry, linkedInfo, totalDrawn, plannedLoan } = loanAdjustmentData;
-    if (linkedInfo.type === 'single') {
-      updateEntry(linkedInfo.target.id, { amount: scaledAmount });
-    } else {
-      updateInstallment(linkedInfo.target.id, { amount: scaledAmount });
-    }
+    runTransaction(`Scale Loan Repayment: ${inflowEntry.category}`, () => {
+      if (linkedInfo.type === 'single') {
+        updateEntry(linkedInfo.target.id, { amount: scaledAmount });
+      } else {
+        updateInstallment(linkedInfo.target.id, { amount: scaledAmount });
+      }
+    });
     setLoanAdjustmentData(null);
 
     if (totalDrawn >= plannedLoan && plannedLoan > 0 && !inflowEntry.isClosed) {
@@ -286,7 +300,9 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
         actualAmount: totalDrawn,
         plannedAmount: plannedLoan,
       });
+      return;
     }
+    flushPendingDeduct();
   };
 
   const handleKeepLoanRepayment = () => {
@@ -300,30 +316,35 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
         actualAmount: totalDrawn,
         plannedAmount: plannedLoan,
       });
+      return;
     }
+    flushPendingDeduct();
   };
 
   const handleFinishEntry = () => {
     if (!exactDecisionData) return;
     const { entry, actualAmount } = exactDecisionData;
-    updateEntry(entry.id, { isClosed: true, keepOngoing: false, amount: actualAmount });
-    settleJobForecastPayment(entry.id, actualAmount, true);
+    runTransaction(`Finish Entry: ${entry.category}`, () => {
+      updateEntry(entry.id, { isClosed: true, keepOngoing: false, amount: actualAmount });
+      settleJobForecastPayment(entry.id, actualAmount, true);
 
-    if (isLoanInflow(entry)) {
-      const linked = findLinkedLoanRepayment(entry, entries, installments);
-      if (linked) {
-        const scaleCalc = calculateLoanRepaymentScale(entry, linked, actualAmount);
-        if (scaleCalc) {
-          if (linked.type === 'single') {
-            updateEntry(linked.target.id, { amount: scaleCalc.scaledAmount });
-          } else {
-            updateInstallment(linked.target.id, { amount: scaleCalc.scaledAmount });
+      if (isLoanInflow(entry)) {
+        const linked = findLinkedLoanRepayment(entry, entries, installments);
+        if (linked) {
+          const scaleCalc = calculateLoanRepaymentScale(entry, linked, actualAmount);
+          if (scaleCalc) {
+            if (linked.type === 'single') {
+              updateEntry(linked.target.id, { amount: scaleCalc.scaledAmount });
+            } else {
+              updateInstallment(linked.target.id, { amount: scaleCalc.scaledAmount });
+            }
           }
         }
       }
-    }
+    });
 
     setExactDecisionData(null);
+    flushPendingDeduct();
   };
 
   const handleKeepEntry = () => {
@@ -331,6 +352,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     const { entry } = exactDecisionData;
     updateEntry(entry.id, { keepOngoing: true, isClosed: false });
     setExactDecisionData(null);
+    flushPendingDeduct();
   };
 
   // Collapsible sections

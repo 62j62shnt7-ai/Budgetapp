@@ -8,7 +8,7 @@ interface LoanBridgeModalProps {
 }
 
 export const LoanBridgeModal: React.FC<LoanBridgeModalProps> = ({ isOpen, onClose }) => {
-  const { addEntry, addInstallment } = useBudgetStore();
+  const { addEntry, addInstallment, runTransaction } = useBudgetStore();
 
   const [name, setName] = useState<string>('Bridge Loan');
   const [amount, setAmount] = useState<string>('');
@@ -32,54 +32,58 @@ export const LoanBridgeModal: React.FC<LoanBridgeModalProps> = ({ isOpen, onClos
     e.preventDefault();
     const loanAmt = Number(amount);
     if (!loanAmt || loanAmt <= 0) return;
-    const loanId = `loan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const loanTitle = name.trim() || 'Bridge Loan';
 
-    // 1. Add disbursement income entry
-    addEntry({
-      date: disbursementDate,
-      category: `Loan Inflow: ${name.trim() || 'Bridge Loan'}`,
-      subcategory: 'Loan',
-      tag: 'Loan',
-      account,
-      type: 'income',
-      amount: loanAmt,
-      currency: 'EGP',
-      source: 'bridge loan',
-      loanId,
-      initialAmount: loanAmt,
-    });
+    runTransaction(`Bridge Deficit with Loan: ${loanTitle}`, () => {
+      const loanId = `loan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-    // 2. Schedule repayment
-    if (repaymentType === 'single') {
-      const repAmt = Number(repaymentAmount) || loanAmt;
+      // 1. Add disbursement income entry
       addEntry({
-        date: dueDate,
-        category: `Loan Repayment: ${name.trim() || 'Bridge Loan'}`,
-        subcategory: 'Loan Repayment',
-        tag: 'Loan Repayment',
+        date: disbursementDate,
+        category: `Loan Inflow: ${loanTitle}`,
+        subcategory: 'Loan',
+        tag: 'Loan',
         account,
-        type: 'expense',
-        amount: repAmt,
+        type: 'income',
+        amount: loanAmt,
         currency: 'EGP',
-        source: 'loan repayment',
+        source: 'bridge loan',
         loanId,
-        initialAmount: repAmt,
+        initialAmount: loanAmt,
       });
-    } else {
-      const perMonth = Number(installmentAmount) || Math.round(loanAmt / installmentMonths);
-      addInstallment({
-        name: `${name} Repayment`,
-        tag: 'Loan Repayment',
-        amount: perMonth,
-        frequency: 1,
-        totalMonths: installmentMonths,
-        remainingMonths: installmentMonths,
-        startMonth: installmentStartMonth,
-        account,
-        loanId,
-        initialAmount: perMonth,
-      });
-    }
+
+      // 2. Schedule repayment
+      if (repaymentType === 'single') {
+        const repAmt = Number(repaymentAmount) || loanAmt;
+        addEntry({
+          date: dueDate,
+          category: `Loan Repayment: ${loanTitle}`,
+          subcategory: 'Loan Repayment',
+          tag: 'Loan Repayment',
+          account,
+          type: 'expense',
+          amount: repAmt,
+          currency: 'EGP',
+          source: 'loan repayment',
+          loanId,
+          initialAmount: repAmt,
+        });
+      } else {
+        const perMonth = Number(installmentAmount) || Math.round(loanAmt / installmentMonths);
+        addInstallment({
+          name: `${loanTitle} Repayment`,
+          tag: 'Loan Repayment',
+          amount: perMonth,
+          frequency: 1,
+          totalMonths: installmentMonths,
+          remainingMonths: installmentMonths,
+          startMonth: installmentStartMonth,
+          account,
+          loanId,
+          initialAmount: perMonth,
+        });
+      }
+    });
 
     onClose();
   };

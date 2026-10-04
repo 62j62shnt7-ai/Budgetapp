@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test": "tsx test/verifyMath.mjs && tsx test/testUserJson.mjs && tsx test/testAffectedModalOnly.mjs",
+    "test": "tsx test/verifyMath.mjs && tsx test/testUserJson.mjs && tsx test/testAffectedModalOnly.mjs && tsx test/testUndoRedo.mjs",
     "test:ui": "node test/ui-audit.mjs",
     "typecheck": "tsc -b",
     "score": "tsx test/healthReport.mjs",

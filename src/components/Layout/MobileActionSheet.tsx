@@ -4,6 +4,7 @@ import {
   Sun, 
   Moon, 
   RotateCw, 
+  RotateCcw,
   Cloud, 
   Database, 
   CreditCard, 
@@ -36,7 +37,19 @@ export const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
   onOpenGistSync,
   updateStatus,
 }) => {
-  const { theme, setTheme, gistId, gistAutoSync, gistSyncStatus, activeTab, setActiveTab } = useBudgetStore();
+  const { 
+    theme, 
+    setTheme, 
+    gistId, 
+    gistAutoSync, 
+    gistSyncStatus, 
+    activeTab, 
+    setActiveTab,
+    undo,
+    redo,
+    undoStack,
+    redoStack
+  } = useBudgetStore();
 
   if (!isOpen) return null;
 
@@ -135,6 +148,52 @@ export const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
           <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '-2px' }}>
             Quick Actions &amp; Tools
           </span>
+          {/* Undo Action */}
+          {undoStack.length > 0 && (
+            <button
+              type="button"
+              className="action-sheet-btn"
+              onClick={() => {
+                undo();
+                onClose();
+              }}
+            >
+              <RotateCcw size={20} color="var(--amber, #f59e0b)" />
+              <div className="action-sheet-btn-text">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <strong>Undo: {undoStack[0].label}</strong>
+                  <span className="undo-counter-badge" style={{ fontSize: '11px', padding: '1px 7px' }}>
+                    {undoStack.length}
+                  </span>
+                </div>
+                <span>Revert the last modification</span>
+              </div>
+            </button>
+          )}
+
+          {/* Redo Action */}
+          {redoStack.length > 0 && (
+            <button
+              type="button"
+              className="action-sheet-btn"
+              onClick={() => {
+                redo();
+                onClose();
+              }}
+            >
+              <RotateCw size={20} color="var(--blue, #3b82f6)" />
+              <div className="action-sheet-btn-text">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <strong>Redo: {redoStack[0].label}</strong>
+                  <span className="undo-counter-badge" style={{ fontSize: '11px', padding: '1px 7px' }}>
+                    {redoStack.length}
+                  </span>
+                </div>
+                <span>Re-apply the undone action</span>
+              </div>
+            </button>
+          )}
+
           {/* Add Expense (Primary) */}
           <button
             type="button"

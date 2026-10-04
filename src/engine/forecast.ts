@@ -265,6 +265,7 @@ export function getActiveForecastEntries(
   );
 
   return candidates
+    .filter((entry) => !entry.isClosed)
     .filter((entry) => {
       // Exclude individual credit card purchases — they're rolled into creditDueEntries
       if (isCreditCardExpense(entry)) return false;

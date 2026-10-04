@@ -491,6 +491,7 @@ export const JobPaymentModal: React.FC<JobPaymentModalProps> = ({ isOpen, jobId,
     addEntry,
     updateEntry,
     entries,
+    runTransaction,
   } = useBudgetStore();
 
   const job = partTimeJobs.find((j) => j.id === jobId);
@@ -550,11 +551,12 @@ export const JobPaymentModal: React.FC<JobPaymentModalProps> = ({ isOpen, jobId,
     const amt = Number(actualPaidAmount);
     if (!amt || amt <= 0) return;
 
-    const effectiveFxRate = Number(customFxRate) || fin.fxRate || 48.5;
-    let finalEgpAmount = Number(customEgpAmount) || Math.round(amt * effectiveFxRate);
-    let chosenLabel = '';
+    runTransaction(`Record Payment: ${job.title}`, () => {
+      const effectiveFxRate = Number(customFxRate) || fin.fxRate || 48.5;
+      let finalEgpAmount = Number(customEgpAmount) || Math.round(amt * effectiveFxRate);
+      let chosenLabel = '';
 
-    // 1. Handle Destination & Funds Routing
+      // 1. Handle Destination & Funds Routing
     if (shouldDeposit) {
       if (settlementMode === 'foreign' && isForeign) {
         if (foreignDestination.startsWith('storage:existing-')) {
@@ -721,13 +723,14 @@ export const JobPaymentModal: React.FC<JobPaymentModalProps> = ({ isOpen, jobId,
       }
     }
 
-    saveJob('partTime', {
-      ...job,
-      payments: updatedPayments,
-      status: newStatus,
-      forecastDueDate: nextForecastDueDate,
-      forecastEntryId: nextForecastEntryId,
-      forecastAmount: nextForecastAmount,
+      saveJob('partTime', {
+        ...job,
+        payments: updatedPayments,
+        status: newStatus,
+        forecastDueDate: nextForecastDueDate,
+        forecastEntryId: nextForecastEntryId,
+        forecastAmount: nextForecastAmount,
+      });
     });
 
     setActualPaidAmount('');
@@ -993,6 +996,7 @@ export const JobForecastModal: React.FC<JobForecastModalProps> = ({ isOpen, jobI
     updateEntry,
     deleteEntry,
     entries,
+    runTransaction,
   } = useBudgetStore();
 
   const [expectedDate, setExpectedDate] = useState(DateUtils.todayString());
@@ -1023,15 +1027,17 @@ export const JobForecastModal: React.FC<JobForecastModalProps> = ({ isOpen, jobI
   const isForeign = (job.currency || 'USD').toUpperCase() !== 'EGP';
 
   const handleRemoveForecast = () => {
-    if (job.forecastEntryId) {
-      deleteEntry(job.forecastEntryId);
-    }
-    saveJob('partTime', {
-      ...job,
-      forecastDueDate: undefined,
-      forecastEntryId: undefined,
-      forecastAmount: undefined,
-      forecastDestination: undefined,
+    runTransaction(`Remove Forecast: ${job.title}`, () => {
+      if (job.forecastEntryId) {
+        deleteEntry(job.forecastEntryId);
+      }
+      saveJob('partTime', {
+        ...job,
+        forecastDueDate: undefined,
+        forecastEntryId: undefined,
+        forecastAmount: undefined,
+        forecastDestination: undefined,
+      });
     });
     onClose();
   };
@@ -1041,59 +1047,61 @@ export const JobForecastModal: React.FC<JobForecastModalProps> = ({ isOpen, jobI
     const amt = Number(forecastAmount);
     if (!amt || amt <= 0 || !expectedDate) return;
 
-    let chosenLabel = destination;
-    if (destination === 'storage:hsbc_usd') chosenLabel = 'HSBC USD Account';
-    else if (destination === 'storage:hsbc_eur') chosenLabel = 'HSBC EUR Account';
-    else if (destination === 'storage:cash_usd') chosenLabel = 'USD Cash in Hand';
-    else if (destination.startsWith('storage:existing-')) {
-      const assetId = destination.replace('storage:existing-', '');
-      const found = storageAssets.find((a) => a.id === assetId);
-      chosenLabel = found ? found.name : 'Storage Reserve';
-    } else {
-      const accKey = destination.replace('account:', '');
-      chosenLabel = accounts[accKey]?.name || accKey.toUpperCase();
-    }
+    runTransaction(`Schedule Forecast: ${job.title}`, () => {
+      let chosenLabel = destination;
+      if (destination === 'storage:hsbc_usd') chosenLabel = 'HSBC USD Account';
+      else if (destination === 'storage:hsbc_eur') chosenLabel = 'HSBC EUR Account';
+      else if (destination === 'storage:cash_usd') chosenLabel = 'USD Cash in Hand';
+      else if (destination.startsWith('storage:existing-')) {
+        const assetId = destination.replace('storage:existing-', '');
+        const found = storageAssets.find((a) => a.id === assetId);
+        chosenLabel = found ? found.name : 'Storage Reserve';
+      } else {
+        const accKey = destination.replace('account:', '');
+        chosenLabel = accounts[accKey]?.name || accKey.toUpperCase();
+      }
 
-    const egpAmount = Math.round(amt * fin.fxRate);
-    let entryId = job.forecastEntryId;
+      const egpAmount = Math.round(amt * fin.fxRate);
+      let entryId = job.forecastEntryId;
 
-    const existingEntry = entryId ? entries.find((e) => e.id === entryId) : null;
-    if (existingEntry) {
-      updateEntry(existingEntry.id, {
-        date: expectedDate,
-        amount: egpAmount,
-        currency: job.currency,
-        originalAmount: amt,
-        fxRateAtEntry: fin.fxRate,
-        account: chosenLabel,
-        subcategory: job.client || 'Part-Time',
-        source: `Job: ${job.title} (Expected in ${chosenLabel})`,
-        jobId: job.id,
+      const existingEntry = entryId ? entries.find((e) => e.id === entryId) : null;
+      if (existingEntry) {
+        updateEntry(existingEntry.id, {
+          date: expectedDate,
+          amount: egpAmount,
+          currency: job.currency,
+          originalAmount: amt,
+          fxRateAtEntry: fin.fxRate,
+          account: chosenLabel,
+          subcategory: job.client || 'Part-Time',
+          source: `Job: ${job.title} (Expected in ${chosenLabel})`,
+          jobId: job.id,
+        });
+      } else {
+        entryId = addEntry({
+          date: expectedDate,
+          category: 'Job Income',
+          subcategory: job.client || 'Part-Time',
+          tag: 'Part-Time',
+          account: chosenLabel,
+          type: 'income',
+          amount: egpAmount,
+          currency: job.currency,
+          originalAmount: amt,
+          fxRateAtEntry: fin.fxRate,
+          source: `Job: ${job.title} (Expected in ${chosenLabel})`,
+          jobId: job.id,
+        });
+      }
+
+      saveJob('partTime', {
+        ...job,
+        status: job.status === 'active' ? 'invoiced' : job.status,
+        forecastDueDate: expectedDate,
+        forecastEntryId: entryId,
+        forecastAmount: amt,
+        forecastDestination: destination,
       });
-    } else {
-      entryId = addEntry({
-        date: expectedDate,
-        category: 'Job Income',
-        subcategory: job.client || 'Part-Time',
-        tag: 'Part-Time',
-        account: chosenLabel,
-        type: 'income',
-        amount: egpAmount,
-        currency: job.currency,
-        originalAmount: amt,
-        fxRateAtEntry: fin.fxRate,
-        source: `Job: ${job.title} (Expected in ${chosenLabel})`,
-        jobId: job.id,
-      });
-    }
-
-    saveJob('partTime', {
-      ...job,
-      status: job.status === 'active' ? 'invoiced' : job.status,
-      forecastDueDate: expectedDate,
-      forecastEntryId: entryId,
-      forecastAmount: amt,
-      forecastDestination: destination,
     });
 
     onClose();

@@ -14,6 +14,10 @@ import type {
   StorageAsset,
   ViewTab,
   NavigationIntent,
+  BudgetFinancialSnapshot,
+  UndoableAction,
+  UndoToastState,
+  CreditSettlementOverride,
 } from '../types';
 import {
   defaultRates,
@@ -135,7 +139,7 @@ export interface BudgetStoreState {
   // Credit Dues & Legacy Overrides
   creditDues: Record<string, Record<string, number>>;
   creditDueMonths: Record<string, string[]>;
-  creditSettlementOverrides: Record<string, { amount?: number; date?: string; note?: string; tag?: string; account?: string; draws?: EntryDraw[] }>;
+  creditSettlementOverrides: Record<string, CreditSettlementOverride>;
   salaryAnchorMonth: string;
 
   // Cloud Sync & Admin
@@ -219,6 +223,16 @@ export interface BudgetStoreState {
 
   exportJSON: () => string;
   importJSON: (jsonString: string, options?: { isRemoteSync?: boolean }) => boolean;
+
+  // Undo / Redo System
+  undoStack: UndoableAction[];
+  redoStack: UndoableAction[];
+  undoToast: UndoToastState | null;
+  undo: () => boolean;
+  redo: () => boolean;
+  runTransaction: <T>(label: string, fn: () => T) => T;
+  dismissUndoToast: () => void;
+  clearUndoHistory: () => void;
 }
 
 let lastLocalMutationTimestamp = typeof localStorage !== 'undefined' ? Number(localStorage.getItem(STORAGE_KEYS.lastLocalModified) || 0) || 0 : 0;
@@ -383,11 +397,89 @@ function revertStorageOrAccountBalance(
   }
 }
 
+const MAX_UNDO_DEPTH = 30;
+let isTransactionRunning = false;
+let transactionDepth = 0;
+
+function captureFinancialSnapshot(state: BudgetStoreState): BudgetFinancialSnapshot {
+  return structuredClone({
+    entries: state.entries,
+    archivedEntries: state.archivedEntries,
+    deletedForecasts: state.deletedForecasts,
+    accounts: state.accounts,
+    salaryPattern: state.salaryPattern,
+    installments: state.installments,
+    rates: state.rates,
+    storageAssets: state.storageAssets,
+    asfJobs: state.asfJobs,
+    irqJobs: state.irqJobs,
+    partTimeJobs: state.partTimeJobs,
+    entryActuals: state.entryActuals,
+    entryActualDates: state.entryActualDates,
+    creditDues: state.creditDues,
+    creditDueMonths: state.creditDueMonths,
+    creditSettlementOverrides: state.creditSettlementOverrides,
+    salaryAnchorMonth: state.salaryAnchorMonth,
+  });
+}
+
+function persistFinancialSnapshot(snapshot: BudgetFinancialSnapshot): void {
+  saveStorage(STORAGE_KEYS.entries, snapshot.entries);
+  saveStorage(STORAGE_KEYS.archivedEntries, snapshot.archivedEntries);
+  saveStorage(STORAGE_KEYS.deletedForecasts, snapshot.deletedForecasts);
+  saveStorage(STORAGE_KEYS.accounts, snapshot.accounts);
+  saveStorage(STORAGE_KEYS.salary, snapshot.salaryPattern);
+  saveStorage(STORAGE_KEYS.installments, snapshot.installments);
+  saveStorage(STORAGE_KEYS.rates, snapshot.rates);
+  saveStorage(STORAGE_KEYS.storage, snapshot.storageAssets);
+  saveStorage(STORAGE_KEYS.asf, snapshot.asfJobs);
+  saveStorage(STORAGE_KEYS.irq, snapshot.irqJobs);
+  saveStorage(STORAGE_KEYS.partTimeJobs, snapshot.partTimeJobs);
+  saveStorage(STORAGE_KEYS.entryActuals, snapshot.entryActuals);
+  saveStorage(STORAGE_KEYS.entryActualDates, snapshot.entryActualDates);
+  saveStorage(STORAGE_KEYS.creditDues, snapshot.creditDues);
+  saveStorage(STORAGE_KEYS.creditDueMonths, snapshot.creditDueMonths);
+  saveStorage(STORAGE_KEYS.creditSettlementOverrides, snapshot.creditSettlementOverrides);
+  saveStorage(STORAGE_KEYS.salaryAnchor, snapshot.salaryAnchorMonth);
+}
+
+function recordUndoableStep(
+  set: (partial: Partial<BudgetStoreState> | ((state: BudgetStoreState) => Partial<BudgetStoreState>)) => void,
+  get: () => BudgetStoreState,
+  label: string
+): void {
+  if (isTransactionRunning) return;
+
+  try {
+    const snapshot = captureFinancialSnapshot(get());
+    const action: UndoableAction = {
+      id: `undo-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      label,
+      timestamp: Date.now(),
+      snapshot,
+    };
+
+    const nextUndoStack = [action, ...get().undoStack].slice(0, MAX_UNDO_DEPTH);
+    set({
+      undoStack: nextUndoStack,
+      redoStack: [],
+      undoToast: { id: action.id, label, timestamp: Date.now() },
+    });
+  } catch (err) {
+    console.warn('Failed to capture undo snapshot:', err);
+  }
+}
+
 export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
   theme: loadStorage<'dark' | 'light'>(STORAGE_KEYS.theme, 'dark'),
   activeTab: 'dashboard',
   pendingNavigation: null,
   sidebarCollapsed: loadStorage<boolean>(STORAGE_KEYS.sidebarCollapsed, false),
+
+  // Undo / Redo In-Memory State
+  undoStack: [],
+  redoStack: [],
+  undoToast: null,
 
   entries: loadStorage<CashEntry[]>(STORAGE_KEYS.entries, []),
   archivedEntries: loadStorage<CashEntry[]>(STORAGE_KEYS.archivedEntries, []),
@@ -415,7 +507,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
 
   creditDues: loadStorage<Record<string, Record<string, number>>>(STORAGE_KEYS.creditDues, {}),
   creditDueMonths: loadStorage<Record<string, string[]>>(STORAGE_KEYS.creditDueMonths, {}),
-  creditSettlementOverrides: loadStorage<Record<string, { amount?: number; date?: string; note?: string; tag?: string; account?: string; draws?: EntryDraw[] }>>(STORAGE_KEYS.creditSettlementOverrides, {}),
+  creditSettlementOverrides: loadStorage<Record<string, CreditSettlementOverride>>(STORAGE_KEYS.creditSettlementOverrides, {}),
   salaryAnchorMonth: loadStorage<string>(STORAGE_KEYS.salaryAnchor, DateUtils.currentYearMonth()),
 
   gistToken: typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.gistToken) || '' : '',
@@ -468,22 +560,31 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
   },
 
   addEntry: (entryData) => {
-    const id = `entry-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-    const newEntry: CashEntry = {
-      ...entryData,
-      id,
-    };
-    const updated = [newEntry, ...get().entries];
-    saveStorage(STORAGE_KEYS.entries, updated);
-    set({ entries: updated });
-    scheduleAutoGistSync(get);
-    return id;
+    const typeLabel = entryData.type === 'income' ? 'Income' : 'Expense';
+    const label = `Add ${typeLabel}: ${entryData.category || 'Entry'}`;
+    return get().runTransaction(label, () => {
+      const id = `entry-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const newEntry: CashEntry = {
+        ...entryData,
+        id,
+      };
+      const updated = [newEntry, ...get().entries];
+      saveStorage(STORAGE_KEYS.entries, updated);
+      set({ entries: updated });
+      scheduleAutoGistSync(get);
+      return id;
+    });
   },
 
   updateEntry: (id, updates, seriesMode = 'single') => {
-    if (id.startsWith('credit-settlement-')) {
+    const existing = get().entries.find((e) => e.id === id) || get().archivedEntries.find((e) => e.id === id);
+    const label = id.startsWith('credit-settlement-')
+      ? 'Update Credit Settlement'
+      : `Edit: ${existing?.category || 'Entry'}`;
+    return get().runTransaction(label, () => {
+      if (id.startsWith('credit-settlement-')) {
       const existingOverride = get().creditSettlementOverrides[id] || {};
-      const updatedOverride = {
+      const updatedOverride: CreditSettlementOverride = {
         ...existingOverride,
         ...(updates.amount !== undefined ? { amount: Number(updates.amount) } : {}),
         ...(updates.date ? { date: updates.date } : {}),
@@ -491,6 +592,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         ...(updates.tag !== undefined ? { tag: updates.tag } : {}),
         ...(updates.account !== undefined ? { account: updates.account } : {}),
         ...(updates.draws !== undefined ? { draws: updates.draws } : {}),
+        ...(updates.isClosed !== undefined ? { isClosed: updates.isClosed } : {}),
       };
       const nextOverrides = { ...get().creditSettlementOverrides, [id]: updatedOverride };
       saveStorage(STORAGE_KEYS.creditSettlementOverrides, nextOverrides);
@@ -600,14 +702,18 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       get().settleJobForecastPayment(id, Number(currentActual) || 0, true);
     }
     scheduleAutoGistSync(get);
+    });
   },
 
   deleteEntry: (id, seriesMode = 'single', options) => {
     const inEntries = get().entries.find((e) => e.id === id);
     const inArchived = get().archivedEntries.find((e) => e.id === id);
     const target = inEntries || inArchived;
-
-    // 1. Series deletion
+    const label = seriesMode === 'future'
+      ? `Delete Series: ${target?.category || 'Entry'}`
+      : `Delete: ${target?.category || 'Entry'}`;
+    return get().runTransaction(label, () => {
+      // 1. Series deletion
     let updatedEntries = get().entries;
     let updatedArchived = get().archivedEntries;
 
@@ -803,10 +909,14 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       partTimeJobs: updatedPartTime,
     });
     scheduleAutoGistSync(get);
+    });
   },
 
   recordActual: (entryId, amount, date, drawMeta) => {
-    const actDate = date || DateUtils.todayString();
+    const entry = get().entries.find((e) => e.id === entryId) || get().archivedEntries.find((e) => e.id === entryId);
+    const label = `Record Actual: ${entry?.category || 'Entry'}`;
+    return get().runTransaction(label, () => {
+      const actDate = date || DateUtils.todayString();
     const actuals = { ...get().entryActuals, [entryId]: amount };
     const dates = { ...get().entryActualDates };
     if (date) dates[entryId] = date;
@@ -940,11 +1050,14 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     });
     get().settleJobForecastPayment(entryId, amount, false);
     scheduleAutoGistSync(get);
+    });
   },
 
   clearActual: (entryId, options) => {
     const target = get().entries.find((e) => e.id === entryId) || get().archivedEntries.find((e) => e.id === entryId);
-    const prevActualAmt = Number(get().entryActuals[entryId] ?? target?.actualAmount ?? target?.amount ?? 0);
+    const label = `Clear Actual: ${target?.category || 'Entry'}`;
+    return get().runTransaction(label, () => {
+      const prevActualAmt = Number(get().entryActuals[entryId] ?? target?.actualAmount ?? target?.amount ?? 0);
 
     const actuals = { ...get().entryActuals };
     delete actuals[entryId];
@@ -957,10 +1070,10 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     // tranches are wiped, with an optional bank refund of what was actually paid.
     if (entryId.startsWith('credit-settlement-')) {
       const settlementOverride = get().creditSettlementOverrides[entryId];
-      if (settlementOverride && Array.isArray(settlementOverride.draws) && settlementOverride.draws.length > 0) {
-        const nextOverrides: Record<string, typeof settlementOverride> = {
+      if (settlementOverride && ((Array.isArray(settlementOverride.draws) && settlementOverride.draws.length > 0) || settlementOverride.isClosed)) {
+        const nextOverrides: Record<string, CreditSettlementOverride> = {
           ...get().creditSettlementOverrides,
-          [entryId]: { ...settlementOverride, draws: [] },
+          [entryId]: { ...settlementOverride, draws: [], isClosed: false },
         };
         saveStorage(STORAGE_KEYS.creditSettlementOverrides, nextOverrides);
         set({ creditSettlementOverrides: nextOverrides });
@@ -1175,10 +1288,12 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     }
 
     scheduleAutoGistSync(get);
+    });
   },
 
   addDraw: (entryId, draw) => {
-    if (entryId.startsWith('credit-settlement-')) {
+    return get().runTransaction('Add Payment Tranche', () => {
+      if (entryId.startsWith('credit-settlement-')) {
       const existingOverride = get().creditSettlementOverrides[entryId] || {};
       const newDraws = [
         ...(existingOverride.draws || []),
@@ -1246,10 +1361,12 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     set({ entryActuals: actuals, entryActualDates: dates });
     get().settleJobForecastPayment(entryId, totalAmount, false);
     scheduleAutoGistSync(get);
+    });
   },
 
   updateDraw: (entryId, drawIndex, draw) => {
-    if (entryId.startsWith('credit-settlement-')) {
+    return get().runTransaction('Update Payment Tranche', () => {
+      if (entryId.startsWith('credit-settlement-')) {
       const existingOverride = get().creditSettlementOverrides[entryId] || {};
       const newDraws = [...(existingOverride.draws || [])];
       if (drawIndex >= 0 && drawIndex < newDraws.length) {
@@ -1317,10 +1434,12 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     set({ entryActuals: actuals, entryActualDates: dates });
     get().settleJobForecastPayment(entryId, totalAmount, false);
     scheduleAutoGistSync(get);
+    });
   },
 
   deleteDraw: (entryId, drawIndex, options) => {
-    if (entryId.startsWith('credit-settlement-')) {
+    return get().runTransaction('Delete Payment Tranche', () => {
+      if (entryId.startsWith('credit-settlement-')) {
       const existingOverride = get().creditSettlementOverrides[entryId] || {};
       const newDraws = [...(existingOverride.draws || [])];
       let deletedDraw: EntryDraw | undefined;
@@ -1433,15 +1552,18 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     }
 
     scheduleAutoGistSync(get);
+    });
   },
 
   updateCreditSettlementOverride: (id, override) => {
-    const next = { ...get().creditSettlementOverrides };
-    if (Object.keys(override).length === 0) delete next[id];
-    else next[id] = { ...next[id], ...override }; // merge so partial edits never wipe draws/tag/account
-    saveStorage(STORAGE_KEYS.creditSettlementOverrides, next);
-    set({ creditSettlementOverrides: next });
-    scheduleAutoGistSync(get);
+    return get().runTransaction('Update Credit Settlement', () => {
+      const next = { ...get().creditSettlementOverrides };
+      if (Object.keys(override).length === 0) delete next[id];
+      else next[id] = { ...next[id], ...override }; // merge so partial edits never wipe draws/tag/account
+      saveStorage(STORAGE_KEYS.creditSettlementOverrides, next);
+      set({ creditSettlementOverrides: next });
+      scheduleAutoGistSync(get);
+    });
   },
 
   recalculateCreditSettlement: (id) => {
@@ -1518,27 +1640,34 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       calculatedAmount,
       cardExpenseCount: cardExpenses.length,
       cardSpendTotal: cardExpenses.reduce((sum, entry) => sum + (actual(entry) > 0 ? actual(entry) : Number(entry.amount) || 0), 0),
+      isClosed: existingOverride?.isClosed ?? false,
     };
   },
 
   updateAccountBalance: (accountKey, newBalance) => {
-    const accounts = { ...get().accounts };
-    if (accounts[accountKey]) {
-      accounts[accountKey] = { ...accounts[accountKey], balance: Math.round(newBalance) };
-      saveStorage(STORAGE_KEYS.accounts, accounts);
-      set({ accounts });
+    const accName = get().accounts[accountKey]?.name || accountKey.toUpperCase();
+    return get().runTransaction(`Update ${accName} Balance`, () => {
+      const accounts = { ...get().accounts };
+      if (accounts[accountKey]) {
+        accounts[accountKey] = { ...accounts[accountKey], balance: Math.round(newBalance) };
+        saveStorage(STORAGE_KEYS.accounts, accounts);
+        set({ accounts });
         scheduleAutoGistSync(get);
-    }
+      }
+    });
   },
 
   updateSalaryPattern: (salaryPattern) => {
-    saveStorage(STORAGE_KEYS.salary, salaryPattern);
-    set({ salaryPattern });
-    scheduleAutoGistSync(get);
+    return get().runTransaction('Update Salary Pattern', () => {
+      saveStorage(STORAGE_KEYS.salary, salaryPattern);
+      set({ salaryPattern });
+      scheduleAutoGistSync(get);
+    });
   },
 
   populateSalaryForecast: (startMonth, quarters, anchorMonth) => {
-    const templates = buildSalaryEntries(
+    return get().runTransaction('Generate Salary Forecast', () => {
+      const templates = buildSalaryEntries(
       get().salaryPattern,
       startMonth,
       Math.max(1, Number(quarters) || 1),
@@ -1573,10 +1702,12 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     set({ entries: currentEntries });
     scheduleAutoGistSync(get);
     return added;
+    });
   },
 
   clearSalaryForecast: (startMonth, quarters) => {
-    const hasActual = (entry: CashEntry) =>
+    return get().runTransaction('Clear Salary Forecast', () => {
+      const hasActual = (entry: CashEntry) =>
       Number(get().entryActuals[entry.id] ?? entry.actualAmount ?? 0) > 0 ||
       Boolean(get().entryActualDates[entry.id] || entry.actualDate);
     const hasPeriod = Boolean(startMonth && quarters);
@@ -1598,22 +1729,26 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     set({ entries: updated });
     scheduleAutoGistSync(get);
     return removedIds.size;
+    });
   },
 
   addInstallment: (instData) => {
-    const newInst: Installment = {
-      ...instData,
-      id: `inst-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-    };
-    const updated = [...get().installments, newInst];
-    saveStorage(STORAGE_KEYS.installments, updated);
-    set({ installments: updated });
-    scheduleAutoGistSync(get);
+    return get().runTransaction(`Add Installment: ${instData.name}`, () => {
+      const newInst: Installment = {
+        ...instData,
+        id: `inst-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      };
+      const updated = [...get().installments, newInst];
+      saveStorage(STORAGE_KEYS.installments, updated);
+      set({ installments: updated });
+      scheduleAutoGistSync(get);
+    });
   },
 
   updateInstallment: (id, updates) => {
     const current = get().installments.find((i) => i.id === id);
-    const updated = get().installments.map((i) => (i.id === id ? { ...i, ...updates } : i));
+    return get().runTransaction(`Update Installment: ${current?.name || 'Installment'}`, () => {
+      const updated = get().installments.map((i) => (i.id === id ? { ...i, ...updates } : i));
     if (current?.loanId && Number(updates.amount) > 0 && Number(updates.amount) !== Number(current.amount)) {
       const baseDisbursement = Number(current.initialAmount || current.amount || 1);
       const ratio = Number(updates.amount) / baseDisbursement;
@@ -1639,14 +1774,16 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       scheduleAutoGistSync(get);
       return;
     }
-    saveStorage(STORAGE_KEYS.installments, updated);
-    set({ installments: updated });
-    scheduleAutoGistSync(get);
+      saveStorage(STORAGE_KEYS.installments, updated);
+      set({ installments: updated });
+      scheduleAutoGistSync(get);
+    });
   },
 
   deleteInstallment: (id, options) => {
     const inst = get().installments.find((i) => i.id === id);
-    const updated = get().installments.filter((i) => i.id !== id);
+    return get().runTransaction(`Delete Installment: ${inst?.name || 'Installment'}`, () => {
+      const updated = get().installments.filter((i) => i.id !== id);
     let updatedEntries = get().entries;
     let updatedArchived = get().archivedEntries;
     const updatedDeletedForecasts = get().deletedForecasts.filter(
@@ -1678,7 +1815,8 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       archivedEntries: updatedArchived,
       deletedForecasts: updatedDeletedForecasts,
     });
-    scheduleAutoGistSync(get);
+      scheduleAutoGistSync(get);
+    });
   },
 
   syncStorageRates: (customRates) => {
@@ -1729,22 +1867,26 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
   },
 
   addStorageAsset: (assetData) => {
-    const loc = inferAssetLocation(assetData);
-    const newAsset: StorageAsset = {
-      ...assetData,
-      locationType: assetData.locationType || loc.locationType,
-      location: assetData.location || loc.location,
-      locationLabel: assetData.locationLabel || loc.locationLabel,
-      id: `asset-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-    };
-    const updated = [...get().storageAssets, newAsset];
-    saveStorage(STORAGE_KEYS.storage, updated);
-    set({ storageAssets: updated });
-    scheduleAutoGistSync(get);
+    return get().runTransaction(`Add Asset: ${assetData.name}`, () => {
+      const loc = inferAssetLocation(assetData);
+      const newAsset: StorageAsset = {
+        ...assetData,
+        locationType: assetData.locationType || loc.locationType,
+        location: assetData.location || loc.location,
+        locationLabel: assetData.locationLabel || loc.locationLabel,
+        id: `asset-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      };
+      const updated = [...get().storageAssets, newAsset];
+      saveStorage(STORAGE_KEYS.storage, updated);
+      set({ storageAssets: updated });
+      scheduleAutoGistSync(get);
+    });
   },
 
   updateStorageAsset: (id, updates) => {
-    const updated = get().storageAssets.map((a) => {
+    const asset = get().storageAssets.find((a) => a.id === id);
+    return get().runTransaction(`Update Asset: ${asset?.name || 'Asset'}`, () => {
+      const updated = get().storageAssets.map((a) => {
       if (a.id !== id) return a;
       const merged = { ...a, ...updates };
       if (updates.locationType || updates.location) {
@@ -1755,13 +1897,16 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       }
       return merged;
     });
-    saveStorage(STORAGE_KEYS.storage, updated);
-    set({ storageAssets: updated });
-    scheduleAutoGistSync(get);
+      saveStorage(STORAGE_KEYS.storage, updated);
+      set({ storageAssets: updated });
+      scheduleAutoGistSync(get);
+    });
   },
 
   deleteStorageAsset: (id, options) => {
-    const updated = get().storageAssets.filter((a) => a.id !== id);
+    const asset = get().storageAssets.find((a) => a.id === id);
+    return get().runTransaction(`Delete Asset: ${asset?.name || 'Asset'}`, () => {
+      const updated = get().storageAssets.filter((a) => a.id !== id);
     saveStorage(STORAGE_KEYS.storage, updated);
 
     let asfJobsUpdated = false;
@@ -1796,21 +1941,24 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       if (partTimeJobsUpdated) saveStorage(STORAGE_KEYS.partTimeJobs, updatedPartTime);
     }
 
-    set({
-      storageAssets: updated,
-      ...(asfJobsUpdated ? { asfJobs: updatedAsf } : {}),
-      ...(irqJobsUpdated ? { irqJobs: updatedIrq } : {}),
-      ...(partTimeJobsUpdated ? { partTimeJobs: updatedPartTime } : {}),
+      set({
+        storageAssets: updated,
+        ...(asfJobsUpdated ? { asfJobs: updatedAsf } : {}),
+        ...(irqJobsUpdated ? { irqJobs: updatedIrq } : {}),
+        ...(partTimeJobsUpdated ? { partTimeJobs: updatedPartTime } : {}),
+      });
+      scheduleAutoGistSync(get);
     });
-    scheduleAutoGistSync(get);
   },
 
   depositToStorageAsset: (assetId, amount) => {
     if (!amount || amount <= 0) return;
     const current = get().storageAssets.find((a) => a.id === assetId);
     if (!current) return;
-    const nextQty = (Number(current.quantity) || 0) + Number(amount);
-    get().updateStorageAsset(assetId, { quantity: nextQty });
+    return get().runTransaction(`Deposit to ${current.name}`, () => {
+      const nextQty = (Number(current.quantity) || 0) + Number(amount);
+      get().updateStorageAsset(assetId, { quantity: nextQty });
+    });
   },
 
   transferStorageAsset: (fromAssetId, toAssetId, amount) => {
@@ -1819,23 +1967,24 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     const toAsset = get().storageAssets.find((a) => a.id === toAssetId);
     if (!fromAsset || !toAsset) return false;
     if ((Number(fromAsset.quantity) || 0) < amount) return false;
-    // 1:1 transfers are only valid inside the same unit (e.g. grams -> grams).
     if ((fromAsset.unit || '').toLowerCase() !== (toAsset.unit || '').toLowerCase()) return false;
 
-    const updated = get().storageAssets.map((a) => {
-      if (a.id === fromAssetId) {
-        return { ...a, quantity: Math.max(0, (Number(a.quantity) || 0) - amount) };
-      }
-      if (a.id === toAssetId) {
-        return { ...a, quantity: (Number(a.quantity) || 0) + amount };
-      }
-      return a;
-    });
+    return get().runTransaction(`Transfer ${amount} ${fromAsset.unit || ''}`, () => {
+      const updated = get().storageAssets.map((a) => {
+        if (a.id === fromAssetId) {
+          return { ...a, quantity: Math.max(0, (Number(a.quantity) || 0) - amount) };
+        }
+        if (a.id === toAssetId) {
+          return { ...a, quantity: (Number(a.quantity) || 0) + amount };
+        }
+        return a;
+      });
 
-    saveStorage(STORAGE_KEYS.storage, updated);
-    set({ storageAssets: updated });
-    scheduleAutoGistSync(get);
-    return true;
+      saveStorage(STORAGE_KEYS.storage, updated);
+      set({ storageAssets: updated });
+      scheduleAutoGistSync(get);
+      return true;
+    });
   },
 
   convertStorageAssetToEgp: (assetId, foreignAmount, targetAccount, customRate) => {
@@ -1843,73 +1992,74 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     const asset = get().storageAssets.find((a) => a.id === assetId);
     if (!asset || (Number(asset.quantity) || 0) < foreignAmount) return undefined;
 
-    const rate = customRate || (asset.rateSource ? resolveRateSourceValue(asset.rateSource, get().rates) : null) || asset.rate || asset.buyPrice || 1;
-    const egpGained = Math.round(foreignAmount * rate);
+    return get().runTransaction(`Convert ${foreignAmount} ${asset.unit || asset.currency} to EGP`, () => {
+      const rate = customRate || (asset.rateSource ? resolveRateSourceValue(asset.rateSource, get().rates) : null) || asset.rate || asset.buyPrice || 1;
+      const egpGained = Math.round(foreignAmount * rate);
 
-    // 1. Deduct foreign quantity from storage asset
-    const updatedAssets = get().storageAssets.map((a) =>
-      a.id === assetId ? { ...a, quantity: Math.max(0, (Number(a.quantity) || 0) - foreignAmount) } : a
-    );
-    saveStorage(STORAGE_KEYS.storage, updatedAssets);
+      // 1. Deduct foreign quantity from storage asset
+      const updatedAssets = get().storageAssets.map((a) =>
+        a.id === assetId ? { ...a, quantity: Math.max(0, (Number(a.quantity) || 0) - foreignAmount) } : a
+      );
+      saveStorage(STORAGE_KEYS.storage, updatedAssets);
 
-    // 2. Deposit EGP to bank account
-    const accounts = { ...get().accounts };
-    if (accounts[targetAccount]) {
-      accounts[targetAccount] = {
-        ...accounts[targetAccount],
-        balance: (accounts[targetAccount].balance || 0) + egpGained,
-      };
-      saveStorage(STORAGE_KEYS.accounts, accounts);
-    }
+      // 2. Deposit EGP to bank account
+      const accounts = { ...get().accounts };
+      if (accounts[targetAccount]) {
+        accounts[targetAccount] = {
+          ...accounts[targetAccount],
+          balance: (accounts[targetAccount].balance || 0) + egpGained,
+        };
+        saveStorage(STORAGE_KEYS.accounts, accounts);
+      }
 
-    // 3. Log an income entry for record tracking. This entry represents a completed,
-    // non-repeatable internal transfer (foreign storage -> EGP account), so it carries
-    // the source asset + native amount converted (for reversal) and is flagged to be
-    // excluded from forecast/cashflow candidate lists permanently, even if its actual
-    // is later cleared.
-    const today = DateUtils.todayString();
-    const entryId = get().addEntry({
-      date: today,
-      category: 'FX Conversion',
-      subcategory: `Sold ${asset.name}`,
-      tag: 'FX Exchange',
-      account: targetAccount,
-      type: 'income',
-      amount: egpGained,
-      actualAmount: egpGained,
-      actualDate: today,
-      currency: 'EGP',
-      source: `Converted ${foreignAmount} ${asset.unit || asset.currency} @ ${rate} EGP`,
-      storageAssetId: assetId,
-      originalAmount: foreignAmount,
-      fxRateAtEntry: rate,
-      conversionType: 'fx-sale',
-      excludeFromForecast: true,
+      // 3. Log an income entry for record tracking.
+      const today = DateUtils.todayString();
+      const entryId = get().addEntry({
+        date: today,
+        category: 'FX Conversion',
+        subcategory: `Sold ${asset.name}`,
+        tag: 'FX Exchange',
+        account: targetAccount,
+        type: 'income',
+        amount: egpGained,
+        actualAmount: egpGained,
+        actualDate: today,
+        currency: 'EGP',
+        source: `Converted ${foreignAmount} ${asset.unit || asset.currency} @ ${rate} EGP`,
+        storageAssetId: assetId,
+        originalAmount: foreignAmount,
+        fxRateAtEntry: rate,
+        conversionType: 'fx-sale',
+        excludeFromForecast: true,
+      });
+
+      set({ storageAssets: updatedAssets, accounts });
+      scheduleAutoGistSync(get);
+      return entryId;
     });
-
-    set({ storageAssets: updatedAssets, accounts });
-    scheduleAutoGistSync(get);
-    return entryId;
   },
 
   saveJob: (jobType, job) => {
-    const key = jobType === 'asf' ? STORAGE_KEYS.asf : jobType === 'irq' ? STORAGE_KEYS.irq : STORAGE_KEYS.partTimeJobs;
-    const currentList = jobType === 'asf' ? get().asfJobs : jobType === 'irq' ? get().irqJobs : get().partTimeJobs;
-    const exists = currentList.some((j) => j.id === job.id);
-    const updated = exists ? currentList.map((j) => (j.id === job.id ? job : j)) : [...currentList, job];
+    return get().runTransaction(`Save Job: ${job.title}`, () => {
+      const key = jobType === 'asf' ? STORAGE_KEYS.asf : jobType === 'irq' ? STORAGE_KEYS.irq : STORAGE_KEYS.partTimeJobs;
+      const currentList = jobType === 'asf' ? get().asfJobs : jobType === 'irq' ? get().irqJobs : get().partTimeJobs;
+      const exists = currentList.some((j) => j.id === job.id);
+      const updated = exists ? currentList.map((j) => (j.id === job.id ? job : j)) : [...currentList, job];
 
-    saveStorage(key, updated);
-    if (jobType === 'asf') set({ asfJobs: updated });
-    else if (jobType === 'irq') set({ irqJobs: updated });
-    else set({ partTimeJobs: updated });
-    scheduleAutoGistSync(get);
+      saveStorage(key, updated);
+      if (jobType === 'asf') set({ asfJobs: updated });
+      else if (jobType === 'irq') set({ irqJobs: updated });
+      else set({ partTimeJobs: updated });
+      scheduleAutoGistSync(get);
+    });
   },
 
   deleteJob: (jobType, jobId, options) => {
     const key = jobType === 'asf' ? STORAGE_KEYS.asf : jobType === 'irq' ? STORAGE_KEYS.irq : STORAGE_KEYS.partTimeJobs;
     const currentList = jobType === 'asf' ? get().asfJobs : jobType === 'irq' ? get().irqJobs : get().partTimeJobs;
     const targetJob = currentList.find((j) => j.id === jobId);
-    const updated = currentList.filter((j) => j.id !== jobId);
+    return get().runTransaction(`Delete Job: ${targetJob?.title || 'Job'}`, () => {
+      const updated = currentList.filter((j) => j.id !== jobId);
 
     // Optionally remove linked cashflow entries if explicitly requested
     const shouldDeleteCashEntries = options?.deleteCashEntries === true;
@@ -1926,11 +2076,13 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     if (jobType === 'asf') set({ asfJobs: updated, entries: updatedEntries });
     else if (jobType === 'irq') set({ irqJobs: updated, entries: updatedEntries });
     else set({ partTimeJobs: updated, entries: updatedEntries });
-    scheduleAutoGistSync(get);
+      scheduleAutoGistSync(get);
+    });
   },
 
   deleteJobPayment: (jobType, jobId, paymentId, options) => {
-    const currentList = jobType === 'asf' ? get().asfJobs : jobType === 'irq' ? get().irqJobs : get().partTimeJobs;
+    return get().runTransaction('Delete Job Payment', () => {
+      const currentList = jobType === 'asf' ? get().asfJobs : jobType === 'irq' ? get().irqJobs : get().partTimeJobs;
     const targetJob = currentList.find((j) => j.id === jobId);
     if (!targetJob) return;
 
@@ -1983,12 +2135,13 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         isEgpAmount: false,
       });
     }
+    });
   },
 
   settleJobForecastPayment: (entryId, actualEgp, isFinishing = false) => {
     if (!entryId || actualEgp < 0) return false;
-
-    // 1. Locate entry
+    return get().runTransaction('Settle Job Payment', () => {
+      // 1. Locate entry
     const entry = get().entries.find((e) => e.id === entryId) || get().archivedEntries.find((e) => e.id === entryId);
 
     // 2. Locate linked job
@@ -2085,12 +2238,14 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       forecastDestination: isFullyPaid ? undefined : targetJob.forecastDestination,
     };
 
-    get().saveJob(jobType, updatedJob);
-    return true;
+      get().saveJob(jobType, updatedJob);
+      return true;
+    });
   },
 
   archiveSettledEntries: () => {
-    const currentYm = DateUtils.currentYearMonth();
+    return get().runTransaction('Archive Settled Transactions', () => {
+      const currentYm = DateUtils.currentYearMonth();
     const toArchive: CashEntry[] = [];
     const remaining: CashEntry[] = [];
 
@@ -2116,21 +2271,24 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     saveStorage(STORAGE_KEYS.entries, remaining);
     saveStorage(STORAGE_KEYS.archivedEntries, updatedArchived);
     set({ entries: remaining, archivedEntries: updatedArchived });
-    scheduleAutoGistSync(get, true);
-    return toArchive.length;
+      scheduleAutoGistSync(get, true);
+      return toArchive.length;
+    });
   },
 
   unarchiveEntry: (id) => {
     const target = get().archivedEntries.find((e) => e.id === id);
     if (!target) return;
-    const updatedArchived = get().archivedEntries.filter((e) => e.id !== id);
+    return get().runTransaction(`Unarchive: ${target.category || 'Entry'}`, () => {
+      const updatedArchived = get().archivedEntries.filter((e) => e.id !== id);
     const restoredEntry: CashEntry = { ...target };
     delete restoredEntry.archivedAt;
     const updatedEntries = [restoredEntry, ...get().entries];
     saveStorage(STORAGE_KEYS.entries, updatedEntries);
-    saveStorage(STORAGE_KEYS.archivedEntries, updatedArchived);
-    set({ entries: updatedEntries, archivedEntries: updatedArchived });
-    scheduleAutoGistSync(get, true);
+      saveStorage(STORAGE_KEYS.archivedEntries, updatedArchived);
+      set({ entries: updatedEntries, archivedEntries: updatedArchived });
+      scheduleAutoGistSync(get, true);
+    });
   },
 
   setGistConfig: (token, gistId, autoSync) => {
@@ -2531,10 +2689,12 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
   },
 
   restoreDeletedForecast: (id) => {
-    const updated = get().deletedForecasts.filter((fId) => fId !== id);
-    saveStorage(STORAGE_KEYS.deletedForecasts, updated);
-    set({ deletedForecasts: updated });
-    scheduleAutoGistSync(get);
+    return get().runTransaction('Restore Forecast Entry', () => {
+      const updated = get().deletedForecasts.filter((fId) => fId !== id);
+      saveStorage(STORAGE_KEYS.deletedForecasts, updated);
+      set({ deletedForecasts: updated });
+      scheduleAutoGistSync(get);
+    });
   },
 
   clearAllDeletedForecasts: () => {
@@ -2544,53 +2704,59 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
   },
 
   linkRecurringSeries: (entryIds, customSeriesId) => {
-    const { updatedEntries, seriesId, modifiedCount } = linkEntriesToSeries(
-      get().entries,
-      entryIds,
-      customSeriesId
-    );
-    if (modifiedCount > 0) {
-      saveStorage(STORAGE_KEYS.entries, updatedEntries);
-      set({ entries: updatedEntries });
-      scheduleAutoGistSync(get);
-    }
-    return { seriesId, modifiedCount };
+    return get().runTransaction('Link Recurring Series', () => {
+      const { updatedEntries, seriesId, modifiedCount } = linkEntriesToSeries(
+        get().entries,
+        entryIds,
+        customSeriesId
+      );
+      if (modifiedCount > 0) {
+        saveStorage(STORAGE_KEYS.entries, updatedEntries);
+        set({ entries: updatedEntries });
+        scheduleAutoGistSync(get);
+      }
+      return { seriesId, modifiedCount };
+    });
   },
 
   unlinkRecurringSeries: (seriesId) => {
-    const { updatedEntries, modifiedCount } = unlinkEntriesFromSeries(get().entries, seriesId);
-    if (modifiedCount > 0) {
-      saveStorage(STORAGE_KEYS.entries, updatedEntries);
-      set({ entries: updatedEntries });
-      scheduleAutoGistSync(get);
-    }
-    return modifiedCount;
+    return get().runTransaction('Unlink Recurring Series', () => {
+      const { updatedEntries, modifiedCount } = unlinkEntriesFromSeries(get().entries, seriesId);
+      if (modifiedCount > 0) {
+        saveStorage(STORAGE_KEYS.entries, updatedEntries);
+        set({ entries: updatedEntries });
+        scheduleAutoGistSync(get);
+      }
+      return modifiedCount;
+    });
   },
 
   autoLinkAllRecurringCandidates: () => {
-    const candidateGroups = detectRecurringCandidateGroups(get().entries, get().entryActuals);
-    let currentEntries = get().entries;
-    let linkedGroupsCount = 0;
-    let modifiedEntriesCount = 0;
+    return get().runTransaction('Auto-Link Recurring Candidates', () => {
+      const candidateGroups = detectRecurringCandidateGroups(get().entries, get().entryActuals);
+      let currentEntries = get().entries;
+      let linkedGroupsCount = 0;
+      let modifiedEntriesCount = 0;
 
-    candidateGroups.forEach((group) => {
-      if (!group.isFullyLinked) {
-        const res = linkEntriesToSeries(currentEntries, group.entryIds, group.existingSeriesId);
-        if (res.modifiedCount > 0) {
-          currentEntries = res.updatedEntries;
-          linkedGroupsCount++;
-          modifiedEntriesCount += res.modifiedCount;
+      candidateGroups.forEach((group) => {
+        if (!group.isFullyLinked) {
+          const res = linkEntriesToSeries(currentEntries, group.entryIds, group.existingSeriesId);
+          if (res.modifiedCount > 0) {
+            currentEntries = res.updatedEntries;
+            linkedGroupsCount++;
+            modifiedEntriesCount += res.modifiedCount;
+          }
         }
+      });
+
+      if (modifiedEntriesCount > 0) {
+        saveStorage(STORAGE_KEYS.entries, currentEntries);
+        set({ entries: currentEntries });
+        scheduleAutoGistSync(get);
       }
+
+      return { linkedGroupsCount, modifiedEntriesCount };
     });
-
-    if (modifiedEntriesCount > 0) {
-      saveStorage(STORAGE_KEYS.entries, currentEntries);
-      set({ entries: currentEntries });
-      scheduleAutoGistSync(get);
-    }
-
-    return { linkedGroupsCount, modifiedEntriesCount };
   },
 
   exportJSON: () => {
@@ -2697,6 +2863,8 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         entryActuals: migrated.entryActuals,
         entryActualDates: migrated.entryActualDates,
         deletedForecasts: migrated.deletedForecasts,
+        redoStack: [],
+        undoToast: null,
       });
 
       if (!options?.isRemoteSync) {
@@ -2708,6 +2876,105 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       return false;
     }
   },
+
+  runTransaction: <T>(label: string, fn: () => T): T => {
+    if (transactionDepth > 0) return fn();
+    recordUndoableStep(set, get, label);
+    transactionDepth++;
+    isTransactionRunning = true;
+    let isPromise = false;
+    try {
+      const result = fn();
+      if (result && typeof (result as any).then === 'function') {
+        isPromise = true;
+        return (result as any).finally(() => {
+          transactionDepth--;
+          if (transactionDepth <= 0) {
+            transactionDepth = 0;
+            isTransactionRunning = false;
+          }
+        });
+      }
+      return result;
+    } finally {
+      if (!isPromise) {
+        transactionDepth--;
+        if (transactionDepth <= 0) {
+          transactionDepth = 0;
+          isTransactionRunning = false;
+        }
+      }
+    }
+  },
+
+  undo: () => {
+    const { undoStack, redoStack } = get();
+    if (undoStack.length === 0) return false;
+
+    const [toRevert, ...newUndoStack] = undoStack;
+    let currentSnapshot: BudgetFinancialSnapshot;
+    try {
+      currentSnapshot = captureFinancialSnapshot(get());
+    } catch {
+      return false;
+    }
+
+    const redoItem: UndoableAction = {
+      id: `redo-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      label: toRevert.label,
+      timestamp: Date.now(),
+      snapshot: currentSnapshot,
+    };
+
+    const restored = toRevert.snapshot;
+    persistFinancialSnapshot(restored);
+
+    set({
+      ...restored,
+      undoStack: newUndoStack,
+      redoStack: [redoItem, ...redoStack].slice(0, MAX_UNDO_DEPTH),
+      undoToast: null,
+    });
+
+    scheduleAutoGistSync(get);
+    return true;
+  },
+
+  redo: () => {
+    const { undoStack, redoStack } = get();
+    if (redoStack.length === 0) return false;
+
+    const [toApply, ...newRedoStack] = redoStack;
+    let currentSnapshot: BudgetFinancialSnapshot;
+    try {
+      currentSnapshot = captureFinancialSnapshot(get());
+    } catch {
+      return false;
+    }
+
+    const undoItem: UndoableAction = {
+      id: `undo-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      label: toApply.label,
+      timestamp: Date.now(),
+      snapshot: currentSnapshot,
+    };
+
+    const restored = toApply.snapshot;
+    persistFinancialSnapshot(restored);
+
+    set({
+      ...restored,
+      undoStack: [undoItem, ...undoStack].slice(0, MAX_UNDO_DEPTH),
+      redoStack: newRedoStack,
+      undoToast: null,
+    });
+
+    scheduleAutoGistSync(get);
+    return true;
+  },
+
+  dismissUndoToast: () => set({ undoToast: null }),
+  clearUndoHistory: () => set({ undoStack: [], redoStack: [], undoToast: null }),
 }));
 
 const syncedDataKeys: Array<keyof BudgetStoreState> = [

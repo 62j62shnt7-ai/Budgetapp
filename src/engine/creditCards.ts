@@ -308,6 +308,7 @@ export function buildCreditDueEntries(params: {
         source: 'recurring credit',
         tag: override?.tag || 'Credit',
         draws: override?.draws || [],
+        isClosed: override?.isClosed ?? false,
       });
     });
   });

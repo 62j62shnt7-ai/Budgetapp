@@ -36,6 +36,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
     recalculateCreditSettlement,
     deleteDraw,
     settleJobForecastPayment,
+    runTransaction,
     rates,
     entryActuals,
     partTimeJobs,
@@ -242,65 +243,69 @@ export const EntryModal: React.FC<EntryModalProps> = ({
     if (entryToEdit) {
       const newActual = actualAmount ? Math.round(Number(actualAmount) * fxRate) : 0;
       const previousActual = getEntryActualAmount(entryToEdit, entryActuals);
-      if (entryToEdit.id.startsWith('credit-settlement-')) {
-        updateCreditSettlementOverride(entryToEdit.id, {
-          amount: egpEquivalent,
-          date,
-          note: statementNote.trim() || undefined,
-        });
-      } else {
-        updateEntry(entryToEdit.id, baseEntry, seriesEditMode);
-      }
-      if (newActual > 0) {
-        recordActual(entryToEdit.id, newActual, date, {
-          tag: baseEntry.tag,
-          account: baseEntry.account,
-          note: baseEntry.note,
-        });
-        if (shouldPromptDeduct && newActual !== previousActual && onDeductPrompt) {
-          onDeductPrompt({ ...baseEntry, id: entryToEdit.id }, newActual - previousActual);
+      runTransaction(`Update ${entryToEdit.type === 'income' ? 'Income' : 'Expense'}: ${normalizedCategory}`, () => {
+        if (entryToEdit.id.startsWith('credit-settlement-')) {
+          updateCreditSettlementOverride(entryToEdit.id, {
+            amount: egpEquivalent,
+            date,
+            note: statementNote.trim() || undefined,
+          });
+        } else {
+          updateEntry(entryToEdit.id, baseEntry, seriesEditMode);
         }
-      } else if (previousActual > 0) {
-        clearActual(entryToEdit.id);
+        if (newActual > 0) {
+          recordActual(entryToEdit.id, newActual, date, {
+            tag: baseEntry.tag,
+            account: baseEntry.account,
+            note: baseEntry.note,
+          });
+        } else if (previousActual > 0) {
+          clearActual(entryToEdit.id);
+        }
+      });
+      if (shouldPromptDeduct && newActual !== previousActual && onDeductPrompt) {
+        onDeductPrompt({ ...baseEntry, id: entryToEdit.id }, newActual - previousActual);
       }
     } else {
       const newActual = actualAmount ? Math.round(Number(actualAmount) * fxRate) : 0;
       if (isRecurring && recurringCount > 1) {
-        const seriesId = generateSeriesId();
-        let firstCreatedId = '';
-        for (let i = 0; i < recurringCount; i++) {
-          let recDate = date;
-          if (recurringFrequency === 'monthly') {
-            const [y, m, d] = date.split('-').map(Number);
-            const targetM = m - 1 + i;
-            const targetYear = y + Math.floor(targetM / 12);
-            const targetMonth = (targetM % 12) + 1;
-            const daysInTargetMonth = new Date(targetYear, targetMonth, 0).getDate();
-            const safeDay = Math.min(d, daysInTargetMonth);
-            recDate = `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(safeDay).padStart(2, '0')}`;
-          } else if (recurringFrequency === 'weekly' || recurringFrequency === 'biweekly') {
-            const dObj = new Date(date);
-            const baseDay = dObj.getDay();
-            const target = recurringDayOfWeek;
-            const offset = (target - baseDay + 7) % 7;
-            dObj.setDate(dObj.getDate() + offset + i * (recurringFrequency === 'biweekly' ? 14 : 7));
-            recDate = DateUtils.formatDateObj(dObj);
-          }
+        runTransaction(`Add Recurring (${recurringCount}x): ${normalizedCategory}`, () => {
+          const seriesId = generateSeriesId();
+          let firstCreatedId = '';
+          for (let i = 0; i < recurringCount; i++) {
+            let recDate = date;
+            if (recurringFrequency === 'monthly') {
+              const [y, m, d] = date.split('-').map(Number);
+              const targetM = m - 1 + i;
+              const targetYear = y + Math.floor(targetM / 12);
+              const targetMonth = (targetM % 12) + 1;
+              const daysInTargetMonth = new Date(targetYear, targetMonth, 0).getDate();
+              const safeDay = Math.min(d, daysInTargetMonth);
+              recDate = `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(safeDay).padStart(2, '0')}`;
+            } else if (recurringFrequency === 'weekly' || recurringFrequency === 'biweekly') {
+              const dObj = new Date(date);
+              const baseDay = dObj.getDay();
+              const target = recurringDayOfWeek;
+              const offset = (target - baseDay + 7) % 7;
+              dObj.setDate(dObj.getDate() + offset + i * (recurringFrequency === 'biweekly' ? 14 : 7));
+              recDate = DateUtils.formatDateObj(dObj);
+            }
 
-          const createdId = addEntry({
-            ...baseEntry,
-            date: recDate,
-            isRecurring: true,
-            seriesId,
-            actualAmount: i === 0 && newActual > 0 ? newActual : undefined,
-            actualDate: i === 0 && newActual > 0 ? recDate : undefined,
-            source: 'recurring',
-          });
-          if (i === 0) firstCreatedId = createdId;
-        }
-        if (newActual > 0 && shouldPromptDeduct && onDeductPrompt) {
-          onDeductPrompt({ ...baseEntry, id: firstCreatedId }, newActual);
-        }
+            const createdId = addEntry({
+              ...baseEntry,
+              date: recDate,
+              isRecurring: true,
+              seriesId,
+              actualAmount: i === 0 && newActual > 0 ? newActual : undefined,
+              actualDate: i === 0 && newActual > 0 ? recDate : undefined,
+              source: 'recurring',
+            });
+            if (i === 0) firstCreatedId = createdId;
+          }
+          if (newActual > 0 && shouldPromptDeduct && onDeductPrompt && firstCreatedId) {
+            onDeductPrompt({ ...baseEntry, id: firstCreatedId }, newActual);
+          }
+        });
       } else {
         const createdId = addEntry(baseEntry);
         if (newActual > 0 && shouldPromptDeduct && onDeductPrompt) {

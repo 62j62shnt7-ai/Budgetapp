@@ -32,6 +32,7 @@ import { GistSyncModal } from './components/Modals/GistSyncModal';
 import { DataToolsModal } from './components/Modals/DataToolsModal';
 import { DeductAccountModal } from './components/Modals/DeductAccountModal';
 import { MobileActionSheet } from './components/Layout/MobileActionSheet';
+import { UndoToast } from './components/Common/UndoToast';
 import { autoFetchLatestRates } from './engine/currency';
 import type { CashEntry, JobItem, Installment } from './types';
 
@@ -585,6 +586,8 @@ export const App: React.FC = () => {
         actualAmount={deductActualAmount}
         onClose={() => setDeductModalOpen(false)}
       />
+
+      <UndoToast />
     </>
   );
 };

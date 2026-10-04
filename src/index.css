@@ -5103,8 +5103,198 @@ input[type="date"]::-webkit-date-and-time-value {
   scroll-margin-top: 140px;
 }
 
+/* ==========================================================================
+   Undo / Redo System & Live Counter Badges
+   ========================================================================== */
 
+.undo-counter-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  background: color-mix(in srgb, var(--amber) 16%, var(--surface-soft));
+  color: var(--amber);
+  border: 1px solid color-mix(in srgb, var(--amber) 32%, transparent);
+  transition: all 0.15s ease;
+}
 
+.topbar-undo-btn,
+.topbar-redo-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
 
+.topbar-undo-btn:disabled,
+.topbar-redo-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
 
+.topbar-redo-btn .undo-counter-badge {
+  background: color-mix(in srgb, var(--blue) 16%, var(--surface-soft));
+  color: var(--blue);
+  border-color: color-mix(in srgb, var(--blue) 32%, transparent);
+}
 
+.mobile-undo-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mobile-undo-btn .undo-counter-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  min-width: 15px;
+  height: 15px;
+  font-size: 9px;
+  padding: 0 3px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
+}
+
+/* Undo Toast Notification */
+.undo-toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999;
+  max-width: calc(100vw - 32px);
+  pointer-events: none;
+}
+
+@media (max-width: 640px) {
+  .undo-toast-container {
+    bottom: 74px;
+    right: 16px;
+    left: 16px;
+    display: flex;
+    justify-content: center;
+  }
+}
+
+.undo-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  background: var(--glass-bg, rgba(15, 23, 42, 0.9));
+  backdrop-filter: var(--glass-blur, blur(16px) saturate(180%));
+  -webkit-backdrop-filter: var(--glass-blur, blur(16px) saturate(180%));
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.12));
+  box-shadow: 0 12px 32px -4px rgba(0, 0, 0, 0.35), var(--glass-rim);
+  animation: undoToastSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes undoToastSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.undo-toast-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  min-width: 0;
+}
+
+.undo-toast-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 6px var(--amber);
+  flex-shrink: 0;
+}
+
+.undo-toast-message {
+  max-width: 240px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.undo-toast-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  background: var(--surface-soft);
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+
+.undo-toast-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.undo-toast-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: color-mix(in srgb, var(--amber) 16%, var(--surface));
+  color: var(--amber);
+  border: 1px solid color-mix(in srgb, var(--amber) 35%, transparent);
+  padding: 5px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.undo-toast-btn:hover {
+  background: var(--amber);
+  color: #000;
+  border-color: var(--amber);
+}
+
+.undo-toast-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.undo-toast-close:hover {
+  color: var(--ink);
+  background: var(--surface-soft);
+}

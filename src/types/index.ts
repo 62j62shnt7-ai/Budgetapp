@@ -22,6 +22,7 @@ export interface CreditSettlementOverride {
   tag?: string;
   account?: string;
   draws?: EntryDraw[];
+  isClosed?: boolean;
 }
 
 export interface CashEntry {
@@ -291,5 +292,45 @@ export interface NavigationIntent {
     account?: string;
     highlightId?: string;
   };
+}
+
+export interface BudgetFinancialSnapshot {
+  entries: CashEntry[];
+  archivedEntries: CashEntry[];
+  deletedForecasts: string[];
+  accounts: Record<string, AccountBalance>;
+  salaryPattern: SalaryPayment[];
+  installments: Installment[];
+  rates: RatesData;
+  storageAssets: StorageAsset[];
+  asfJobs: JobItem[];
+  irqJobs: JobItem[];
+  partTimeJobs: JobItem[];
+  entryActuals: Record<string, number>;
+  entryActualDates: Record<string, string>;
+  creditDues: Record<string, Record<string, number>>;
+  creditDueMonths: Record<string, string[]>;
+  creditSettlementOverrides: Record<string, {
+    amount?: number;
+    date?: string;
+    note?: string;
+    tag?: string;
+    account?: string;
+    draws?: EntryDraw[];
+  }>;
+  salaryAnchorMonth: string;
+}
+
+export interface UndoableAction {
+  id: string;
+  label: string;
+  timestamp: number;
+  snapshot: BudgetFinancialSnapshot;
+}
+
+export interface UndoToastState {
+  id: string;
+  label: string;
+  timestamp: number;
 }
 

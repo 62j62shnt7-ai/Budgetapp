@@ -27,6 +27,7 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
     addStorageAsset,
     updateAccountBalance,
     updateEntry,
+    runTransaction,
   } = useBudgetStore();
 
   const [selectedAccountId, setSelectedAccountId] = useState<string>('cib');
@@ -132,8 +133,10 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
   };
 
   const handleDepositAndSave = () => {
-    const trimmedTag = tag.trim();
-    let accountName = '';
+    if (!entry) return;
+    runTransaction(`${isIncome ? 'Deposit' : 'Deduct'} Account: ${entry.category || 'Entry'}`, () => {
+      const trimmedTag = tag.trim();
+      let accountName = '';
 
     if (isForeign && isIncome && settlementMode === 'foreign') {
       // 1. Keep in Foreign Currency -> Deposit to Storage
@@ -248,10 +251,11 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
       ];
     }
 
-    updateEntry(entry.id, {
-      tag: trimmedTag,
-      ...(accountName ? { account: accountName } : {}),
-      draws: updatedDraws,
+      updateEntry(entry.id, {
+        tag: trimmedTag,
+        ...(accountName ? { account: accountName } : {}),
+        draws: updatedDraws,
+      });
     });
 
     onClose();

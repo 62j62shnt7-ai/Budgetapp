@@ -6,7 +6,8 @@ import {
   Sun, 
   Moon, 
   Cloud, 
-  RotateCw, 
+  RotateCw,
+  RotateCcw,
   Database, 
   CreditCard, 
   Plus
@@ -38,7 +39,19 @@ export const Topbar: React.FC<TopbarProps> = ({
   onOpenDataTools,
   onOpenGistSync,
 }) => {
-  const { theme, setTheme, activeTab, toggleSidebar, gistId, gistAutoSync, gistSyncStatus } = useBudgetStore();
+  const {
+    theme,
+    setTheme,
+    activeTab,
+    toggleSidebar,
+    gistId,
+    gistAutoSync,
+    gistSyncStatus,
+    undoStack,
+    redoStack,
+    undo,
+    redo,
+  } = useBudgetStore();
   const updateStatus = useAppUpdateStatus();
   const syncLabel = !gistId
     ? 'Setup'
@@ -85,6 +98,19 @@ export const Topbar: React.FC<TopbarProps> = ({
 
         {/* Mobile-only compact actions (single-row) */}
         <div className="top-actions-mobile">
+          {undoStack.length > 0 && (
+            <button
+              className="ghost-button icon-button mobile-undo-btn"
+              id="mobileUndoBtn"
+              type="button"
+              aria-label={`Undo last action (${undoStack.length})`}
+              title={`Undo: ${undoStack[0]?.label}`}
+              onClick={() => undo()}
+            >
+              <RotateCcw size={16} />
+              <span className="undo-counter-badge">{undoStack.length}</span>
+            </button>
+          )}
           <button
             className="primary-button mobile-quick-add-btn"
             type="button"
@@ -109,6 +135,38 @@ export const Topbar: React.FC<TopbarProps> = ({
         {/* Desktop-only comprehensive toolbar */}
         <div className="top-actions desktop-top-actions">
           <div className="top-actions-cluster top-actions-utilities">
+            <button
+              className="ghost-button topbar-undo-btn"
+              id="topbarUndoBtn"
+              type="button"
+              disabled={undoStack.length === 0}
+              aria-label={undoStack[0] ? `Undo: ${undoStack[0].label} (${undoStack.length} steps available)` : 'Nothing to undo'}
+              title={undoStack[0] ? `Undo: ${undoStack[0].label} (${undoStack.length} steps available, max 30)` : 'Nothing to undo'}
+              onClick={() => undo()}
+            >
+              <RotateCcw size={15} />
+              <span className="topbar-btn-label">Undo</span>
+              {undoStack.length > 0 && (
+                <span className="undo-counter-badge" id="undoCountBadge">{undoStack.length}</span>
+              )}
+            </button>
+
+            <button
+              className="ghost-button topbar-redo-btn"
+              id="topbarRedoBtn"
+              type="button"
+              disabled={redoStack.length === 0}
+              aria-label={redoStack[0] ? `Redo: ${redoStack[0].label} (${redoStack.length} steps available)` : 'Nothing to redo'}
+              title={redoStack[0] ? `Redo: ${redoStack[0].label} (${redoStack.length} steps available)` : 'Nothing to redo'}
+              onClick={() => redo()}
+            >
+              <RotateCw size={15} />
+              <span className="topbar-btn-label">Redo</span>
+              {redoStack.length > 0 && (
+                <span className="undo-counter-badge" id="redoCountBadge">{redoStack.length}</span>
+              )}
+            </button>
+
             <button
               className="ghost-button"
               id="themeToggle"

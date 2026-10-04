@@ -23,6 +23,8 @@ Budget Control v2 is a local-first, privacy-focused financial management web app
 - **Subspend / Multi-Draw Tranche Persistence:** Record multiple partial spends or loan draws against an entry (`entry.draws`). Each tranche retains its own payment date, amount, account, and subcategory tag.
 - **Exact Amount Decision Prompt:** When an actual spend, income, or loan draw meets or exceeds 100% of planned, prompts whether to **Finish & Fulfill** (close entry and remove remainder from future forecast) or **Keep Ongoing** (keep open in Cash Flow to log further transactions).
 - **Loan Repayment Scaling:** When logging a partial draw against a credit or bridge facility, automatically calculates and offers to **Scale Repayment** obligations down proportionally to match what was actually borrowed.
+- **Modal Ordering:** When an actual amount settles an entry in full (including calculated credit dues), the Finish/Keep decision appears first; the **Deduct & Save** account prompt follows once it is resolved.
+- **Undo / Redo:** Compound mutations run inside `runTransaction`, so each user action (including multi-entry operations) reverts in a single undo step, with an undo toast.
 
 ### 🧭 4. Unified Interactive Navigation & Deep-Linking
 - **Direct Entry Redirection & Row Flashing:** Clicking any credit due hero card or sub-cycle ("THIS MO" / "NEXT MO") on the Dashboard jumps directly to the exact settlement entry in Cash Flow (`credit-settlement-cib-${month}` / `credit-settlement-hsbc-${month}`) with automatic scroll-centering and a double-pulse glow animation.

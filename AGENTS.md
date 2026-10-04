@@ -73,6 +73,8 @@ test/
   1. Define the action in `src/types/index.ts` first if modifying payload shapes.
   2. Implement state mutations immutably in `useBudgetStore.ts`.
   3. Ensure persistence and migration handling remain backward compatible.
+  4. Wrap multi-step mutations in `runTransaction(label, fn)` so undo/redo reverts them atomically.
+* Modals: `Modal` (via `showModal()`) renders in the top layer and hides plain `<dialog open>` elements. Never open two modals simultaneously; queue the follow-up (see `pendingDeductRef` in `CashflowView.tsx`) and open it after the first closes.
 
 ### C. TypeScript & Type Safety
 * Never use `any`. Always use explicit interfaces or discriminated unions defined in `src/types/index.ts`.
