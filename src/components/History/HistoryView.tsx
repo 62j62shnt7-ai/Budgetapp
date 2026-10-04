@@ -54,7 +54,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
   const initialMonth = pendingNavigation?.tab === 'history' && pendingNavigation.filters?.month
     ? pendingNavigation.filters.month
     : 'all';
-  const initialTab = pendingNavigation?.tab === 'history' && pendingNavigation.filters?.month
+  const initialTab = pendingNavigation?.tab === 'history' && (pendingNavigation.filters?.month || pendingNavigation.filters?.category || pendingNavigation.filters?.highlightId || pendingNavigation.filters?.search || pendingNavigation.filters?.type || pendingNavigation.filters?.account || pendingNavigation.filters?.tag)
     ? 'transactions'
     : 'summary';
 
@@ -63,11 +63,16 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
     localStorage.getItem('budget-control-history-admin-unlocked') === 'true'
   );
 
+  const initialCategory = pendingNavigation?.tab === 'history' && pendingNavigation.filters?.category
+    ? pendingNavigation.filters.category
+    : 'all';
+
   // Filters
   const [selectedMonth, setSelectedMonth] = useState<string>(initialMonth);
   const [selectedType, setSelectedType] = useState<string>(
     pendingNavigation?.tab === 'history' && pendingNavigation.filters?.type ? pendingNavigation.filters.type : 'all'
   );
+  const [selectedCategory, setSelectedCategory] = useState<string>(initialCategory);
   const [selectedAccount, setSelectedAccount] = useState<string>(
     pendingNavigation?.tab === 'history' && pendingNavigation.filters?.account ? pendingNavigation.filters.account : 'all'
   );
@@ -94,6 +99,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
     if (f) {
       setSelectedMonth(f.month !== undefined ? f.month : 'all');
       setSelectedType(f.type !== undefined ? f.type : 'all');
+      setSelectedCategory(f.category !== undefined ? f.category : 'all');
       setSelectedAccount(f.account !== undefined ? f.account : 'all');
       setSelectedTag(f.tag !== undefined ? f.tag : 'all');
       setSelectedCategoryGroup('all');
@@ -175,6 +181,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
   const handleResetFilters = () => {
     setSelectedMonth('all');
     setSelectedType('all');
+    setSelectedCategory('all');
     setSelectedAccount('all');
     setSelectedTag('all');
     setSelectedCategoryGroup('all');
@@ -183,6 +190,14 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
 
   const handleTagFilter = (tag: string) => {
     setSelectedTag((current) => current.toLowerCase() === tag.toLowerCase() ? 'all' : tag);
+  };
+
+  const handleCategoryFilter = (cat: string) => {
+    setSelectedCategory((current) => (current === cat ? 'all' : cat));
+  };
+
+  const handleAccountFilter = (acc: string) => {
+    setSelectedAccount((current) => (current.toLowerCase() === acc.toLowerCase() ? 'all' : acc.toLowerCase()));
   };
 
   const handleClearActual = (entry: CashEntry) => {
@@ -362,6 +377,9 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
 
   const allAccounts = Array.from(new Set(actualEntries.map((e) => e.account || 'cash'))).sort();
   const allTags = Array.from(new Set(actualEntries.flatMap(getEntryTags))).sort((a, b) => a.localeCompare(b));
+  const allCategories = Array.from(
+    new Set(actualEntries.map((e) => e.category).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b));
   const hasUntagged = actualEntries.some((entry) =>
     getEntryTags(entry).length === 0 || (entry.draws || []).some((draw) => !draw.tag || !draw.tag.trim())
   );
@@ -379,17 +397,19 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
 
         if (selectedMonth !== 'all' && dMonth !== selectedMonth) return;
         if (selectedTag !== 'all' && dTag.toLowerCase() !== selectedTag.toLowerCase()) return;
+        if (selectedCategory !== 'all' && entry.category !== selectedCategory) return;
 
         trancheSum += dAmt;
         matchedAny = true;
       });
       if (matchedAny) return trancheSum;
-      if (selectedMonth !== 'all' || selectedTag !== 'all') return 0;
+      if (selectedMonth !== 'all' || selectedTag !== 'all' || selectedCategory !== 'all') return 0;
     }
 
     const actDate = getEntryActualDate(entry);
     if (selectedMonth !== 'all' && DateUtils.getMonthKey(actDate) !== selectedMonth) return 0;
 
+    if (selectedCategory !== 'all' && entry.category !== selectedCategory) return 0;
     if (selectedCategoryGroup !== 'all' && getSmartGroupBucket(entry) !== selectedCategoryGroup) return 0;
 
     const eTag = (entry.tag || '').trim();
@@ -411,6 +431,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
     }
 
     if (selectedType !== 'all' && entry.type !== selectedType) return false;
+    if (selectedCategory !== 'all' && entry.category !== selectedCategory) return false;
     if (selectedAccount !== 'all' && (entry.account || 'cash').toLowerCase() !== selectedAccount.toLowerCase()) return false;
     if (selectedCategoryGroup !== 'all' && getSmartGroupBucket(entry) !== selectedCategoryGroup) return false;
 
@@ -596,6 +617,15 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                 </select>
               </label>
               <label className="history-filter-field">
+                <span className="field-label-text">Category</span>
+                <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)}>
+                  <option value="all">All categories</option>
+                  {allCategories.map((cat) => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="history-filter-field">
                 <span className="field-label-text">Account</span>
                 <select value={selectedAccount} onChange={(e) => setSelectedAccount(e.target.value)}>
                   <option value="all">All accounts</option>
@@ -632,7 +662,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                 Reset filters
               </button>
             </div>
-            {(selectedMonth !== 'all' || selectedCategoryGroup !== 'all' || selectedTag !== 'all' || selectedType !== 'all' || selectedAccount !== 'all' || searchTerm) && (
+            {(selectedMonth !== 'all' || selectedCategory !== 'all' || selectedCategoryGroup !== 'all' || selectedTag !== 'all' || selectedType !== 'all' || selectedAccount !== 'all' || searchTerm) && (
               <div
                 style={{
                   display: 'flex',
@@ -657,6 +687,19 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                       style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand-primary, #6366f1)', fontWeight: 700 }}
                       onClick={() => setSelectedMonth('all')}
                       title="Clear month filter"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                )}
+                {selectedCategory !== 'all' && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
+                    📁 Category: <strong>{selectedCategory}</strong>
+                    <button
+                      type="button"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand-primary, #6366f1)', fontWeight: 700 }}
+                      onClick={() => setSelectedCategory('all')}
+                      title="Clear category filter"
                     >
                       ✕
                     </button>
@@ -934,7 +977,33 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                             )}
                           </td>
                           <td className="cell-category">
-                            <strong>{entry.category}</strong>
+                            <strong
+                              className="history-summary-clickable-row"
+                              style={{
+                                cursor: 'pointer',
+                                padding: '1px 5px',
+                                margin: '-1px -5px',
+                                borderRadius: '4px',
+                                display: 'inline-block',
+                                color: selectedCategory === entry.category ? 'var(--brand-primary, #6366f1)' : undefined,
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleCategoryFilter(entry.category);
+                              }}
+                              role="button"
+                              tabIndex={0}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleCategoryFilter(entry.category);
+                                }
+                              }}
+                              title={`Click to filter entries by category: ${entry.category}`}
+                            >
+                              {entry.category}
+                            </strong>
                             {entry.currency && entry.currency !== 'EGP' && (
                               <span className="source-pill" style={{ background: 'rgba(99, 102, 241, 0.12)', color: '#818cf8', fontWeight: 700, fontSize: '10px', marginLeft: '4px' }}>
                                 💵 {entry.currency}
@@ -955,9 +1024,53 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                               </button>
                             ))}
                           </td>
-                          <td className="cell-account"><span className="account-pill">{entry.account?.toUpperCase() || 'CASH'}</span></td>
+                          <td className="cell-account">
+                            <span
+                              className="account-pill history-summary-clickable-row"
+                              style={{
+                                cursor: 'pointer',
+                                border: selectedAccount.toLowerCase() === (entry.account || 'cash').toLowerCase() ? '1px solid var(--brand-primary, #6366f1)' : undefined,
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAccountFilter(entry.account || 'cash');
+                              }}
+                              role="button"
+                              tabIndex={0}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleAccountFilter(entry.account || 'cash');
+                                }
+                              }}
+                              title={`Click to filter entries by account: ${(entry.account || 'cash').toUpperCase()}`}
+                            >
+                              {entry.account?.toUpperCase() || 'CASH'}
+                            </span>
+                          </td>
                           <td className="cell-type">
-                            <span className={`pill ${entry.type}`}>
+                            <span
+                              className={`pill ${entry.type} history-summary-clickable-row`}
+                              style={{
+                                cursor: 'pointer',
+                                outline: selectedType === entry.type ? '2px solid var(--brand-primary, #6366f1)' : undefined,
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedType((prev) => (prev === entry.type ? 'all' : entry.type));
+                              }}
+                              role="button"
+                              tabIndex={0}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setSelectedType((prev) => (prev === entry.type ? 'all' : entry.type));
+                                }
+                              }}
+                              title={`Click to filter entries by type: ${entry.type}`}
+                            >
                               {entry.type}
                             </span>
                           </td>
@@ -1178,7 +1291,28 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                                               </button>
                                             ) : '—'}
                                           </td>
-                                          <td>{(draw.account || entry.account || 'cash').toUpperCase()}</td>
+                                          <td>
+                                            <span
+                                              className="account-pill history-summary-clickable-row"
+                                              style={{
+                                                cursor: 'pointer',
+                                                fontSize: '11px',
+                                                border: selectedAccount.toLowerCase() === (draw.account || entry.account || 'cash').toLowerCase() ? '1px solid var(--brand-primary, #6366f1)' : undefined,
+                                              }}
+                                              onClick={() => handleAccountFilter(draw.account || entry.account || 'cash')}
+                                              role="button"
+                                              tabIndex={0}
+                                              onKeyDown={(e) => {
+                                                if (e.key === 'Enter' || e.key === ' ') {
+                                                  e.preventDefault();
+                                                  handleAccountFilter(draw.account || entry.account || 'cash');
+                                                }
+                                              }}
+                                              title={`Click to filter entries by account: ${(draw.account || entry.account || 'cash').toUpperCase()}`}
+                                            >
+                                              {(draw.account || entry.account || 'cash').toUpperCase()}
+                                            </span>
+                                          </td>
                                           <td className="number">{formatMoney(Number(draw.amount) || 0)}</td>
                                         </tr>
                                       ))}
