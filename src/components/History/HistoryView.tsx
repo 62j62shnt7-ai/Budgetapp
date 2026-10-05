@@ -331,7 +331,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
         }
       });
 
-      const net = income - expenses;
+      const net = income - (expenses - creditSettled);
       const savingsRate = income > 0 ? Math.round((net / income) * 100) : 0;
 
       return {
@@ -348,7 +348,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
   const totalLifetimeIncome = monthlySummaryRows.reduce((sum, r) => sum + r.income, 0);
   const totalLifetimeExpenses = monthlySummaryRows.reduce((sum, r) => sum + r.expenses, 0);
   const totalLifetimeCredit = monthlySummaryRows.reduce((sum, r) => sum + r.creditSettled, 0);
-  const lifetimeNet = totalLifetimeIncome - totalLifetimeExpenses;
+  const lifetimeNet = totalLifetimeIncome - (totalLifetimeExpenses - totalLifetimeCredit);
   const lifetimeSavingsRate = totalLifetimeIncome > 0 ? Math.round((lifetimeNet / totalLifetimeIncome) * 100) : 0;
 
   // Filter options for Individual Validations
@@ -463,7 +463,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
     .filter((e) => isCreditSettlementRow(e))
     .reduce((sum, e) => sum + getFilteredEntryAmount(e), 0);
 
-  const filteredNet = filteredIncome - filteredExpenses;
+  const filteredNet = filteredIncome - (filteredExpenses - filteredCredit);
 
   // Grouped Analytics breakdown
   const getSmartGroupBucket = (entry: CashEntry): string => {
