@@ -769,9 +769,9 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
             <article className="metric history-metric">
               <span>Filtered Expenses</span>
               <strong style={{ color: 'var(--red)' }}>
-                {formatMoney(filteredExpenses)}
+                {formatMoney(filteredExpenses - filteredCredit)}
                 {filteredCredit > 0 && (
-                  <span style={{ color: 'var(--muted)', fontWeight: 500, fontSize: '0.8em' }}> ({formatMoney(filteredExpenses - filteredCredit)} + {formatMoney(filteredCredit)} credit settled)</span>
+                  <span style={{ color: 'var(--muted)', fontWeight: 500, fontSize: '0.8em' }}> ({formatMoney(filteredCredit)} settlement)</span>
                 )}
               </strong>
               <small>Total for selected criteria</small>

@@ -42,9 +42,9 @@ export const HistorySummaryTab: React.FC<HistorySummaryTabProps> = ({
         <article className="metric history-metric">
           <span>Lifetime Expenses</span>
           <strong id="historyLifetimeExpenses" style={{ color: 'var(--red)' }}>
-            {formatMoney(totalLifetimeExpenses)}
+            {formatMoney(totalLifetimeExpenses - totalLifetimeCredit)}
             {totalLifetimeCredit > 0 && (
-              <span style={{ color: 'var(--muted)', fontWeight: 500, fontSize: '0.6em' }}> ({formatMoney(totalLifetimeExpenses - totalLifetimeCredit)} + {formatMoney(totalLifetimeCredit)} credit settled)</span>
+              <span style={{ color: 'var(--muted)', fontWeight: 500, fontSize: '0.6em' }}> ({formatMoney(totalLifetimeCredit)} settlement)</span>
             )}
           </strong>
           <small>Total realized expenses</small>
@@ -121,9 +121,9 @@ export const HistorySummaryTab: React.FC<HistorySummaryTabProps> = ({
                         +{formatMoney(row.income)}
                       </td>
                       <td className="number" style={{ color: 'var(--red)', fontWeight: 600 }}>
-                        -{formatMoney(row.expenses)}
+                        -{formatMoney(row.expenses - (row.creditSettled || 0))}
                         {!!row.creditSettled && row.creditSettled > 0 && (
-                          <span style={{ color: 'var(--muted)', fontWeight: 500, fontSize: '0.85em' }}> ({formatMoney(row.expenses - row.creditSettled)} + {formatMoney(row.creditSettled)} credit settled)</span>
+                          <span style={{ color: 'var(--muted)', fontWeight: 500, fontSize: '0.85em' }}> ({formatMoney(row.creditSettled)} settlement)</span>
                         )}
                       </td>
                       <td
