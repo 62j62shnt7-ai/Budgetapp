@@ -14,12 +14,22 @@ import { computeAssetEgpValue, computeTotalStorageValue, formatNativeCurrency, g
 import { DateUtils, formatMoney, formatLastUpdated } from '../../engine/dateUtils';
 import { ForecastChart } from '../Forecast/ForecastChart';
 import { CreditCard, CheckCircle2, Clock } from 'lucide-react';
+import {
+  getCreditDueFundingAlerts,
+  getCriticalFundingAlerts,
+} from '../../engine/creditDueAlerts';
+import type { CreditDueFundingAlert } from '../../types';
 
 import { useForecastCandidates } from '../../hooks/useForecastCandidates';
 
-export const DashboardView: React.FC = () => {
+interface DashboardViewProps {
+  onOpenTransferModal?: (from?: string, to?: string, amount?: number, reason?: string) => void;
+}
+
+export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModal }) => {
   const {
     rates,
+    accounts,
     storageAssets,
     entries,
     archivedEntries,
@@ -86,7 +96,7 @@ export const DashboardView: React.FC = () => {
   const currentYm = DateUtils.currentYearMonth();
   const nextYm = DateUtils.addMonths(currentYm, 1);
   const remainingDue = (entry: (typeof creditDueEntries)[number]) =>
-    Math.max(0, Number(entry.amount || 0) - Number(entry.actualAmount || 0));
+    Math.max(0, Number(entry.amount || 0) - getEntryActualAmount(entry, entryActuals));
   const dueFor = (account: string, month: string) =>
     creditDueEntries
       .filter((entry) => {
@@ -116,6 +126,186 @@ export const DashboardView: React.FC = () => {
   const hsbcDueDate = creditDueEntries.find(
     (entry) => entry.id === `credit-settlement-hsbc-${activeHsbcMonth}`
   )?.date;
+
+  // Credit Due Account Solvency & Funding Alerts
+  const fundingAlerts = React.useMemo(() => {
+    return getCreditDueFundingAlerts({
+      creditDueEntries,
+      accounts,
+      entryActuals,
+      candidateEntries: allCandidateEntries,
+    });
+  }, [creditDueEntries, accounts, entryActuals, allCandidateEntries]);
+
+  const criticalFundingAlerts = React.useMemo(() => {
+    return getCriticalFundingAlerts(fundingAlerts);
+  }, [fundingAlerts]);
+
+  const cibFundingAlert =
+    fundingAlerts.find(
+      (a) => a.accountKey === 'cib' && a.entryId === `credit-settlement-cib-${activeCibMonth}`
+    ) ||
+    fundingAlerts.find((a) => a.accountKey === 'cib' && a.remainingDue > 0) ||
+    fundingAlerts.find((a) => a.accountKey === 'cib');
+
+  const hsbcFundingAlert =
+    fundingAlerts.find(
+      (a) => a.accountKey === 'hsbc' && a.entryId === `credit-settlement-hsbc-${activeHsbcMonth}`
+    ) ||
+    fundingAlerts.find((a) => a.accountKey === 'hsbc' && a.remainingDue > 0) ||
+    fundingAlerts.find((a) => a.accountKey === 'hsbc');
+
+  const handleOpenAlertTransfer = (alert: CreditDueFundingAlert) => {
+    if (onOpenTransferModal) {
+      const transferAmount = alert.maxTransferableAmount || alert.shortfall;
+      const desc = alert.canBeCoveredByTransfer
+        ? `${alert.cardName} due ${DateUtils.formatDisplayDate(alert.settlementDate)} (Shortfall: ${formatMoney(alert.shortfall)})`
+        : `${alert.cardName} due ${DateUtils.formatDisplayDate(alert.settlementDate)} (Partial transfer: ${formatMoney(transferAmount)} · Remaining shortfall: ${formatMoney(alert.remainingUncoveredShortfall || 0)})`;
+
+      onOpenTransferModal(
+        alert.suggestedSourceAccount?.accountKey,
+        alert.accountKey,
+        transferAmount,
+        desc
+      );
+    } else {
+      navigateTo('accounts');
+    }
+  };
+
+  const renderFundingPill = (alert: CreditDueFundingAlert | undefined) => {
+    if (!alert || alert.totalPlannedDue <= 0) return null;
+
+    const isFunded = alert.shortfall <= 0;
+
+    if (isFunded) {
+      const isFundedByIncome = alert.isFundedByProjectedIncome && alert.accountBalance < alert.remainingDue;
+      const fundedText = isFundedByIncome
+        ? `🟢 ${alert.accountName} funded by upcoming income (${formatMoney(alert.projectedAccountBalance || alert.accountBalance)} projected)`
+        : `🟢 ${alert.accountName} Account funded (${formatMoney(alert.accountBalance)} avail)`;
+      const fundedTooltip = isFundedByIncome
+        ? `${alert.accountName} current balance: ${formatMoney(alert.accountBalance)}, projected to reach ${formatMoney(alert.projectedAccountBalance || 0)} from scheduled income before settlement date (${DateUtils.formatDisplayDate(alert.settlementDate)}). Fully covers ${formatMoney(alert.remainingDue)} due with no deficits.`
+        : `${alert.accountName} Account has ${formatMoney(alert.accountBalance)} (Fully covers ${formatMoney(alert.remainingDue)} due)`;
+
+      return (
+        <div
+          className="credit-funding-card-pill is-funded"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '5px 8px',
+            borderRadius: '6px',
+            fontSize: '11px',
+            lineHeight: '1.35',
+            marginTop: '6px',
+            marginBottom: '8px',
+            background: 'rgba(16, 185, 129, 0.12)',
+            border: '1px solid var(--green, #10b981)',
+            color: 'var(--green, #10b981)',
+          }}
+          title={fundedTooltip}
+        >
+          <span style={{ wordBreak: 'break-word' }}>{fundedText}</span>
+        </div>
+      );
+    }
+
+    const isClose = alert.isAlert; // <= 7 days or overdue
+    const canCover = Boolean(alert.canBeCoveredByTransfer && alert.suggestedSourceAccount);
+
+    const hasPartialSource = Boolean(
+      !canCover &&
+      alert.suggestedSourceAccount &&
+      alert.maxTransferableAmount &&
+      alert.maxTransferableAmount > 0
+    );
+    const canTransferAny = canCover || hasPartialSource;
+
+    // Styling & color tokens
+    // If fully covered & close: amber warning ("Needs Transfer")
+    // If fully covered & not close: blue notice ("Scheduled Transfer")
+    // If partially covered: amber warning mentioning remaining shortfall only ("Remaining Shortfall: X")
+    // If completely uncovered & close: red critical ("Unfunded Shortfall: X")
+    // If completely uncovered & not close: amber ("Upcoming Shortfall: X")
+    let borderColor = 'var(--line)';
+    let bgColor = 'var(--surface-soft)';
+    let textColor = 'var(--ink)';
+    let label = '';
+
+    if (canCover) {
+      if (isClose) {
+        borderColor = 'var(--amber, #f59e0b)';
+        bgColor = 'rgba(245, 158, 11, 0.14)';
+        textColor = 'var(--amber, #f59e0b)';
+        label = `⚠️ Needs Transfer: ${formatMoney(alert.shortfall)} (covered by ${alert.suggestedSourceAccount?.accountName})`;
+      } else {
+        borderColor = 'rgba(59, 130, 246, 0.4)';
+        bgColor = 'rgba(59, 130, 246, 0.08)';
+        textColor = '#60a5fa';
+        label = `ℹ️ Scheduled Transfer: ${formatMoney(alert.shortfall)} available in ${alert.suggestedSourceAccount?.accountName}`;
+      }
+    } else if (hasPartialSource) {
+      // By the settlement date, only put the amount that will be available to partially cover it:
+      const availableToCover = alert.maxTransferableAmount || 0;
+      const remainingShortfall = alert.remainingUncoveredShortfall ?? (alert.shortfall - availableToCover);
+      borderColor = isClose ? 'var(--red, #f43f5e)' : 'var(--amber, #f59e0b)';
+      bgColor = isClose ? 'rgba(244, 63, 94, 0.14)' : 'rgba(245, 158, 11, 0.12)';
+      textColor = isClose ? 'var(--red, #f43f5e)' : 'var(--amber, #f59e0b)';
+      label = `⚠️ ${formatMoney(availableToCover)} available to partially cover from ${alert.suggestedSourceAccount?.accountName} (${formatMoney(remainingShortfall)} remaining shortfall)`;
+    } else {
+      // Nothing can cover shortfall at all: no account has any funds
+      if (isClose) {
+        borderColor = 'var(--red, #f43f5e)';
+        bgColor = 'rgba(244, 63, 94, 0.16)';
+        textColor = 'var(--red, #f43f5e)';
+        label = `🚨 Unfunded Shortfall: ${formatMoney(alert.shortfall)} (no account has funds)`;
+      } else {
+        borderColor = 'var(--amber, #f59e0b)';
+        bgColor = 'rgba(245, 158, 11, 0.12)';
+        textColor = 'var(--amber, #f59e0b)';
+        label = `⚠️ Upcoming Shortfall: ${formatMoney(alert.shortfall)} (uncovered)`;
+      }
+    }
+
+    return (
+      <div
+        className={`credit-funding-card-pill ${canCover ? (isClose ? 'is-transfer-warning' : 'is-transfer-notice') : hasPartialSource ? 'is-partial-transfer' : 'is-shortfall'}`}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '8px',
+          padding: '5px 8px',
+          borderRadius: '6px',
+          fontSize: '11px',
+          lineHeight: '1.35',
+          marginTop: '6px',
+          marginBottom: '8px',
+          background: bgColor,
+          border: `1px solid ${borderColor}`,
+          color: textColor,
+          cursor: canTransferAny ? 'pointer' : 'default',
+        }}
+        onClick={(e) => {
+          if (canTransferAny) {
+            e.stopPropagation();
+            handleOpenAlertTransfer(alert);
+          }
+        }}
+        title={`Due ${DateUtils.formatDisplayDate(alert.settlementDate)} on ${alert.cardName}. ${alert.accountName} has ${formatMoney(alert.accountBalance)}. ${canCover ? `Can be covered by transferring ${formatMoney(alert.shortfall)} from ${alert.suggestedSourceAccount?.accountName} (${formatMoney(alert.suggestedSourceAccount?.projectedBalance ?? alert.suggestedSourceAccount?.balance ?? 0)} projected by settlement date).` : hasPartialSource ? `${alert.suggestedSourceAccount?.accountName} can partially cover ${formatMoney(alert.maxTransferableAmount || 0)} based on projected balance (${formatMoney(alert.suggestedSourceAccount?.projectedBalance ?? alert.suggestedSourceAccount?.balance ?? 0)} at settlement), leaving a remaining shortfall of ${formatMoney(alert.remainingUncoveredShortfall || 0)}.` : `Shortfall of ${formatMoney(alert.shortfall)} — no other account has projected funds to cover.`} ${canTransferAny ? 'Click to transfer.' : ''}`}
+      >
+        <span style={{ wordBreak: 'break-word', flex: 1 }}>
+          {label}
+        </span>
+        {canTransferAny && (
+          <span style={{ fontWeight: 700, textDecoration: 'underline', flexShrink: 0, whiteSpace: 'nowrap' }}>
+            Transfer →
+          </span>
+        )}
+      </div>
+    );
+  };
 
   // Forecast & Deficits
   const visibleForecast = forecast.slice(0, forecastRangeMonths);
@@ -292,6 +482,130 @@ export const DashboardView: React.FC = () => {
 
   return (
     <section className={`view dashboard-view dashboard-density-${dashboardDensity}`} id="dashboard" style={{ display: 'block' }}>
+      {/* Credit Settlement Account Funding Deficit Warning Banner */}
+      {criticalFundingAlerts.length > 0 && (() => {
+        const hasUncovered = criticalFundingAlerts.some((a) => !a.canBeCoveredByTransfer);
+        const bannerBorder = hasUncovered ? 'var(--red, #f43f5e)' : 'var(--amber, #f59e0b)';
+        const bannerBg = hasUncovered
+          ? 'linear-gradient(135deg, rgba(244, 63, 94, 0.14) 0%, rgba(239, 68, 68, 0.05) 100%)'
+          : 'linear-gradient(135deg, rgba(245, 158, 11, 0.14) 0%, rgba(217, 119, 6, 0.05) 100%)';
+        const bannerIconBg = hasUncovered ? 'var(--red, #f43f5e)' : 'var(--amber, #f59e0b)';
+        const bannerTitleColor = hasUncovered ? 'var(--red, #f43f5e)' : 'var(--amber, #f59e0b)';
+        const bannerTitle = hasUncovered
+          ? 'Credit Due Account Shortfall'
+          : 'Credit Settlement: Transfer Needed Before Due Date';
+
+        return (
+          <div
+            className="alert-banner credit-funding-alert-banner"
+            id="creditFundingAlertBanner"
+            style={{
+              borderColor: bannerBorder,
+              background: bannerBg,
+              marginBottom: '16px',
+            }}
+          >
+            <div className="alert-banner-icon" style={{ background: bannerIconBg, color: '#fff' }}>
+              !
+            </div>
+            <div className="alert-banner-body">
+              <strong style={{ color: bannerTitleColor, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span>{bannerTitle}</span>
+                <span
+                  style={{
+                    fontSize: '11px',
+                    background: hasUncovered ? 'rgba(244, 63, 94, 0.2)' : 'rgba(245, 158, 11, 0.2)',
+                    color: bannerTitleColor,
+                    padding: '2px 6px',
+                    borderRadius: '4px',
+                    fontWeight: 700,
+                  }}
+                >
+                  {criticalFundingAlerts.length} Action Needed
+                </span>
+              </strong>
+              <div id="creditFundingAlertList" style={{ marginTop: '4px', fontSize: '13px', lineHeight: '1.4' }}>
+                {criticalFundingAlerts.map((alert) => (
+                  <div key={alert.entryId} style={{ marginTop: '3px' }}>
+                    <strong>{alert.cardName}</strong> settlement of{' '}
+                    <strong>{formatMoney(alert.remainingDue)}</strong> is due on{' '}
+                    {DateUtils.formatDisplayDate(alert.settlementDate)} (
+                    {alert.daysUntilSettlement < 0
+                      ? `${Math.abs(alert.daysUntilSettlement)}d overdue`
+                      : alert.daysUntilSettlement === 0
+                      ? 'Today'
+                      : `in ${alert.daysUntilSettlement}d`}
+                    ), but <strong>{alert.accountName}</strong> has only{' '}
+                    <strong>{formatMoney(alert.accountBalance)}</strong>. Shortfall:{' '}
+                    <strong style={{ color: hasUncovered ? 'var(--red, #f43f5e)' : 'var(--amber, #f59e0b)' }}>
+                      {formatMoney(alert.shortfall)}
+                    </strong>
+                    {alert.canBeCoveredByTransfer && alert.suggestedSourceAccount ? (
+                      <span style={{ color: 'var(--muted)', marginLeft: '4px' }}>
+                        (can be covered by transfer from {alert.suggestedSourceAccount.accountName})
+                      </span>
+                    ) : alert.suggestedSourceAccount && alert.maxTransferableAmount && alert.maxTransferableAmount > 0 ? (
+                      <span style={{ color: 'var(--muted)', marginLeft: '4px' }}>
+                        ({formatMoney(alert.maxTransferableAmount)} can be transferred from {alert.suggestedSourceAccount.accountName}; <strong>Remaining Shortfall: {formatMoney(alert.remainingUncoveredShortfall ?? (alert.shortfall - alert.maxTransferableAmount))}</strong>)
+                      </span>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+              {criticalFundingAlerts[0]?.suggestedSourceAccount && (
+                <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--muted)' }}>
+                  💡 Suggested transfer:{' '}
+                  {criticalFundingAlerts[0].canBeCoveredByTransfer ? (
+                    <>
+                      {formatMoney(criticalFundingAlerts[0].shortfall)} from{' '}
+                      {criticalFundingAlerts[0].suggestedSourceAccount.accountName} (projected at settlement:{' '}
+                      {formatMoney(criticalFundingAlerts[0].suggestedSourceAccount.projectedBalance ?? criticalFundingAlerts[0].suggestedSourceAccount.balance)}) into{' '}
+                      {criticalFundingAlerts[0].accountName}.
+                    </>
+                  ) : (
+                    <>
+                      Partial transfer of {formatMoney(criticalFundingAlerts[0].maxTransferableAmount || 0)} from{' '}
+                      {criticalFundingAlerts[0].suggestedSourceAccount.accountName} (projected at settlement:{' '}
+                      {formatMoney(criticalFundingAlerts[0].suggestedSourceAccount.projectedBalance ?? criticalFundingAlerts[0].suggestedSourceAccount.balance)}). Remaining shortfall:{' '}
+                      <strong>{formatMoney(criticalFundingAlerts[0].remainingUncoveredShortfall || 0)}</strong>.
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+              {(criticalFundingAlerts[0]?.canBeCoveredByTransfer || (criticalFundingAlerts[0]?.maxTransferableAmount && criticalFundingAlerts[0].maxTransferableAmount > 0)) && (
+                <button
+                  className="primary-button"
+                  id="creditFundingTransferAction"
+                  type="button"
+                  style={{
+                    background: hasUncovered ? 'var(--red, #f43f5e)' : 'var(--amber, #f59e0b)',
+                    borderColor: hasUncovered ? 'var(--red, #f43f5e)' : 'var(--amber, #f59e0b)',
+                    color: '#fff',
+                    fontSize: '12px',
+                    padding: '6px 14px',
+                    height: 'auto',
+                    fontWeight: 700,
+                  }}
+                  onClick={() => handleOpenAlertTransfer(criticalFundingAlerts[0])}
+                >
+                  Transfer Funds
+                </button>
+              )}
+              <button
+                className="ghost-button"
+                type="button"
+                style={{ fontSize: '12px', padding: '6px 10px', height: 'auto' }}
+                onClick={() => setActiveTab('deficits')}
+              >
+                View Deficits
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Deficit Alert Banner */}
       {deficits.hasDeficit && (
         <div className="alert-banner" id="deficitBanner">
@@ -425,6 +739,7 @@ export const DashboardView: React.FC = () => {
               {cibThisMonth > 0 ? 'Immediate due this cycle' : cibNextMonth > 0 ? 'Upcoming next cycle' : 'No dues pending'}
             </span>
           </div>
+          {renderFundingPill(cibFundingAlert)}
           <div className="credit-sub-grid">
             <div
               className={`credit-sub-item ${cibThisMonth > 0 ? 'is-due' : 'is-settled'}`}
@@ -527,6 +842,7 @@ export const DashboardView: React.FC = () => {
               {hsbcThisMonth > 0 ? 'Immediate due this cycle' : hsbcNextMonth > 0 ? 'Upcoming next cycle' : 'No dues pending'}
             </span>
           </div>
+          {renderFundingPill(hsbcFundingAlert)}
           <div className="credit-sub-grid">
             <div
               className={`credit-sub-item ${hsbcThisMonth > 0 ? 'is-due' : 'is-settled'}`}

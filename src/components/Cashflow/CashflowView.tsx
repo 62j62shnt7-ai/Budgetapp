@@ -41,11 +41,14 @@ import {
 import { SalaryStructureSection } from './SalaryStructureSection';
 import { InstallmentsSection } from './InstallmentsSection';
 import { ExpenseMixSection } from './ExpenseMixSection';
+import { getCreditDueFundingAlerts } from '../../engine/creditDueAlerts';
+import type { CreditDueFundingAlert } from '../../types';
 
 interface CashflowViewProps {
   onOpenEntryModal: (type: 'expense' | 'income') => void;
   onEditEntry?: (entry: CashEntry) => void;
   onDeductPrompt?: (entry: CashEntry, actualAmount: number) => void;
+  onOpenTransferModal?: (from?: string, to?: string, amount?: number, reason?: string) => void;
   onOpenInstallmentModal: (inst?: Installment) => void;
 }
 
@@ -53,6 +56,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
   onOpenEntryModal,
   onEditEntry,
   onDeductPrompt,
+  onOpenTransferModal,
   onOpenInstallmentModal,
 }) => {
   const {
@@ -430,6 +434,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
         ? { ...entry, amount: remaining }
         : entry;
     });
+
   const forecastRows = getActiveForecastEntries(
     [...entries, ...salaryEntries],
     installmentEntries,
@@ -437,6 +442,19 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     deletedForecasts,
     entryActuals,
   );
+
+  const creditFundingAlertsMap = React.useMemo(() => {
+    const alerts = getCreditDueFundingAlerts({
+      creditDueEntries: creditEntries,
+      accounts,
+      entryActuals,
+      candidateEntries: forecastRows,
+    });
+    const map = new Map<string, CreditDueFundingAlert>();
+    alerts.forEach((a) => map.set(a.entryId, a));
+    return map;
+  }, [creditEntries, accounts, entryActuals, forecastRows]);
+
 
   // Opening balance rows (matching legacy openingBalanceEntries)
   const openingRows: CashEntry[] = Object.entries(accounts || {}).map(([id, acc]) => ({
@@ -1207,6 +1225,84 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                           <small>
                             Calculated: <strong>{formatMoney(Number(e.calculatedAmount ?? e.amount) || 0)}</strong>
                           </small>
+                          {(() => {
+                            const alert = creditFundingAlertsMap.get(e.id);
+                            if (!alert) return null;
+                            if (alert.isAlert || alert.shortfall > 0) {
+                              const canTransfer = Boolean(
+                                alert.canBeCoveredByTransfer ||
+                                (alert.maxTransferableAmount && alert.maxTransferableAmount > 0)
+                              );
+                              const isPartial =
+                                !alert.canBeCoveredByTransfer &&
+                                Boolean(alert.maxTransferableAmount && alert.maxTransferableAmount > 0);
+                              const remainingShortfall =
+                                alert.remainingUncoveredShortfall ??
+                                alert.shortfall - (alert.maxTransferableAmount || 0);
+                              const transferAmt = alert.maxTransferableAmount || alert.shortfall;
+                              const labelText = isPartial
+                                ? `⚠️ Remaining Shortfall: ${formatMoney(remainingShortfall)}`
+                                : `⚠️ Shortfall: ${formatMoney(alert.shortfall)}`;
+
+                              return (
+                                <div
+                                  className="credit-funding-shortfall-tag"
+                                  style={{
+                                    marginTop: '4px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '5px',
+                                    fontSize: '11px',
+                                    background: 'rgba(244, 63, 94, 0.15)',
+                                    border: '1px solid var(--red, #f43f5e)',
+                                    color: 'var(--red, #f43f5e)',
+                                    borderRadius: '4px',
+                                    padding: '2px 6px',
+                                    cursor: canTransfer ? 'pointer' : 'default',
+                                  }}
+                                  onClick={(ev) => {
+                                    if (canTransfer && onOpenTransferModal) {
+                                      ev.stopPropagation();
+                                      onOpenTransferModal(
+                                        alert.suggestedSourceAccount?.accountKey,
+                                        alert.accountKey,
+                                        transferAmt,
+                                        alert.canBeCoveredByTransfer
+                                          ? `${alert.cardName} due ${DateUtils.formatDisplayDate(alert.settlementDate)} (Shortfall: ${formatMoney(alert.shortfall)})`
+                                          : `${alert.cardName} due ${DateUtils.formatDisplayDate(alert.settlementDate)} (Partial transfer: ${formatMoney(transferAmt)} · Remaining shortfall: ${formatMoney(remainingShortfall)})`
+                                      );
+                                    }
+                                  }}
+                                  title={
+                                    canTransfer
+                                      ? isPartial
+                                        ? `${formatMoney(transferAmt)} available from ${alert.suggestedSourceAccount?.accountName}. Click to transfer funds (Remaining shortfall: ${formatMoney(remainingShortfall)}).`
+                                        : `Account ${alert.accountName} has only ${formatMoney(alert.accountBalance)}. Click to transfer funds from ${alert.suggestedSourceAccount?.accountName}.`
+                                      : `Account ${alert.accountName} has ${formatMoney(alert.accountBalance)}. Shortfall: ${formatMoney(alert.shortfall)} (no account can cover).`
+                                  }
+                                >
+                                  <span><strong>{labelText}</strong> ({alert.accountName})</span>
+                                  {canTransfer && onOpenTransferModal && <span style={{ textDecoration: 'underline', fontWeight: 700 }}>Transfer →</span>}
+                                </div>
+                              );
+                            } else if (alert.status === 'funded') {
+                              return (
+                                <div
+                                  style={{
+                                    marginTop: '4px',
+                                    fontSize: '11px',
+                                    color: 'var(--green, #10b981)',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                  }}
+                                >
+                                  <span>🟢 {alert.accountName} funded ({formatMoney(alert.accountBalance)} avail)</span>
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
                         </div>
                       )}
                     </td>

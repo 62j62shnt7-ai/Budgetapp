@@ -34,7 +34,7 @@ import {
   isLumpCreditDueForAccount,
 } from '../engine/creditCards';
 import { buildSalaryEntries } from '../engine/salaryAndInstallments';
-import { DateUtils } from '../engine/dateUtils';
+import { DateUtils, formatMoney } from '../engine/dateUtils';
 import { inferTag } from '../engine/tags';
 import { migrateBackupPayload } from '../engine/migration';
 import {
@@ -172,6 +172,7 @@ export interface BudgetStoreState {
   recalculateCreditSettlement: (id: string) => CashEntry | undefined;
 
   updateAccountBalance: (accountKey: string, newBalance: number) => void;
+  transferAccountFunds: (fromAccountKey: string, toAccountKey: string, amount: number, note?: string) => boolean;
   updateSalaryPattern: (pattern: SalaryPayment[]) => void;
   populateSalaryForecast: (startMonth: string, quarters: number, anchorMonth?: string) => number;
   clearSalaryForecast: (startMonth?: string, quarters?: number) => number;
@@ -1655,6 +1656,29 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         scheduleAutoGistSync(get);
       }
     });
+  },
+
+  transferAccountFunds: (fromAccountKey, toAccountKey, amount, note) => {
+    const fromAcc = get().accounts[fromAccountKey];
+    const toAcc = get().accounts[toAccountKey];
+    const amt = Math.round(Number(amount));
+    if (!fromAcc || !toAcc || amt <= 0 || fromAccountKey === toAccountKey) return false;
+    const label = note || `Transfer ${formatMoney(amt)} from ${fromAcc.name} to ${toAcc.name}`;
+    get().runTransaction(label, () => {
+      const accounts = { ...get().accounts };
+      accounts[fromAccountKey] = {
+        ...accounts[fromAccountKey],
+        balance: Math.round(Number(accounts[fromAccountKey].balance || 0) - amt),
+      };
+      accounts[toAccountKey] = {
+        ...accounts[toAccountKey],
+        balance: Math.round(Number(accounts[toAccountKey].balance || 0) + amt),
+      };
+      saveStorage(STORAGE_KEYS.accounts, accounts);
+      set({ accounts });
+      scheduleAutoGistSync(get);
+    });
+    return true;
   },
 
   updateSalaryPattern: (salaryPattern) => {

@@ -9,15 +9,22 @@ import {
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { AlertCircle, Clock, CheckCircle, CreditCard } from 'lucide-react';
 import { useForecastCandidates } from '../../hooks/useForecastCandidates';
+import { getCreditDueFundingAlerts } from '../../engine/creditDueAlerts';
 import type { CashEntry } from '../../types';
 
 interface DeficitsViewProps {
   onBridgeDeficit?: () => void;
   onDeductPrompt?: (entry: CashEntry, actualAmount: number) => void;
+  onOpenTransferModal?: (from?: string, to?: string, amount?: number, reason?: string) => void;
 }
 
-export const DeficitsView: React.FC<DeficitsViewProps> = ({ onBridgeDeficit, onDeductPrompt }) => {
+export const DeficitsView: React.FC<DeficitsViewProps> = ({
+  onBridgeDeficit,
+  onDeductPrompt,
+  onOpenTransferModal,
+}) => {
   const {
+    accounts,
     entryActuals,
     recordActual,
     navigateTo,
@@ -25,9 +32,23 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({ onBridgeDeficit, onD
 
   const {
     allCandidateEntries,
+    creditDueEntries,
     deficitPeriods,
     hasDeficit,
   } = useForecastCandidates(12);
+
+  const fundingAlerts = React.useMemo(() => {
+    return getCreditDueFundingAlerts({
+      creditDueEntries,
+      accounts,
+      entryActuals,
+      candidateEntries: allCandidateEntries,
+    });
+  }, [creditDueEntries, accounts, entryActuals, allCandidateEntries]);
+
+  const activeFundingAlerts = React.useMemo(() => {
+    return fundingAlerts.filter((a) => a.isAlert || a.shortfall > 0);
+  }, [fundingAlerts]);
 
   const deficits = {
     hasDeficit,
@@ -104,6 +125,40 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({ onBridgeDeficit, onD
             {overdueEntries.length}
           </strong>
           <small id="deficitOverdueNote">{overdueEntries.length > 0 ? `${overdueEntries.length} past due obligations` : 'All scheduled entries up to date'}</small>
+        </article>
+        <article
+          className="metric history-summary-clickable-row"
+          style={{ cursor: 'pointer' }}
+          onClick={() => {
+            const list = document.getElementById('deficitCreditFundingList');
+            if (list) list.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              const list = document.getElementById('deficitCreditFundingList');
+              if (list) list.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+          }}
+          tabIndex={0}
+          role="button"
+          title="Click to jump to Credit settlement account solvency"
+        >
+          <span>Credit due shortfalls</span>
+          <strong
+            id="deficitCreditFundingCount"
+            style={{
+              color: activeFundingAlerts.length > 0 ? 'var(--red, #f43f5e)' : 'var(--green, #10b981)',
+              fontWeight: 800,
+            }}
+          >
+            {activeFundingAlerts.length}
+          </strong>
+          <small id="deficitCreditFundingNote">
+            {activeFundingAlerts.length > 0
+              ? `${activeFundingAlerts.length} account shortfall${activeFundingAlerts.length === 1 ? '' : 's'}`
+              : 'All settlement accounts funded'}
+          </small>
         </article>
       </div>
 
@@ -285,6 +340,209 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({ onBridgeDeficit, onD
                   </div>
                 </div>
               ))
+            )}
+          </div>
+        </section>
+
+        {/* Credit Settlement Account Solvency */}
+        <section className="panel" id="deficitCreditFundingList" style={{ gridColumn: '1 / -1' }}>
+          <div className="panel-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+            <div>
+              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <CreditCard size={18} color="var(--primary, #3b82f6)" />
+                <span>Credit settlement account solvency</span>
+              </h3>
+              <span style={{ fontSize: '13px', color: 'var(--muted)' }}>
+                Checks whether each bank account has sufficient funds before the credit settlement due date
+              </span>
+            </div>
+            {activeFundingAlerts.length > 0 && onOpenTransferModal && (
+              <button
+                className="primary-button"
+                type="button"
+                style={{ fontSize: '12px', padding: '6px 12px', height: 'auto', fontWeight: 600 }}
+                onClick={() => {
+                  const first = activeFundingAlerts[0];
+                  onOpenTransferModal(
+                    first.suggestedSourceAccount?.accountKey,
+                    first.accountKey,
+                    first.shortfall,
+                    `${first.cardName} settlement due ${DateUtils.formatDisplayDate(first.settlementDate)}`
+                  );
+                }}
+              >
+                Transfer Top Shortfall
+              </button>
+            )}
+          </div>
+
+          <div className="stack-list" style={{ marginTop: '14px' }}>
+            {fundingAlerts.length === 0 ? (
+              <div
+                style={{
+                  padding: '28px 20px',
+                  textAlign: 'center',
+                  color: 'var(--muted)',
+                  background: 'var(--surface-soft)',
+                  borderRadius: '12px',
+                  border: '1px solid var(--line)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <CheckCircle size={30} color="var(--green, #10b981)" style={{ marginBottom: '8px' }} />
+                <strong style={{ fontSize: '14px', color: 'var(--ink, #f8fafc)', marginBottom: '3px' }}>
+                  No upcoming credit settlements
+                </strong>
+                <p style={{ margin: 0, fontSize: '12.5px', color: 'var(--muted)' }}>
+                  There are no scheduled credit card settlements in the forecast.
+                </p>
+              </div>
+            ) : (
+              fundingAlerts.map((alert) => {
+                const isShortfall = alert.isAlert || alert.shortfall > 0;
+                return (
+                  <div
+                    key={alert.entryId}
+                    className="overdue-entry-card"
+                    style={{
+                      borderLeft: `4px solid ${
+                        alert.isAlert
+                          ? 'var(--red, #f43f5e)'
+                          : isShortfall
+                          ? 'var(--amber, #f59e0b)'
+                          : alert.status === 'settled'
+                          ? 'var(--muted)'
+                          : 'var(--green, #10b981)'
+                      }`,
+                    }}
+                  >
+                    <div
+                      className="overdue-entry-info history-summary-clickable-row"
+                      style={{ cursor: 'pointer' }}
+                      onClick={() =>
+                        navigateTo('cashflow', {
+                          month: 'all',
+                          highlightId: alert.entryId,
+                        })
+                      }
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          navigateTo('cashflow', {
+                            month: 'all',
+                            highlightId: alert.entryId,
+                          });
+                        }
+                      }}
+                      title={`Click to view ${alert.cardName} in Cash Flow`}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <strong className="overdue-entry-title">{alert.cardName}</strong>
+                        <span
+                          className="badge"
+                          style={{
+                            fontSize: '11px',
+                            padding: '1px 6px',
+                            borderRadius: '4px',
+                            background: alert.isAlert
+                              ? 'rgba(244, 63, 94, 0.15)'
+                              : alert.status === 'settled'
+                              ? 'var(--surface-soft)'
+                              : 'rgba(16, 185, 129, 0.12)',
+                            color: alert.isAlert
+                              ? 'var(--red, #f43f5e)'
+                              : alert.status === 'settled'
+                              ? 'var(--muted)'
+                              : 'var(--green, #10b981)',
+                            fontWeight: 600,
+                          }}
+                        >
+                          {alert.status === 'overdue_unfunded'
+                            ? alert.canBeCoveredByTransfer
+                              ? 'Overdue: Transfer Needed'
+                              : 'Overdue & Underfunded'
+                            : alert.status === 'critical_shortfall'
+                            ? alert.canBeCoveredByTransfer
+                              ? 'Due Soon: Covered by Transfer'
+                              : 'Critical Shortfall'
+                            : alert.status === 'approaching_shortfall'
+                            ? alert.canBeCoveredByTransfer
+                              ? 'Approaching: Covered by Transfer'
+                              : 'Approaching Shortfall'
+                            : alert.status === 'upcoming_shortfall'
+                            ? alert.canBeCoveredByTransfer
+                              ? 'Covered by Transfer (Scheduled)'
+                              : 'Upcoming Shortfall'
+                            : alert.status === 'settled'
+                            ? 'Settled'
+                            : alert.isFundedByProjectedIncome && alert.accountBalance < alert.remainingDue
+                            ? 'Funded by Scheduled Income'
+                            : 'Fully Funded'}
+                        </span>
+                      </div>
+                      <span className="overdue-entry-meta" style={{ marginTop: '4px', display: 'block' }}>
+                        Due: {DateUtils.formatDisplayDate(alert.settlementDate)} (
+                        {alert.daysUntilSettlement < 0
+                          ? `${Math.abs(alert.daysUntilSettlement)}d overdue`
+                          : alert.daysUntilSettlement === 0
+                          ? 'Today'
+                          : `in ${alert.daysUntilSettlement}d`}
+                        ) · Linked Account: <strong>{alert.accountName}</strong> (Available: {formatMoney(alert.accountBalance)})
+                        {alert.projectedAccountBalance !== undefined && (
+                          <> · Projected balance before due: {formatMoney(alert.projectedAccountBalance)}</>
+                        )}
+                      </span>
+                    </div>
+
+                    <div className="overdue-entry-actions" style={{ alignItems: 'flex-end', gap: '8px' }}>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '11px', color: 'var(--muted)' }}>Planned Due</div>
+                        <strong className="overdue-entry-amount">{formatMoney(alert.remainingDue)}</strong>
+                        {isShortfall && (
+                          <div style={{ fontSize: '12px', color: 'var(--red, #f43f5e)', fontWeight: 700, marginTop: '2px' }}>
+                            {!alert.canBeCoveredByTransfer && alert.maxTransferableAmount && alert.maxTransferableAmount > 0
+                              ? `Remaining Shortfall: -${formatMoney(alert.remainingUncoveredShortfall ?? (alert.shortfall - alert.maxTransferableAmount))}`
+                              : `Deficit: -${formatMoney(alert.shortfall)}`}
+                          </div>
+                        )}
+                      </div>
+                      {isShortfall && (alert.canBeCoveredByTransfer || (alert.maxTransferableAmount && alert.maxTransferableAmount > 0)) && onOpenTransferModal && (
+                        <button
+                          className="primary-button"
+                          type="button"
+                          style={{
+                            background: alert.isAlert ? 'var(--red, #f43f5e)' : 'var(--amber, #f59e0b)',
+                            borderColor: alert.isAlert ? 'var(--red, #f43f5e)' : 'var(--amber, #f59e0b)',
+                            color: '#fff',
+                            fontSize: '12px',
+                            padding: '6px 12px',
+                            height: 'auto',
+                            fontWeight: 600,
+                          }}
+                          onClick={() => {
+                            const transferAmt = alert.maxTransferableAmount || alert.shortfall;
+                            onOpenTransferModal(
+                              alert.suggestedSourceAccount?.accountKey,
+                              alert.accountKey,
+                              transferAmt,
+                              alert.canBeCoveredByTransfer
+                                ? `${alert.cardName} due ${DateUtils.formatDisplayDate(alert.settlementDate)} (Shortfall: ${formatMoney(alert.shortfall)})`
+                                : `${alert.cardName} due ${DateUtils.formatDisplayDate(alert.settlementDate)} (Partial transfer: ${formatMoney(transferAmt)} · Remaining shortfall: ${formatMoney(alert.remainingUncoveredShortfall || 0)})`
+                            );
+                          }}
+                        >
+                          {alert.canBeCoveredByTransfer ? 'Transfer Funds' : `Transfer ${formatMoney(alert.maxTransferableAmount || 0)}`}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
             )}
           </div>
         </section>

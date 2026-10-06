@@ -10,7 +10,7 @@ import { StorageFxModal } from '../Modals/StorageFxModal';
 const preferredAccountOrder = ['cib', 'hsbc'];
 
 export const AccountsView: React.FC = () => {
-  const { accounts, updateAccountBalance, runTransaction, storageAssets, rates, navigateTo } = useBudgetStore();
+  const { accounts, updateAccountBalance, transferAccountFunds, storageAssets, rates, navigateTo } = useBudgetStore();
 
   const [transferFrom, setTransferFrom] = useState<string>('');
   const [transferTo, setTransferTo] = useState<string>('');
@@ -61,14 +61,12 @@ export const AccountsView: React.FC = () => {
     const toAcc = accounts[activeTo];
     if (!fromAcc || !toAcc) return;
 
-    runTransaction(`Transfer ${formatMoney(amt)} from ${fromAcc.name} to ${toAcc.name}`, () => {
-      updateAccountBalance(activeFrom, (fromAcc.balance || 0) - amt);
-      updateAccountBalance(activeTo, (toAcc.balance || 0) + amt);
-    });
-
-    setTransferSuccess(`Successfully transferred ${formatMoney(amt)} from ${fromAcc.name} to ${toAcc.name}`);
-    setTransferAmount('');
-    setTimeout(() => setTransferSuccess(null), 4000);
+    const success = transferAccountFunds(activeFrom, activeTo, amt);
+    if (success) {
+      setTransferSuccess(`Successfully transferred ${formatMoney(amt)} from ${fromAcc.name} to ${toAcc.name}`);
+      setTransferAmount('');
+      setTimeout(() => setTransferSuccess(null), 4000);
+    }
   };
 
   return (

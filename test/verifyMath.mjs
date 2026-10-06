@@ -1193,6 +1193,288 @@ console.log('✓ Settlement clear: reverts to single planned due (overdue) and r
   console.log('✓ History credit netting: spend counted once, settlement only counts its excess');
 }
 
+// =========================================================================
+// Credit Due Settlement Account Solvency & Funding Deficit Alerts
+// =========================================================================
+{
+  const { getCreditDueFundingAlerts, hasActiveFundingDeficit } = await import('../src/engine/creditDueAlerts.ts');
+
+  const testAccounts = {
+    cib: { name: 'CIB', balance: 2500, maturityDay: 15 },
+    hsbc: { name: 'HSBC', balance: 20000, maturityDay: 30 },
+    cash: { name: 'Cash', balance: 1000, maturityDay: 1 },
+  };
+
+  const testDueEntries = [
+    {
+      id: 'credit-settlement-cib-2026-10',
+      date: '2026-10-15',
+      category: 'CIB Credit Due',
+      account: 'cib',
+      amount: 15000,
+      type: 'expense',
+    },
+    {
+      id: 'credit-settlement-hsbc-2026-10',
+      date: '2026-10-31',
+      category: 'HSBC Credit Due',
+      account: 'hsbc',
+      amount: 12000,
+      type: 'expense',
+    },
+  ];
+
+  // Test 1: Today is 2026-10-10 (5 days before CIB settlement on Oct 15)
+  // CIB balance: 2,500; CIB due: 15,000 -> Shortfall: 12,500. Proximity <= 7 days -> approaching_shortfall
+  // HSBC balance: 20,000; HSBC due: 12,000 -> Shortfall: 0 -> status: funded
+  const alerts1 = getCreditDueFundingAlerts({
+    creditDueEntries: testDueEntries,
+    accounts: testAccounts,
+    entryActuals: {},
+    today: '2026-10-10',
+    proximityDays: 7,
+  });
+
+  assert.strictEqual(alerts1.length, 2, 'Two alerts generated');
+  const cibAlert = alerts1.find((a) => a.accountKey === 'cib');
+  assert.ok(cibAlert, 'CIB alert found');
+  assert.strictEqual(cibAlert.shortfall, 12500, 'CIB shortfall calculated correctly (15000 - 2500)');
+  assert.strictEqual(cibAlert.status, 'approaching_shortfall', 'Status is approaching_shortfall');
+  assert.strictEqual(cibAlert.isAlert, true, 'isAlert is true');
+  assert.strictEqual(cibAlert.suggestedSourceAccount?.accountKey, 'hsbc', 'HSBC suggested as funding source (highest balance)');
+
+  const hsbcAlert = alerts1.find((a) => a.accountKey === 'hsbc');
+  assert.ok(hsbcAlert, 'HSBC alert found');
+  assert.strictEqual(hsbcAlert.shortfall, 0, 'HSBC shortfall is 0');
+  assert.strictEqual(hsbcAlert.status, 'funded', 'HSBC status is funded');
+  assert.strictEqual(hsbcAlert.isAlert, false, 'isAlert is false for HSBC');
+
+  assert.strictEqual(hasActiveFundingDeficit(alerts1), true, 'Active funding deficit detected');
+
+  // Test 2: Critical shortfall when due in <= 2 days
+  const alertsCritical = getCreditDueFundingAlerts({
+    creditDueEntries: testDueEntries,
+    accounts: testAccounts,
+    entryActuals: {},
+    today: '2026-10-14', // 1 day before Oct 15
+  });
+  const cibCritical = alertsCritical.find((a) => a.accountKey === 'cib');
+  assert.strictEqual(cibCritical.status, 'critical_shortfall', 'Status is critical_shortfall when <= 2 days');
+
+  // Test 3: Overdue when settlement date has passed without payment
+  const alertsOverdue = getCreditDueFundingAlerts({
+    creditDueEntries: testDueEntries,
+    accounts: testAccounts,
+    entryActuals: {},
+    today: '2026-10-16', // 1 day after Oct 15
+  });
+  const cibOverdue = alertsOverdue.find((a) => a.accountKey === 'cib');
+  assert.strictEqual(cibOverdue.status, 'overdue_unfunded', 'Status is overdue_unfunded when past due');
+
+  // Test 4: Partial payment reduces shortfall
+  const alertsPartial = getCreditDueFundingAlerts({
+    creditDueEntries: testDueEntries,
+    accounts: testAccounts,
+    entryActuals: { 'credit-settlement-cib-2026-10': 10000 }, // paid 10,000, remaining 5,000
+    today: '2026-10-10',
+  });
+  const cibPartial = alertsPartial.find((a) => a.accountKey === 'cib');
+  assert.strictEqual(cibPartial.remainingDue, 5000, 'Remaining due is 5,000');
+  assert.strictEqual(cibPartial.shortfall, 2500, 'Shortfall is 2,500 (5,000 - 2,500)');
+
+  // Test 5: Store transferAccountFunds resolves shortfall cleanly
+  useBudgetStore.setState({
+    accounts: {
+      cib: { name: 'CIB', balance: 2500, maturityDay: 15 },
+      hsbc: { name: 'HSBC', balance: 20000, maturityDay: 30 },
+    },
+  });
+
+  const transferred = useBudgetStore.getState().transferAccountFunds('hsbc', 'cib', 12500);
+  assert.strictEqual(transferred, true, 'transferAccountFunds succeeded');
+  assert.strictEqual(useBudgetStore.getState().accounts.cib.balance, 15000, 'CIB balance increased to 15,000');
+  assert.strictEqual(useBudgetStore.getState().accounts.hsbc.balance, 7500, 'HSBC balance reduced to 7,500');
+
+  // Re-checking funding with store state shows CIB is now fully funded!
+  const alertsResolved = getCreditDueFundingAlerts({
+    creditDueEntries: testDueEntries,
+    accounts: useBudgetStore.getState().accounts,
+    entryActuals: {},
+    today: '2026-10-10',
+  });
+  const cibResolved = alertsResolved.find((a) => a.accountKey === 'cib');
+  assert.strictEqual(cibResolved.shortfall, 0, 'Shortfall is now 0 after transfer');
+  assert.strictEqual(cibResolved.status, 'funded', 'CIB status transitioned to funded');
+  assert.strictEqual(cibResolved.isAlert, false, 'isAlert is false after transfer');
+
+  // Test 6: Upcoming income arrives before settlement date and covers the amount with no deficits
+  // CIB balance starts low at 1,000 EGP. Due on Oct 15 is 10,000 EGP.
+  // A scheduled income of 12,000 EGP arrives into CIB on Oct 12 (before Oct 15).
+  // Without considering income, shortfall would be 9,000 EGP.
+  // With upcoming income, projected balance becomes 13,000 EGP >= 10,000 EGP and lowest balance is 1,000 EGP >= 0.
+  // Result: status === 'funded', shortfall === 0, isAlert === false, isFundedByProjectedIncome === true.
+  const alertsCoveredByIncome = getCreditDueFundingAlerts({
+    creditDueEntries: [
+      {
+        id: 'credit-settlement-cib-2026-10',
+        date: '2026-10-15',
+        category: 'CIB Credit Due',
+        account: 'cib',
+        amount: 10000,
+        type: 'expense',
+      },
+    ],
+    accounts: {
+      cib: { name: 'CIB', balance: 1000 },
+    },
+    candidateEntries: [
+      {
+        id: 'salary-cib-2026-10-12',
+        date: '2026-10-12',
+        category: 'Salary',
+        account: 'cib',
+        amount: 12000,
+        type: 'income',
+      },
+    ],
+    entryActuals: {},
+    today: '2026-10-10',
+    proximityDays: 7,
+  });
+
+  const cibIncomeAlert = alertsCoveredByIncome.find((a) => a.accountKey === 'cib');
+  assert.ok(cibIncomeAlert, 'CIB alert found');
+  assert.strictEqual(cibIncomeAlert.shortfall, 0, 'Shortfall is 0 because later income covers it before settlement date');
+  assert.strictEqual(cibIncomeAlert.status, 'funded', 'Status is funded when scheduled income covers due');
+  assert.strictEqual(cibIncomeAlert.isAlert, false, 'isAlert is false because income covers it');
+  assert.strictEqual(cibIncomeAlert.isFundedByProjectedIncome, true, 'isFundedByProjectedIncome is true');
+  assert.strictEqual(cibIncomeAlert.projectedAccountBalance, 13000, 'Projected balance is 13,000 (1,000 + 12,000)');
+
+  // Test 7: Income arrives AFTER settlement date -> does NOT cover settlement date, shortfall remains
+  const alertsIncomeTooLate = getCreditDueFundingAlerts({
+    creditDueEntries: [
+      {
+        id: 'credit-settlement-cib-2026-10',
+        date: '2026-10-15',
+        category: 'CIB Credit Due',
+        account: 'cib',
+        amount: 10000,
+        type: 'expense',
+      },
+    ],
+    accounts: {
+      cib: { name: 'CIB', balance: 1000 },
+    },
+    candidateEntries: [
+      {
+        id: 'salary-cib-2026-10-20',
+        date: '2026-10-20', // Arrives 5 days AFTER settlement on Oct 15!
+        category: 'Salary',
+        account: 'cib',
+        amount: 12000,
+        type: 'income',
+      },
+    ],
+    entryActuals: {},
+    today: '2026-10-10',
+    proximityDays: 7,
+  });
+
+  const cibTooLateAlert = alertsIncomeTooLate.find((a) => a.accountKey === 'cib');
+  assert.ok(cibTooLateAlert, 'CIB alert found');
+  assert.strictEqual(cibTooLateAlert.shortfall, 9000, 'Shortfall is 9,000 because income arrives after settlement');
+  assert.strictEqual(cibTooLateAlert.status, 'approaching_shortfall', 'Status is approaching_shortfall');
+  assert.strictEqual(cibTooLateAlert.isAlert, true, 'isAlert is true');
+
+  // Test 8: canBeCoveredByTransfer is true when another account has sufficient funds
+  assert.strictEqual(cibAlert.canBeCoveredByTransfer, true, 'CIB shortfall can be covered by HSBC');
+  assert.strictEqual(cibAlert.suggestedSourceAccount?.accountKey, 'hsbc', 'HSBC has 20,000 which covers 12,500 shortfall');
+
+  // Test 9: canBeCoveredByTransfer is false when no other account can cover the shortfall
+  const alertsUncovered = getCreditDueFundingAlerts({
+    creditDueEntries: [
+      {
+        id: 'credit-settlement-cib-2026-10',
+        date: '2026-10-15',
+        category: 'CIB Credit Due',
+        account: 'cib',
+        amount: 50000,
+        type: 'expense',
+      },
+    ],
+    accounts: {
+      cib: { name: 'CIB', balance: 1000 },
+      hsbc: { name: 'HSBC', balance: 5000 },
+      cash: { name: 'Cash', balance: 2000 },
+    },
+    today: '2026-10-10',
+  });
+  const cibUncoveredAlert = alertsUncovered.find((a) => a.accountKey === 'cib');
+  assert.ok(cibUncoveredAlert, 'Uncovered CIB alert found');
+  assert.strictEqual(cibUncoveredAlert.shortfall, 49000, 'Shortfall is 49,000');
+  assert.strictEqual(cibUncoveredAlert.canBeCoveredByTransfer, false, 'canBeCoveredByTransfer is false (highest source has only 5,000)');
+
+  // Test 10: Partial cover calculates maxTransferableAmount and remainingUncoveredShortfall
+  assert.strictEqual(cibUncoveredAlert.maxTransferableAmount, 5000, 'Best source (HSBC) can transfer up to 5,000');
+  assert.strictEqual(cibUncoveredAlert.remainingUncoveredShortfall, 44000, 'Remaining uncovered shortfall is 44,000 (49,000 - 5,000)');
+
+  // Test 11: Transferable amount is calculated based on SETTLEMENT DATE bearing in mind incomes and expenses
+  // HSBC starts today with 2,000 EGP (not enough to cover a 10,000 EGP CIB due on Oct 15).
+  // However, on Oct 12, an income of 15,000 EGP is scheduled into HSBC, and an expense of 3,000 EGP on Oct 14.
+  // Projected HSBC balance on Oct 15 is 2,000 + 15,000 - 3,000 = 14,000 EGP.
+  // Lowest interim balance is 2,000 EGP >= 0.
+  // Therefore, HSBC's projected transferable capacity at settlement date is 14,000 EGP >= 10,000 EGP shortfall!
+  // Result: canBeCoveredByTransfer is true, maxTransferableAmount is 10,000 EGP, remainingUncoveredShortfall is 0.
+  const alertsProjectedTransfer = getCreditDueFundingAlerts({
+    creditDueEntries: [
+      {
+        id: 'credit-settlement-cib-2026-10',
+        date: '2026-10-15',
+        category: 'CIB Credit Due',
+        account: 'cib',
+        amount: 10000,
+        type: 'expense',
+      },
+    ],
+    accounts: {
+      cib: { name: 'CIB', balance: 0 },
+      hsbc: { name: 'HSBC', balance: 2000 }, // only 2,000 today
+    },
+    candidateEntries: [
+      {
+        id: 'hsbc-income-1',
+        date: '2026-10-12',
+        amount: 15000,
+        type: 'income',
+        account: 'hsbc',
+      },
+      {
+        id: 'hsbc-expense-1',
+        date: '2026-10-14',
+        amount: 3000,
+        type: 'expense',
+        account: 'hsbc',
+      },
+    ],
+    today: '2026-10-10',
+  });
+
+  const cibProjTransferAlert = alertsProjectedTransfer.find((a) => a.accountKey === 'cib');
+  assert.ok(cibProjTransferAlert, 'CIB alert found');
+  assert.strictEqual(cibProjTransferAlert.shortfall, 10000, 'Gross shortfall is 10,000');
+  assert.strictEqual(cibProjTransferAlert.canBeCoveredByTransfer, true, 'Can be covered by HSBC based on projected settlement balance');
+  assert.strictEqual(cibProjTransferAlert.suggestedSourceAccount?.projectedBalance, 14000, 'HSBC projected balance at settlement is 14,000');
+  assert.strictEqual(cibProjTransferAlert.maxTransferableAmount, 10000, 'Max transferable amount is 10,000');
+  assert.strictEqual(cibProjTransferAlert.remainingUncoveredShortfall, 0, 'Remaining uncovered shortfall is 0');
+
+  console.log('✓ Credit due settlement funding check & account shortfall alerts verified');
+  console.log('✓ Atomic transferAccountFunds & solvency transition verified');
+  console.log('✓ Scheduled income covering settlement without deficit verified');
+  console.log('✓ Cross-account transfer coverage vs uncovered shortfall differentiation verified');
+  console.log('✓ Partial transfer coverage and remaining shortfall calculation verified');
+  console.log('✓ Source account transferable capacity based on projected settlement date verified');
+}
+
 console.log('\n=================================================================');
 console.log('🌟 100% OF ENGINE, STORE, AND BUSINESS LOGIC TESTS PASSED! 🌟');
 console.log('=================================================================');

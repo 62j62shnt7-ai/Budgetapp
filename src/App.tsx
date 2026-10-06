@@ -31,6 +31,7 @@ import { RateModal } from './components/Modals/RateModal';
 import { GistSyncModal } from './components/Modals/GistSyncModal';
 import { DataToolsModal } from './components/Modals/DataToolsModal';
 import { DeductAccountModal } from './components/Modals/DeductAccountModal';
+import { AccountTransferModal } from './components/Modals/AccountTransferModal';
 import { MobileActionSheet } from './components/Layout/MobileActionSheet';
 import { UndoToast } from './components/Common/UndoToast';
 import { autoFetchLatestRates } from './engine/currency';
@@ -89,6 +90,21 @@ export const App: React.FC = () => {
   const [deductModalOpen, setDeductModalOpen] = useState(false);
   const [deductEntry, setDeductEntry] = useState<CashEntry | null>(null);
   const [deductActualAmount, setDeductActualAmount] = useState<number>(0);
+
+  // Account Transfer modal
+  const [transferModalOpen, setTransferModalOpen] = useState(false);
+  const [transferFromAccount, setTransferFromAccount] = useState<string | undefined>(undefined);
+  const [transferToAccount, setTransferToAccount] = useState<string | undefined>(undefined);
+  const [transferAmount, setTransferAmount] = useState<number | undefined>(undefined);
+  const [transferReason, setTransferReason] = useState<string | undefined>(undefined);
+
+  const handleOpenTransferModal = (from?: string, to?: string, amount?: number, reason?: string) => {
+    setTransferFromAccount(from);
+    setTransferToAccount(to);
+    setTransferAmount(amount);
+    setTransferReason(reason);
+    setTransferModalOpen(true);
+  };
 
   // Apply theme to document
   useEffect(() => {
@@ -328,9 +344,15 @@ export const App: React.FC = () => {
   const renderActiveView = () => {
     switch (activeTab) {
       case 'dashboard':
-        return <DashboardView />;
+        return <DashboardView onOpenTransferModal={handleOpenTransferModal} />;
       case 'deficits':
-        return <DeficitsView onBridgeDeficit={() => setLoanModalOpen(true)} onDeductPrompt={handleDeductPrompt} />;
+        return (
+          <DeficitsView
+            onBridgeDeficit={() => setLoanModalOpen(true)}
+            onDeductPrompt={handleDeductPrompt}
+            onOpenTransferModal={handleOpenTransferModal}
+          />
+        );
       case 'cashflow':
         return (
           <CashflowView
@@ -341,6 +363,7 @@ export const App: React.FC = () => {
               setEntryModalOpen(true);
             }}
             onDeductPrompt={handleDeductPrompt}
+            onOpenTransferModal={handleOpenTransferModal}
             onOpenInstallmentModal={(inst) => {
               setInstallmentToEdit(inst || null);
               setInstallmentModalOpen(true);
@@ -585,6 +608,15 @@ export const App: React.FC = () => {
         entry={deductEntry}
         actualAmount={deductActualAmount}
         onClose={() => setDeductModalOpen(false)}
+      />
+
+      <AccountTransferModal
+        isOpen={transferModalOpen}
+        initialFromAccount={transferFromAccount}
+        initialToAccount={transferToAccount}
+        initialAmount={transferAmount}
+        reason={transferReason}
+        onClose={() => setTransferModalOpen(false)}
       />
 
       <UndoToast />

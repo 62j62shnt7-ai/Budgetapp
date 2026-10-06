@@ -271,6 +271,42 @@ export interface SmartInsight {
   actionText?: string;
 }
 
+export type CreditDueFundingStatus =
+  | 'settled'
+  | 'funded'
+  | 'critical_shortfall'
+  | 'approaching_shortfall'
+  | 'upcoming_shortfall'
+  | 'overdue_unfunded';
+
+export interface CreditDueFundingAlert {
+  entryId: string;
+  cardName: string;
+  settlementDate: string;
+  daysUntilSettlement: number;
+  accountKey: string;
+  accountName: string;
+  accountBalance: number;
+  totalPlannedDue: number;
+  remainingDue: number;
+  shortfall: number;
+  status: CreditDueFundingStatus;
+  isAlert: boolean;
+  canBeCoveredByTransfer?: boolean;
+  maxTransferableAmount?: number;
+  remainingUncoveredShortfall?: number;
+  projectedAccountBalance?: number;
+  projectedShortfall?: number;
+  isFundedByProjectedIncome?: boolean;
+  lowestProjectedBalance?: number;
+  suggestedSourceAccount?: {
+    accountKey: string;
+    accountName: string;
+    balance: number;
+    projectedBalance?: number;
+  };
+}
+
 export type ViewTab =
   | 'dashboard'
   | 'deficits'
