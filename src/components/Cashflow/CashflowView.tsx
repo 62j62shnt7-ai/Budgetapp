@@ -931,6 +931,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
 
         {isAnyFilterActive && (
           <div
+            className="active-filters-container"
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -947,78 +948,90 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
           >
             <span style={{ fontWeight: 600, color: 'var(--muted)' }}>Active filters:</span>
             {selectedMonth !== 'all' && (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
+              <span className="active-filter-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
                 📅 Month: <strong>{selectedMonth}</strong>
                 <button
                   type="button"
+                  className="filter-dismiss-btn"
                   style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand-primary, #6366f1)', fontWeight: 700 }}
                   onClick={() => setSelectedMonth('all')}
                   title="Clear month filter"
+                  aria-label="Clear month filter"
                 >
                   ✕
                 </button>
               </span>
             )}
             {typeFilter !== 'all' && (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
+              <span className="active-filter-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
                 Type: <strong>{typeFilter}</strong>
                 <button
                   type="button"
+                  className="filter-dismiss-btn"
                   style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand-primary, #6366f1)', fontWeight: 700 }}
                   onClick={() => setTypeFilter('all')}
                   title="Clear type filter"
+                  aria-label="Clear type filter"
                 >
                   ✕
                 </button>
               </span>
             )}
             {categoryFilter !== 'all' && (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
+              <span className="active-filter-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
                 📁 Category: <strong>{categoryFilter}</strong>
                 <button
                   type="button"
+                  className="filter-dismiss-btn"
                   style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand-primary, #6366f1)', fontWeight: 700 }}
                   onClick={() => setCategoryFilter('all')}
                   title="Clear category filter"
+                  aria-label="Clear category filter"
                 >
                   ✕
                 </button>
               </span>
             )}
             {selectedAccount !== 'all' && (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
+              <span className="active-filter-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
                 Account: <strong>{selectedAccount.toUpperCase()}</strong>
                 <button
                   type="button"
+                  className="filter-dismiss-btn"
                   style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand-primary, #6366f1)', fontWeight: 700 }}
                   onClick={() => setSelectedAccount('all')}
                   title="Clear account filter"
+                  aria-label="Clear account filter"
                 >
                   ✕
                 </button>
               </span>
             )}
             {selectedTag !== 'all' && (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
+              <span className="active-filter-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
                 🏷️ Tag: <strong>{selectedTag === '__untagged__' ? 'Untagged' : selectedTag}</strong>
                 <button
                   type="button"
+                  className="filter-dismiss-btn"
                   style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand-primary, #6366f1)', fontWeight: 700 }}
                   onClick={() => setSelectedTag('all')}
                   title="Clear tag filter"
+                  aria-label="Clear tag filter"
                 >
                   ✕
                 </button>
               </span>
             )}
             {searchTerm && (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
+              <span className="active-filter-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
                 Search: <strong>&quot;{searchTerm}&quot;</strong>
                 <button
                   type="button"
+                  className="filter-dismiss-btn"
                   style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand-primary, #6366f1)', fontWeight: 700 }}
                   onClick={() => setSearchTerm('')}
                   title="Clear search filter"
+                  aria-label="Clear search filter"
                 >
                   ✕
                 </button>
@@ -1026,6 +1039,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
             )}
             <button
               type="button"
+              className="filter-clear-all-btn"
               style={{
                 background: 'none',
                 border: 'none',

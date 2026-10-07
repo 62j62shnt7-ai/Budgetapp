@@ -557,13 +557,27 @@ body {
 }
 
 .credit-sub-val {
-  font-size: 12.5px !important;
+  font-size: 12px !important;
   font-weight: 700 !important;
   font-variant-numeric: tabular-nums !important;
   color: var(--ink);
   white-space: nowrap !important;
   overflow: hidden !important;
   text-overflow: ellipsis !important;
+  line-height: 1.25 !important;
+}
+
+@media (max-width: 420px) {
+  .credit-sub-item {
+    padding: 5px 6px !important;
+  }
+  .credit-sub-label {
+    font-size: 9px !important;
+  }
+  .credit-sub-val {
+    font-size: 11px !important;
+    letter-spacing: -0.2px !important;
+  }
 }
 
 .credit-sub-item.is-due .credit-sub-val {
@@ -1261,18 +1275,47 @@ button:active:not(:disabled),
 .sidebar-toggle-btn,
 .sidebar-open-btn,
 .mobile-refresh-btn,
-.mobile-quick-add-btn {
+.mobile-quick-add-btn,
+.collapse-toggle-btn,
+.filter-dismiss-btn {
   position: relative;
 }
 
 .icon-button::after,
-.compact-pill-btn::after {
+.compact-pill-btn::after,
+.filter-dismiss-btn::after,
+.collapse-toggle-btn::after {
   content: '';
   position: absolute;
-  inset: -6px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   min-width: 44px;
   min-height: 44px;
   pointer-events: auto;
+}
+
+.active-filter-pill {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.filter-dismiss-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  min-height: 24px;
+  border-radius: 4px;
+}
+
+.filter-clear-all-btn {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
 }
 
 /* Bento Dashboard Layout */
@@ -1291,6 +1334,13 @@ button:active:not(:disabled),
 .metrics-grid,
 .panel {
   container-type: inline-size;
+}
+
+.table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 
@@ -1347,6 +1397,15 @@ html {
   text-align: center;
 }
 
+/* History Summary Table Desktop defaults */
+.summary-mobile-metric-label {
+  display: none;
+}
+
+.summary-card-savings-pill {
+  display: none;
+}
+
 /* Panel heading layout to prevent chevron toggle misalignment */
 .panel-heading {
   display: flex !important;
@@ -1366,6 +1425,16 @@ html {
 .panel-heading .icon-button,
 .panel-heading > .ghost-button {
   flex-shrink: 0 !important;
+}
+
+@media (max-width: 768px) {
+  .collapse-toggle-btn {
+    min-width: 44px !important;
+    min-height: 44px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
 }
 
 /* Summary period controls */
@@ -1556,19 +1625,21 @@ dialog.modern-top-layer-dialog .dialog-actions button {
   .mobile-quick-add-btn {
     display: inline-flex !important;
     align-items: center;
-    min-height: 36px !important;
-    padding: 0 14px !important;
-    font-size: 13px !important;
+    min-height: 44px !important;
+    padding: 0 16px !important;
+    font-size: 14px !important;
     font-weight: 700 !important;
     border-radius: 999px !important;
     white-space: nowrap;
+    touch-action: manipulation;
   }
 
   .mobile-more-btn,
   .mobile-refresh-btn {
-    width: 36px !important;
-    height: 36px !important;
-    min-height: 36px !important;
+    width: 44px !important;
+    height: 44px !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
     padding: 0 !important;
     border-radius: 50% !important;
     display: inline-flex !important;
@@ -1576,6 +1647,7 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     justify-content: center;
     flex-shrink: 0;
     color: var(--muted);
+    touch-action: manipulation;
   }
 
   .mobile-refresh-btn:active {
@@ -1591,15 +1663,17 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     gap: 10px !important;
   }
 
-  .panel-heading > *:first-child {
-    min-width: 0 !important;
-    width: 100% !important;
-  }
-
+  .panel-heading:has(.collapse-toggle-btn),
+  .panel-heading[role="button"],
   .panel-heading.panel-heading-row {
     flex-direction: row !important;
     align-items: center !important;
     justify-content: space-between !important;
+  }
+
+  .panel-heading > *:first-child {
+    min-width: 0 !important;
+    flex: 1 !important;
   }
 
   /* Subnav Tabs as iOS Segmented Controls */
@@ -1612,12 +1686,15 @@ dialog.modern-top-layer-dialog .dialog-actions button {
   }
 
   .subnav-tab {
-    padding: 8px 12px !important;
-    font-size: 12px !important;
+    padding: 8px 14px !important;
+    font-size: 12.5px !important;
     font-weight: 600 !important;
     letter-spacing: -0.2px !important;
     border-radius: 999px !important;
-    min-height: 36px;
+    min-height: 44px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
     touch-action: manipulation;
   }
 
@@ -2552,6 +2629,15 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     overflow: visible !important;
   }
 
+  .table-wrap:not(.responsive-cards),
+  .table-wrap.compact:not(.responsive-cards) {
+    overflow-x: auto !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    -webkit-overflow-scrolling: touch !important;
+    box-sizing: border-box !important;
+  }
+
   .table-wrap.responsive-cards table {
     display: block !important;
     width: 100% !important;
@@ -2801,6 +2887,86 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     padding-top: 3px !important;
   }
 
+  /* History Summary Table Responsive Card Layout */
+  .history-summary-table-wrap.responsive-cards tr.history-summary-row {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+    padding: 14px 16px !important;
+    background: var(--surface) !important;
+    border: 1px solid var(--line) !important;
+    border-radius: 16px !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03) !important;
+  }
+
+  .history-summary-table-wrap.responsive-cards .summary-card-header {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    width: 100% !important;
+    margin-bottom: 2px !important;
+  }
+
+  .history-summary-table-wrap.responsive-cards .summary-card-month-title {
+    font-size: 16px !important;
+    font-weight: 800 !important;
+    color: var(--ink) !important;
+    letter-spacing: -0.01em !important;
+  }
+
+  .history-summary-table-wrap.responsive-cards .summary-card-savings-pill {
+    display: inline-flex !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    padding: 3px 8px !important;
+    border-radius: 999px !important;
+  }
+
+  .history-summary-table-wrap.responsive-cards .cell-month-name {
+    width: 100% !important;
+    border-bottom: 1px solid var(--line) !important;
+    padding-bottom: 8px !important;
+  }
+
+  .history-summary-table-wrap.responsive-cards .cell-summary-income,
+  .history-summary-table-wrap.responsive-cards .cell-summary-expenses,
+  .history-summary-table-wrap.responsive-cards .cell-summary-net {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    width: 100% !important;
+    padding: 2px 0 !important;
+    font-size: 14px !important;
+  }
+
+  .history-summary-table-wrap.responsive-cards .summary-mobile-metric-label {
+    display: inline-block !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    color: var(--muted) !important;
+  }
+
+  .history-summary-table-wrap.responsive-cards .summary-mobile-metric-val {
+    font-variant-numeric: tabular-nums !important;
+    font-weight: 700 !important;
+  }
+
+  .history-summary-table-wrap.responsive-cards .summary-settlement-sublabel {
+    font-size: 11px !important;
+    font-weight: 500 !important;
+    color: var(--muted) !important;
+  }
+
+  .history-summary-table-wrap.responsive-cards .cell-summary-net {
+    border-top: 1px dashed var(--line) !important;
+    padding-top: 8px !important;
+    margin-top: 4px !important;
+  }
+
+  .history-summary-table-wrap.responsive-cards .cell-summary-rate {
+    display: none !important;
+  }
+
   .table-wrap.responsive-cards .cell-actions {
     grid-column: 1 / -1 !important;
     grid-row: 5 !important;
@@ -2936,11 +3102,11 @@ dialog.modern-top-layer-dialog .dialog-actions button {
   }
 
   .history-clear-btn {
-    min-height: 28px !important;
-    padding: 2px 12px !important;
-    font-size: 11.5px !important;
+    min-height: 44px !important;
+    padding: 8px 14px !important;
+    font-size: 13px !important;
     font-weight: 600 !important;
-    border-radius: 6px !important;
+    border-radius: 8px !important;
     background: var(--surface-soft) !important;
     border: 1px solid var(--line) !important;
     color: var(--muted) !important;
@@ -2948,6 +3114,7 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
+    touch-action: manipulation !important;
   }
 
   .history-clear-btn:hover {
@@ -2957,33 +3124,43 @@ dialog.modern-top-layer-dialog .dialog-actions button {
   }
 
   .table-wrap.responsive-cards .finish-loan-btn {
-    min-height: 34px !important;
-    padding: 4px 12px !important;
+    min-height: 44px !important;
+    padding: 8px 16px !important;
     border-radius: 8px !important;
-    font-size: 12.5px !important;
+    font-size: 13px !important;
     font-weight: 700 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    touch-action: manipulation !important;
   }
 
   .table-wrap.responsive-cards .delete-button {
-    min-height: 32px !important;
-    padding: 4px 10px !important;
-    font-size: 12px !important;
+    min-height: 44px !important;
+    padding: 8px 14px !important;
+    font-size: 13px !important;
     font-weight: 600 !important;
+    border-radius: 8px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    touch-action: manipulation !important;
   }
 
   /* Subspends button in History Cards */
   .history-draws-toggle-btn {
     display: inline-flex !important;
     align-items: center !important;
-    padding: 2px 8px !important;
-    font-size: 11px !important;
+    padding: 6px 12px !important;
+    font-size: 12px !important;
     font-weight: 600 !important;
-    border-radius: 6px !important;
+    border-radius: 8px !important;
     background: var(--surface-soft) !important;
     border: 1px solid var(--line) !important;
     color: var(--muted) !important;
-    min-height: 24px !important;
-    margin-top: 2px !important;
+    min-height: 44px !important;
+    margin-top: 4px !important;
+    touch-action: manipulation !important;
   }
 
   /* Opening Balance rows on mobile: hide redundant empty actual/actions footer */
@@ -3464,6 +3641,10 @@ input[type="date"]::-webkit-date-and-time-value {
 
   .metric {
     padding: 12px 10px;
+  }
+
+  .credit-dual-metric {
+    grid-column: 1 / -1 !important;
   }
 
   .metric strong {

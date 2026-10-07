@@ -70,7 +70,7 @@ export const HistorySummaryTab: React.FC<HistorySummaryTabProps> = ({
         <p style={{ color: 'var(--muted)', fontSize: '13px', margin: '4px 0 12px' }}>
           Monthly aggregated totals of all confirmed income and actual expenses.
         </p>
-        <div className="table-wrap compact">
+        <div className="table-wrap compact responsive-cards history-summary-table-wrap">
           <table>
             <thead>
               <tr>
@@ -95,7 +95,7 @@ export const HistorySummaryTab: React.FC<HistorySummaryTabProps> = ({
                   return (
                     <tr
                       key={row.month}
-                      className={onSelectMonth ? 'history-summary-clickable-row' : undefined}
+                      className={`history-summary-row ${onSelectMonth ? 'history-summary-clickable-row' : ''}`}
                       onClick={() => onSelectMonth?.(row.month)}
                       onKeyDown={(e) => {
                         if ((e.key === 'Enter' || e.key === ' ') && onSelectMonth) {
@@ -108,8 +108,9 @@ export const HistorySummaryTab: React.FC<HistorySummaryTabProps> = ({
                       title={onSelectMonth ? `Click to view individual transactions for ${row.month}` : undefined}
                     >
                       <td className="cell-month-name">
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                          <strong>{row.month}</strong>
+                        <div className="summary-card-header">
+                          <span className="summary-card-month-title">{row.month}</span>
+                          <span className={`variance-pill ${rateBadgeClass} summary-card-savings-pill`}>{row.savingsRate}% Savings</span>
                           {onSelectMonth && (
                             <span className="history-row-action-hint" aria-hidden="true">
                               →
@@ -117,25 +118,30 @@ export const HistorySummaryTab: React.FC<HistorySummaryTabProps> = ({
                           )}
                         </div>
                       </td>
-                      <td className="number" style={{ color: 'var(--green)', fontWeight: 600 }}>
-                        +{formatMoney(row.income)}
+                      <td className="number cell-summary-income" style={{ color: 'var(--green)', fontWeight: 600 }}>
+                        <span className="summary-mobile-metric-label">Income</span>
+                        <span className="summary-mobile-metric-val">+{formatMoney(row.income)}</span>
                       </td>
-                      <td className="number" style={{ color: 'var(--red)', fontWeight: 600 }}>
-                        -{formatMoney(row.expenses - (row.creditSettled || 0))}
-                        {!!row.creditSettled && row.creditSettled > 0 && (
-                          <span style={{ color: 'var(--muted)', fontWeight: 500, fontSize: '0.85em' }}> ({formatMoney(row.creditSettled)} settlement)</span>
-                        )}
+                      <td className="number cell-summary-expenses" style={{ color: 'var(--red)', fontWeight: 600 }}>
+                        <span className="summary-mobile-metric-label">Expenses</span>
+                        <span className="summary-mobile-metric-val">
+                          -{formatMoney(row.expenses - (row.creditSettled || 0))}
+                          {!!row.creditSettled && row.creditSettled > 0 && (
+                            <span className="summary-settlement-sublabel"> ({formatMoney(row.creditSettled)} card)</span>
+                          )}
+                        </span>
                       </td>
                       <td
-                        className="number"
+                        className="number cell-summary-net"
                         style={{
                           fontWeight: 700,
                           color: row.net >= 0 ? 'var(--green)' : 'var(--red)',
                         }}
                       >
-                        {row.net >= 0 ? '+' : ''}{formatMoney(row.net)}
+                        <span className="summary-mobile-metric-label">Net Surplus</span>
+                        <span className="summary-mobile-metric-val">{row.net >= 0 ? '+' : ''}{formatMoney(row.net)}</span>
                       </td>
-                      <td className="number">
+                      <td className="number cell-summary-rate">
                         <span className={`variance-pill ${rateBadgeClass}`}>{row.savingsRate}%</span>
                       </td>
                     </tr>
