@@ -1,5 +1,6 @@
 import React from 'react';
 import { useBudgetStore } from '../../store/useBudgetStore';
+import { useShallow } from 'zustand/react/shallow';
 import {
   getEntryActualAmount,
   isPartialTracked,
@@ -31,7 +32,15 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({
     updateEntry,
     runTransaction,
     navigateTo,
-  } = useBudgetStore();
+  } = useBudgetStore(useShallow((state) => ({
+    accounts: state.accounts,
+    entryActuals: state.entryActuals,
+    creditSettlementOverrides: state.creditSettlementOverrides,
+    recordActual: state.recordActual,
+    updateEntry: state.updateEntry,
+    runTransaction: state.runTransaction,
+    navigateTo: state.navigateTo,
+  })));
 
   const {
     allCandidateEntries,

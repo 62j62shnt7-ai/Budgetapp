@@ -340,7 +340,7 @@ function revertStorageOrAccountBalance(
   if (!amount || amount <= 0) return;
 
   const storageAssets = get().storageAssets;
-  const currUpper = (currency || 'USD').toUpperCase();
+  const currUpper = (currency || 'EGP').toUpperCase();
   const isForeign = currUpper !== 'EGP';
   const accountLower = (account || '').toLowerCase().trim();
 
@@ -688,6 +688,24 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         }
         return entry;
       });
+
+      if (shouldScale) {
+        const updatedInstallments = get().installments.map((inst) => {
+          if (inst.loanId === current.loanId || inst.id === current.loanId) {
+            const baseRep = Number(inst.initialAmount || inst.amount);
+            return {
+              ...inst,
+              amount: Math.round(baseRep * ratio),
+              initialAmount: baseRep,
+            };
+          }
+          return inst;
+        });
+        if (updatedInstallments !== get().installments) {
+          saveStorage(STORAGE_KEYS.installments, updatedInstallments);
+          set({ installments: updatedInstallments });
+        }
+      }
     }
     saveStorage(STORAGE_KEYS.entries, finalEntries);
     set({ entries: finalEntries });
@@ -1544,7 +1562,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       revertStorageOrAccountBalance(get, {
         assetId: options.storageAssetId || deletedDraw.storageAssetId,
         account: deletedDraw.account || entry.account,
-        currency: entry.currency || 'USD',
+        currency: entry.currency || 'EGP',
         amount: deletedDraw.amount,
         isEgpAmount: true,
         fxRate: entry.fxRateAtEntry,
@@ -1996,10 +2014,12 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     return get().runTransaction(`Transfer ${amount} ${fromAsset.unit || ''}`, () => {
       const updated = get().storageAssets.map((a) => {
         if (a.id === fromAssetId) {
-          return { ...a, quantity: Math.max(0, (Number(a.quantity) || 0) - amount) };
+          const raw = Math.max(0, (Number(a.quantity) || 0) - amount);
+          return { ...a, quantity: Math.round(raw * 10000) / 10000 };
         }
         if (a.id === toAssetId) {
-          return { ...a, quantity: (Number(a.quantity) || 0) + amount };
+          const raw = (Number(a.quantity) || 0) + amount;
+          return { ...a, quantity: Math.round(raw * 10000) / 10000 };
         }
         return a;
       });
@@ -2021,9 +2041,13 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       const egpGained = Math.round(foreignAmount * rate);
 
       // 1. Deduct foreign quantity from storage asset
-      const updatedAssets = get().storageAssets.map((a) =>
-        a.id === assetId ? { ...a, quantity: Math.max(0, (Number(a.quantity) || 0) - foreignAmount) } : a
-      );
+      const updatedAssets = get().storageAssets.map((a) => {
+        if (a.id === assetId) {
+          const raw = Math.max(0, (Number(a.quantity) || 0) - foreignAmount);
+          return { ...a, quantity: Math.round(raw * 10000) / 10000 };
+        }
+        return a;
+      });
       saveStorage(STORAGE_KEYS.storage, updatedAssets);
 
       // 2. Deposit EGP to bank account
@@ -2331,12 +2355,6 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       return false;
     }
 
-    // If local modifications exist that haven't finished uploading to Gist yet, upload first instead of overwriting with old remote data
-    if (lastLocalMutationTimestamp > lastGistUploadTimestamp || state.gistSyncStatus === 'scheduled' || state.gistSyncStatus === 'syncing') {
-      scheduleAutoGistSync(get, true);
-      return true;
-    }
-
     set({ gistSyncStatus: 'syncing' });
     try {
       const headers: Record<string, string> = {
@@ -2382,8 +2400,10 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       const remoteExportedAt = parsedRemote?.exportedAt || parsedRemote?.data?.exportedAt;
       const remoteTime = remoteExportedAt ? new Date(remoteExportedAt).getTime() : 0;
 
-      // Remote is genuinely newer than our last known sync if remoteTime > lastGistUploadTimestamp + 1000
-      const remoteIsNewerThanLastSync = remoteTime > 0 && remoteTime > (lastGistUploadTimestamp + 1000);
+      // Remote is genuinely newer than local state if remoteTime > lastLocalMutationTimestamp + 1000
+      // or (if no local mutation) remoteTime > lastGistUploadTimestamp + 1000
+      const baselineTime = Math.max(lastGistUploadTimestamp, lastLocalMutationTimestamp);
+      const remoteIsNewerThanLocal = remoteTime > 0 && remoteTime > (baselineTime + 1000);
       const localHasUnuploadedChanges = lastLocalMutationTimestamp > 0 && lastLocalMutationTimestamp > lastGistUploadTimestamp;
 
       // Compare content differences between local state and incoming remote Gist
@@ -2408,7 +2428,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         return true;
       }
 
-      if (remoteIsNewerThanLastSync && localHasUnuploadedChanges && isActuallyDifferent) {
+      if (remoteIsNewerThanLocal && localHasUnuploadedChanges && isActuallyDifferent) {
         set({
           gistConflict: {
             remoteTime: remoteExportedAt,
@@ -2421,7 +2441,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
 
       // If local has un-uploaded changes and remote is not newer than our last sync,
       // upload local data to Gist rather than overwriting with older remote data
-      if (localHasUnuploadedChanges && !remoteIsNewerThanLastSync) {
+      if (localHasUnuploadedChanges && !remoteIsNewerThanLocal) {
         scheduleAutoGistSync(get, true);
         return true;
       }
@@ -2903,6 +2923,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
 
   runTransaction: <T>(label: string, fn: () => T): T => {
     if (transactionDepth > 0) return fn();
+    const snapshot = captureFinancialSnapshot(get());
     recordUndoableStep(set, get, label);
     transactionDepth++;
     isTransactionRunning = true;
@@ -2911,15 +2932,33 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       const result = fn();
       if (result && typeof (result as any).then === 'function') {
         isPromise = true;
-        return (result as any).finally(() => {
-          transactionDepth--;
-          if (transactionDepth <= 0) {
-            transactionDepth = 0;
-            isTransactionRunning = false;
-          }
-        });
+        return (result as any)
+          .catch((err: unknown) => {
+            persistFinancialSnapshot(snapshot);
+            set({
+              ...snapshot,
+              undoStack: get().undoStack.slice(1),
+              undoToast: null,
+            });
+            throw err;
+          })
+          .finally(() => {
+            transactionDepth--;
+            if (transactionDepth <= 0) {
+              transactionDepth = 0;
+              isTransactionRunning = false;
+            }
+          });
       }
       return result;
+    } catch (err) {
+      persistFinancialSnapshot(snapshot);
+      set({
+        ...snapshot,
+        undoStack: get().undoStack.slice(1),
+        undoToast: null,
+      });
+      throw err;
     } finally {
       if (!isPromise) {
         transactionDepth--;

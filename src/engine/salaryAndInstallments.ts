@@ -65,7 +65,11 @@ export function buildInstallmentEntries(installments: Installment[]): CashEntry[
   return installments.flatMap((installment) => {
     const [startYear, startMonth] = DateUtils.parseYearMonth(installment.startMonth);
     const frequency = Math.max(1, Number(installment.frequency) || 1);
-    const count = Number(installment.remainingMonths) || Number(installment.totalMonths) || 0;
+    const total = Math.max(0, Number(installment.totalMonths ?? installment.remainingMonths ?? 0));
+    const count = installment.remainingMonths !== undefined
+      ? Math.max(0, Number(installment.remainingMonths))
+      : total;
+    if (count === 0) return [];
     const entries: CashEntry[] = [];
 
     for (let i = 0; i < count; i += 1) {
@@ -112,9 +116,24 @@ export function calculateInstallmentProgress(
 ): InstallmentProgress {
   const [startYear, startMonth] = DateUtils.parseYearMonth(installment.startMonth);
   const frequency = Math.max(1, Number(installment.frequency) || 1);
-  const count = Number(installment.remainingMonths) || Number(installment.totalMonths) || 0;
+  const total = Math.max(0, Number(installment.totalMonths ?? installment.remainingMonths ?? 0));
+  const count = installment.remainingMonths !== undefined
+    ? Math.max(0, Number(installment.remainingMonths))
+    : total;
   const deletedSet = new Set(deletedForecasts || []);
   const amount = Number(installment.amount) || 0;
+
+  if (count === 0) {
+    return {
+      total: total,
+      paid: total,
+      dismissed: 0,
+      remaining: 0,
+      outstandingAmount: 0,
+      monthlyAmount: 0,
+      isActive: false,
+    };
+  }
 
   let paid = 0;
   let dismissed = 0;

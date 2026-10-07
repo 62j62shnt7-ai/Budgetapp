@@ -183,8 +183,10 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
       id: inst.id || `inst-${Date.now()}-${idx}`,
       name: inst.name || inst.item || 'Installment',
       amount: Number(inst.amount) || Number(inst.monthlyAmount) || 0,
-      totalMonths: Number(inst.totalMonths) || Number(inst.months) || Number(inst.installmentsCount) || 1,
-      remainingMonths: Number(inst.remainingMonths) || Number(inst.totalMonths) || Number(inst.months) || 1,
+      totalMonths: Number(inst.totalMonths ?? inst.months ?? inst.installmentsCount ?? 1),
+      remainingMonths: inst.remainingMonths !== undefined
+        ? Math.max(0, Number(inst.remainingMonths))
+        : Number(inst.totalMonths ?? inst.months ?? inst.installmentsCount ?? 1),
       startMonth: inst.startMonth || DateUtils.currentYearMonth(),
       day: Number(inst.day) || 10,
       account: inst.account === 'cash' ? 'cib' : (inst.account || 'cib'),

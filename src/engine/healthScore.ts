@@ -9,7 +9,7 @@
 // ==========================================================================
 import { DateUtils } from './dateUtils';
 import { groupByMonth, getEntryActualAmount, isLoanInflow } from './forecast';
-import { isCreditCardExpense, getCreditSettlementMonth } from './creditCards';
+import { isCreditCardExpense, getCreditSettlementMonth, getCreditAccountKey } from './creditCards';
 import type {
   CashEntry,
   CreditSettlementOverride,
@@ -300,12 +300,10 @@ export function analyzeSettledMonths(params: {
   // Settlement months whose card purchases are already counted on their own purchase dates.
   const coveredSettlementKeys = new Set<string>();
   ledger.filter((entry) => isCreditCardExpense(entry)).forEach((entry) => {
-    const accountKey = (entry.account || entry.creditType || '').toLowerCase();
+    const accKey = getCreditAccountKey(entry);
     const settlementMonth = getCreditSettlementMonth(entry, creditSettlementOverrides, entryActualDates);
     if (!settlementMonth) return;
-    ['cib', 'hsbc'].forEach((key) => {
-      if (accountKey.includes(key)) coveredSettlementKeys.add(`${key}-${settlementMonth}`);
-    });
+    coveredSettlementKeys.add(`${accKey}-${settlementMonth}`);
   });
 
   // Loan inflows and loan repayments are financing, not earnings or consumption:
@@ -317,7 +315,7 @@ export function analyzeSettledMonths(params: {
     if (entry.excludeFromForecast || entry.conversionType) return false;
     if (isLoanInflow(entry) || isLoanRepayment(entry)) return false;
     if (!isCreditDueLump(entry)) return true;
-    const accountKey = (entry.account || entry.creditType || '').toLowerCase().includes('hsbc') ? 'hsbc' : 'cib';
+    const accountKey = getCreditAccountKey(entry);
     const month = DateUtils.getMonthKey(entry.date);
     return !(month && coveredSettlementKeys.has(`${accountKey}-${month}`));
   });

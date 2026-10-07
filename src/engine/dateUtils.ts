@@ -76,7 +76,7 @@ export const DateUtils = {
     const [y, m] = DateUtils.parseYearMonth(ymString);
     const totalMonths = y * 12 + (m - 1) + count;
     const newY = Math.floor(totalMonths / 12);
-    const newM = (totalMonths % 12) + 1;
+    const newM = ((totalMonths % 12) + 12) % 12 + 1;
     return `${newY}-${String(newM).padStart(2, '0')}`;
   },
 };

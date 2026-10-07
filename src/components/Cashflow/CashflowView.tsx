@@ -400,48 +400,74 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     localStorage.setItem('budget-control-forecast-quarters', String(quarters));
   }, [quarters]);
 
-  const hasMaterializedSalary = entries.some((e) => e.source === 'salary');
-  const salaryEntries = hasMaterializedSalary ? [] : buildSalaryEntries(salaryPattern, startMonth, quarters, salaryAnchorMonth);
-  const installmentEntries = buildInstallmentEntries(installments);
-  const creditEntries = buildCreditDueEntries({
+  const {
+    creditEntries,
+    allCandidate,
+    forecastRows,
+  } = React.useMemo(() => {
+    const hasMaterialized = entries.some((e) => e.source === 'salary');
+    const salary = hasMaterialized ? [] : buildSalaryEntries(salaryPattern, startMonth, quarters, salaryAnchorMonth);
+    const installment = buildInstallmentEntries(installments);
+    const credit = buildCreditDueEntries({
+      accounts,
+      creditDues,
+      cashEntries: entries,
+      archivedEntries,
+      entryActuals,
+      creditSettlementOverrides,
+    });
+    const candidates = getForecastCandidateEntries(
+      [...entries, ...salary],
+      installment,
+      credit,
+      deletedForecasts,
+    );
+    const candidateList = candidates
+      .filter((entry) => !entry.isClosed)
+      .filter((entry) => {
+        const actual = getEntryActualAmount(entry, entryActuals);
+        if (actual <= 0) return true;
+        if ((entry as CashEntry & { keepOngoing?: boolean }).keepOngoing) return true;
+        return isPartialTracked(entry) && getRemainingForecastAmount(entry, entryActuals) > 0;
+      })
+      .map((entry) => {
+        const actual = getEntryActualAmount(entry, entryActuals);
+        const remaining = isPartialTracked(entry) && actual > 0
+          ? getRemainingForecastAmount(entry, entryActuals)
+          : Number(entry.amount || 0);
+        return actual > 0 && isPartialTracked(entry)
+          ? { ...entry, amount: remaining }
+          : entry;
+      });
+    const rows = getActiveForecastEntries(
+      [...entries, ...salary],
+      installment,
+      credit,
+      deletedForecasts,
+      entryActuals,
+    );
+    return {
+      salaryEntries: salary,
+      installmentEntries: installment,
+      creditEntries: credit,
+      forecastCandidates: candidates,
+      allCandidate: candidateList,
+      forecastRows: rows,
+    };
+  }, [
+    entries,
+    salaryPattern,
+    startMonth,
+    quarters,
+    salaryAnchorMonth,
+    installments,
     accounts,
     creditDues,
-    cashEntries: entries,
     archivedEntries,
     entryActuals,
     creditSettlementOverrides,
-  });
-  const forecastCandidates = getForecastCandidateEntries(
-    [...entries, ...salaryEntries],
-    installmentEntries,
-    creditEntries,
     deletedForecasts,
-  );
-  const allCandidate = forecastCandidates
-    .filter((entry) => !entry.isClosed)
-    .filter((entry) => {
-      const actual = getEntryActualAmount(entry, entryActuals);
-      if (actual <= 0) return true;
-      if ((entry as CashEntry & { keepOngoing?: boolean }).keepOngoing) return true;
-      return isPartialTracked(entry) && getRemainingForecastAmount(entry, entryActuals) > 0;
-    })
-    .map((entry) => {
-      const actual = getEntryActualAmount(entry, entryActuals);
-      const remaining = isPartialTracked(entry) && actual > 0
-        ? getRemainingForecastAmount(entry, entryActuals)
-        : Number(entry.amount || 0);
-      return actual > 0 && isPartialTracked(entry)
-        ? { ...entry, amount: remaining }
-        : entry;
-    });
-
-  const forecastRows = getActiveForecastEntries(
-    [...entries, ...salaryEntries],
-    installmentEntries,
-    creditEntries,
-    deletedForecasts,
-    entryActuals,
-  );
+  ]);
 
   const creditFundingAlertsMap = React.useMemo(() => {
     const alerts = getCreditDueFundingAlerts({
