@@ -26,7 +26,10 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({
   const {
     accounts,
     entryActuals,
+    creditSettlementOverrides,
     recordActual,
+    updateEntry,
+    runTransaction,
     navigateTo,
   } = useBudgetStore();
 
@@ -38,12 +41,14 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({
   } = useForecastCandidates(12);
 
   const fundingAlerts = React.useMemo(() => {
-    return getCreditDueFundingAlerts({
+    const rawAlerts = getCreditDueFundingAlerts({
       creditDueEntries,
       accounts,
       entryActuals,
       candidateEntries: allCandidateEntries,
     });
+    // Filter out past settled cycles: only display open obligations or active future settlements
+    return rawAlerts.filter((a) => a.remainingDue > 0 || a.status !== 'settled');
   }, [creditDueEntries, accounts, entryActuals, allCandidateEntries]);
 
   const activeFundingAlerts = React.useMemo(() => {
@@ -320,19 +325,52 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({
                     </span>
                   </div>
                   <div className="overdue-entry-actions">
-                    <strong className="overdue-entry-amount">{formatMoney(remaining)}</strong>
+                    <strong className="overdue-entry-amount">
+                      {entry.id.startsWith('credit-settlement-') ? (
+                        <span title="Remaining settlement due for this cycle">{formatMoney(remaining)}</span>
+                      ) : (
+                        formatMoney(remaining)
+                      )}
+                    </strong>
                     <button
                       className="ghost-button overdue-mark-paid-btn"
                       type="button"
                       onClick={() => {
                         const plannedAmt = Number(entry.amount || 0);
-                        recordActual(entry.id, plannedAmt, today, {
-                          tag: entry.tag || '',
-                          account: entry.account || 'cash',
-                        });
-                        // Offer to deduct the paid amount from the operating account
-                        // (same flow as recording an actual spend elsewhere).
-                        onDeductPrompt?.(entry, plannedAmt);
+                        const isSettlement = entry.id.startsWith('credit-settlement-');
+
+                        if (isSettlement) {
+                          const settlementAccountKey = entry.id.split('-')[2] || entry.account || 'cib';
+                          const existingOverride = creditSettlementOverrides[entry.id] || {};
+                          runTransaction(`Mark Paid Credit Settlement: ${entry.category}`, () => {
+                            recordActual(entry.id, plannedAmt, today, {
+                              tag: entry.tag || existingOverride.tag || 'Credit',
+                              account: settlementAccountKey,
+                            });
+                            updateEntry(entry.id, {
+                              isClosed: true,
+                              amount: existingOverride.amount ?? plannedAmt,
+                              account: settlementAccountKey,
+                            });
+                          });
+
+                          onDeductPrompt?.(
+                            {
+                              ...entry,
+                              account: settlementAccountKey,
+                              isClosed: true,
+                            },
+                            plannedAmt
+                          );
+                        } else {
+                          recordActual(entry.id, plannedAmt, today, {
+                            tag: entry.tag || '',
+                            account: entry.account || 'cash',
+                          });
+                          // Offer to deduct the paid amount from the operating account
+                          // (same flow as recording an actual spend elsewhere).
+                          onDeductPrompt?.(entry, plannedAmt);
+                        }
                       }}
                     >
                       Mark Paid
@@ -487,7 +525,9 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({
                       </div>
                       <span className="overdue-entry-meta" style={{ marginTop: '4px', display: 'block' }}>
                         Due: {DateUtils.formatDisplayDate(alert.settlementDate)} (
-                        {alert.daysUntilSettlement < 0
+                        {alert.status === 'settled' || alert.remainingDue <= 0
+                          ? 'Settled'
+                          : alert.daysUntilSettlement < 0
                           ? `${Math.abs(alert.daysUntilSettlement)}d overdue`
                           : alert.daysUntilSettlement === 0
                           ? 'Today'

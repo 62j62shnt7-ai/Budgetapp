@@ -261,10 +261,13 @@ export function buildCreditDueEntries(params: {
 
       const settlementId = `credit-settlement-${accountKey}-${monthKey}`;
       const lumpActual = manualLumpEntries.reduce((sum, e) => sum + getActual(e), 0);
-      const actualPaid = Math.max(Number(entryActuals[settlementId] || 0), lumpActual);
+      const override = creditSettlementOverrides[settlementId];
+      const overrideDrawsTotal = Array.isArray(override?.draws)
+        ? override.draws.reduce((sum, d) => sum + (Number(d.amount) || 0), 0)
+        : 0;
+      const actualPaid = Math.max(Number(entryActuals[settlementId] || 0), lumpActual, overrideDrawsTotal);
       const calculatedPlannedDue = baseDue + lumpAmount + cardSpendTotal;
 
-      const override = creditSettlementOverrides[settlementId];
       const hasPlannedOverride =
         override &&
         override.amount !== undefined &&
@@ -288,6 +291,10 @@ export function buildCreditDueEntries(params: {
         settlementDate = override.date;
       }
 
+      const isSettlementClosed = override?.isClosed !== undefined
+        ? override.isClosed
+        : ((totalPlannedDue > 0 && actualPaid >= totalPlannedDue) || (totalPlannedDue <= 0 && actualPaid > 0));
+
       entries.push({
         id: settlementId,
         date: settlementDate,
@@ -308,7 +315,7 @@ export function buildCreditDueEntries(params: {
         source: 'recurring credit',
         tag: override?.tag || 'Credit',
         draws: override?.draws || [],
-        isClosed: override?.isClosed ?? false,
+        isClosed: isSettlementClosed,
       });
     });
   });

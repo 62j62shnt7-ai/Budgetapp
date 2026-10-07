@@ -1174,6 +1174,124 @@ assert.strictEqual(useBudgetStore.getState().entryActuals['credit-settlement-cib
 assert.strictEqual(useBudgetStore.getState().accounts.cib.balance, 10000, 'Paid settlement amount refunded to bank (1000 + 9000)');
 console.log('✓ Settlement clear: reverts to single planned due (overdue) and refunds bank balance');
 
+// --- End-to-End Integration Check: Credit Settlement Mark Paid → Deduct → Rebuild → Overdue Clear Loop ---
+{
+  const { buildCreditDueEntries } = await import('../src/engine/creditCards.ts');
+  const { getActiveForecastEntries, isOngoingEntry, getRemainingForecastAmount } = await import('../src/engine/forecast.ts');
+  const { DateUtils } = await import('../src/engine/dateUtils.ts');
+
+  // Test 1: HSBC Overdue Credit Settlement Mark Paid and Account Deduction
+  const hsbcInitialBal = 25000;
+  const hsbcDueAmt = 7500;
+  const hsbcSettlementId = 'credit-settlement-hsbc-2026-08';
+
+  useBudgetStore.setState({
+    accounts: {
+      hsbc: { id: 'hsbc', name: 'HSBC', balance: hsbcInitialBal, maturityDay: 30 },
+      cib: { id: 'cib', name: 'CIB', balance: 5000, maturityDay: 15 },
+    },
+    creditDues: { hsbc: { '2026-08': hsbcDueAmt } },
+    creditSettlementOverrides: {},
+    entryActuals: {},
+    entryActualDates: {},
+    entries: [],
+    archivedEntries: [],
+    deletedForecasts: [],
+  });
+
+  // 1. Initial State: Rebuilt credit dues must emit the open, overdue settlement row
+  let creditDuesList = buildCreditDueEntries({
+    accounts: useBudgetStore.getState().accounts,
+    creditDues: useBudgetStore.getState().creditDues,
+    cashEntries: useBudgetStore.getState().entries,
+    entryActuals: useBudgetStore.getState().entryActuals,
+    creditSettlementOverrides: useBudgetStore.getState().creditSettlementOverrides,
+  });
+  let hsbcEntry = creditDuesList.find((e) => e.id === hsbcSettlementId);
+  assert.ok(hsbcEntry, 'Initial HSBC settlement entry emitted');
+  assert.strictEqual(hsbcEntry.amount, hsbcDueAmt);
+  assert.strictEqual(hsbcEntry.isClosed, false, 'Unpaid settlement is initially not closed');
+
+  // Candidate forecast verification: must be present as overdue
+  let today = DateUtils.todayString();
+  let candidates = getActiveForecastEntries([], [], creditDuesList, [], useBudgetStore.getState().entryActuals);
+  let overdueList = candidates
+    .filter((e) => e.date && e.date < today && !isOngoingEntry(e, useBudgetStore.getState().entryActuals))
+    .filter((e) => !e.isClosed && getRemainingForecastAmount(e, useBudgetStore.getState().entryActuals) > 0);
+  assert.ok(overdueList.some((e) => e.id === hsbcSettlementId), 'HSBC settlement appears in overdue list before payment');
+
+  // 2. Simulate Deficits "Mark Paid" Reconciliation Write Path
+  const owningAccount = hsbcSettlementId.split('-')[2] || 'hsbc';
+  assert.strictEqual(owningAccount, 'hsbc', 'Settlement owning account correctly parsed as HSBC');
+
+  useBudgetStore.getState().runTransaction('Mark Paid Credit Settlement: HSBC Credit Due', () => {
+    useBudgetStore.getState().recordActual(hsbcSettlementId, hsbcDueAmt, today, {
+      tag: 'Credit',
+      account: owningAccount,
+    });
+    useBudgetStore.getState().updateEntry(hsbcSettlementId, {
+      isClosed: true,
+      amount: hsbcDueAmt,
+      account: owningAccount,
+    });
+  });
+
+  // Verify store overrides state
+  const hsbcOverride = useBudgetStore.getState().creditSettlementOverrides[hsbcSettlementId];
+  assert.ok(hsbcOverride, 'HSBC settlement override stored');
+  assert.strictEqual(hsbcOverride.isClosed, true, 'HSBC settlement override explicitly marked closed');
+  assert.strictEqual(hsbcOverride.amount, hsbcDueAmt, 'HSBC statement planned due preserved');
+  assert.strictEqual(useBudgetStore.getState().entryActuals[hsbcSettlementId], hsbcDueAmt, 'HSBC entry actual recorded');
+  assert.strictEqual(hsbcOverride.draws.length, 1, 'HSBC draw tranche recorded');
+
+  // 3. Simulate Deduct Modal Execution (Deduct from HSBC account)
+  const currentHsbcBal = useBudgetStore.getState().accounts.hsbc.balance;
+  useBudgetStore.getState().updateAccountBalance(owningAccount, currentHsbcBal - hsbcDueAmt);
+  assert.strictEqual(useBudgetStore.getState().accounts.hsbc.balance, hsbcInitialBal - hsbcDueAmt, 'HSBC account deducted by exact settlement amount');
+
+  // 4. Rebuild credit due entries: must treat settlement as closed & actualPaid matching
+  creditDuesList = buildCreditDueEntries({
+    accounts: useBudgetStore.getState().accounts,
+    creditDues: useBudgetStore.getState().creditDues,
+    cashEntries: useBudgetStore.getState().entries,
+    entryActuals: useBudgetStore.getState().entryActuals,
+    creditSettlementOverrides: useBudgetStore.getState().creditSettlementOverrides,
+  });
+  hsbcEntry = creditDuesList.find((e) => e.id === hsbcSettlementId);
+  assert.ok(hsbcEntry, 'Paid HSBC settlement row retained in credit dues for historical tracking');
+  assert.strictEqual(hsbcEntry.isClosed, true, 'Rebuilt HSBC settlement entry is closed');
+  assert.strictEqual(hsbcEntry.actualAmount, hsbcDueAmt, 'Rebuilt HSBC settlement actualAmount matches paid amount');
+
+  // 5. Active forecast entries & Deficits overdue verification: must be cleanly gone from overdue
+  candidates = getActiveForecastEntries([], [], creditDuesList, [], useBudgetStore.getState().entryActuals);
+  overdueList = candidates
+    .filter((e) => e.date && e.date < today && !isOngoingEntry(e, useBudgetStore.getState().entryActuals))
+    .filter((e) => !e.isClosed && getRemainingForecastAmount(e, useBudgetStore.getState().entryActuals) > 0);
+  assert.strictEqual(overdueList.some((e) => e.id === hsbcSettlementId), false, 'Paid HSBC settlement is cleanly removed from Deficits overdue list');
+
+  // 6. Test Symmetry: Clear actual with bank refund cleanly restores balance & reopens settlement
+  useBudgetStore.getState().clearActual(hsbcSettlementId, { revertStorage: true });
+  assert.strictEqual(useBudgetStore.getState().accounts.hsbc.balance, hsbcInitialBal, 'HSBC account balance fully restored after clear');
+  assert.strictEqual(useBudgetStore.getState().creditSettlementOverrides[hsbcSettlementId].isClosed, false, 'HSBC settlement reopened');
+  assert.strictEqual(useBudgetStore.getState().creditSettlementOverrides[hsbcSettlementId].draws.length, 0, 'HSBC settlement draws wiped');
+
+  // Re-verify it resurfaces in overdue after clear
+  creditDuesList = buildCreditDueEntries({
+    accounts: useBudgetStore.getState().accounts,
+    creditDues: useBudgetStore.getState().creditDues,
+    cashEntries: useBudgetStore.getState().entries,
+    entryActuals: useBudgetStore.getState().entryActuals,
+    creditSettlementOverrides: useBudgetStore.getState().creditSettlementOverrides,
+  });
+  candidates = getActiveForecastEntries([], [], creditDuesList, [], useBudgetStore.getState().entryActuals);
+  overdueList = candidates
+    .filter((e) => e.date && e.date < today && !isOngoingEntry(e, useBudgetStore.getState().entryActuals))
+    .filter((e) => !e.isClosed && getRemainingForecastAmount(e, useBudgetStore.getState().entryActuals) > 0);
+  assert.ok(overdueList.some((e) => e.id === hsbcSettlementId), 'HSBC settlement resurfaces in overdue list after clearActual');
+
+  console.log('✓ Integration check: Deficits Mark Paid → Deduct → Rebuild → Overdue Clear & Symmetry verified');
+}
+
 {
   const { computeSettlementUncovered } = await import('../src/engine/creditCards.ts');
   const card = (id, date, amount, acc) => ({ id, type: 'expense', date, actualDate: date, amount, category: 'Food', account: acc, source: 'credit card', creditType: `${acc}_card` });

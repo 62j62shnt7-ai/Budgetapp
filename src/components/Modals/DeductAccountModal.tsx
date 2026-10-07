@@ -28,6 +28,7 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
     updateAccountBalance,
     updateEntry,
     runTransaction,
+    creditSettlementOverrides,
   } = useBudgetStore();
 
   const [selectedAccountId, setSelectedAccountId] = useState<string>('cib');
@@ -80,7 +81,18 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
   if (currentDeductKey !== prevDeductKey) {
     setPrevDeductKey(currentDeductKey);
     if (entry && isOpen) {
-      setSelectedAccountId(accounts[entry.account || ''] ? entry.account! : 'cib');
+      const isSettlement = entry.id.startsWith('credit-settlement-');
+      let defaultAccId = 'cib';
+
+      if (isSettlement) {
+        const parsedKey = (entry.id.split('-')[2] || entry.account || '').toLowerCase();
+        const matched = Object.keys(accounts).find((k) => k.toLowerCase() === parsedKey);
+        defaultAccId = matched || (accounts[entry.account || ''] ? entry.account! : (accounts['cib'] ? 'cib' : Object.keys(accounts)[0] || 'cib'));
+      } else {
+        defaultAccId = accounts[entry.account || ''] ? entry.account! : (accounts['cib'] ? 'cib' : Object.keys(accounts)[0] || 'cib');
+      }
+
+      setSelectedAccountId(defaultAccId);
       setTag(entry.tag || entry.subcategory || '');
       setCustomFxRate(String(defaultRate));
       setCustomEgpAmount(String(actualAmount));
@@ -100,12 +112,18 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
 
   const handleSaveWithoutDeposit = () => {
     const trimmedTag = tag.trim();
+    const isSettlement = entry.id.startsWith('credit-settlement-');
+    const override = isSettlement ? creditSettlementOverrides[entry.id] : undefined;
     const currentEntry =
       entries.find((e) => e.id === entry.id) ||
       archivedEntries.find((e) => e.id === entry.id) ||
       entry;
 
-    let updatedDraws = currentEntry.draws ? [...currentEntry.draws] : [];
+    const baseDraws = (isSettlement && override?.draws && override.draws.length > 0)
+      ? override.draws
+      : (currentEntry.draws || []);
+    let updatedDraws = [...baseDraws];
+
     if (updatedDraws.length > 0) {
       const lastIndex = updatedDraws.length - 1;
       updatedDraws[lastIndex] = {
@@ -119,7 +137,7 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
           date: entry.actualDate || entry.date || DateUtils.todayString(),
           amount: actualAmount,
           tag: trimmedTag,
-          account: entry.account || 'cash',
+          account: entry.account || (isSettlement ? (entry.id.split('-')[2] || 'cib') : 'cash'),
         },
       ];
     }
@@ -127,6 +145,7 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
     updateEntry(entry.id, {
       tag: trimmedTag,
       draws: updatedDraws,
+      ...(isSettlement ? { isClosed: entry.isClosed ?? true } : {}),
     });
 
     onClose();
@@ -226,12 +245,18 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
       }
     }
 
+    const isSettlement = entry.id.startsWith('credit-settlement-');
+    const override = isSettlement ? creditSettlementOverrides[entry.id] : undefined;
     const currentEntry =
       entries.find((e) => e.id === entry.id) ||
       archivedEntries.find((e) => e.id === entry.id) ||
       entry;
 
-    let updatedDraws = currentEntry.draws ? [...currentEntry.draws] : [];
+    const baseDraws = (isSettlement && override?.draws && override.draws.length > 0)
+      ? override.draws
+      : (currentEntry.draws || []);
+    let updatedDraws = [...baseDraws];
+
     if (updatedDraws.length > 0) {
       const lastIndex = updatedDraws.length - 1;
       updatedDraws[lastIndex] = {
@@ -246,7 +271,7 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
           date: entry.actualDate || entry.date || DateUtils.todayString(),
           amount: actualAmount,
           tag: trimmedTag,
-          account: accountName || entry.account || 'cash',
+          account: accountName || entry.account || (isSettlement ? (entry.id.split('-')[2] || 'cib') : 'cash'),
         },
       ];
     }
@@ -255,6 +280,7 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
         tag: trimmedTag,
         ...(accountName ? { account: accountName } : {}),
         draws: updatedDraws,
+        ...(isSettlement ? { isClosed: entry.isClosed ?? true } : {}),
       });
     });
 
