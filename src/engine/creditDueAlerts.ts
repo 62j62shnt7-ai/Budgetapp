@@ -72,12 +72,12 @@ export function getCreditDueFundingAlerts(
     const accountKey = resolveSettlementAccountKey(entry, accounts);
     const accObj = accounts[accountKey];
     const accountName = accObj?.name || accountKey.toUpperCase();
-    const accountBalance = Math.round(Number(accObj?.balance || 0));
+    const accountBalance = Math.round((Number(accObj?.balance || 0)) * 100) / 100;
 
-    const totalPlannedDue = Math.round(Number(entry.amount || 0));
+    const totalPlannedDue = Math.round((Number(entry.amount || 0)) * 100) / 100;
     const actualPaid = getEntryActualAmount(entry, entryActuals);
     const isClosed = Boolean(entry.isClosed);
-    const remainingDue = isClosed ? 0 : Math.max(0, totalPlannedDue - actualPaid);
+    const remainingDue = isClosed ? 0 : Math.round(Math.max(0, totalPlannedDue - actualPaid) * 100) / 100;
 
     const settlementDate = entry.date || today;
     const daysUntilSettlement = DateUtils.daysBetween(today, settlementDate);

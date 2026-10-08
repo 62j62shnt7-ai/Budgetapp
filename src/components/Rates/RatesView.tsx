@@ -126,7 +126,7 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
       } else {
         alert("Live market feed checked: All currency and gold rates are already up to date.");
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Live rates fetch failed:", err);
       const manual = window.confirm("Couldn't fetch live rates (offline or rate service unavailable). Enter rates manually?");
       if (manual) handleStartEdit();

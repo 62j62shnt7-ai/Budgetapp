@@ -1362,7 +1362,7 @@
         "id": "7f0f165c-eeb9-4421-bc35-91117cfdd7a5",
         "loanId": "f146e724-315a-4d19-8dc5-2d81a0d3c2c8",
         "date": "2026-08-24",
-        "category": "Loan Inflow: Bridge Loan \"dad\"",
+        "category": "Loan Inflow: Bridge Loan \"Partner A\"",
         "account": "hsbc",
         "type": "income",
         "amount": 50000,
@@ -1381,7 +1381,7 @@
         "id": "54d99352-bc85-48dd-bf5c-87be36eabae9",
         "loanId": "f146e724-315a-4d19-8dc5-2d81a0d3c2c8",
         "date": "2026-09-20",
-        "category": "Loan Repayment: Bridge Loan \"dad\"",
+        "category": "Loan Repayment: Bridge Loan \"Partner A\"",
         "account": "hsbc",
         "type": "expense",
         "amount": 50000,
@@ -1405,7 +1405,7 @@
         "id": "b902115e-ffcd-4c1a-9894-b41d7af69ce8",
         "loanId": "a65ac6c5-7855-4675-942e-e6de368b3650",
         "date": "2026-08-24",
-        "category": "Loan Inflow: Bridge Loan \"nono\"",
+        "category": "Loan Inflow: Bridge Loan \"Partner B\"",
         "account": "hsbc",
         "type": "income",
         "amount": 17013,
@@ -1452,7 +1452,7 @@
         "id": "40f43465-eff7-41da-a2c3-197268f7db5e",
         "loanId": "a65ac6c5-7855-4675-942e-e6de368b3650",
         "date": "2026-09-30",
-        "category": "Loan Repayment: Bridge Loan \"nono\"",
+        "category": "Loan Repayment: Bridge Loan \"Partner B\"",
         "account": "hsbc",
         "type": "expense",
         "amount": 17013,
@@ -1601,7 +1601,7 @@
       {
         "id": "7048c867-0f26-4115-9b39-932d3156048d",
         "date": "2026-09-16",
-        "category": "Barakat",
+        "category": "Consulting Project A",
         "account": "hsbc",
         "type": "income",
         "amount": 10000,
@@ -1834,7 +1834,7 @@
       {
         "id": "3390de15-3535-4e39-a813-ee1dc95d4c3b",
         "date": "2026-09-30",
-        "category": "dad repayment",
+        "category": "Partner A repayment",
         "account": "hsbc",
         "type": "income",
         "amount": 5000,
@@ -1949,7 +1949,7 @@
       {
         "id": "5fa82220-6017-4d57-aeba-dbb4db0f9197",
         "date": "2026-09-24",
-        "category": "Barakat",
+        "category": "Consulting Project A",
         "account": "hsbc",
         "type": "income",
         "amount": 20800,
@@ -2220,7 +2220,7 @@
     "installments": [
       {
         "id": "b00ea1c5-e479-468e-8129-04f708303f0b",
-        "name": "Wadi Degla installment",
+        "name": "Club Membership Installment",
         "amount": 32600,
         "day": 7,
         "startMonth": "2026-10",
@@ -2343,12 +2343,12 @@
         "note": "usd"
       },
       {
-        "label": "received from jadeela eng barakat",
+        "label": "Client payment invoice #104",
         "value": 10000,
         "note": "advance payment"
       },
       {
-        "label": "expenses barakat",
+        "label": "Client project expenses",
         "value": 6760,
         "note": "accommodation"
       }
@@ -2357,7 +2357,7 @@
       {
         "id": "1e161f5a-c715-4f0e-ad92-12e7d38f4eb7",
         "title": "ASF",
-        "client": "TUV",
+        "client": "Global Tech Ltd",
         "currency": "USD",
         "type": "lumpsum",
         "dailyRate": 0,
@@ -2384,8 +2384,8 @@
       },
       {
         "id": "8115e466-7054-4ec5-b756-d1d438384d89",
-        "title": "Barakat",
-        "client": "Jadeela",
+        "title": "Consulting Project A",
+        "client": "Apex Systems",
         "currency": "EGP",
         "type": "daily_rate",
         "dailyRate": 4000,
@@ -2488,7 +2488,7 @@
       {
         "id": "86eb60bd-4eba-41b7-b084-721b102ccdda",
         "title": "IRQ Job",
-        "client": "EBS",
+        "client": "Skyline Corp",
         "currency": "USD",
         "type": "daily_rate",
         "dailyRate": 500,
@@ -2546,7 +2546,7 @@
       {
         "id": "4324f983-3332-4bf8-81a0-87c523f674c2",
         "title": "ASF",
-        "client": "DEN",
+        "client": "Nordic Solutions",
         "currency": "EUR",
         "type": "lumpsum",
         "dailyRate": 120,

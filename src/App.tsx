@@ -177,7 +177,7 @@ export const App: React.FC = () => {
     const currentGistId = useBudgetStore.getState().gistId;
     if (gistId === currentGistId) return;
     const shouldSwitch = window.confirm(
-      `Switch GitHub Gist synchronization to this ID?\n\n${gistId}\n\nThis will synchronize and link your app to this remote Gist.`
+      `Switch GitHub Gist synchronization target to:\n\n${gistId}\n\nWARNING: Linking to a different Gist will replace your current local data on the next sync pull.\nYour current local data will be preserved in Undo history before any changes are applied.\n\nDo you want to proceed?`
     );
     if (shouldSwitch) {
       setGistConfig(gistToken, gistId, gistAutoSync);

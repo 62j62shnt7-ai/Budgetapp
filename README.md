@@ -49,7 +49,7 @@ Budget Control v2 is a local-first, privacy-focused financial management web app
 
 ### 🔒 8. Privacy-First Storage & GitHub Gist Sync
 - **Local-First Architecture:** All data stays directly in your browser's `localStorage` by default — zero mandatory backend accounts or third-party trackers.
-- **GitHub Gist Cloud Sync:** Seamless encrypted sync to a private GitHub Gist with auto-sync debouncing, manual pull/push, and `#gist=` URL deep-linking.
+- **GitHub Gist Cloud Sync:** Seamless sync to a secret GitHub Gist with auto-sync debouncing, manual pull/push, and `#gist=` URL deep-linking using a personal access token (PAT).
 - **Full Data Portability:** Instant JSON backup export/import (fully backward-compatible with legacy formats) and Excel CSV export.
 - **PWA Ready with Instant Cache Purge:** Progressive Web App support with service worker cache purging and one-click app updating.
 

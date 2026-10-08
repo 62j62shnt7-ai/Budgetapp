@@ -63,13 +63,17 @@ export const GistSyncModal: React.FC<GistSyncModalProps> = ({ isOpen, onClose })
     try {
       const res = await fetch('https://api.github.com/gists', {
         headers: {
-          Authorization: `token ${token}`,
+          Authorization: `Bearer ${token}`,
           Accept: 'application/vnd.github.v3+json',
         },
       });
       if (!res.ok) throw new Error(`GitHub error: ${res.statusText}`);
-      const gists = await res.json();
-      const match = gists.find((g: any) => g.files && (
+      const gists = (await res.json()) as Array<{
+        id: string;
+        description?: string;
+        files?: Record<string, unknown>;
+      }>;
+      const match = gists.find((g) => g.files && (
         g.files['budget-data.json'] ||
         g.files['budget-control-backup.json'] ||
         g.description?.includes('Budget Control')
@@ -87,8 +91,8 @@ export const GistSyncModal: React.FC<GistSyncModalProps> = ({ isOpen, onClose })
       } else {
         showMsg('No existing budget gist found. You can click "Auto-Create Gist" below.', true);
       }
-    } catch (err: any) {
-      showMsg(`Failed to search: ${err.message}`, true);
+    } catch (err: unknown) {
+      showMsg(`Failed to search: ${err instanceof Error ? err.message : 'Unknown error'}`, true);
     } finally {
       setIsLoading(false);
     }
@@ -105,7 +109,7 @@ export const GistSyncModal: React.FC<GistSyncModalProps> = ({ isOpen, onClose })
       const res = await fetch('https://api.github.com/gists', {
         method: 'POST',
         headers: {
-          Authorization: `token ${token}`,
+          Authorization: `Bearer ${token}`,
           Accept: 'application/vnd.github.v3+json',
           'Content-Type': 'application/json',
         },
@@ -120,12 +124,12 @@ export const GistSyncModal: React.FC<GistSyncModalProps> = ({ isOpen, onClose })
         }),
       });
       if (!res.ok) throw new Error(`Create failed: ${res.statusText}`);
-      const data = await res.json();
+      const data = (await res.json()) as { id: string };
       setIdInput(data.id);
       setGistConfig(token, data.id, autoSync);
       showMsg(`Successfully created secret Gist: ${data.id}`);
-    } catch (err: any) {
-      showMsg(`Error creating gist: ${err.message}`, true);
+    } catch (err: unknown) {
+      showMsg(`Error creating gist: ${err instanceof Error ? err.message : 'Unknown error'}`, true);
     } finally {
       setIsLoading(false);
     }
@@ -143,14 +147,14 @@ export const GistSyncModal: React.FC<GistSyncModalProps> = ({ isOpen, onClose })
     setIsLoading(true);
     try {
       const current = await fetch(`https://api.github.com/gists/${gId}`, {
-        headers: { Authorization: `token ${token}`, Accept: 'application/vnd.github.v3+json' },
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.v3+json' },
       });
       if (!current.ok) throw new Error(`Unable to verify Gist: ${current.statusText}`);
       const payload = exportJSON();
       const res = await fetch(`https://api.github.com/gists/${gId}`, {
         method: 'PATCH',
         headers: {
-          Authorization: `token ${token}`,
+          Authorization: `Bearer ${token}`,
           Accept: 'application/vnd.github.v3+json',
           'Content-Type': 'application/json',
         },
@@ -166,8 +170,8 @@ export const GistSyncModal: React.FC<GistSyncModalProps> = ({ isOpen, onClose })
       if (!res.ok) throw new Error(`Upload failed: ${res.statusText}`);
       setGistConfig(token, gId, autoSync);
       showMsg('✓ Successfully uploaded local data to Cloud Gist!');
-    } catch (err: any) {
-      showMsg(`Upload error: ${err.message}`, true);
+    } catch (err: unknown) {
+      showMsg(`Upload error: ${err instanceof Error ? err.message : 'Unknown error'}`, true);
     } finally {
       setIsLoading(false);
     }
@@ -185,7 +189,7 @@ export const GistSyncModal: React.FC<GistSyncModalProps> = ({ isOpen, onClose })
     setGistDetails({ tone: 'muted', message: 'Fetching Gist status from GitHub...' });
     try {
       const res = await fetch(`https://api.github.com/gists/${gId}`, {
-        headers: { Authorization: `token ${token}`, Accept: 'application/vnd.github.v3+json' },
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.v3+json' },
       });
       if (!res.ok) throw new Error(`Inspection failed: ${res.statusText}`);
       const data = await res.json();
@@ -230,8 +234,8 @@ export const GistSyncModal: React.FC<GistSyncModalProps> = ({ isOpen, onClose })
 
     setIsLoading(true);
     try {
-      const headers: any = { Accept: 'application/vnd.github.v3+json' };
-      if (token) headers.Authorization = `token ${token}`;
+      const headers: Record<string, string> = { Accept: 'application/vnd.github.v3+json' };
+      if (token) headers.Authorization = `Bearer ${token}`;
 
       const res = await fetch(`https://api.github.com/gists/${gId}`, { headers });
       if (!res.ok) throw new Error(`Download failed: ${res.statusText}`);
@@ -250,8 +254,8 @@ export const GistSyncModal: React.FC<GistSyncModalProps> = ({ isOpen, onClose })
       } else {
         showMsg('Failed to parse cloud data payload', true);
       }
-    } catch (err: any) {
-      showMsg(`Download error: ${err.message}`, true);
+    } catch (err: unknown) {
+      showMsg(`Download error: ${err instanceof Error ? err.message : 'Unknown error'}`, true);
     } finally {
       setIsLoading(false);
     }

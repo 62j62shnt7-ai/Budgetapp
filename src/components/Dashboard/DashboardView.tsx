@@ -13,7 +13,7 @@ import { computeFinancialHealthScore, generateSmartInsights } from '../../engine
 import { computeAssetEgpValue, computeTotalStorageValue, formatNativeCurrency, getCurrencyRate } from '../../engine/currency';
 import { DateUtils, formatMoney, formatLastUpdated } from '../../engine/dateUtils';
 import { ForecastChart } from '../Forecast/ForecastChart';
-import { CreditCard, CheckCircle2, Clock } from 'lucide-react';
+import { CreditCard, CheckCircle2, Clock, Target, AlertTriangle, Lightbulb } from 'lucide-react';
 import {
   getCreditDueFundingAlerts,
   getCriticalFundingAlerts,
@@ -505,8 +505,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
               marginBottom: '16px',
             }}
           >
-            <div className="alert-banner-icon" style={{ background: bannerIconBg, color: '#fff' }}>
-              !
+            <div className="alert-banner-icon" style={{ background: bannerIconBg, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <AlertTriangle size={16} />
             </div>
             <div className="alert-banner-body">
               <strong style={{ color: bannerTitleColor, display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -553,9 +553,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
                 ))}
               </div>
               {criticalFundingAlerts[0]?.suggestedSourceAccount && (
-                <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--muted)' }}>
-                  💡 Suggested transfer:{' '}
-                  {criticalFundingAlerts[0].canBeCoveredByTransfer ? (
+                <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <Lightbulb size={13} style={{ flexShrink: 0 }} />
+                  <span>
+                    Suggested transfer:{' '}
+                    {criticalFundingAlerts[0].canBeCoveredByTransfer ? (
                     <>
                       {formatMoney(criticalFundingAlerts[0].shortfall)} from{' '}
                       {criticalFundingAlerts[0].suggestedSourceAccount.accountName} (projected at settlement:{' '}
@@ -570,6 +572,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
                       <strong>{formatMoney(criticalFundingAlerts[0].remainingUncoveredShortfall || 0)}</strong>.
                     </>
                   )}
+                  </span>
                 </div>
               )}
             </div>
@@ -609,7 +612,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
       {/* Deficit Alert Banner */}
       {deficits.hasDeficit && (
         <div className="alert-banner" id="deficitBanner">
-          <div className="alert-banner-icon">!</div>
+          <div className="alert-banner-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <AlertTriangle size={16} />
+          </div>
           <div className="alert-banner-body">
             <strong>Deficiencies detected</strong>
             <p id="deficitBannerSummary">
@@ -1338,7 +1343,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
           {/* "Can I Spend X?" Simulator Toolbar */}
           <div className="forecast-sim-bar" id="forecastSimBar">
             <div className="forecast-sim-header">
-              <span className="forecast-sim-title">🎯 Can I Spend:</span>
+              <span className="forecast-sim-title" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                <Target size={16} /> Can I Spend:
+              </span>
             </div>
             <div className="forecast-sim-fields">
               <div className="forecast-sim-input-group">

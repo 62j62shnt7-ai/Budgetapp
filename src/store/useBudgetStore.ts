@@ -267,7 +267,7 @@ function scheduleAutoGistSync(getState: () => BudgetStoreState, immediate = fals
       const response = await fetch(`https://api.github.com/gists/${state.gistId}`, {
         method: 'PATCH',
         headers: {
-          Authorization: `token ${state.gistToken}`,
+          Authorization: `Bearer ${state.gistToken}`,
           Accept: 'application/vnd.github.v3+json',
           'Content-Type': 'application/json',
         },
@@ -2360,7 +2360,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       const headers: Record<string, string> = {
         Accept: 'application/vnd.github.v3+json',
       };
-      if (token) headers.Authorization = `token ${token}`;
+      if (token) headers.Authorization = `Bearer ${token}`;
       const response = await fetch(`https://api.github.com/gists/${gistId}`, { headers });
       if (!response.ok) {
         throw new Error(`Gist download failed: ${response.status} ${response.statusText}`);
@@ -2841,52 +2841,37 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         return false;
       }
 
-      // 1. Create a full snapshot before mutating state (for Undo Import)
-      // Only record undo snapshot if this is a user-initiated import, NOT an automated remote sync
-      if (!options?.isRemoteSync) {
-        const currentSnapshot = {
-          entries: get().entries,
-          archivedEntries: get().archivedEntries,
-          deletedForecasts: get().deletedForecasts,
-          accounts: get().accounts,
-          salaryPattern: get().salaryPattern,
-          installments: get().installments,
-          rates: get().rates,
-          storageAssets: get().storageAssets,
-          asfJobs: get().asfJobs,
-          irqJobs: get().irqJobs,
-          partTimeJobs: get().partTimeJobs,
-          entryActuals: get().entryActuals,
-          entryActualDates: get().entryActualDates,
-          creditDues: get().creditDues,
-          creditDueMonths: get().creditDueMonths,
-          creditSettlementOverrides: get().creditSettlementOverrides,
-          salaryAnchorMonth: get().salaryAnchorMonth,
-        };
-        saveStorage(STORAGE_KEYS.importUndoBackup, currentSnapshot);
-      }
+      // 1. Create a full snapshot before mutating state (for both user import and undo stack)
+      const currentSnapshot = captureFinancialSnapshot(get());
+      saveStorage(STORAGE_KEYS.importUndoBackup, currentSnapshot);
+
+      // Record undo step so user can revert remote or manual sync via standard Undo button
+      recordUndoableStep(set, get, options?.isRemoteSync ? 'Remote Cloud Sync' : 'Data Import');
 
       // 2. Run versioned migration pipeline
       const migrated = migrateBackupPayload(parsed);
 
       // 3. Commit all storage changes atomically
-      saveStorage(STORAGE_KEYS.entries, migrated.entries);
-      saveStorage(STORAGE_KEYS.archivedEntries, migrated.archivedEntries);
-      saveStorage(STORAGE_KEYS.accounts, migrated.accounts);
-      saveStorage(STORAGE_KEYS.salary, migrated.salaryPattern);
-      saveStorage(STORAGE_KEYS.creditDues, migrated.creditDues);
-      saveStorage(STORAGE_KEYS.creditDueMonths, migrated.creditDueMonths);
-      saveStorage(STORAGE_KEYS.creditSettlementOverrides, migrated.creditSettlementOverrides);
-      saveStorage(STORAGE_KEYS.salaryAnchor, migrated.salaryAnchorMonth);
-      saveStorage(STORAGE_KEYS.installments, migrated.installments);
-      saveStorage(STORAGE_KEYS.rates, migrated.rates);
-      saveStorage(STORAGE_KEYS.storage, migrated.storageAssets);
-      saveStorage(STORAGE_KEYS.asf, migrated.asfJobs);
-      saveStorage(STORAGE_KEYS.irq, migrated.irqJobs);
-      saveStorage(STORAGE_KEYS.partTimeJobs, migrated.partTimeJobs);
-      saveStorage(STORAGE_KEYS.entryActuals, migrated.entryActuals);
-      saveStorage(STORAGE_KEYS.entryActualDates, migrated.entryActualDates);
-      saveStorage(STORAGE_KEYS.deletedForecasts, migrated.deletedForecasts);
+      const atomicPayload: BudgetFinancialSnapshot = {
+        entries: migrated.entries,
+        archivedEntries: migrated.archivedEntries,
+        accounts: migrated.accounts,
+        salaryPattern: migrated.salaryPattern,
+        creditDues: migrated.creditDues,
+        creditDueMonths: migrated.creditDueMonths,
+        creditSettlementOverrides: migrated.creditSettlementOverrides,
+        salaryAnchorMonth: migrated.salaryAnchorMonth,
+        installments: migrated.installments,
+        rates: migrated.rates,
+        storageAssets: migrated.storageAssets,
+        asfJobs: migrated.asfJobs,
+        irqJobs: migrated.irqJobs,
+        partTimeJobs: migrated.partTimeJobs,
+        entryActuals: migrated.entryActuals,
+        entryActualDates: migrated.entryActualDates,
+        deletedForecasts: migrated.deletedForecasts,
+      };
+      persistFinancialSnapshot(atomicPayload);
 
       // 4. Update state atomically
       set({

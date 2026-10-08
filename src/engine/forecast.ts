@@ -37,10 +37,10 @@ export function getEntryActualAmount(
     }
   }
   if (rawValue !== undefined && rawValue !== null) {
-    return Math.round(Number(rawValue) || 0);
+    return Math.round((Number(rawValue) || 0) * 100) / 100;
   }
   if (entry.actualAmount !== undefined && entry.actualAmount !== null) {
-    return Math.round(Number(entry.actualAmount) || 0);
+    return Math.round((Number(entry.actualAmount) || 0) * 100) / 100;
   }
   return 0;
 }
@@ -345,7 +345,11 @@ export function getLowestProjectedBalance(
 ): { balance: number; date: string | null } {
   const sorted = [...entries]
     .filter((entry) => entry.date)
-    .sort((a, b) => a.date.localeCompare(b.date));
+    .sort((a, b) => {
+      if (a.date !== b.date) return a.date.localeCompare(b.date);
+      if (a.type !== b.type) return a.type === 'income' ? -1 : 1;
+      return 0;
+    });
   let running = openingBalance;
   let lowest = openingBalance;
   let lowestDate: string | null = null;

@@ -125,7 +125,14 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
 
   // Export CSV for Excel
   const handleExportCSV = () => {
-    const escapeCsv = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const escapeCsv = (value: unknown) => {
+      let str = String(value ?? '');
+      // Neutralize CSV formula injection (=, +, -, @, \t, \r)
+      if (/^[=+\-@\t\r]/.test(str)) {
+        str = `'${str}`;
+      }
+      return `"${str.replace(/"/g, '""')}"`;
+    };
     const headers = ['Date', 'Actual Date', 'Category', 'Subcategory / Tags', 'Account', 'Type', 'Source', 'Planned Amount (EGP)', 'Actual Amount (EGP)'];
     const rows = [...entries, ...archivedEntries].map((e) => [
       escapeCsv(e.date),
@@ -136,7 +143,7 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
       escapeCsv(e.type),
       escapeCsv(e.source),
       Number(e.amount || 0),
-      entryActuals[e.id] ?? e.actualAmount ?? '',
+      escapeCsv(entryActuals[e.id] ?? e.actualAmount ?? ''),
     ]);
     const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });

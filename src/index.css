@@ -3796,8 +3796,15 @@ input[type="date"]::-webkit-date-and-time-value {
     box-shadow: 0 4px 14px rgba(79, 70, 229, 0.5) !important;
   }
 
-  @media (max-width: 1200px) and (min-width: 769px) {
+  @media (max-width: 1540px) and (min-width: 769px) {
     .top-actions-utilities .topbar-btn-label {
+      display: none !important;
+    }
+  }
+
+  @media (max-width: 1280px) and (min-width: 769px) {
+    .top-actions-operations #openDataToolsBtn .topbar-btn-label,
+    .top-actions-operations #addLoanBtn .topbar-btn-label {
       display: none !important;
     }
   }

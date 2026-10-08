@@ -3,7 +3,7 @@
    Network-first strategy for app shell assets, excludes external API queries.
    ========================================================================== */
 
-const CACHE_NAME = 'budget-control-v2.1';
+const CACHE_NAME = 'budget-control-v2.2';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -33,9 +33,12 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(event.request.url);
 
-  // Do not cache external APIs (GitHub Gist sync, live currency/gold rates) or non-http protocols
+  // Cache Google Fonts (fonts.googleapis.com & fonts.gstatic.com) with stale-while-revalidate / cache-first
+  const isGoogleFont = url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com';
+
+  // Do not cache external data APIs (GitHub Gist sync, live currency/gold rates) or non-http protocols
   if (
-    url.origin !== self.location.origin ||
+    (!isGoogleFont && url.origin !== self.location.origin) ||
     url.hostname.includes('github.com') ||
     url.hostname.includes('githubusercontent.com') ||
     url.hostname.includes('open.er-api.com') ||
@@ -45,16 +48,20 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Network-first strategy for local application assets
+  // Stale-while-revalidate or Network-first strategy
   event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        if (response && response.status === 200 && response.type === 'basic') {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-        }
-        return response;
-      })
-      .catch(() => caches.match(event.request))
+    caches.match(event.request).then((cachedResponse) => {
+      const fetchPromise = fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && (networkResponse.status === 200 || networkResponse.type === 'opaque')) {
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
+          return networkResponse;
+        })
+        .catch(() => cachedResponse);
+
+      return cachedResponse || fetchPromise;
+    })
   );
 });

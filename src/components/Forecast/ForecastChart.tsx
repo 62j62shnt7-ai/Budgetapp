@@ -253,8 +253,8 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
   const viewBoxW = dims.w;
   const viewBoxH = dims.h;
   const isNarrow = viewBoxW < 480;
-  const padL = isNarrow ? 46 : 62;
-  const padR = isNarrow ? 14 : 24;
+  const padL = isNarrow ? 52 : 72;
+  const padR = isNarrow ? 24 : 36;
   const padT = 30;
   const padB = 40;
 
@@ -610,9 +610,9 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
 
                 {showLabel && (
                   <text
-                    x={pt.x}
+                    x={idx === 0 ? Math.max(pt.x, padL) : idx === series.length - 1 ? Math.min(pt.x, viewBoxW - padR) : pt.x}
                     y={viewBoxH - 12}
-                    textAnchor="middle"
+                    textAnchor={idx === 0 ? 'start' : idx === series.length - 1 ? 'end' : 'middle'}
                     fontSize="10"
                     fill="var(--muted)"
                     fontFamily="var(--font-main)"

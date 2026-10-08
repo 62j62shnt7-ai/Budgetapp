@@ -106,14 +106,14 @@ const fullUserBackupPayload = {
       { "id": "40f43465-eff7-41da-a2c3-197268f7db5e", "loanId": "a65ac6c5-7855-4675-942e-e6de368b3650", "date": "2026-09-30", "category": "Loan Repayment: Bridge Loan \"nono\"", "account": "hsbc", "type": "expense", "amount": 17013, "source": "loan", "initialAmount": 15000, "creditType": "", "draws": [{ "date": "2026-09-23", "amount": 20020, "account": "hsbc", "tag": "Loan" }], "actualDate": "2026-09-23", "isClosed": true, "keepOngoing": false, "tag": "Loan" },
       { "id": "3c7e0e9f-28e4-47d0-8093-8ed8a557efdf", "date": "2026-09-30", "category": "kamal repayment", "account": "hsbc", "type": "income", "amount": 5000, "creditType": "", "source": "income", "draws": [], "tag": "Loan", "creditSettlementDate": "" },
       { "id": "fd4a34a4-addc-4bc5-b5d8-12a64db4f450", "date": "2026-09-14", "category": "School", "account": "HSBC CREDIT", "type": "expense", "amount": 39765, "creditType": "hsbc_card", "source": "credit card", "actualDate": "2026-09-14", "draws": [{ "date": "2026-09-14", "amount": 39765, "tag": "Kids", "account": "HSBC CREDIT" }], "creditSettlementDate": "2026-10-31", "tag": "Kids" },
-      { "id": "7048c867-0f26-4115-9b39-932d3156048d", "date": "2026-09-16", "category": "Barakat", "account": "hsbc", "type": "income", "amount": 10000, "creditType": "", "source": "income", "actualDate": "2026-09-16", "tag": "Part-Time", "creditSettlementDate": "", "draws": [{ "date": "2026-09-16", "amount": 10000, "tag": "Part-Time", "account": "hsbc" }] },
+      { "id": "7048c867-0f26-4115-9b39-932d3156048d", "date": "2026-09-16", "category": "Consulting Project A", "account": "hsbc", "type": "income", "amount": 10000, "creditType": "", "source": "income", "actualDate": "2026-09-16", "tag": "Part-Time", "creditSettlementDate": "", "draws": [{ "date": "2026-09-16", "amount": 10000, "tag": "Part-Time", "account": "hsbc" }] },
       { "id": "66e815e5-fe5a-46d4-80e7-fab2210c66a2", "date": "2026-09-18", "category": "Electricity", "account": "HSBC CREDIT", "type": "expense", "amount": 1030, "creditType": "hsbc_card", "source": "credit card", "actualDate": "2026-09-18", "draws": [{ "date": "2026-09-18", "amount": 1030, "tag": "Bills", "account": "HSBC CREDIT" }], "creditSettlementDate": "2026-10-31", "tag": "Bills" },
       { "id": "6171fb7e-756d-4f6b-aaf3-c57cfe0c1a2a", "date": "2026-09-09", "category": "Home", "tag": "Food", "account": "hsbc", "type": "expense", "amount": 15000, "creditType": "", "creditSettlementDate": "", "source": "expense", "actualDate": "2026-09-25", "draws": [{ "date": "2026-09-09", "amount": 10000, "tag": "Food", "account": "hsbc" }, { "date": "2026-09-24", "amount": 1413, "tag": "Groceries", "account": "hsbc" }, { "date": "2026-09-24", "amount": 1902, "tag": "Groceries", "account": "hsbc" }, { "date": "2026-09-24", "amount": 991, "tag": "Groceries", "account": "hsbc" }, { "date": "2026-09-25", "amount": 4000, "tag": "Food", "account": "hsbc" }], "actualAmount": 18306, "keepOngoing": true, "isClosed": false },
-      { "id": "5fa82220-6017-4d57-aeba-dbb4db0f9197", "date": "2026-09-24", "category": "Barakat", "account": "hsbc", "type": "income", "amount": 20800, "source": "part-time job", "creditType": "", "tag": "Part-Time", "creditSettlementDate": "", "actualDate": "2026-09-24", "draws": [{ "date": "2026-09-24", "amount": 20800, "tag": "Part-Time", "account": "hsbc" }] }
+      { "id": "5fa82220-6017-4d57-aeba-dbb4db0f9197", "date": "2026-09-24", "category": "Consulting Project A", "account": "hsbc", "type": "income", "amount": 20800, "source": "part-time job", "creditType": "", "tag": "Part-Time", "creditSettlementDate": "", "actualDate": "2026-09-24", "draws": [{ "date": "2026-09-24", "amount": 20800, "tag": "Part-Time", "account": "hsbc" }] }
     ],
     "installments": [
       {
-        "name": "Wadi Degla installment",
+        "name": "Club Membership Installment",
         "tag": "Installment",
         "amount": 32600,
         "frequency": 3,
@@ -138,8 +138,8 @@ const fullUserBackupPayload = {
     "partTimeJobs": [
       {
         "id": "8115e466-7054-4ec5-b756-d1d438384d89",
-        "title": "Barakat",
-        "client": "Jadeela",
+        "title": "Consulting Project A",
+        "client": "Apex Systems",
         "currency": "EGP",
         "type": "daily_rate",
         "dailyRate": 4000,
