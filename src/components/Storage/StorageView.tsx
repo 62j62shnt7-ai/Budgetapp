@@ -282,10 +282,10 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenStorageModal }) 
                                   : 'rgba(234, 179, 8, 0.12)',
                               color:
                                 loc.locationType === 'bank'
-                                  ? '#2563eb'
+                                  ? '#60a5fa'
                                   : loc.locationType === 'cash'
-                                  ? '#16a34a'
-                                  : '#ca8a04',
+                                  ? '#4ade80'
+                                  : '#facc15',
                               fontWeight: 600,
                             }}
                           >

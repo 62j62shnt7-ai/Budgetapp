@@ -602,6 +602,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
             <input
               name="amount"
               type="number"
+              inputMode="decimal"
               step="0.01"
               min="0.01"
               required
@@ -623,6 +624,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
           <input
             name="actualAmount"
             type="number"
+            inputMode="decimal"
             step="0.01"
             min="0"
             placeholder={currency !== 'EGP' ? '0.00 if not paid yet' : '0 if not paid yet'}

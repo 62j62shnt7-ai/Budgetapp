@@ -1255,7 +1255,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                         </span>
                       )}
                       {e.creditType && (
-                        <span className="source-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', color: 'var(--blue)', fontWeight: 600, fontSize: '10px', marginLeft: '4px' }}>
+                        <span className="source-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', color: '#818cf8', fontWeight: 600, fontSize: '10px', marginLeft: '4px' }}>
                           💳 {e.creditType.toUpperCase()}
                         </span>
                       )}
@@ -1293,9 +1293,9 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                                     alignItems: 'center',
                                     gap: '5px',
                                     fontSize: '11px',
-                                    background: 'rgba(244, 63, 94, 0.15)',
-                                    border: '1px solid var(--red, #f43f5e)',
-                                    color: 'var(--red, #f43f5e)',
+                                    background: 'rgba(244, 63, 94, 0.22)',
+                                    border: '1px solid rgba(251, 113, 133, 0.4)',
+                                    color: '#fb7185',
                                     borderRadius: '4px',
                                     padding: '2px 6px',
                                     cursor: canTransfer ? 'pointer' : 'default',
@@ -1398,7 +1398,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                     </td>
                     <td className="cell-source">
                       {isCardPurchase ? (
-                        <span className="source-pill" style={{ color: 'var(--blue)', fontWeight: 600 }}>
+                        <span className="source-pill" style={{ color: '#818cf8', fontWeight: 600 }}>
                           💳 Settles {DateUtils.formatDisplayDate(calculateCreditSettlementDate(e.date, e.creditType || e.account || ''))}
                         </span>
                       ) : isCreditSettlement || isCreditDueLumpSum(e) ? (

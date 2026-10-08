@@ -33,14 +33,16 @@ export const InstallmentsSection: React.FC<InstallmentsSectionProps> = ({
     <section className="panel collapsible-panel cashflow-collapsible-panel">
       <div
         className="panel-heading"
-        style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-        onClick={() => setInstallmentsOpen(!installmentsOpen)}
-        role="button"
-        tabIndex={0}
-        aria-expanded={installmentsOpen}
-        onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && setInstallmentsOpen(!installmentsOpen)}
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
       >
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap', minWidth: 0, flex: 1 }}>
+        <div
+          style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap', minWidth: 0, flex: 1, cursor: 'pointer' }}
+          onClick={() => setInstallmentsOpen(!installmentsOpen)}
+          role="button"
+          tabIndex={0}
+          aria-expanded={installmentsOpen}
+          onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && setInstallmentsOpen(!installmentsOpen)}
+        >
           <h3 style={{ margin: 0 }}>Installments</h3>
           <span style={{ fontSize: '12px', color: 'var(--muted)' }}>({installments.length})</span>
           {!installmentsOpen && installments.length > 0 && (
@@ -60,15 +62,17 @@ export const InstallmentsSection: React.FC<InstallmentsSectionProps> = ({
             className="ghost-button"
             type="button"
             style={{ fontSize: '12px', padding: '3px 8px' }}
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpenInstallmentModal();
-            }}
+            onClick={() => onOpenInstallmentModal()}
           >
             <Plus size={14} style={{ marginRight: '4px' }} />
             <span>Installment</span>
           </button>
-          <button className="ghost-button icon-button collapse-toggle-btn" type="button" aria-label={installmentsOpen ? 'Collapse' : 'Expand'}>
+          <button
+            className="ghost-button icon-button collapse-toggle-btn"
+            type="button"
+            aria-label={installmentsOpen ? 'Collapse' : 'Expand'}
+            onClick={() => setInstallmentsOpen(!installmentsOpen)}
+          >
             {installmentsOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </button>
         </div>
@@ -113,7 +117,7 @@ export const InstallmentsSection: React.FC<InstallmentsSectionProps> = ({
                         display: 'inline-block',
                         fontSize: '11px',
                         fontWeight: 600,
-                        color: progress.remaining === 0 ? 'var(--green)' : 'var(--blue, #2563eb)',
+                        color: progress.remaining === 0 ? '#34d399' : '#818cf8',
                         marginTop: '4px',
                       }}
                     >

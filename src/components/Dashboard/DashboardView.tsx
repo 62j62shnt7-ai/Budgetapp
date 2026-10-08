@@ -580,9 +580,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
                   id="creditFundingTransferAction"
                   type="button"
                   style={{
-                    background: hasUncovered ? 'var(--red, #f43f5e)' : 'var(--amber, #f59e0b)',
-                    borderColor: hasUncovered ? 'var(--red, #f43f5e)' : 'var(--amber, #f59e0b)',
-                    color: '#fff',
+                    background: hasUncovered ? '#be123c' : '#b45309',
+                    borderColor: hasUncovered ? '#9f1239' : '#92400e',
+                    color: '#ffffff',
                     fontSize: '12px',
                     padding: '6px 14px',
                     height: 'auto',

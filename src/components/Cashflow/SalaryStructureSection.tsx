@@ -65,9 +65,9 @@ export const SalaryStructureSection: React.FC<SalaryStructureSectionProps> = ({
             Quarter total: <strong style={{ color: 'var(--green)' }}>{formatMoney(salaryQuarterTotal)}</strong>
           </span>
         </div>
-        <button className="ghost-button icon-button collapse-toggle-btn" type="button" aria-label={salaryOpen ? 'Collapse' : 'Expand'}>
+        <span className="collapse-toggle-btn" aria-hidden="true">
           {salaryOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-        </button>
+        </span>
       </div>
 
       {salaryOpen && (

@@ -497,15 +497,15 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({
                             padding: '1px 6px',
                             borderRadius: '4px',
                             background: alert.isAlert
-                              ? 'rgba(244, 63, 94, 0.15)'
+                              ? 'rgba(244, 63, 94, 0.22)'
                               : alert.status === 'settled'
                               ? 'var(--surface-soft)'
-                              : 'rgba(16, 185, 129, 0.12)',
+                              : 'rgba(16, 185, 129, 0.18)',
                             color: alert.isAlert
-                              ? 'var(--red, #f43f5e)'
+                              ? '#fb7185'
                               : alert.status === 'settled'
                               ? 'var(--muted)'
-                              : 'var(--green, #10b981)',
+                              : '#34d399',
                             fontWeight: 600,
                           }}
                         >
@@ -565,9 +565,9 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({
                           className="primary-button"
                           type="button"
                           style={{
-                            background: alert.isAlert ? 'var(--red, #f43f5e)' : 'var(--amber, #f59e0b)',
-                            borderColor: alert.isAlert ? 'var(--red, #f43f5e)' : 'var(--amber, #f59e0b)',
-                            color: '#fff',
+                            background: alert.isAlert ? '#be123c' : '#b45309',
+                            borderColor: alert.isAlert ? '#9f1239' : '#92400e',
+                            color: '#ffffff',
                             fontSize: '12px',
                             padding: '6px 12px',
                             height: 'auto',

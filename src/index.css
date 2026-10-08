@@ -3758,13 +3758,15 @@ input[type="date"]::-webkit-date-and-time-value {
   }
 
   .topbar-expense-button {
-    background: var(--brand-primary) !important;
+    background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%) !important;
     color: #ffffff !important;
-    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35) !important;
+    font-weight: 600 !important;
+    box-shadow: 0 2px 8px rgba(79, 70, 229, 0.4) !important;
   }
 
   .topbar-expense-button:hover {
-    box-shadow: 0 4px 14px rgba(99, 102, 241, 0.5) !important;
+    background: linear-gradient(135deg, #4338ca 0%, #3730a3 100%) !important;
+    box-shadow: 0 4px 14px rgba(79, 70, 229, 0.5) !important;
   }
 
   @media (max-width: 1200px) and (min-width: 769px) {
@@ -4378,10 +4380,11 @@ input[type="date"]::-webkit-date-and-time-value {
 }
 
 .chip-button.active {
-  background: var(--primary, #3b82f6);
-  border-color: var(--primary, #3b82f6);
+  background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+  border-color: #4f46e5;
   color: #ffffff;
   font-weight: 600;
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.35);
 }
 
 /* Affected Parties Indicator Dot on Action/Delete Buttons */
@@ -4524,9 +4527,10 @@ input[type="date"]::-webkit-date-and-time-value {
 }
 
 .job-filter-pill.is-active {
-  background: var(--brand-primary, #6366f1);
+  background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
   color: #ffffff;
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35);
+  border-color: #4f46e5;
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.4);
 }
 
 .jobs-filter-selects {
@@ -4831,13 +4835,13 @@ input[type="date"]::-webkit-date-and-time-value {
   gap: 6px;
   padding: 6px 14px;
   font-size: 12.5px;
-  background: var(--color-success, #10b981);
-  border-color: var(--color-success, #10b981);
+  background: #047857;
+  border-color: #059669;
   border-radius: 8px;
 }
 
 .jobs-record-payment-btn:hover {
-  background: #059669;
+  background: #065f46;
 }
 
 .jobs-toggle-details-btn {

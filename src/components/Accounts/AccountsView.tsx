@@ -109,7 +109,9 @@ export const AccountsView: React.FC = () => {
                       <span className="account-currency-prefix">EGP</span>
                       <input
                         type="number"
+                        inputMode="decimal"
                         className="form-input account-balance-input"
+                        aria-label={`${acc.name} balance in EGP`}
                         value={acc.balance}
                         onChange={(e) => handleBalanceChange(id, Number(e.target.value) || 0)}
                       />
@@ -256,6 +258,7 @@ export const AccountsView: React.FC = () => {
               <input
                 className="form-input"
                 type="number"
+                inputMode="decimal"
                 min="1"
                 step="1"
                 placeholder="e.g. 5000"

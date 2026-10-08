@@ -1047,9 +1047,9 @@ body.sidebar-collapsed .sidebar-open-btn {
 }
 
 .deficit-badge.active {
-  background: rgba(184, 70, 63, 0.15);
-  color: var(--red);
-  border: 1px solid rgba(184, 70, 63, 0.3);
+  background: rgba(184, 70, 63, 0.22);
+  color: #fb7185;
+  border: 1px solid rgba(251, 113, 133, 0.4);
 }
 
 .deficit-badge.resolved {
@@ -2984,36 +2984,36 @@ label {
   font-size: 11px;
   font-weight: 600;
   margin-left: 4px;
-  background: var(--line);
-  color: var(--muted);
+  background: var(--surface-soft, rgba(255, 255, 255, 0.08));
+  color: var(--text-muted, #cbd5e1);
   transition: all 0.2s ease;
 }
 
 .sync-pill.synced {
-  background: rgba(31, 122, 77, 0.15);
-  color: var(--green);
+  background: rgba(31, 122, 77, 0.22);
+  color: #34d399;
 }
 
 .sync-pill.syncing {
-  background: rgba(47, 95, 159, 0.15);
-  color: var(--blue);
+  background: rgba(47, 95, 159, 0.25);
+  color: #c7d2fe;
   animation: pulseSync 1.2s infinite;
 }
 
 .sync-pill.error {
-  background: rgba(184, 70, 63, 0.15);
-  color: var(--red);
+  background: rgba(184, 70, 63, 0.22);
+  color: #fb7185;
 }
 
 .sync-pill.unsaved {
-  background: rgba(164, 106, 24, 0.15);
-  color: var(--amber);
+  background: rgba(164, 106, 24, 0.22);
+  color: #fcd34d;
 }
 
 .sync-pill.update-ready {
-  background: rgba(164, 106, 24, 0.2);
-  color: var(--amber);
-  border: 1px solid rgba(164, 106, 24, 0.4);
+  background: rgba(164, 106, 24, 0.25);
+  color: #fcd34d;
+  border: 1px solid rgba(252, 211, 77, 0.4);
   font-weight: 700;
   animation: pulseSync 1.4s infinite;
 }
@@ -3752,10 +3752,10 @@ label {
 }
 
 .forecast-preset-btn.active {
-  background: var(--blue);
-  color: #fff;
-  border-color: var(--blue);
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.35);
+  background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+  color: #ffffff;
+  border-color: #4f46e5;
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.4);
 }
 
 .forecast-slider-wrap {
@@ -5006,9 +5006,10 @@ label {
 }
 
 [data-theme="dark"] .job-filter-pill.is-active {
-  background: var(--green);
-  color: #fff;
-  border-color: var(--green);
+  background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%) !important;
+  color: #ffffff !important;
+  border-color: #4f46e5 !important;
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.4);
 }
 
 .job-filter-select {

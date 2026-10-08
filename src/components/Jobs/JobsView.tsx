@@ -223,6 +223,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
               value={activeCurrencyFilter}
               onChange={(e) => setActiveCurrencyFilter(e.target.value)}
               className="job-filter-select"
+              aria-label="Filter projects by currency"
             >
               <option value="all">🌐 All Currencies</option>
               <option value="USD">USD ($)</option>
@@ -237,6 +238,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
               value={activeSort}
               onChange={(e) => setActiveSort(e.target.value as 'newest' | 'oldest')}
               className="job-filter-select"
+              aria-label="Sort projects by date"
             >
               <option value="newest">📅 Newest Date</option>
               <option value="oldest">📅 Oldest Date</option>
