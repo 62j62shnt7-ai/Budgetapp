@@ -350,6 +350,9 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
     gridTicks.push({ val: roundedValue, y: getY(roundedValue) });
   }
 
+  const maxXLabels = Math.max(2, Math.min(10, Math.floor(chartW / 72)));
+  const labelStep = Math.max(1, Math.ceil((series.length - 1) / (maxXLabels - 1)));
+
   // Active hover data
   const activePoint = hoverIndex !== null && series[hoverIndex] ? series[hoverIndex] : null;
   const activeCoord = hoverIndex !== null && points[hoverIndex] ? points[hoverIndex] : null;
@@ -581,7 +584,6 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
             const isHovered = hoverIndex === idx;
 
             // Only show labels on periodic points to prevent clutter
-            const labelStep = Math.max(1, Math.floor(series.length / 10));
             const showLabel = idx === 0 || idx === series.length - 1 || idx % labelStep === 0;
 
             return (
@@ -610,6 +612,7 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
 
                 {showLabel && (
                   <text
+                    className="forecast-x-axis-label"
                     x={idx === 0 ? Math.max(pt.x, padL) : idx === series.length - 1 ? Math.min(pt.x, viewBoxW - padR) : pt.x}
                     y={viewBoxH - 12}
                     textAnchor={idx === 0 ? 'start' : idx === series.length - 1 ? 'end' : 'middle'}

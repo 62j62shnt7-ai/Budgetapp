@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { inferTag, useBudgetStore } from '../../store/useBudgetStore';
 import { calculateCreditSettlementDate, getCreditCycleHint } from '../../engine/creditCards';
 import { getCurrencyRate, formatNativeCurrency } from '../../engine/currency';
@@ -26,6 +26,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
   onClose,
   onDeductPrompt,
 }) => {
+  const dialogRef = useRef<HTMLDialogElement>(null);
   const {
     entries,
     addEntry,
@@ -63,6 +64,42 @@ export const EntryModal: React.FC<EntryModalProps> = ({
   const [recalcStatus, setRecalcStatus] = useState<string>('');
   const [statementNote, setStatementNote] = useState<string>('');
   const [seriesEditMode, setSeriesEditMode] = useState<'single' | 'future'>('single');
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog || !isOpen) return;
+
+    const previousActiveElement = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    if (!dialog.open) dialog.showModal();
+    dialog.querySelector<HTMLElement>('select, input:not([type="hidden"]), textarea')?.focus();
+
+    return () => {
+      if (dialog.open) dialog.close();
+      previousActiveElement?.focus();
+    };
+  }, [isOpen]);
+
+  const handleDialogKeyDown = (event: React.KeyboardEvent<HTMLDialogElement>) => {
+    if (event.key !== 'Tab') return;
+
+    const focusableElements = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(
+      'button:not(:disabled), input:not([type="hidden"]):not(:disabled), select:not(:disabled), textarea:not(:disabled)'
+    )).filter((element) => element.getClientRects().length > 0);
+    if (focusableElements.length === 0) return;
+
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+
+    if (event.shiftKey && document.activeElement === firstElement) {
+      event.preventDefault();
+      lastElement.focus();
+    } else if (!event.shiftKey && document.activeElement === lastElement) {
+      event.preventDefault();
+      firstElement.focus();
+    }
+  };
 
   // Recurring options
   const [isRecurring, setIsRecurring] = useState<boolean>(false);
@@ -334,10 +371,20 @@ export const EntryModal: React.FC<EntryModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <dialog open className="native-dialog entry-dialog" onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <dialog
+      ref={dialogRef}
+      className="native-dialog entry-dialog"
+      aria-labelledby="entryDialogTitle"
+      onKeyDown={handleDialogKeyDown}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+      onCancel={(e) => {
+        e.preventDefault();
+        onClose();
+      }}
+    >
       <form onSubmit={handleSubmit} className="entry-form entry-form-modern" id="entryForm">
         <div className="dialog-heading">
-          <h3>{entryToEdit ? 'Edit budget entry' : `Add ${type === 'income' ? 'Income' : 'Expense'}`}</h3>
+          <h3 id="entryDialogTitle">{entryToEdit ? 'Edit budget entry' : `Add ${type === 'income' ? 'Income' : 'Expense'}`}</h3>
           <button className="icon-button close-dialog-btn" type="button" aria-label="Close dialog" onClick={onClose}>
             ✕
           </button>

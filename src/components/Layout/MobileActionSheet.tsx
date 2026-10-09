@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useBudgetStore, type ViewTab } from '../../store/useBudgetStore';
 import { 
   Sun, 
@@ -37,6 +37,9 @@ export const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
   onOpenGistSync,
   updateStatus,
 }) => {
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const previousActiveElementRef = useRef<HTMLElement | null>(null);
+
   const { 
     theme, 
     setTheme, 
@@ -51,7 +54,45 @@ export const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
     redoStack
   } = useBudgetStore();
 
+  useEffect(() => {
+    if (!isOpen) return;
+
+    previousActiveElementRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    sheetRef.current?.querySelector<HTMLElement>('button:not(:disabled)')?.focus();
+
+    return () => previousActiveElementRef.current?.focus();
+  }, [isOpen]);
+
   if (!isOpen) return null;
+
+  const handleDialogKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      onClose();
+      return;
+    }
+
+    if (event.key !== 'Tab') return;
+
+    const focusableElements = sheetRef.current?.querySelectorAll<HTMLElement>(
+      'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
+    );
+    if (!focusableElements?.length) return;
+
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+
+    if (event.shiftKey && document.activeElement === firstElement) {
+      event.preventDefault();
+      lastElement.focus();
+    } else if (!event.shiftKey && document.activeElement === lastElement) {
+      event.preventDefault();
+      firstElement.focus();
+    }
+  };
 
   const syncLabel = !gistId
     ? 'Setup'
@@ -83,16 +124,18 @@ export const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
   return (
     <div className="mobile-action-sheet-backdrop" onClick={onClose}>
       <div 
+        ref={sheetRef}
         className="mobile-action-sheet" 
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={handleDialogKeyDown}
         role="dialog"
         aria-modal="true"
-        aria-label="Actions & Tools"
+        aria-labelledby="mobileActionSheetTitle"
       >
         <div className="action-sheet-header">
           <div className="action-sheet-drag-handle" />
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-            <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>Menu &amp; Quick Actions</h3>
+            <h3 id="mobileActionSheetTitle" style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>Menu &amp; Quick Actions</h3>
             <button 
               className="ghost-button icon-button" 
               type="button" 

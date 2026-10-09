@@ -1628,6 +1628,10 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     flex: 1;
   }
 
+  .topbar-title-group > div {
+    min-width: 0;
+  }
+
   .topbar-title-group h2 {
     font-size: 1.18rem !important;
     font-weight: 800 !important;
@@ -1659,6 +1663,34 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     border-radius: 999px !important;
     white-space: nowrap;
     touch-action: manipulation;
+  }
+
+  @media (max-width: 360px) {
+    .mobile-quick-add-btn {
+      width: 44px;
+      min-width: 44px;
+      padding: 0 !important;
+      justify-content: center;
+      border-radius: 50% !important;
+    }
+
+    .mobile-quick-add-btn span {
+      display: none;
+    }
+
+    .dashboard-summary-grid .list-row {
+      align-items: flex-start;
+    }
+
+    .dashboard-summary-grid .list-row > span,
+    .dashboard-summary-grid .list-row > strong {
+      min-width: 0;
+      white-space: normal;
+    }
+
+    .dashboard-summary-grid .list-row > strong {
+      text-align: right;
+    }
   }
 
   .mobile-more-btn,
@@ -1945,7 +1977,7 @@ dialog.modern-top-layer-dialog .dialog-actions button {
 
   .cashflow-period-controls {
     display: grid !important;
-    grid-template-columns: 1fr 1fr !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     gap: 8px !important;
     width: 100% !important;
   }
@@ -1956,6 +1988,7 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     gap: 4px !important;
     font-size: 12px !important;
     width: 100% !important;
+    min-width: 0 !important;
   }
 
   .cashflow-period-controls .period-filter-label input[type="date"] {
