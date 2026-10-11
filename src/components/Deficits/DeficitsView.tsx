@@ -49,6 +49,8 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({
     hasDeficit,
   } = useForecastCandidates(12);
 
+  const [expandedSpells, setExpandedSpells] = React.useState<Record<number, boolean>>({});
+
   const fundingAlerts = React.useMemo(() => {
     const rawAlerts = getCreditDueFundingAlerts({
       creditDueEntries,
@@ -242,39 +244,72 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({
                   )}
                   <div className="deficit-progression-wrap">
                     <small className="deficit-progression-title">Daily deficit progression</small>
-                    {period.steps.map((step) => (
-                      <div
-                        key={`${step.entryId}-${step.date}`}
-                        className="deficit-step-row history-summary-clickable-row"
-                        style={{ cursor: step.entryId ? 'pointer' : 'default' }}
-                        onClick={() => {
-                          if (step.entryId) {
-                            navigateTo('cashflow', {
-                              month: 'all',
-                              highlightId: step.entryId,
-                            });
-                          }
-                        }}
-                        onKeyDown={(e) => {
-                          if ((e.key === 'Enter' || e.key === ' ') && step.entryId) {
-                            e.preventDefault();
-                            navigateTo('cashflow', {
-                              month: 'all',
-                              highlightId: step.entryId,
-                            });
-                          }
-                        }}
-                        tabIndex={step.entryId ? 0 : undefined}
-                        role={step.entryId ? 'button' : undefined}
-                        title={step.entryId ? `Click to view ${step.category} in Cash Flow` : undefined}
-                      >
-                        <span>
-                          <strong>{DateUtils.formatDisplayDate(step.date)}</strong> · {step.isRecoveryStep ? `Fixed by ${step.category}` : step.category}
-                          {' '}({step.delta >= 0 ? '+' : '-'}{formatMoney(step.amount)})
-                        </span>
-                        <strong style={{ color: step.balance < 0 ? 'var(--red)' : 'var(--green)' }}>{formatMoney(step.balance)}</strong>
-                      </div>
-                    ))}
+                    {(() => {
+                      const isExpanded = expandedSpells[idx] ?? false;
+                      const hasManySteps = period.steps.length > 4;
+                      const visibleSteps = !hasManySteps || isExpanded
+                        ? period.steps
+                        : [period.steps[0], ...period.steps.slice(-2)];
+
+                      return (
+                        <>
+                          {visibleSteps.map((step) => (
+                            <div
+                              key={`${step.entryId}-${step.date}`}
+                              className="deficit-step-row history-summary-clickable-row"
+                              style={{ cursor: step.entryId ? 'pointer' : 'default' }}
+                              onClick={() => {
+                                if (step.entryId) {
+                                  navigateTo('cashflow', {
+                                    month: 'all',
+                                    highlightId: step.entryId,
+                                  });
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if ((e.key === 'Enter' || e.key === ' ') && step.entryId) {
+                                  e.preventDefault();
+                                  navigateTo('cashflow', {
+                                    month: 'all',
+                                    highlightId: step.entryId,
+                                  });
+                                }
+                              }}
+                              tabIndex={step.entryId ? 0 : undefined}
+                              role={step.entryId ? 'button' : undefined}
+                              title={step.entryId ? `Click to view ${step.category} in Cash Flow` : undefined}
+                            >
+                              <span>
+                                <strong>{DateUtils.formatDisplayDate(step.date)}</strong> · {step.isRecoveryStep ? `Fixed by ${step.category}` : step.category}
+                                {' '}({step.delta >= 0 ? '+' : '-'}{formatMoney(step.amount)})
+                              </span>
+                              <strong style={{ color: step.balance < 0 ? 'var(--red)' : 'var(--green)' }}>{formatMoney(step.balance)}</strong>
+                            </div>
+                          ))}
+                          {hasManySteps && (
+                            <button
+                              type="button"
+                              className="ghost-button"
+                              style={{
+                                width: '100%',
+                                justifyContent: 'center',
+                                fontSize: '12px',
+                                padding: '6px 12px',
+                                marginTop: '6px',
+                                borderRadius: '8px',
+                                color: 'var(--brand-primary, #6366f1)',
+                                fontWeight: 600,
+                              }}
+                              onClick={() => setExpandedSpells((prev) => ({ ...prev, [idx]: !isExpanded }))}
+                            >
+                              {isExpanded
+                                ? 'Hide intermediate days'
+                                : `Show all ${period.steps.length} daily changes (${period.steps.length - 3} hidden)`}
+                            </button>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               ))
@@ -560,7 +595,7 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({
                           </div>
                         )}
                       </div>
-                      {isShortfall && (alert.canBeCoveredByTransfer || (alert.maxTransferableAmount && alert.maxTransferableAmount > 0)) && onOpenTransferModal && (
+                      {isShortfall && Boolean(alert.canBeCoveredByTransfer || ((alert.maxTransferableAmount ?? 0) > 0)) && onOpenTransferModal && (
                         <button
                           className="primary-button"
                           type="button"

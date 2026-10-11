@@ -32,6 +32,7 @@ import { GistSyncModal } from './components/Modals/GistSyncModal';
 import { DataToolsModal } from './components/Modals/DataToolsModal';
 import { DeductAccountModal } from './components/Modals/DeductAccountModal';
 import { AccountTransferModal } from './components/Modals/AccountTransferModal';
+import { QuickAddModal } from './components/Modals/QuickAddModal';
 import { MobileActionSheet } from './components/Layout/MobileActionSheet';
 import { UndoToast } from './components/Common/UndoToast';
 import { autoFetchLatestRates } from './engine/currency';
@@ -62,6 +63,7 @@ export const App: React.FC = () => {
   const [entryToEdit, setEntryToEdit] = useState<CashEntry | null>(null);
 
   const [loanModalOpen, setLoanModalOpen] = useState(false);
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [storageModalOpen, setStorageModalOpen] = useState(false);
   const [installmentModalOpen, setInstallmentModalOpen] = useState(false);
   const [installmentToEdit, setInstallmentToEdit] = useState<Installment | null>(null);
@@ -517,7 +519,20 @@ export const App: React.FC = () => {
       </main>
 
       {/* Mobile Bottom Navigation Bar */}
-      <BottomNav onOpenMobileMenu={() => setActionSheetOpen(true)} />
+      <BottomNav
+        onOpenMobileMenu={() => setActionSheetOpen(true)}
+        onOpenQuickAdd={() => setQuickAddOpen(true)}
+      />
+
+      {/* Quick Add Bottom Sheet */}
+      <QuickAddModal
+        isOpen={quickAddOpen}
+        onClose={() => setQuickAddOpen(false)}
+        onOpenExpense={() => handleOpenEntryModal('expense')}
+        onOpenIncome={() => handleOpenEntryModal('income')}
+        onOpenTransfer={() => handleOpenTransferModal()}
+        onOpenLoan={() => setLoanModalOpen(true)}
+      />
 
       {/* Global Modals */}
       <MobileActionSheet

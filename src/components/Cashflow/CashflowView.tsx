@@ -861,6 +861,65 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
           </button>
         </div>
 
+        {/* Quick Horizontal Month Jumper Chips */}
+        {orderedMonths.length > 0 && (
+          <div
+            className="cashflow-month-chips"
+            style={{
+              display: 'flex',
+              gap: '6px',
+              overflowX: 'auto',
+              padding: '4px 0 6px',
+              marginTop: '8px',
+              WebkitOverflowScrolling: 'touch',
+              scrollbarWidth: 'none',
+            }}
+            aria-label="Filter forecast entries by month"
+          >
+            <button
+              type="button"
+              className={`ghost-button ${selectedMonth === 'all' ? 'active' : ''}`}
+              style={{
+                padding: '4px 12px',
+                borderRadius: '999px',
+                fontSize: '12px',
+                fontWeight: 700,
+                whiteSpace: 'nowrap',
+                background: selectedMonth === 'all' ? 'var(--brand-primary, #6366f1)' : 'var(--surface-soft)',
+                color: selectedMonth === 'all' ? '#ffffff' : 'var(--ink)',
+                border: `1px solid ${selectedMonth === 'all' ? 'var(--brand-primary, #6366f1)' : 'var(--line)'}`,
+                minHeight: '32px',
+                cursor: 'pointer',
+              }}
+              onClick={() => setSelectedMonth('all')}
+            >
+              All Months
+            </button>
+            {orderedMonths.map((m) => (
+              <button
+                key={m}
+                type="button"
+                className={`ghost-button ${selectedMonth === m ? 'active' : ''}`}
+                style={{
+                  padding: '4px 12px',
+                  borderRadius: '999px',
+                  fontSize: '12px',
+                  fontWeight: selectedMonth === m ? 700 : 500,
+                  whiteSpace: 'nowrap',
+                  background: selectedMonth === m ? 'var(--brand-primary, #6366f1)' : 'var(--surface-soft)',
+                  color: selectedMonth === m ? '#ffffff' : 'var(--ink)',
+                  border: `1px solid ${selectedMonth === m ? 'var(--brand-primary, #6366f1)' : 'var(--line)'}`,
+                  minHeight: '32px',
+                  cursor: 'pointer',
+                }}
+                onClick={() => setSelectedMonth(m)}
+              >
+                {DateUtils.formatDisplayDate(m) || m}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="history-filters-bar" style={{ marginTop: '10px' }}>
           <label className="history-filter-field">
             <span className="field-label-text">Month</span>

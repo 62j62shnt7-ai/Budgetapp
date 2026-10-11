@@ -1,38 +1,77 @@
 import React from 'react';
-import { useBudgetStore, type ViewTab } from '../../store/useBudgetStore';
-import { LayoutDashboard, TrendingUp, AlertTriangle, History, MoreHorizontal } from 'lucide-react';
+import { useBudgetStore } from '../../store/useBudgetStore';
+import { LayoutDashboard, TrendingUp, AlertTriangle, History, MoreHorizontal, Plus } from 'lucide-react';
 
 interface BottomNavProps {
   onOpenMobileMenu: () => void;
+  onOpenQuickAdd: () => void;
 }
 
-export const BottomNav: React.FC<BottomNavProps> = ({ onOpenMobileMenu }) => {
+export const BottomNav: React.FC<BottomNavProps> = ({ onOpenMobileMenu, onOpenQuickAdd }) => {
   const { activeTab, setActiveTab } = useBudgetStore();
-
-  const primaryTabs: Array<{ id: ViewTab; label: string; icon: React.ReactNode }> = [
-    { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
-    { id: 'cashflow', label: 'Cash Flow', icon: <TrendingUp size={20} /> },
-    { id: 'deficits', label: 'Deficits', icon: <AlertTriangle size={20} /> },
-    { id: 'history', label: 'History', icon: <History size={20} /> },
-  ];
 
   return (
     <nav className="mobile-bottom-nav" aria-label="Mobile primary navigation">
-      {primaryTabs.map((tab) => {
-        const isActive = activeTab === tab.id;
-        return (
-          <button
-            key={tab.id}
-            type="button"
-            className={`bottom-nav-item ${isActive ? 'active' : ''}`}
-            onClick={() => setActiveTab(tab.id)}
-            aria-current={isActive ? 'page' : undefined}
-          >
-            <div className="bottom-nav-icon">{tab.icon}</div>
-            <span className="bottom-nav-label">{tab.label}</span>
-          </button>
-        );
-      })}
+      <button
+        type="button"
+        className={`bottom-nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
+        onClick={() => setActiveTab('dashboard')}
+        aria-current={activeTab === 'dashboard' ? 'page' : undefined}
+      >
+        <div className="bottom-nav-icon">
+          <LayoutDashboard size={19} />
+        </div>
+        <span className="bottom-nav-label">Dashboard</span>
+      </button>
+
+      <button
+        type="button"
+        className={`bottom-nav-item ${activeTab === 'cashflow' ? 'active' : ''}`}
+        onClick={() => setActiveTab('cashflow')}
+        aria-current={activeTab === 'cashflow' ? 'page' : undefined}
+      >
+        <div className="bottom-nav-icon">
+          <TrendingUp size={19} />
+        </div>
+        <span className="bottom-nav-label">Cash Flow</span>
+      </button>
+
+      <button
+        type="button"
+        className="bottom-nav-item bottom-nav-fab"
+        onClick={onOpenQuickAdd}
+        aria-label="Quick Add transaction"
+        title="Quick Add transaction"
+      >
+        <div className="bottom-nav-fab-btn">
+          <Plus size={22} strokeWidth={2.5} />
+        </div>
+        <span className="bottom-nav-label">Add</span>
+      </button>
+
+      <button
+        type="button"
+        className={`bottom-nav-item ${activeTab === 'deficits' ? 'active' : ''}`}
+        onClick={() => setActiveTab('deficits')}
+        aria-current={activeTab === 'deficits' ? 'page' : undefined}
+      >
+        <div className="bottom-nav-icon">
+          <AlertTriangle size={19} />
+        </div>
+        <span className="bottom-nav-label">Deficits</span>
+      </button>
+
+      <button
+        type="button"
+        className={`bottom-nav-item ${activeTab === 'history' ? 'active' : ''}`}
+        onClick={() => setActiveTab('history')}
+        aria-current={activeTab === 'history' ? 'page' : undefined}
+      >
+        <div className="bottom-nav-icon">
+          <History size={19} />
+        </div>
+        <span className="bottom-nav-label">History</span>
+      </button>
 
       <button
         type="button"
@@ -41,7 +80,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ onOpenMobileMenu }) => {
         aria-label="More views"
       >
         <div className="bottom-nav-icon">
-          <MoreHorizontal size={20} />
+          <MoreHorizontal size={19} />
         </div>
         <span className="bottom-nav-label">More</span>
       </button>

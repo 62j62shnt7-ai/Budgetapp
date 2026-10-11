@@ -1564,14 +1564,14 @@ dialog.modern-top-layer-dialog .dialog-actions button {
 }
 
 @media (max-width: 768px) {
-  /* Prevent iOS Safari auto-zoom on input focus */
+  /* Prevent iOS Safari auto-zoom on text input focus */
   button,
   .primary-button,
   .ghost-button,
   .icon-button,
   .form-input,
   .form-select,
-  input,
+  input:not([type="checkbox"]):not([type="radio"]),
   select,
   textarea {
     font-size: 16px !important;
@@ -1580,14 +1580,41 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     -webkit-tap-highlight-color: transparent;
   }
 
+  /* Exclude checkboxes and radios from 44px full-height input styling */
+  input[type="checkbox"],
+  input[type="radio"] {
+    min-height: 20px !important;
+    width: 20px !important;
+    height: 20px !important;
+    flex-shrink: 0;
+    margin: 0 !important;
+    accent-color: var(--primary, #3b82f6);
+  }
+
   /* Form Labels across all pages */
-  label {
+  label:not(.check-row):not(.gist-sync-checkbox):not(.checkbox-label):not(:has(input[type="checkbox"])):not(:has(input[type="radio"])) {
     display: flex;
     flex-direction: column;
     gap: 4px;
     font-size: 12px;
     font-weight: 600;
     color: var(--muted);
+  }
+
+  /* Inline checkbox / toggle labels */
+  label.check-row,
+  label.gist-sync-checkbox,
+  label.checkbox-label,
+  label:has(input[type="checkbox"]),
+  label:has(input[type="radio"]) {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 10px !important;
+    cursor: pointer;
+    min-height: 44px;
+    font-size: 13.5px;
+    color: var(--ink);
   }
 
   .field-label-text {
@@ -1722,9 +1749,9 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     gap: 10px !important;
   }
 
-  .panel-heading:has(.collapse-toggle-btn),
-  .panel-heading[role="button"],
-  .panel-heading.panel-heading-row {
+  .panel-heading:not(.history-analytics-heading):has(.collapse-toggle-btn),
+  .panel-heading[role="button"]:not(.history-analytics-heading),
+  .panel-heading.panel-heading-row:not(.history-analytics-heading) {
     flex-direction: row !important;
     align-items: center !important;
     justify-content: space-between !important;
@@ -1828,6 +1855,58 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     font-size: 10px;
     font-weight: 600;
     letter-spacing: -0.1px;
+  }
+
+  /* Center Quick Add Elevated Action Button (FAB) */
+  .bottom-nav-fab {
+    position: relative;
+    overflow: visible;
+  }
+
+  .bottom-nav-fab-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.45);
+    transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.15s ease;
+    margin-top: -6px;
+  }
+
+  [data-theme="dark"] .bottom-nav-fab-btn {
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    box-shadow: 0 4px 16px rgba(59, 130, 246, 0.55);
+  }
+
+  .bottom-nav-fab:active .bottom-nav-fab-btn {
+    transform: scale(0.88);
+    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+  }
+
+  .bottom-nav-fab .bottom-nav-label {
+    color: var(--blue, #3b82f6);
+    font-weight: 700;
+  }
+
+  /* On mobile <= 768px, hide desktop sidebar hamburger to prevent dual-menu confusion */
+  .sidebar-open-btn {
+    display: none !important;
+  }
+
+  @media (max-width: 360px) {
+    .bottom-nav-label {
+      font-size: 8.5px !important;
+      letter-spacing: -0.2px;
+    }
+    .bottom-nav-fab-btn {
+      width: 32px;
+      height: 32px;
+      margin-top: -4px;
+    }
   }
 
   /* ========================================================================
@@ -2607,19 +2686,35 @@ dialog.modern-top-layer-dialog .dialog-actions button {
   }
 
   /* History Analytics Section Mobile Styling */
+  .panel-heading.history-analytics-heading,
+  .panel-heading.history-analytics-heading:has(.collapse-toggle-btn),
   .history-analytics-heading {
     display: flex !important;
     flex-direction: column !important;
     align-items: stretch !important;
-    gap: 10px !important;
+    gap: 12px !important;
     cursor: pointer !important;
   }
 
+  .panel-heading.history-analytics-heading > *:first-child,
   .history-analytics-header-top {
     display: flex !important;
+    flex-direction: row !important;
     justify-content: space-between !important;
     align-items: center !important;
     width: 100% !important;
+    min-width: 0 !important;
+    flex: none !important;
+  }
+
+  .history-analytics-title {
+    flex: 1 !important;
+    min-width: 0 !important;
+  }
+
+  .history-analytics-header-top .collapse-toggle-btn {
+    flex-shrink: 0 !important;
+    margin-left: 8px !important;
   }
 
   .history-analytics-actions {
@@ -2647,6 +2742,27 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     font-size: 12.5px !important;
     border-radius: 7px !important;
     min-height: 34px !important;
+  }
+
+  .history-chart-layout {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 16px !important;
+  }
+
+  .history-chart-layout .donut-chart-container {
+    margin: 0 auto !important;
+  }
+
+  .history-scroll-list {
+    min-width: 0 !important;
+    width: 100% !important;
+    max-height: 240px !important;
+  }
+
+  .history-summary-grid .history-metric:last-child {
+    grid-column: 1 / -1 !important;
   }
 
   .history-entries-heading {
@@ -3322,7 +3438,7 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     border-top: 1px solid var(--glass-border, rgba(255, 255, 255, 0.15)) !important;
     box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.4) !important;
     background: var(--surface) !important;
-    padding: 12px 18px max(24px, calc(16px + env(safe-area-inset-bottom))) !important;
+    padding: 12px 18px max(34px, calc(20px + env(safe-area-inset-bottom))) !important;
     overflow-y: auto !important;
     -webkit-overflow-scrolling: touch !important;
     animation: slideUpSheet 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
@@ -3330,7 +3446,7 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     box-sizing: border-box !important;
   }
 
-  /* Reset inner padding on forms/shells inside dialogs so they don't double-pad */
+  /* Reset inner padding on forms/shells inside dialogs so they don't double-pad, with clearance for sticky action footer */
   dialog.native-dialog .entry-form,
   dialog.native-dialog .entry-form-modern,
   dialog.native-dialog .dialog-shell,
@@ -3338,7 +3454,7 @@ dialog.modern-top-layer-dialog .dialog-actions button {
   dialog.modern-top-layer-dialog .entry-form,
   dialog.modern-top-layer-dialog .dialog-shell,
   dialog.modern-top-layer-dialog form {
-    padding: 0 !important;
+    padding: 0 0 76px 0 !important;
     margin: 0 !important;
     width: 100% !important;
     display: flex !important;
@@ -3417,9 +3533,9 @@ dialog.modern-top-layer-dialog .dialog-actions button {
   }
 
   /* Form field labels & typography */
-  dialog.native-dialog label,
-  dialog.modern-top-layer-dialog label,
-  .entry-form-modern label {
+  dialog.native-dialog label:not(.check-row):not(.checkbox-label):not(:has(input[type="checkbox"])):not(:has(input[type="radio"])),
+  dialog.modern-top-layer-dialog label:not(.check-row):not(.checkbox-label):not(:has(input[type="checkbox"])):not(:has(input[type="radio"])),
+  .entry-form-modern label:not(.check-row):not(.checkbox-label):not(:has(input[type="checkbox"])):not(:has(input[type="radio"])) {
     display: flex !important;
     flex-direction: column !important;
     gap: 5px !important;
@@ -3429,6 +3545,29 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     width: 100% !important;
     box-sizing: border-box !important;
     margin-bottom: 2px !important;
+  }
+
+  /* Inline Checkbox / Radio rows inside dialogs */
+  dialog.native-dialog label.check-row,
+  dialog.native-dialog label:has(input[type="checkbox"]),
+  dialog.native-dialog label:has(input[type="radio"]),
+  dialog.modern-top-layer-dialog label.check-row,
+  dialog.modern-top-layer-dialog label:has(input[type="checkbox"]),
+  dialog.modern-top-layer-dialog label:has(input[type="radio"]),
+  .entry-form-modern label.check-row,
+  .entry-form-modern label:has(input[type="checkbox"]),
+  .entry-form-modern label:has(input[type="radio"]) {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 10px !important;
+    cursor: pointer !important;
+    min-height: 40px !important;
+    width: auto !important;
+    font-size: 13.5px !important;
+    font-weight: 600 !important;
+    color: var(--ink) !important;
+    margin: 4px 0 !important;
   }
 
   /* Inputs, selects, textareas inside dialogs */
@@ -3473,12 +3612,19 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     gap: 10px !important;
     margin-top: 14px !important;
     padding-top: 12px !important;
+    padding-bottom: max(6px, env(safe-area-inset-bottom)) !important;
     border-top: 1px solid var(--line) !important;
     position: sticky !important;
     bottom: 0 !important;
     background: var(--surface) !important;
     z-index: 5 !important;
     box-sizing: border-box !important;
+  }
+
+  dialog.native-dialog .dialog-actions:has(> :only-child),
+  dialog.modern-top-layer-dialog .dialog-actions:has(> :only-child),
+  .entry-form-modern .dialog-actions:has(> :only-child) {
+    grid-template-columns: 1fr !important;
   }
 
   dialog.native-dialog .dialog-actions button,
