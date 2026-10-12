@@ -232,25 +232,29 @@ export const EntryModal: React.FC<EntryModalProps> = ({
   const fxRate = currency === 'EGP' ? 1 : getCurrencyRate(rates, currency);
   const egpEquivalent = Math.round(numericAmount * fxRate);
 
+  const isSettlement =
+    creditType === 'cib' ||
+    creditType === 'hsbc' ||
+    Boolean(entryToEdit?.id && entryToEdit.id.startsWith('credit-settlement-')) ||
+    category.toLowerCase().includes('settlement') ||
+    category.toLowerCase().includes('credit due') ||
+    category.toLowerCase().includes('card payment') ||
+    category.toLowerCase().includes('credit payment') ||
+    category.toLowerCase().includes('bill payment') ||
+    category.toLowerCase().includes('card bill') ||
+    tag.toLowerCase().includes('settlement');
+
+  const isCardExpense = (creditType === 'cib_card' || creditType === 'hsbc_card') && !isSettlement;
+  const isCreditDue = creditType === 'cib' || creditType === 'hsbc' || isSettlement;
+  const settlementDate = isCardExpense
+    ? creditSettlementDate || calculateCreditSettlementDate(date, creditType.includes('hsbc') ? 'hsbc' : 'cib')
+    : '';
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!numericAmount || numericAmount <= 0) return;
 
-    const isSettlement =
-      creditType === 'cib' ||
-      creditType === 'hsbc' ||
-      (entryToEdit?.id && entryToEdit.id.startsWith('credit-settlement-')) ||
-      category.toLowerCase().includes('settlement') ||
-      category.toLowerCase().includes('credit due') ||
-      category.toLowerCase().includes('card payment') ||
-      category.toLowerCase().includes('credit payment') ||
-      category.toLowerCase().includes('bill payment') ||
-      category.toLowerCase().includes('card bill') ||
-      tag.toLowerCase().includes('settlement');
-
-    const isCardExpense = (creditType === 'cib_card' || creditType === 'hsbc_card') && !isSettlement;
-    const isCreditDue = creditType === 'cib' || creditType === 'hsbc' || isSettlement;
-    const shouldPromptDeduct = Boolean(onDeductPrompt);
+    const shouldPromptDeduct = Boolean(onDeductPrompt) && !isCardExpense;
 
     const normalizedCategory = category.trim() || (isCreditDue
       ? `${creditType.includes('hsbc') ? 'HSBC' : 'CIB'} Credit Due`
@@ -258,9 +262,14 @@ export const EntryModal: React.FC<EntryModalProps> = ({
     const chosenAccount = isCardExpense && (!account.trim() || account.toLowerCase() === 'cash')
       ? (creditType.includes('hsbc') ? 'HSBC Credit' : 'CIB Credit')
       : account.toLowerCase().trim() || (creditType === 'hsbc' ? 'hsbc' : 'cib');
-    const settlementDate = isCardExpense
-      ? creditSettlementDate || calculateCreditSettlementDate(date, creditType.includes('hsbc') ? 'hsbc' : 'cib')
-      : '';
+
+    const resolvedActual = isCardExpense
+      ? egpEquivalent
+      : (actualAmount ? Math.round(Number(actualAmount) * fxRate) : undefined);
+    const resolvedActualDate = isCardExpense
+      ? date
+      : (actualAmount ? date : undefined);
+
     const baseEntry: Omit<CashEntry, 'id'> = {
       date,
       category: normalizedCategory,
@@ -275,12 +284,12 @@ export const EntryModal: React.FC<EntryModalProps> = ({
       creditType: creditType || undefined,
       creditSettlementDate: settlementDate || undefined,
       source: isCardExpense ? 'credit card' : isSettlement ? 'recurring credit' : undefined,
-      actualAmount: actualAmount ? Math.round(Number(actualAmount) * fxRate) : undefined,
-      actualDate: actualAmount ? date : undefined,
+      actualAmount: resolvedActual,
+      actualDate: resolvedActualDate,
     };
 
     if (entryToEdit) {
-      const newActual = actualAmount ? Math.round(Number(actualAmount) * fxRate) : 0;
+      const newActual = resolvedActual ?? 0;
       const previousActual = getEntryActualAmount(entryToEdit, entryActuals);
       runTransaction(`Update ${entryToEdit.type === 'income' ? 'Income' : 'Expense'}: ${normalizedCategory}`, () => {
         if (entryToEdit.id.startsWith('credit-settlement-')) {
@@ -306,7 +315,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
         onDeductPrompt({ ...baseEntry, id: entryToEdit.id }, newActual - previousActual);
       }
     } else {
-      const newActual = actualAmount ? Math.round(Number(actualAmount) * fxRate) : 0;
+      const newActual = resolvedActual ?? 0;
       if (isRecurring && recurringCount > 1) {
         runTransaction(`Add Recurring (${recurringCount}x): ${normalizedCategory}`, () => {
           const seriesId = generateSeriesId();
@@ -330,16 +339,26 @@ export const EntryModal: React.FC<EntryModalProps> = ({
               recDate = DateUtils.formatDateObj(dObj);
             }
 
+            const isFirst = i === 0;
             const createdId = addEntry({
               ...baseEntry,
               date: recDate,
               isRecurring: true,
               seriesId,
-              actualAmount: i === 0 && newActual > 0 ? newActual : undefined,
-              actualDate: i === 0 && newActual > 0 ? recDate : undefined,
+              actualAmount: isFirst && newActual > 0 ? newActual : undefined,
+              actualDate: isFirst && newActual > 0 ? recDate : undefined,
               source: 'recurring',
             });
-            if (i === 0) firstCreatedId = createdId;
+            if (isFirst) {
+              firstCreatedId = createdId;
+              if (newActual > 0) {
+                recordActual(createdId, newActual, recDate, {
+                  tag: baseEntry.tag,
+                  account: baseEntry.account,
+                  note: baseEntry.note,
+                });
+              }
+            }
           }
           if (newActual > 0 && shouldPromptDeduct && onDeductPrompt && firstCreatedId) {
             onDeductPrompt({ ...baseEntry, id: firstCreatedId }, newActual);
@@ -347,6 +366,13 @@ export const EntryModal: React.FC<EntryModalProps> = ({
         });
       } else {
         const createdId = addEntry(baseEntry);
+        if (newActual > 0) {
+          recordActual(createdId, newActual, date, {
+            tag: baseEntry.tag,
+            account: baseEntry.account,
+            note: baseEntry.note,
+          });
+        }
         if (newActual > 0 && shouldPromptDeduct && onDeductPrompt) {
           onDeductPrompt({ ...baseEntry, id: createdId }, newActual);
         }
@@ -647,7 +673,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
           </label>
 
           <label>
-            Amount ({currency})
+            {isCardExpense ? `Swiped Amount (${currency})` : `Amount (${currency})`}
             <input
               name="amount"
               type="number"
@@ -668,23 +694,48 @@ export const EntryModal: React.FC<EntryModalProps> = ({
           </small>
         )}
 
-        <label>
-          Actual amount {currency !== 'EGP' ? `(${currency})` : ''} (Optional)
-          <input
-            name="actualAmount"
-            type="number"
-            inputMode="decimal"
-            step="0.01"
-            min="0"
-            placeholder={currency !== 'EGP' ? '0.00 if not paid yet' : '0 if not paid yet'}
-            value={actualAmount}
-            onChange={(e) => setActualAmount(e.target.value)}
-          />
-        </label>
-        {currency !== 'EGP' && Number(actualAmount) > 0 && (
-          <small style={{ color: 'var(--muted)', fontSize: '12px', margin: '-4px 0 0', display: 'block' }}>
-            Actual in EGP: ≈ {formatMoney(Math.round(Number(actualAmount) * fxRate))}
-          </small>
+        {isCardExpense ? (
+          <div
+            style={{
+              padding: '10px 12px',
+              borderRadius: '8px',
+              background: 'rgba(99, 102, 241, 0.08)',
+              border: '1px solid rgba(99, 102, 241, 0.25)',
+              fontSize: '12px',
+              color: 'var(--text-primary)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              marginTop: '4px',
+            }}
+          >
+            <span style={{ fontSize: '16px' }}>💳</span>
+            <span>
+              <strong>Credit card swipe:</strong> Amount is recorded immediately as actual spend. Settlement will be scheduled for{' '}
+              <strong>{settlementDate ? DateUtils.formatDisplayDate(settlementDate) : 'upcoming cycle'}</strong>.
+            </span>
+          </div>
+        ) : (
+          <>
+            <label>
+              Actual amount {currency !== 'EGP' ? `(${currency})` : ''} (Optional)
+              <input
+                name="actualAmount"
+                type="number"
+                inputMode="decimal"
+                step="0.01"
+                min="0"
+                placeholder={currency !== 'EGP' ? '0.00 if not paid yet' : '0 if not paid yet'}
+                value={actualAmount}
+                onChange={(e) => setActualAmount(e.target.value)}
+              />
+            </label>
+            {currency !== 'EGP' && Number(actualAmount) > 0 && (
+              <small style={{ color: 'var(--muted)', fontSize: '12px', margin: '-4px 0 0', display: 'block' }}>
+                Actual in EGP: ≈ {formatMoney(Math.round(Number(actualAmount) * fxRate))}
+              </small>
+            )}
+          </>
         )}
 
         {!entryToEdit && (

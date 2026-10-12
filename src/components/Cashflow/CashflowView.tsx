@@ -257,7 +257,10 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     recordActual(entry.id, newActual, DateUtils.todayString());
     // Decision modals are top-layer and would hide the deduct dialog, so the
     // deduct prompt is queued and flushed once those modals are resolved.
-    pendingDeductRef.current = { entry, amount: addedAmount };
+    // Credit card spending settles on the credit due date and must not deduct from liquid accounts immediately.
+    if (!isCreditCardExpense(entry)) {
+      pendingDeductRef.current = { entry, amount: addedAmount };
+    }
     if (isLoanInflow(entry)) {
       const linked = findLinkedLoanRepayment(entry, entries, installments);
       if (linked) {

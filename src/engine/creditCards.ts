@@ -319,6 +319,8 @@ export function buildCreditDueEntries(params: {
         variance: variance,
         statementNote: override?.note,
         actualAmount: actualPaid,
+        cardSpendTotal,
+        cardExpenseCount: cardExpenses.length,
         source: 'recurring credit',
         tag: override?.tag || 'Credit',
         draws: override?.draws || [],

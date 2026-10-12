@@ -68,6 +68,35 @@ assert.strictEqual(isCreditCardExpense({ id: '3', date: '2026-05-01', amount: 10
 assert.strictEqual(isCreditCardExpense({ id: '4', date: '2026-05-01', amount: 100, type: 'expense', category: 'General', account: 'cash' }), false);
 console.log('✓ Credit card identification logic verified');
 
+// 2b. Credit Card Swipe Actuals & Settlement Aggregation
+const swipeEntry = {
+  id: 'card-swipe-1',
+  date: '2026-05-05',
+  amount: 2500,
+  actualAmount: 2500,
+  actualDate: '2026-05-05',
+  type: 'expense',
+  category: 'Dining Out',
+  account: 'CIB Credit',
+  creditType: 'cib_card',
+  source: 'credit card',
+};
+assert.strictEqual(isCreditCardExpense(swipeEntry), true, 'Swipe must be recognized as credit card expense');
+assert.strictEqual(getEntryActualAmount(swipeEntry, {}), 2500, 'Swipe must have actual amount 2500');
+
+const duesWithSwipeActual = buildCreditDueEntries({
+  accounts: { cib: { name: 'CIB', balance: 50000, maturityDay: 15 } },
+  creditDues: {},
+  cashEntries: [swipeEntry],
+  archivedEntries: [],
+  entryActuals: {},
+});
+const cibSwipeDue = duesWithSwipeActual.find((d) => d.id === 'credit-settlement-cib-2026-06');
+assert.ok(cibSwipeDue, 'Credit card swipe must roll into next cycle settlement');
+assert.strictEqual(cibSwipeDue.amount, 2500, 'Settlement amount must equal swiped actual amount');
+assert.strictEqual(cibSwipeDue.cardSpendTotal, 2500, 'Card spend total must equal swiped actual amount');
+console.log('✓ Credit card swipe actual amount & settlement aggregation verified');
+
 // 3. Authoritative Statement Overrides & Variance
 const sampleCardEntries = [
   { id: 'c1', date: '2026-05-05', amount: 3000, type: 'expense', category: 'Shopping', account: 'CIB Credit' },
