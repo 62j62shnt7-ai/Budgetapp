@@ -80,7 +80,7 @@ export function isCreditCardExpense(entry: CashEntry): boolean {
   if (acc.includes('cib') && (acc.includes('credit') || acc.includes('card'))) return true;
   if (acc.includes('hsbc') && (acc.includes('credit') || acc.includes('card'))) return true;
   if (acc === 'cib credit' || acc === 'cib_credit' || acc === 'cib-credit' || acc === 'hsbc credit' || acc === 'hsbc_credit' || acc === 'hsbc-credit') return true;
-  if (tag.includes('credit card') || tag.includes('card spend')) return true;
+  if (tag.includes('credit card') || tag.includes('card spend') || tag.includes('credit swipe') || tag.includes('credit swipes')) return true;
   return false;
 }
 
@@ -323,7 +323,9 @@ export function buildCreditDueEntries(params: {
         cardSpendTotal,
         cardExpenseCount: cardExpenses.length,
         source: 'recurring credit',
-        tag: override?.tag || 'Credit',
+        tag: (override?.tag && !['credit', 'credit card'].includes(override.tag.trim().toLowerCase()))
+          ? override.tag
+          : 'Credit Settlement',
         draws: override?.draws || [],
         isClosed: isSettlementClosed,
       });
@@ -367,9 +369,15 @@ export function getCreditAccountKey(entry: CashEntry): 'hsbc' | 'cib' {
 export function isCreditSettlementRow(entry: CashEntry): boolean {
   if (!entry || entry.type !== 'expense') return false;
   if (isCreditCardExpense(entry)) return false;
+  const tag = (entry.tag || '').toLowerCase();
+  if (tag.includes('credit settlement') || tag === 'settlement') return true;
   if (entry.source === 'recurring credit') return true;
   if (isLumpCreditDueForAccount(entry, 'hsbc') || isLumpCreditDueForAccount(entry, 'cib')) return true;
-  return (entry.category || '').toLowerCase().includes('credit due');
+  const cat = (entry.category || '').toLowerCase();
+  const acc = (entry.account || '').toLowerCase();
+  if (cat.includes('credit due') || cat.includes('settlement')) return true;
+  if ((acc.includes('cib') || acc.includes('hsbc')) && cat.includes('credit')) return true;
+  return false;
 }
 
 /**

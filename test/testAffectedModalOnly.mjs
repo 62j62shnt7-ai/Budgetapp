@@ -1013,6 +1013,51 @@ assert.strictEqual(remainingStoreEntries.length, 0, 'Both loan inflow and single
 
 console.log('  ✓ Deleting loan inflow resolves single repayment entry and cascades deletion when confirmed\n');
 
+// -------------------------------------------------------------
+// Test Scenario 22: Regular Card Swipe / Expense Does NOT False-Match Other Expenses As Linked Loans
+// -------------------------------------------------------------
+console.log('▶ Test Scenario 22: Regular Card Swipe Does NOT False-Match Other Expenses as Linked Loan');
+
+const cardSwipeEntry = {
+  id: 'card-swipe-smule-1',
+  date: '2026-10-12',
+  category: 'Smule',
+  amount: 550,
+  type: 'expense',
+  account: 'HSBC Credit',
+  creditType: 'hsbc_card',
+  source: 'credit card',
+  actualDate: '2026-10-12',
+  draws: [{ id: 'draw-1', date: '2026-10-12', amount: 550, account: 'HSBC Credit' }],
+};
+
+const gasExpenseEntry = {
+  id: 'gas-expense-1',
+  date: '2026-09-01',
+  category: 'Gas',
+  amount: 119,
+  type: 'expense',
+  account: 'HSBC Credit',
+};
+
+const swipeDeleteOptions = buildEntryDeleteOptions(cardSwipeEntry, {
+  installments: [],
+  storageAssets: [],
+  partTimeJobs: [],
+  asfJobs: [],
+  irqJobs: [],
+  accounts: accountsCtx,
+  entries: [gasExpenseEntry, cardSwipeEntry],
+});
+
+const falseLoanOpt = swipeDeleteOptions.options.find((o) => o.id === 'loan');
+assert.strictEqual(falseLoanOpt, undefined, 'Must NOT generate a linked loan option matching unrelated expenses like Gas');
+const swipeDrawsOpt = swipeDeleteOptions.options.find((o) => o.id === 'draws');
+assert.ok(swipeDrawsOpt, 'Draws option should be present for recorded swipe tranches');
+assert.strictEqual(swipeDrawsOpt.label, 'Recorded Tranches (1)', 'Draws count matches swiped tranches');
+
+console.log('  ✓ Card swipe deletion cleanly isolates swipe and does not false-match unlinked expenses\n');
+
 console.log('===============================================================');
 console.log('🌟 100% OF ALL AFFECTED RECORDS MODAL TESTS PASSED! 🌟');
 console.log('===============================================================');

@@ -5,6 +5,7 @@ interface MonthlySummaryRow {
   month: string;
   income: number;
   expenses: number;
+  cardSpends?: number;
   creditSettled?: number;
   net: number;
   savingsRate: number;
@@ -13,6 +14,7 @@ interface MonthlySummaryRow {
 interface HistorySummaryTabProps {
   totalLifetimeIncome: number;
   totalLifetimeExpenses: number;
+  totalLifetimeCardSpends?: number;
   totalLifetimeCredit?: number;
   lifetimeNet: number;
   lifetimeSavingsRate: number;
@@ -23,6 +25,7 @@ interface HistorySummaryTabProps {
 export const HistorySummaryTab: React.FC<HistorySummaryTabProps> = ({
   totalLifetimeIncome,
   totalLifetimeExpenses,
+  totalLifetimeCardSpends = 0,
   totalLifetimeCredit = 0,
   lifetimeNet,
   lifetimeSavingsRate,
@@ -34,24 +37,31 @@ export const HistorySummaryTab: React.FC<HistorySummaryTabProps> = ({
       <div className="metrics-grid history-summary-grid" id="historyLifetimeSummary" style={{ marginBottom: '18px' }}>
         <article className="metric history-metric">
           <span>Lifetime Income</span>
-          <strong id="historyLifetimeIncome" style={{ color: 'var(--green)' }}>
+          <strong id="historyLifetimeIncome" style={{ color: 'var(--green)', fontSize: '26px', fontWeight: 800, lineHeight: 1.2 }}>
             {formatMoney(totalLifetimeIncome)}
           </strong>
           <small>Total realized income</small>
         </article>
         <article className="metric history-metric">
           <span>Lifetime Expenses</span>
-          <strong id="historyLifetimeExpenses" style={{ color: 'var(--red)' }}>
-            {formatMoney(totalLifetimeExpenses - totalLifetimeCredit)}
+          <strong id="historyLifetimeExpenses" style={{ color: 'var(--red)', display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '8px', lineHeight: 1.2 }}>
+            <span style={{ color: 'var(--red)', fontSize: '26px', fontWeight: 800 }}>{formatMoney(totalLifetimeExpenses)}</span>
+            {totalLifetimeCardSpends > 0 && (
+              <span className="history-bracket-card-swipes" title="Credit card swipes">
+                💳 ({formatMoney(totalLifetimeCardSpends)} card swipes)
+              </span>
+            )}
             {totalLifetimeCredit > 0 && (
-              <span style={{ color: 'var(--muted)', fontWeight: 500, fontSize: '0.6em' }}> ({formatMoney(totalLifetimeCredit)} settlement)</span>
+              <span className="history-bracket-settlements" title="Credit settlements paid">
+                🏛️ ({formatMoney(totalLifetimeCredit)} settlements)
+              </span>
             )}
           </strong>
-          <small>Total realized expenses</small>
+          <small>Total direct expenses</small>
         </article>
         <article className="metric history-metric">
           <span>Lifetime Net</span>
-          <strong id="historyLifetimeNet" style={{ color: lifetimeNet >= 0 ? 'var(--green)' : 'var(--red)' }}>
+          <strong id="historyLifetimeNet" style={{ color: lifetimeNet >= 0 ? 'var(--green)' : 'var(--red)', fontSize: '26px', fontWeight: 800, lineHeight: 1.2 }}>
             {lifetimeNet >= 0 ? '+' : ''}{formatMoney(lifetimeNet)}
           </strong>
           <small>Realized cash surplus</small>
@@ -118,18 +128,25 @@ export const HistorySummaryTab: React.FC<HistorySummaryTabProps> = ({
                           )}
                         </div>
                       </td>
-                      <td className="number cell-summary-income" style={{ color: 'var(--green)', fontWeight: 600 }}>
+                      <td className="number cell-summary-income" style={{ color: 'var(--green)', fontWeight: 700 }}>
                         <span className="summary-mobile-metric-label">Income</span>
                         <span className="summary-mobile-metric-val">+{formatMoney(row.income)}</span>
                       </td>
                       <td className="number cell-summary-expenses" style={{ color: 'var(--red)', fontWeight: 600 }}>
                         <span className="summary-mobile-metric-label">Expenses</span>
-                        <span className="summary-mobile-metric-val">
-                          -{formatMoney(row.expenses - (row.creditSettled || 0))}
-                          {!!row.creditSettled && row.creditSettled > 0 && (
-                            <span className="summary-settlement-sublabel"> ({formatMoney(row.creditSettled)} card)</span>
+                        <div className="summary-mobile-metric-val" style={{ display: 'inline-flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>
+                          <span style={{ color: 'var(--red)', fontWeight: 800 }}>-{formatMoney(row.expenses)}</span>
+                          {!!row.cardSpends && row.cardSpends > 0 && (
+                            <span className="history-bracket-card-swipes" title="Credit card swipes during this month">
+                              💳 ({formatMoney(row.cardSpends)} swipes)
+                            </span>
                           )}
-                        </span>
+                          {!!row.creditSettled && row.creditSettled > 0 && (
+                            <span className="history-bracket-settlements" title="Credit settlements paid during this month">
+                              🏛️ ({formatMoney(row.creditSettled)} settlements)
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td
                         className="number cell-summary-net"

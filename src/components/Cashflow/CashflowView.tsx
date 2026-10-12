@@ -9,6 +9,7 @@ import {
   buildCreditDueEntries,
   calculateCreditSettlementDate,
   isCreditCardExpense,
+  isCreditSettlementRow,
   isCreditDueLumpSum,
 } from '../../engine/creditCards';
 import {
@@ -563,13 +564,56 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
   });
   const allAccounts = Array.from(accountSet).sort();
 
+  // Tags helper for entries (supports multi-tag and auto-tagging credit swipes & settlements)
+  const getEntryTags = (e: CashEntry): string[] => {
+    const tags: string[] = [];
+    const pushTag = (t: string) => {
+      const trimmed = t.trim();
+      if (!trimmed) return;
+      const lower = trimmed.toLowerCase();
+      const normalized = (lower === 'credit' || lower === 'credit card' || lower === 'card spend')
+        ? (isCreditSettlementRow(e) ? 'Credit Settlement' : isCreditCardExpense(e) ? 'Credit Swipes' : trimmed)
+        : trimmed;
+      if (!tags.some((existing) => existing.toLowerCase() === normalized.toLowerCase())) {
+        tags.push(normalized);
+      }
+    };
+
+    if (e.tag && e.tag.trim()) {
+      e.tag.split(',').forEach(pushTag);
+    }
+    if (e.subcategory && e.subcategory.trim()) {
+      e.subcategory.split(',').forEach(pushTag);
+    }
+    (e.draws || []).forEach((draw) => {
+      if (draw.tag && draw.tag.trim()) {
+        draw.tag.split(',').forEach(pushTag);
+      }
+    });
+
+    if (isCreditSettlementRow(e)) {
+      if (!tags.some((t) => t.toLowerCase() === 'credit settlement')) {
+        tags.push('Credit Settlement');
+      }
+    } else if (isCreditCardExpense(e)) {
+      if (!tags.some((t) => t.toLowerCase() === 'credit swipes')) {
+        tags.push('Credit Swipes');
+      }
+    }
+
+    return tags;
+  };
+
   // Tags list for dropdown
   const tagSet = new Set<string>();
   let hasUntagged = false;
   allCandidate.forEach((e) => {
-    const t = (e.tag || '').trim();
-    if (t) tagSet.add(t);
-    else hasUntagged = true;
+    const entryTags = getEntryTags(e);
+    if (entryTags.length > 0) {
+      entryTags.forEach((t) => tagSet.add(t));
+    } else {
+      hasUntagged = true;
+    }
   });
   const allTags = Array.from(tagSet).sort((a, b) => a.localeCompare(b));
 
@@ -591,10 +635,10 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     if (selectedAccount !== 'all' && (e.account || '').toLowerCase() !== selectedAccount.toLowerCase()) return false;
 
     if (selectedTag !== 'all') {
-      const eTag = (e.tag || '').trim();
+      const eTags = getEntryTags(e).map((t) => t.toLowerCase());
       if (selectedTag === '__untagged__') {
-        if (eTag) return false;
-      } else if (eTag.toLowerCase() !== selectedTag.toLowerCase()) {
+        if (eTags.length > 0) return false;
+      } else if (!eTags.includes(selectedTag.toLowerCase())) {
         return false;
       }
     }
@@ -1356,23 +1400,21 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                           Recovery
                         </span>
                       )}
-                      {[e.tag, ...(e.draws || []).map((draw) => draw.tag)]
-                        .filter((tag, index, tags): tag is string => Boolean(tag) && tags.indexOf(tag) === index)
-                        .map((tag) => (
-                          <button
-                            key={`${e.id}-${tag}`}
-                            type="button"
-                            className={`history-tag-filter ${selectedTag.toLowerCase() === tag.toLowerCase() ? 'active' : ''}`}
-                            onClick={(ev) => {
-                              ev.stopPropagation();
-                              handleTagFilter(tag);
-                            }}
-                            aria-pressed={selectedTag.toLowerCase() === tag.toLowerCase()}
-                            title={`Click to filter entries by tag: #${tag}`}
-                          >
-                            <span aria-hidden="true">#</span>{tag}
-                          </button>
-                        ))}
+                      {getEntryTags(e).map((tag) => (
+                        <button
+                          key={`${e.id}-${tag}`}
+                          type="button"
+                          className={`history-tag-filter ${selectedTag.toLowerCase() === tag.toLowerCase() ? 'active' : ''}`}
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            handleTagFilter(tag);
+                          }}
+                          aria-pressed={selectedTag.toLowerCase() === tag.toLowerCase()}
+                          title={`Click to filter entries by tag: #${tag}`}
+                        >
+                          <span aria-hidden="true">#</span>{tag}
+                        </button>
+                      ))}
                       {isForeign && (
                         <span className="source-pill" style={{ background: 'rgba(99, 102, 241, 0.12)', color: '#818cf8', fontWeight: 700, fontSize: '10px', marginLeft: '4px' }}>
                           💵 {e.currency}

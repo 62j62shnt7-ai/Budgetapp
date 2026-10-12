@@ -100,9 +100,15 @@ export function resolveLinkedLoan(
   }
 
   // Also check if entry.loanId or entry.id matches a single expense entry in entries if provided
-  if (entries && (entry.loanId || entry.id)) {
+  if (entries && entries.length > 0) {
     const single = entries.find(
-      (e) => e.type === 'expense' && (e.loanId === entry.loanId || e.loanId === entry.id || e.id === entry.loanId)
+      (e) =>
+        e.id !== entry.id &&
+        e.type === 'expense' &&
+        Boolean(
+          (entry.loanId && (e.loanId === entry.loanId || e.id === entry.loanId)) ||
+          (entry.id && e.loanId === entry.id)
+        )
     );
     if (single) {
       return {

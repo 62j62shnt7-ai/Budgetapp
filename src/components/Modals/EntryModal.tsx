@@ -182,7 +182,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
       setCreditSettlementDate(settDate);
       setCreditSettlementHint(getCreditCycleHint(date, 'hsbc'));
       if (category.toLowerCase().includes('credit due')) setCategory('');
-      if (!tag.trim() || tag === 'Credit') setTag('Credit');
+      if (!tag.trim() || tag === 'Credit' || tag === 'Credit Swipes') setTag('Credit Swipes');
     } else if (nextCreditType === 'cib_card') {
       nextAcc = 'CIB Credit';
       setAccount('CIB Credit');
@@ -190,19 +190,19 @@ export const EntryModal: React.FC<EntryModalProps> = ({
       setCreditSettlementDate(settDate);
       setCreditSettlementHint(getCreditCycleHint(date, 'cib'));
       if (category.toLowerCase().includes('credit due')) setCategory('');
-      if (!tag.trim() || tag === 'Credit') setTag('Credit');
+      if (!tag.trim() || tag === 'Credit' || tag === 'Credit Swipes') setTag('Credit Swipes');
     } else if (nextCreditType === 'hsbc') {
       nextAcc = 'hsbc';
       setAccount('hsbc');
       setCategory('HSBC Credit Due');
-      setTag('Credit');
+      setTag('Credit Settlement');
       setCreditSettlementDate('');
       setCreditSettlementHint('');
     } else if (nextCreditType === 'cib') {
       nextAcc = 'cib';
       setAccount('cib');
       setCategory('CIB Credit Due');
-      setTag('Credit');
+      setTag('Credit Settlement');
       setCreditSettlementDate('');
       setCreditSettlementHint('');
     } else {
@@ -212,7 +212,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
       if (category.toLowerCase().includes('credit due')) {
         setCategory('');
       }
-      if (tag === 'Credit') {
+      if (tag === 'Credit' || tag === 'Credit Swipes' || tag === 'Credit Settlement') {
         setTag('');
       }
       if (account.toLowerCase().includes('credit') || !account.trim()) {
@@ -244,7 +244,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
       setCreditType(cType);
       setCreditSettlementDate(calculateCreditSettlementDate(date, cardBank));
       setCreditSettlementHint(getCreditCycleHint(date, cardBank));
-      if (!tag.trim()) setTag('Credit');
+      if (!tag.trim() || tag === 'Credit') setTag('Credit Swipes');
     } else if (creditType === 'cib_card' || creditType === 'hsbc_card') {
       setCreditType('');
       setCreditSettlementDate('');
@@ -732,19 +732,65 @@ export const EntryModal: React.FC<EntryModalProps> = ({
         </datalist>
 
         <label id="tagField" className="entry-field">
-          Subcategory / Tag
+          Subcategory / Tags
           <input
             name="tag"
             type="text"
             list="subcatSuggestions"
-            placeholder="e.g. Food, Bills, Groceries (optional)"
+            placeholder="e.g. Food, Bills, Groceries (comma-separated for multiple)"
             value={tag}
             onChange={(e) => setTag(e.target.value)}
           />
         </label>
+        {Boolean(tag.trim()) && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '-4px', marginBottom: '8px' }}>
+            {tag.split(',').map((t) => t.trim()).filter(Boolean).map((t) => (
+              <span
+                key={t}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '3px',
+                  background: 'var(--brand-primary-light, rgba(99, 102, 241, 0.15))',
+                  color: 'var(--brand-primary, #6366f1)',
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                }}
+              >
+                #{t}
+                <button
+                  type="button"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: '0 2px',
+                    cursor: 'pointer',
+                    color: 'currentColor',
+                    fontSize: '12px',
+                    lineHeight: 1,
+                  }}
+                  onClick={() => {
+                    const remaining = tag
+                      .split(',')
+                      .map((x) => x.trim())
+                      .filter((x) => x && x.toLowerCase() !== t.toLowerCase());
+                    setTag(remaining.join(', '));
+                  }}
+                  title={`Remove #${t}`}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
         <datalist id="subcatSuggestions">
           <option value="Food" />
           <option value="Groceries" />
+          <option value="Credit Swipes" />
+          <option value="Credit Settlement" />
           <option value="Credit" />
           <option value="Loan" />
           <option value="Installment" />

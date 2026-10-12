@@ -39,6 +39,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
     recordActual,
     clearActual,
     deleteEntry,
+    updateEntry,
+    runTransaction,
     storageAssets,
     partTimeJobs,
     asfJobs,
@@ -61,6 +63,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
   const [isAdminUnlocked, setIsAdminUnlocked] = useState<boolean>(() =>
     localStorage.getItem('budget-control-history-admin-unlocked') === 'true'
   );
+  const [addingTagEntryId, setAddingTagEntryId] = useState<string | null>(null);
+  const [newTagInput, setNewTagInput] = useState<string>('');
 
   const initialCategory = pendingNavigation?.tab === 'history' && pendingNavigation.filters?.category
     ? pendingNavigation.filters.category
@@ -297,25 +301,33 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
   });
   const orderedMonths = Array.from(monthsSet).sort();
 
-  // Cash basis: card spends are not counted when swiped; the settlement is counted
-  // in full in the month it is paid, so nothing is double counted. The settled
-  // credit amount is reported separately (shown in brackets in the UI).
+  // Monthly calculations:
+  // - directExpenses: anything except card swipes and settlements
+  // - cardSpends: credit card swipes
+  // - creditSettled: credit settlements paid
+  // - net: income - (directExpenses + creditSettled)
+  // - savingsRate: income > 0 ? Math.round((net / income) * 100) : 0
   const monthlySummaryRows = React.useMemo(() => {
     return orderedMonths.map((month) => {
       let income = 0;
-      let expenses = 0;
+      let directExpenses = 0;
+      let cardSpends = 0;
       let creditSettled = 0;
 
       actualEntries.forEach((entry) => {
-        if (entry.type !== 'income' && isCreditCardExpense(entry)) return;
-        const settlement = isCreditSettlementRow(entry);
+        const isSwipe = isCreditCardExpense(entry);
+        const isSettlement = isCreditSettlementRow(entry);
         if (entry.draws && entry.draws.length > 0) {
           const monthDraws = entry.draws.filter((d) => DateUtils.getMonthKey(d.date) === month);
           const monthTotal = monthDraws.reduce((sum, d) => sum + Number(d.amount || 0), 0);
-          if (entry.type === 'income') income += monthTotal;
-          else {
-            expenses += monthTotal;
-            if (settlement) creditSettled += monthTotal;
+          if (entry.type === 'income') {
+            income += monthTotal;
+          } else if (isSwipe) {
+            cardSpends += monthTotal;
+          } else if (isSettlement) {
+            creditSettled += monthTotal;
+          } else {
+            directExpenses += monthTotal;
           }
         } else {
           const actDate = getEntryActualDate(entry);
@@ -323,21 +335,25 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
             const amt = getEntryActualAmount(entry);
             if (entry.type === 'income') {
               income += amt;
+            } else if (isSwipe) {
+              cardSpends += amt;
+            } else if (isSettlement) {
+              creditSettled += amt;
             } else {
-              expenses += amt;
-              if (settlement) creditSettled += amt;
+              directExpenses += amt;
             }
           }
         }
       });
 
-      const net = income - (expenses - creditSettled);
+      const net = income - (directExpenses + creditSettled);
       const savingsRate = income > 0 ? Math.round((net / income) * 100) : 0;
 
       return {
         month,
         income,
-        expenses,
+        expenses: directExpenses,
+        cardSpends,
         creditSettled,
         net,
         savingsRate,
@@ -347,17 +363,51 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
 
   const totalLifetimeIncome = monthlySummaryRows.reduce((sum, r) => sum + r.income, 0);
   const totalLifetimeExpenses = monthlySummaryRows.reduce((sum, r) => sum + r.expenses, 0);
-  const totalLifetimeCredit = monthlySummaryRows.reduce((sum, r) => sum + r.creditSettled, 0);
-  const lifetimeNet = totalLifetimeIncome - (totalLifetimeExpenses - totalLifetimeCredit);
+  const totalLifetimeCardSpends = monthlySummaryRows.reduce((sum, r) => sum + (r.cardSpends || 0), 0);
+  const totalLifetimeCredit = monthlySummaryRows.reduce((sum, r) => sum + (r.creditSettled || 0), 0);
+  const lifetimeNet = totalLifetimeIncome - (totalLifetimeExpenses + totalLifetimeCredit);
   const lifetimeSavingsRate = totalLifetimeIncome > 0 ? Math.round((lifetimeNet / totalLifetimeIncome) * 100) : 0;
 
-  // Filter options for Individual Validations
+  // Filter options for Individual Validations (supports multiple comma-separated tags)
   const getEntryTags = (entry: CashEntry): string[] => {
-    const tags = [entry.tag].filter((tag): tag is string => Boolean(tag && tag.trim()));
+    const tags: string[] = [];
+    const pushTag = (t: string) => {
+      const trimmed = t.trim();
+      if (!trimmed) return;
+      const lower = trimmed.toLowerCase();
+      // Upgrade legacy generic credit tags
+      const normalized = (lower === 'credit' || lower === 'credit card' || lower === 'card spend')
+        ? (isCreditSettlementRow(entry) ? 'Credit Settlement' : isCreditCardExpense(entry) ? 'Credit Swipes' : trimmed)
+        : trimmed;
+      if (!tags.some((existing) => existing.toLowerCase() === normalized.toLowerCase())) {
+        tags.push(normalized);
+      }
+    };
+
+    if (entry.tag && entry.tag.trim()) {
+      entry.tag.split(',').forEach(pushTag);
+    }
+    if (entry.subcategory && entry.subcategory.trim()) {
+      entry.subcategory.split(',').forEach(pushTag);
+    }
     (entry.draws || []).forEach((draw) => {
-      if (draw.tag && draw.tag.trim()) tags.push(draw.tag.trim());
+      if (draw.tag && draw.tag.trim()) {
+        draw.tag.split(',').forEach(pushTag);
+      }
     });
-    return Array.from(new Set(tags));
+
+    // Auto-tag credit swipes and settlements so they always have their dedicated tag
+    if (isCreditSettlementRow(entry)) {
+      if (!tags.some((t) => t.toLowerCase() === 'credit settlement')) {
+        tags.push('Credit Settlement');
+      }
+    } else if (isCreditCardExpense(entry)) {
+      if (!tags.some((t) => t.toLowerCase() === 'credit swipes')) {
+        tags.push('Credit Swipes');
+      }
+    }
+
+    return tags;
   };
 
   const allAccounts = Array.from(new Set(actualEntries.map((e) => e.account || 'cash'))).sort();
@@ -369,101 +419,63 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
     getEntryTags(entry).length === 0 || (entry.draws || []).some((draw) => !draw.tag || !draw.tag.trim())
   );
 
-  // Helper for filtered entry amount
-  const getFilteredEntryAmount = (entry: CashEntry): number => {
-    const totalActual = getEntryActualAmount(entry);
-    if (entry.draws && entry.draws.length > 0) {
-      let trancheSum = 0;
-      let matchedAny = false;
-      entry.draws.forEach((d) => {
-        const dAmt = Number(d.amount) || 0;
-        const dMonth = DateUtils.getMonthKey(d.date);
-        const dTag = (d.tag || entry.tag || '').trim();
+  const allAvailableTagSuggestions = Array.from(new Set([
+    'Food', 'Groceries', 'Credit Swipes', 'Credit Settlement', 'Credit', 'Loan', 'Installment', 'Rent',
+    'Salary', 'Bills', 'Kids', 'Part-Time', 'Maintenance', 'Electricity',
+    'Internet', 'Water', 'Fuel', 'Shopping', 'Dining Out', 'Medical',
+    ...allTags
+  ])).sort((a, b) => a.localeCompare(b));
 
-        if (selectedMonth !== 'all' && dMonth !== selectedMonth) return;
-        if (selectedTag !== 'all' && dTag.toLowerCase() !== selectedTag.toLowerCase()) return;
-        if (selectedCategory !== 'all' && entry.category !== selectedCategory) return;
+  const handleRemoveTag = (entry: CashEntry, tagToRemove: string) => {
+    const normToRemove = tagToRemove.toLowerCase().trim();
+    const currentTags = getEntryTags(entry);
+    const remainingTags = currentTags.filter((t) => t.toLowerCase().trim() !== normToRemove);
 
-        trancheSum += dAmt;
-        matchedAny = true;
-      });
-      if (matchedAny) return trancheSum;
-      if (selectedMonth !== 'all' || selectedTag !== 'all' || selectedCategory !== 'all') return 0;
-    }
+    const updatedDraws = (entry.draws || []).map((d) => {
+      if ((d.tag || '').toLowerCase().trim() === normToRemove) {
+        return { ...d, tag: remainingTags[0] || '' };
+      }
+      return d;
+    });
 
-    const actDate = getEntryActualDate(entry);
-    if (selectedMonth !== 'all' && DateUtils.getMonthKey(actDate) !== selectedMonth) return 0;
-
-    if (selectedCategory !== 'all' && entry.category !== selectedCategory) return 0;
-    if (selectedCategoryGroup !== 'all' && getSmartGroupBucket(entry) !== selectedCategoryGroup) return 0;
-
-    const eTag = (entry.tag || '').trim();
-    if (selectedTag === '__untagged__') return eTag ? 0 : totalActual;
-    if (selectedTag !== 'all' && eTag.toLowerCase() !== selectedTag.toLowerCase()) return 0;
-
-    return totalActual;
+    runTransaction(`Remove tag "${tagToRemove}" from ${entry.category}`, () => {
+      updateEntry(
+        entry.id,
+        {
+          tag: remainingTags.join(', '),
+          subcategory: remainingTags[0] || '',
+          ...(entry.draws && entry.draws.length > 0 ? { draws: updatedDraws } : {}),
+        },
+        'single'
+      );
+    });
   };
 
-  const filteredEntries = actualEntries.filter((entry) => {
-    if (selectedMonth !== 'all') {
-      if (entry.draws && entry.draws.length > 0) {
-        const hasDraw = entry.draws.some((d) => DateUtils.getMonthKey(d.date) === selectedMonth);
-        if (!hasDraw) return false;
-      } else {
-        const actDate = getEntryActualDate(entry);
-        if (DateUtils.getMonthKey(actDate) !== selectedMonth) return false;
+  const handleAddTag = (entry: CashEntry, newTagStr: string) => {
+    const cleanTokens = newTagStr.split(',').map((t) => t.trim()).filter(Boolean);
+    if (cleanTokens.length === 0) return;
+    const currentTags = getEntryTags(entry);
+    const addedTokens: string[] = [];
+    cleanTokens.forEach((t) => {
+      if (!currentTags.some((existing) => existing.toLowerCase() === t.toLowerCase()) &&
+          !addedTokens.some((existing) => existing.toLowerCase() === t.toLowerCase())) {
+        addedTokens.push(t);
       }
-    }
+    });
+    if (addedTokens.length === 0) return;
+    const nextTags = [...currentTags, ...addedTokens];
 
-    if (selectedType !== 'all' && entry.type !== selectedType) return false;
-    if (selectedCategory !== 'all' && entry.category !== selectedCategory) return false;
-    if (selectedAccount !== 'all' && (entry.account || 'cash').toLowerCase() !== selectedAccount.toLowerCase()) return false;
-    if (selectedCategoryGroup !== 'all' && getSmartGroupBucket(entry) !== selectedCategoryGroup) return false;
-
-    if (selectedTag !== 'all') {
-      const eTag = (entry.tag || '').toLowerCase();
-      const hasUntaggedDraw = (entry.draws || []).some((draw) => !draw.tag || !draw.tag.trim());
-      const hasDrawTag = (entry.draws || []).some((draw) => (draw.tag || '').toLowerCase() === selectedTag.toLowerCase());
-      if (selectedTag === '__untagged__') {
-        if (eTag || !hasUntaggedDraw && getEntryTags(entry).length > 0) return false;
-      } else if (eTag !== selectedTag.toLowerCase() && !hasDrawTag) {
-        return false;
-      }
-    }
-
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      const cat = (entry.category || '').toLowerCase();
-      const sub = (entry.subcategory || '').toLowerCase();
-      const tag = getEntryTags(entry).join(' ').toLowerCase();
-      const acc = (entry.account || '').toLowerCase();
-      const source = (entry.source || '').toLowerCase();
-      if (!cat.includes(term) && !sub.includes(term) && !tag.includes(term) && !acc.includes(term) && !source.includes(term)) return false;
-    }
-
-    return true;
-  });
-
-  // Sort newest first
-  filteredEntries.sort((a, b) => (getEntryActualDate(b) || '').localeCompare(getEntryActualDate(a) || ''));
-
-  const filteredIncome = filteredEntries
-    .filter((e) => e.type === 'income')
-    .reduce((sum, e) => sum + getFilteredEntryAmount(e), 0);
-
-  // Cash basis: card spends are excluded; settlements count in full.
-  const getNettedExpenseAmount = (e: CashEntry): number =>
-    isCreditCardExpense(e) ? 0 : getFilteredEntryAmount(e);
-
-  const filteredExpenses = filteredEntries
-    .filter((e) => e.type === 'expense')
-    .reduce((sum, e) => sum + getNettedExpenseAmount(e), 0);
-
-  const filteredCredit = filteredEntries
-    .filter((e) => isCreditSettlementRow(e))
-    .reduce((sum, e) => sum + getFilteredEntryAmount(e), 0);
-
-  const filteredNet = filteredIncome - (filteredExpenses - filteredCredit);
+    runTransaction(`Add tag "${addedTokens.join(', ')}" to ${entry.category}`, () => {
+      updateEntry(
+        entry.id,
+        {
+          tag: nextTags.join(', '),
+          subcategory: nextTags[0] || '',
+        },
+        'single'
+      );
+    });
+  };
 
   // Grouped Analytics breakdown
   const getSmartGroupBucket = (entry: CashEntry): string => {
@@ -481,6 +493,186 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
     if (/food|grocer|market|dining|cafe|coffee|restaurant|fuel|car|transport|uber|health|pharmacy|doctor|personal|shopping/.test(category)) return 'Living & Daily Spend';
     return entry.category || 'General Expenses';
   };
+
+  // Helper for filtered entry amount
+  const getFilteredEntryAmount = (entry: CashEntry): number => {
+    const totalActual = getEntryActualAmount(entry);
+    if (totalActual <= 0) return 0;
+
+    if (entry.draws && entry.draws.length > 0) {
+      let trancheSum = 0;
+      let matchedAny = false;
+      const parentTags = getEntryTags(entry).map((t) => t.toLowerCase());
+
+      entry.draws.forEach((d) => {
+        const dAmt = Number(d.amount) || 0;
+        if (dAmt <= 0) return;
+
+        // Month filter
+        if (selectedMonth !== 'all') {
+          const dMonth = DateUtils.getMonthKey(d.date);
+          if (dMonth !== selectedMonth) return;
+        }
+
+        // Tag filter
+        if (selectedTag === '__untagged__') {
+          const isDrawUntagged = (!d.tag || !d.tag.trim()) && parentTags.length === 0;
+          if (!isDrawUntagged) return;
+        } else if (selectedTag !== 'all') {
+          const drawTags = d.tag && d.tag.trim()
+            ? d.tag.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean)
+            : [];
+          const combined = Array.from(new Set([...parentTags, ...drawTags]));
+          if (isCreditCardExpense(entry) && !combined.includes('credit swipes')) {
+            combined.push('credit swipes');
+          }
+          if (isCreditSettlementRow(entry) && !combined.includes('credit settlement')) {
+            combined.push('credit settlement');
+          }
+          if (!combined.includes(selectedTag.toLowerCase())) return;
+        }
+
+        // Account filter
+        if (selectedAccount !== 'all') {
+          const dAcc = (d.account || entry.account || 'cash').toLowerCase();
+          if (dAcc !== selectedAccount.toLowerCase()) return;
+        }
+
+        // Category filter
+        if (selectedCategory !== 'all' && entry.category !== selectedCategory) return;
+
+        // Category group filter
+        if (selectedCategoryGroup !== 'all' && getSmartGroupBucket(entry) !== selectedCategoryGroup) return;
+
+        trancheSum += dAmt;
+        matchedAny = true;
+      });
+
+      if (matchedAny) return trancheSum;
+
+      // If no individual draw matched, but no draw-specific filters (month, tag, account) were specified,
+      // fall back to totalActual so the entry is never incorrectly dropped.
+      if (selectedMonth === 'all' && selectedTag === 'all' && selectedAccount === 'all') {
+        return totalActual;
+      }
+      return 0;
+    }
+
+    // For validated entries without draws that passed filteredEntries:
+    return totalActual;
+  };
+
+  const filteredEntries = actualEntries.filter((entry) => {
+    if (selectedMonth !== 'all') {
+      if (entry.draws && entry.draws.length > 0) {
+        const hasDraw = entry.draws.some((d) => DateUtils.getMonthKey(d.date) === selectedMonth);
+        if (!hasDraw) return false;
+      } else {
+        const actDate = getEntryActualDate(entry);
+        if (DateUtils.getMonthKey(actDate) !== selectedMonth) return false;
+      }
+    }
+
+    if (selectedType !== 'all' && entry.type !== selectedType) return false;
+    if (selectedCategory !== 'all' && entry.category !== selectedCategory) return false;
+
+    if (selectedAccount !== 'all') {
+      const parentAccMatches = (entry.account || 'cash').toLowerCase() === selectedAccount.toLowerCase();
+      const hasMatchingDraw = Boolean(
+        entry.draws &&
+        entry.draws.some((d) => (d.account || entry.account || 'cash').toLowerCase() === selectedAccount.toLowerCase())
+      );
+      if (!parentAccMatches && !hasMatchingDraw) return false;
+    }
+
+    if (selectedCategoryGroup !== 'all' && getSmartGroupBucket(entry) !== selectedCategoryGroup) return false;
+
+    if (selectedTag !== 'all') {
+      const entryTags = getEntryTags(entry).map((t) => t.toLowerCase());
+      const hasUntaggedDraw = (entry.draws || []).some((draw) => !draw.tag || !draw.tag.trim());
+      if (selectedTag === '__untagged__') {
+        if (entryTags.length > 0 && !hasUntaggedDraw) return false;
+      } else if (!entryTags.includes(selectedTag.toLowerCase())) {
+        return false;
+      }
+    }
+
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      const cat = (entry.category || '').toLowerCase();
+      const sub = (entry.subcategory || '').toLowerCase();
+      const tag = getEntryTags(entry).join(' ').toLowerCase();
+      const acc = (entry.account || '').toLowerCase();
+      const source = (entry.source || '').toLowerCase();
+      const drawNotes = (entry.draws || []).map((d) => d.note || '').join(' ').toLowerCase();
+      if (!cat.includes(term) && !sub.includes(term) && !tag.includes(term) && !acc.includes(term) && !source.includes(term) && !drawNotes.includes(term)) return false;
+    }
+
+    return true;
+  });
+
+  // Sort newest first
+  filteredEntries.sort((a, b) => (getEntryActualDate(b) || '').localeCompare(getEntryActualDate(a) || ''));
+
+  const filteredIncome = filteredEntries
+    .filter((e) => e.type === 'income')
+    .reduce((sum, e) => sum + getFilteredEntryAmount(e), 0);
+
+  const filteredCardSpends = filteredEntries
+    .filter((e) => isCreditCardExpense(e))
+    .reduce((sum, e) => sum + getFilteredEntryAmount(e), 0);
+
+  const filteredCredit = filteredEntries
+    .filter((e) => isCreditSettlementRow(e))
+    .reduce((sum, e) => sum + getFilteredEntryAmount(e), 0);
+
+  const filteredDirectExpenses = filteredEntries
+    .filter((e) => e.type === 'expense' && !isCreditCardExpense(e) && !isCreditSettlementRow(e))
+    .reduce((sum, e) => sum + getFilteredEntryAmount(e), 0);
+
+  // Check if current filter is explicitly targeting credit card swipes or settlements
+  const isTargetingCardSwipes =
+    selectedTag.toLowerCase() === 'credit swipes' ||
+    (selectedAccount !== 'all' && selectedAccount.toLowerCase().includes('credit')) ||
+    (filteredEntries.length > 0 &&
+      filteredDirectExpenses === 0 &&
+      filteredCredit === 0 &&
+      filteredCardSpends > 0);
+
+  const isTargetingSettlements =
+    selectedTag.toLowerCase() === 'credit settlement' ||
+    (filteredEntries.length > 0 &&
+      filteredDirectExpenses === 0 &&
+      filteredCardSpends === 0 &&
+      filteredCredit > 0);
+
+  // Cash basis netting for expenses:
+  // - If explicitly inspecting card swipes: card swipes count in full.
+  // - If explicitly inspecting settlements: settlements count in full.
+  // - In mixed/global view: card spends are excluded (0); settlements and direct expenses count in full.
+  const getNettedExpenseAmount = (e: CashEntry): number => {
+    if (isTargetingCardSwipes) {
+      return isCreditCardExpense(e) ? getFilteredEntryAmount(e) : 0;
+    }
+    if (isTargetingSettlements) {
+      return isCreditSettlementRow(e) ? getFilteredEntryAmount(e) : 0;
+    }
+    return isCreditCardExpense(e) ? 0 : getFilteredEntryAmount(e);
+  };
+
+  // When explicitly filtering for card swipes or settlements, show their specific amount.
+  // In mixed/global view: primary expense is direct expenses (anything except card swipes and settlements).
+  const filteredDisplayExpenses = isTargetingCardSwipes
+    ? filteredCardSpends
+    : isTargetingSettlements
+    ? filteredCredit
+    : filteredDirectExpenses;
+
+  const filteredNet = isTargetingCardSwipes
+    ? filteredIncome - filteredCardSpends
+    : isTargetingSettlements
+    ? filteredIncome - filteredCredit
+    : filteredIncome - (filteredDirectExpenses + filteredCredit);
 
   const groups: Record<string, { count: number; total: number; type: 'income' | 'expense' }> = {};
   filteredEntries.forEach((e) => {
@@ -541,6 +733,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
         <HistorySummaryTab
           totalLifetimeIncome={totalLifetimeIncome}
           totalLifetimeExpenses={totalLifetimeExpenses}
+          totalLifetimeCardSpends={totalLifetimeCardSpends}
           totalLifetimeCredit={totalLifetimeCredit}
           lifetimeNet={lifetimeNet}
           lifetimeSavingsRate={lifetimeSavingsRate}
@@ -779,22 +972,43 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
           <div className="metrics-grid history-summary-grid" id="historyFilteredSummary" style={{ marginBottom: '18px' }}>
             <article className="metric history-metric">
               <span>Filtered Income</span>
-              <strong style={{ color: 'var(--green)' }}>{formatMoney(filteredIncome)}</strong>
+              <strong style={{ color: 'var(--green)', fontSize: '26px', fontWeight: 800, lineHeight: 1.2 }}>{formatMoney(filteredIncome)}</strong>
               <small>Total for selected criteria</small>
             </article>
             <article className="metric history-metric">
               <span>Filtered Expenses</span>
-              <strong style={{ color: 'var(--red)' }}>
-                {formatMoney(filteredExpenses - filteredCredit)}
-                {filteredCredit > 0 && (
-                  <span style={{ color: 'var(--muted)', fontWeight: 500, fontSize: '0.8em' }}> ({formatMoney(filteredCredit)} settlement)</span>
+              <strong style={{ color: 'var(--red)', display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '8px', lineHeight: 1.2 }}>
+                <span style={{ color: 'var(--red)', fontSize: '26px', fontWeight: 800 }}>{formatMoney(filteredDisplayExpenses)}</span>
+                {!isTargetingCardSwipes && !isTargetingSettlements && (
+                  <>
+                    {filteredCardSpends > 0 && (
+                      <span className="history-bracket-card-swipes" title="Credit card swipes">
+                        💳 ({formatMoney(filteredCardSpends)} card swipes)
+                      </span>
+                    )}
+                    {filteredCredit > 0 && (
+                      <span className="history-bracket-settlements" title="Credit settlements paid">
+                        🏛️ ({formatMoney(filteredCredit)} settlements)
+                      </span>
+                    )}
+                  </>
+                )}
+                {isTargetingCardSwipes && (
+                  <span className="history-bracket-card-swipes" title="Credit card swipes">
+                    💳 (card swipes)
+                  </span>
+                )}
+                {isTargetingSettlements && (
+                  <span className="history-bracket-settlements" title="Credit settlements">
+                    🏛️ (settlements)
+                  </span>
                 )}
               </strong>
               <small>Total for selected criteria</small>
             </article>
             <article className="metric history-metric">
               <span>Filtered Net</span>
-              <strong style={{ color: filteredNet >= 0 ? 'var(--green)' : 'var(--red)' }}>
+              <strong style={{ color: filteredNet >= 0 ? 'var(--green)' : 'var(--red)', fontSize: '26px', fontWeight: 800, lineHeight: 1.2 }}>
                 {filteredNet >= 0 ? '+' : ''}{formatMoney(filteredNet)}
               </strong>
               <small>Income minus expenses</small>
@@ -848,7 +1062,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
 
             {isAdminUnlocked && (
               <div style={{ background: 'rgba(217,142,43,0.12)', border: '1px solid rgba(217,142,43,0.35)', borderRadius: '6px', padding: '8px 12px', fontSize: '12.5px', color: 'var(--ink)', margin: '10px 0' }}>
-                🔓 <strong>Admin Mode Active:</strong> Click an entry to edit it, or clear actual amounts and delete entries directly from this table.
+                🔓 <strong>Admin Mode Active:</strong> Add or remove tags directly, edit actuals, or click an entry to open full edit controls.
               </div>
             )}
 
@@ -1003,20 +1217,124 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                                 💵 {entry.currency}
                               </span>
                             )}
-                            {getEntryTags(entry).map((tag) => (
-                              <button
-                                key={`${entry.id}-${tag}`}
-                                type="button"
-                                className={`history-tag-filter ${selectedTag.toLowerCase() === tag.toLowerCase() ? 'active' : ''}`}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleTagFilter(tag);
-                                }}
-                                aria-pressed={selectedTag.toLowerCase() === tag.toLowerCase()}
-                              >
-                                <span aria-hidden="true">#</span>{tag}
-                              </button>
-                            ))}
+                            {isAdminUnlocked ? (
+                              <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: '3px', alignItems: 'center', marginLeft: '4px' }}>
+                                {getEntryTags(entry).map((tag) => (
+                                  <span
+                                    key={`${entry.id}-${tag}`}
+                                    className="history-admin-tag-chip"
+                                  >
+                                    <button
+                                      type="button"
+                                      className={`history-admin-tag-filter-btn ${selectedTag.toLowerCase() === tag.toLowerCase() ? 'active' : ''}`}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleTagFilter(tag);
+                                      }}
+                                      title={`Click to filter by #${tag}`}
+                                    >
+                                      #{tag}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="history-admin-tag-remove-btn"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleRemoveTag(entry, tag);
+                                      }}
+                                      title={`Remove tag #${tag}`}
+                                      aria-label={`Remove tag ${tag}`}
+                                    >
+                                      ×
+                                    </button>
+                                  </span>
+                                ))}
+                                {addingTagEntryId === entry.id ? (
+                                  <span
+                                    className="history-admin-add-tag-form"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <input
+                                      type="text"
+                                      autoFocus
+                                      list="adminTagSuggestionsList"
+                                      placeholder="Tag..."
+                                      className="history-admin-add-tag-input"
+                                      value={newTagInput}
+                                      onChange={(e) => setNewTagInput(e.target.value)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          handleAddTag(entry, newTagInput);
+                                          setAddingTagEntryId(null);
+                                          setNewTagInput('');
+                                        } else if (e.key === 'Escape') {
+                                          e.stopPropagation();
+                                          setAddingTagEntryId(null);
+                                          setNewTagInput('');
+                                        }
+                                      }}
+                                    />
+                                    <button
+                                      type="button"
+                                      className="ghost-button icon-button"
+                                      style={{ padding: '2px 5px', fontSize: '11px', height: '22px' }}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleAddTag(entry, newTagInput);
+                                        setAddingTagEntryId(null);
+                                        setNewTagInput('');
+                                      }}
+                                      title="Save tag"
+                                    >
+                                      ✓
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="ghost-button icon-button"
+                                      style={{ padding: '2px 5px', fontSize: '11px', height: '22px' }}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setAddingTagEntryId(null);
+                                        setNewTagInput('');
+                                      }}
+                                      title="Cancel"
+                                    >
+                                      ✕
+                                    </button>
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="history-admin-add-tag-btn"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setAddingTagEntryId(entry.id);
+                                      setNewTagInput('');
+                                    }}
+                                    title="Add tag to this entry"
+                                  >
+                                    + Tag
+                                  </button>
+                                )}
+                              </span>
+                            ) : (
+                              getEntryTags(entry).map((tag) => (
+                                <button
+                                  key={`${entry.id}-${tag}`}
+                                  type="button"
+                                  className={`history-tag-filter ${selectedTag.toLowerCase() === tag.toLowerCase() ? 'active' : ''}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleTagFilter(tag);
+                                  }}
+                                  aria-pressed={selectedTag.toLowerCase() === tag.toLowerCase()}
+                                >
+                                  <span aria-hidden="true">#</span>{tag}
+                                </button>
+                              ))
+                            )}
                           </td>
                           <td className="cell-account">
                             <span
@@ -1324,6 +1642,12 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                 </tbody>
               </table>
             </div>
+
+            <datalist id="adminTagSuggestionsList">
+              {allAvailableTagSuggestions.map((s) => (
+                <option key={s} value={s} />
+              ))}
+            </datalist>
           </section>
         </div>
       )}

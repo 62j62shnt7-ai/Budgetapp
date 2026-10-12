@@ -1562,6 +1562,97 @@ tr.history-admin-row:hover {
   color: var(--accent);
 }
 
+.history-admin-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 2px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-soft, rgba(0, 0, 0, 0.03));
+  overflow: hidden;
+  transition: all 0.15s ease;
+  vertical-align: middle;
+}
+
+.history-admin-tag-chip:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.history-admin-tag-chip .history-admin-tag-filter-btn {
+  background: none;
+  border: none;
+  padding: 2px 5px 2px 7px;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.history-admin-tag-chip .history-admin-tag-filter-btn:hover,
+.history-admin-tag-chip .history-admin-tag-filter-btn.active {
+  color: var(--accent);
+}
+
+.history-admin-tag-chip .history-admin-tag-remove-btn {
+  background: none;
+  border: none;
+  padding: 2px 6px 2px 2px;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.history-admin-tag-chip .history-admin-tag-remove-btn:hover {
+  color: var(--red, #ef4444);
+}
+
+.history-admin-add-tag-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 2px;
+  padding: 2px 7px;
+  border: 1px dashed var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.history-admin-add-tag-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.history-admin-add-tag-form {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 2px;
+}
+
+.history-admin-add-tag-input {
+  width: 100px;
+  padding: 2px 7px;
+  font-size: 11px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  outline: none;
+}
+
 .table-wrap {
   overflow: auto;
   border-radius: 12px;
@@ -5554,4 +5645,53 @@ select.job-status-select option {
   background: rgba(96, 165, 250, 0.15) !important;
   border-color: rgba(96, 165, 250, 0.3) !important;
   color: #93c5fd !important;
+}
+
+/* Credit Swipes & Settlement Bracket Badges */
+.history-bracket-card-swipes {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(139, 92, 246, 0.14);
+  color: #c084fc;
+  border: 1px solid rgba(139, 92, 246, 0.32);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  vertical-align: middle;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+[data-theme="light"] .history-bracket-card-swipes,
+.light-theme .history-bracket-card-swipes {
+  background: rgba(124, 58, 237, 0.09);
+  color: #6d28d9;
+  border-color: rgba(124, 58, 237, 0.25);
+}
+
+.history-bracket-settlements {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(14, 165, 233, 0.14);
+  color: #38bdf8;
+  border: 1px solid rgba(14, 165, 233, 0.32);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  vertical-align: middle;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+[data-theme="light"] .history-bracket-settlements,
+.light-theme .history-bracket-settlements {
+  background: rgba(2, 132, 199, 0.09);
+  color: #0369a1;
+  border-color: rgba(2, 132, 199, 0.25);
 }

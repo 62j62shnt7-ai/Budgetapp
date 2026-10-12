@@ -33,6 +33,8 @@ import {
   getCreditSettlementMonth,
   isCardExpenseForAccount,
   isLumpCreditDueForAccount,
+  isCreditCardExpense,
+  isCreditSettlementRow,
 } from '../engine/creditCards';
 import { buildSalaryEntries } from '../engine/salaryAndInstallments';
 import { DateUtils, formatMoney } from '../engine/dateUtils';
@@ -588,6 +590,19 @@ function recordUndoableStep(
   }
 }
 
+function upgradeLoadedEntries(rawEntries: CashEntry[]): CashEntry[] {
+  if (!Array.isArray(rawEntries)) return [];
+  return rawEntries.map((entry) => {
+    let tag = entry.tag;
+    const lower = (tag || '').toLowerCase().trim();
+    if (!lower || lower === 'credit' || lower === 'credit card' || lower === 'card spend') {
+      const inferred = inferTag(entry);
+      if (inferred) tag = inferred;
+    }
+    return tag !== entry.tag ? { ...entry, tag } : entry;
+  });
+}
+
 export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
   theme: loadStorage<'dark' | 'light'>(STORAGE_KEYS.theme, 'dark'),
   activeTab: 'dashboard',
@@ -599,8 +614,8 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
   redoStack: [],
   undoToast: null,
 
-  entries: loadStorage<CashEntry[]>(STORAGE_KEYS.entries, []),
-  archivedEntries: loadStorage<CashEntry[]>(STORAGE_KEYS.archivedEntries, []),
+  entries: upgradeLoadedEntries(loadStorage<CashEntry[]>(STORAGE_KEYS.entries, [])),
+  archivedEntries: upgradeLoadedEntries(loadStorage<CashEntry[]>(STORAGE_KEYS.archivedEntries, [])),
   deletedForecasts: loadStorage<string[]>(STORAGE_KEYS.deletedForecasts, []),
   accounts: withoutCashAccount(loadStorage<Record<string, AccountBalance>>(STORAGE_KEYS.accounts, defaultAccounts)),
   salaryPattern: loadStorage<SalaryPayment[]>(STORAGE_KEYS.salary, defaultSalaryPattern),
@@ -2643,17 +2658,32 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
   autoTagEntries: () => {
     const state = get();
     let count = 0;
-    const updatedEntries = state.entries.map((entry) => {
-      let entryChanged = false;
+
+    const upgradeTag = (entry: CashEntry): { newTag: string | undefined; changed: boolean } => {
       let newTag = entry.tag;
-      if (!newTag?.trim()) {
+      const lower = (newTag || '').toLowerCase().trim();
+      let changed = false;
+      if (!lower || lower === 'credit' || lower === 'credit card' || lower === 'card spend') {
         const inferred = inferTag(entry);
-        if (inferred) {
+        if (inferred && inferred !== newTag) {
           newTag = inferred;
-          entryChanged = true;
-          count += 1;
+          changed = true;
         }
       }
+      if (isCreditSettlementRow(entry) && !((newTag || '').toLowerCase().includes('credit settlement'))) {
+        newTag = newTag ? `${newTag}, Credit Settlement` : 'Credit Settlement';
+        changed = true;
+      } else if (isCreditCardExpense(entry) && !((newTag || '').toLowerCase().includes('credit swipes'))) {
+        newTag = newTag ? `${newTag}, Credit Swipes` : 'Credit Swipes';
+        changed = true;
+      }
+      return { newTag, changed };
+    };
+
+    const updatedEntries = state.entries.map((entry) => {
+      const { newTag, changed } = upgradeTag(entry);
+      let entryChanged = changed;
+      if (changed) count += 1;
       let updatedDraws = entry.draws;
       if (entry.draws && entry.draws.length > 0 && newTag) {
         const hasUntagged = entry.draws.some((d) => !d.tag || !d.tag.trim());
@@ -2666,16 +2696,9 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     });
 
     const updatedArchived = state.archivedEntries.map((entry) => {
-      let entryChanged = false;
-      let newTag = entry.tag;
-      if (!newTag?.trim()) {
-        const inferred = inferTag(entry);
-        if (inferred) {
-          newTag = inferred;
-          entryChanged = true;
-          count += 1;
-        }
-      }
+      const { newTag, changed } = upgradeTag(entry);
+      let entryChanged = changed;
+      if (changed) count += 1;
       let updatedDraws = entry.draws;
       if (entry.draws && entry.draws.length > 0 && newTag) {
         const hasUntagged = entry.draws.some((d) => !d.tag || !d.tag.trim());
@@ -2687,17 +2710,36 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       return entryChanged ? { ...entry, tag: newTag, draws: updatedDraws } : entry;
     });
 
+    let overridesChanged = false;
+    const updatedOverrides = { ...state.creditSettlementOverrides };
+    Object.entries(updatedOverrides).forEach(([id, override]) => {
+      const tagLower = (override.tag || '').toLowerCase().trim();
+      if (!tagLower || tagLower === 'credit' || tagLower === 'credit card') {
+        updatedOverrides[id] = { ...override, tag: 'Credit Settlement' };
+        overridesChanged = true;
+        count += 1;
+      }
+    });
+
     const updatedInstallments = state.installments.map((installment) => {
       if (installment.tag?.trim()) return installment;
       count += 1;
       return { ...installment, tag: inferTag({ category: installment.name, source: 'installment' }) || 'Installment' };
     });
 
-    if (count > 0) {
+    if (count > 0 || overridesChanged) {
       saveStorage(STORAGE_KEYS.entries, updatedEntries);
       saveStorage(STORAGE_KEYS.archivedEntries, updatedArchived);
       saveStorage(STORAGE_KEYS.installments, updatedInstallments);
-      set({ entries: updatedEntries, archivedEntries: updatedArchived, installments: updatedInstallments });
+      if (overridesChanged) {
+        saveStorage(STORAGE_KEYS.creditSettlementOverrides, updatedOverrides);
+      }
+      set({
+        entries: updatedEntries,
+        archivedEntries: updatedArchived,
+        installments: updatedInstallments,
+        ...(overridesChanged ? { creditSettlementOverrides: updatedOverrides } : {}),
+      });
       scheduleAutoGistSync(get);
     }
     return count;

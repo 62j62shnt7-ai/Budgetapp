@@ -16,9 +16,11 @@ if (typeof globalThis.localStorage === 'undefined') {
 import {
   calculateCreditSettlementDate,
   isCreditCardExpense,
+  isCreditSettlementRow,
   buildCreditDueEntries,
   getCoveredCreditSettlementKeys,
 } from '../src/engine/creditCards.ts';
+import { inferTag } from '../src/engine/tags.ts';
 import {
   buildSalaryEntries,
   buildInstallmentEntries,
@@ -154,6 +156,26 @@ const coveredKeys = getCoveredCreditSettlementKeys([
 assert.ok(coveredKeys.has('cib-2026-06'), 'CIB payment on 2026-06-14 covers 2026-06 cycle');
 assert.ok(coveredKeys.has('hsbc-2026-07'), 'HSBC payment on 2026-07-28 covers 2026-07 cycle');
 console.log('✓ Cross-month credit settlement cycle deduplication keys verified');
+
+// Test CIB & HSBC Credit Due and Credit Swipes Auto-Tagging
+const cibDueEntry = { category: 'CIB Credit Due', account: 'cib', type: 'expense', amount: 3000 };
+const cibDueLegacy = { category: 'Credit Due', account: 'CIB', type: 'expense', amount: 1500 };
+const hsbcDueEntry = { category: 'HSBC Credit Due', account: 'hsbc', type: 'expense', amount: 4500 };
+const cibCardSwipe = { category: 'Smule', account: 'CIB Credit', creditType: 'cib_card', source: 'credit card', type: 'expense', amount: 500 };
+const hsbcCardSwipe = { category: 'Gas', account: 'HSBC Credit', creditType: 'hsbc_card', source: 'credit card', type: 'expense', amount: 200 };
+const genericCardSwipe = { category: 'Market', account: 'cib', source: 'card swipe', type: 'expense', amount: 350 };
+
+assert.strictEqual(inferTag(cibDueEntry), 'Credit Settlement', 'CIB Credit Due infers Credit Settlement');
+assert.strictEqual(inferTag(cibDueLegacy), 'Credit Settlement', 'Legacy CIB Credit Due infers Credit Settlement');
+assert.strictEqual(inferTag(hsbcDueEntry), 'Credit Settlement', 'HSBC Credit Due infers Credit Settlement');
+assert.strictEqual(inferTag(cibCardSwipe), 'Credit Swipes', 'CIB card swipe infers Credit Swipes');
+assert.strictEqual(inferTag(hsbcCardSwipe), 'Credit Swipes', 'HSBC card swipe infers Credit Swipes');
+assert.strictEqual(inferTag(genericCardSwipe), 'Credit Swipes', 'Generic card swipe infers Credit Swipes');
+assert.ok(isCreditSettlementRow(cibDueEntry), 'CIB Credit Due matches isCreditSettlementRow');
+assert.ok(isCreditSettlementRow(hsbcDueEntry), 'HSBC Credit Due matches isCreditSettlementRow');
+assert.ok(isCreditCardExpense(cibCardSwipe), 'CIB card swipe matches isCreditCardExpense');
+assert.ok(isCreditCardExpense(hsbcCardSwipe), 'HSBC card swipe matches isCreditCardExpense');
+console.log('✓ CIB & HSBC Credit Dues and Card Swipes auto-tagging inference verified');
 
 // =========================================================================
 // 5. Date-Stable Installments & Fallback Logic
