@@ -178,7 +178,7 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({
         </article>
       </div>
 
-      <div className="content-grid salary-layout">
+      <div className="content-grid salary-layout deficits-layout">
         {/* Forecast Deficit Timeline */}
         <section className="panel">
           <div className="panel-heading">

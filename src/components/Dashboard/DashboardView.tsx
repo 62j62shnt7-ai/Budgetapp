@@ -354,6 +354,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
   const lowestProjection = getLowestProjectedBalance(allCandidateEntries, totalCash);
   const lowestPoint = lowestProjection.balance;
 
+  // `safeToSpend` stays clamped at 0 so it can never read as a positive budget,
+  // but a zero that hides a negative floor must not be styled as good news.
+  const hasSpendableFloor = lowestPoint > 0;
   const safeToSpend = Math.max(0, lowestPoint);
   const targetCutoffYm = DateUtils.addMonths(DateUtils.todayString(), forecastRangeMonths);
   const [cutoffY, cutoffM] = DateUtils.parseYearMonth(targetCutoffYm);
@@ -366,10 +369,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
   const nextUpcomingEntries = plottedEntryRows.slice(0, 3);
   const nextUpcomingExpense = plottedEntryRows.find((entry) => entry.type === 'expense');
   const nextUpcomingIncome = plottedEntryRows.find((entry) => entry.type === 'income');
+  // Group by category, not subcategory. Grouping on `subcategory || category`
+  // split a category across two rows and made this panel disagree with the
+  // Cashflow "Expense mix", which groups by category — the same label showed two
+  // different totals. Both views now key on `category`.
   const categoryTotals = allCandidateEntries
     .filter((entry) => entry.type === 'expense')
     .reduce<Record<string, number>>((totals, entry) => {
-      const label = entry.subcategory || entry.category || 'Other';
+      const label = entry.category || 'Other';
       totals[label] = (totals[label] || 0) + Number(entry.amount || 0);
       return totals;
     }, {});
@@ -1123,10 +1130,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
           </button>
         </div>
         <div className="dashboard-focus-grid">
-          <div className="dashboard-focus-card dashboard-focus-card--safe">
+          <div className={`dashboard-focus-card ${hasSpendableFloor ? 'dashboard-focus-card--safe' : 'dashboard-focus-card--danger'}`}>
             <span className="dashboard-focus-label">Safe to spend</span>
-            <strong style={{ color: 'var(--green, #10b981)', fontWeight: 800 }}>{formatMoney(safeToSpend)}</strong>
-            <small>Protected by your lowest projected floor</small>
+            <strong style={{ color: hasSpendableFloor ? 'var(--green, #10b981)' : 'var(--red, #f43f5e)', fontWeight: 800 }}>
+              {formatMoney(safeToSpend)}
+            </strong>
+            <small>
+              {hasSpendableFloor
+                ? 'Protected by your lowest projected floor'
+                : `No headroom — projected floor is ${formatMoney(lowestPoint)}`}
+            </small>
           </div>
           <div className={`dashboard-focus-card ${deficits.hasDeficit ? 'dashboard-focus-card--danger' : 'dashboard-focus-card--safe'}`}>
             <span className="dashboard-focus-label">{deficits.hasDeficit ? 'Deficit watch' : 'Forecast status'}</span>
@@ -1435,12 +1448,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
                 {lowestProjection.date ? `Floor: ${DateUtils.formatDisplayDate(lowestProjection.date)}` : 'Lowest cash floor'}
               </small>
             </div>
-            <div className="forecast-kpi-card" style={{ borderColor: 'rgba(16, 185, 129, 0.4)' }}>
-              <span className="forecast-kpi-label" style={{ color: 'var(--green)' }}>Safe to Spend Today</span>
-              <strong className="forecast-kpi-value" id="fLineSafeToSpend" style={{ color: 'var(--green)' }}>
+            <div
+              className="forecast-kpi-card"
+              style={{ borderColor: hasSpendableFloor ? 'rgba(16, 185, 129, 0.4)' : 'rgba(244, 63, 94, 0.4)' }}
+            >
+              <span className="forecast-kpi-label" style={{ color: hasSpendableFloor ? 'var(--green)' : 'var(--red)' }}>Safe to Spend Today</span>
+              <strong className="forecast-kpi-value" id="fLineSafeToSpend" style={{ color: hasSpendableFloor ? 'var(--green)' : 'var(--red)' }}>
                 {formatMoney(safeToSpend)}
               </strong>
-              <small className="forecast-kpi-sub" id="fLineSafeSub">Safe floor: {formatMoney(safeToSpend)}</small>
+              <small className="forecast-kpi-sub" id="fLineSafeSub">
+                {hasSpendableFloor ? `Safe floor: ${formatMoney(safeToSpend)}` : `Floor ${formatMoney(lowestPoint)}`}
+              </small>
             </div>
             <div className="forecast-kpi-card">
               <span className="forecast-kpi-label">Plotted Entries</span>

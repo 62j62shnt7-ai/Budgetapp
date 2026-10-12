@@ -345,8 +345,11 @@ export function getActiveForecastEntries(
 }
 
 // ==========================================================================
-// calculateForecast — matches legacy exactly
-// Uses groupByMonth-based aggregation, opening balance from accounts
+// ==========================================================================
+// calculateForecast
+// Uses groupByMonth-based aggregation, opening balance from accounts.
+// The returned window is exactly [currentYm, currentYm + monthsAhead - 1] — see
+// the clamp below for why months outside it are deliberately excluded.
 // ==========================================================================
 export function calculateForecast(
   entries: CashEntry[],
@@ -362,7 +365,16 @@ export function calculateForecast(
     if (!(ym in months)) months[ym] = 0;
   }
 
-  const ordered = Object.keys(months).sort();
+  // Clamp strictly to [currentYm, currentYm + monthsAhead - 1]. Entries beyond the
+  // requested horizon (long installments, far-future recurring rows) and months
+  // already in the past must not extend the forecast, otherwise `forecast.length`
+  // disagrees with `monthsAhead` and every consumer that derives a date range,
+  // label, or "across N months" statement from it reports the wrong window.
+  const firstYm = currentYm;
+  const lastYm = DateUtils.addMonths(currentYm, Math.max(0, monthsAhead - 1));
+  const ordered = Object.keys(months)
+    .filter((month) => month >= firstYm && month <= lastYm)
+    .sort();
   let running = openingCashBalance;
   const result: MonthlyForecast[] = [];
 
@@ -376,7 +388,13 @@ export function calculateForecast(
       .filter((e) => DateUtils.getMonthKey(e.date) === month && e.type === 'expense')
       .reduce((s, e) => s + (Number(e.amount) || 0), 0);
     running = Math.round((running + net) * 100) / 100;
-    result.push({ month, balance: running, income, expense, net });
+    result.push({
+      month,
+      balance: running,
+      income: Math.round(income * 100) / 100,
+      expense: Math.round(expense * 100) / 100,
+      net: Math.round(net * 100) / 100,
+    });
   });
 
   return result;

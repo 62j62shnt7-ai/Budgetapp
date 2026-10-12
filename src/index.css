@@ -3863,6 +3863,78 @@ input[type="date"]::-webkit-date-and-time-value {
 }
 
 
+/* Deficits: the deficit timeline is far taller than the "Overdue & unpaid"
+   panel, which stretched to match it and left a large dead column. Align the
+   panels to the top of their row and give the timeline the wider share. */
+.deficits-layout {
+  align-items: start !important;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) !important;
+}
+
+@media (max-width: 1023px) {
+  .deficits-layout {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+/* Cash Flow ledger column collapsing (desktop table mode).
+   Measured column costs at 1440px: Date 236 + Category 443 + Account 89 + Type 93
+   + Source 163 + Amount 110 + Actual 190 + actions 138 = 1463px, against a ~1094px
+   container, so Amount/Actual sat off-screen behind a horizontal scroll. Category
+   (the most scannable identity) and both money columns always stay. "Type" is
+   derivable from the signed amount, and "Source" is duplicated by the source pill
+   and the row's detail drawer, so those are the ones that yield.
+   NOTE: `.table-wrap` keeps the `responsive-cards` class at every width (the card
+   layout is applied unconditionally), so these must NOT be gated with
+   `:not(.responsive-cards)` — that combination never matches. */
+@media (min-width: 769px) and (max-width: 1499px) {
+  .cashflow-view .table-wrap .cell-type,
+  .cashflow-view .table-wrap .cell-source {
+    display: none !important;
+  }
+}
+
+@media (min-width: 1500px) and (max-width: 1799px) {
+  .cashflow-view .table-wrap .cell-source {
+    display: none !important;
+  }
+}
+
+/* Progressive table rendering — the table renders a window of rows and this
+   control extends it, keeping long ledgers (a year of forecast rows) from
+   producing a 30,000px page on mobile. */
+.table-load-more {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 12px 4px;
+}
+
+.table-load-more-btn {
+  min-height: 38px;
+}
+
+.table-load-more small {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Let the browser skip layout/paint for rows scrolled out of view.
+   Scoped to the Cashflow ledger, whose rows are uniform in structure, so a fixed
+   intrinsic-size estimate keeps the scrollbar stable. Deliberately NOT applied to
+   History, where nested draw sub-rows have variable heights that opt-in sizing
+   would mis-estimate. */
+.cashflow-view .table-wrap tbody tr {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 48px;
+}
+
+.cashflow-view .table-wrap.responsive-cards tbody tr:not(.history-draws-subrow) {
+  contain-intrinsic-size: auto 118px;
+}
+
 /* ==========================================================================
    Comprehensive Desktop Layout & Polishing (min-width: 769px)
    Strictly isolated to ensure zero impact on mobile UI
@@ -3981,7 +4053,11 @@ input[type="date"]::-webkit-date-and-time-value {
     }
   }
 
-  @media (max-width: 1280px) and (min-width: 769px) {
+  /* "Manage Data" and "Take loan" keep their labels only once the whole action
+     row genuinely fits. Measured: the row needs ~1077px of content, which the
+     topbar only supplies at >=1600px viewport. At 1281-1540px their labels pushed
+     "+ Income" and "+ Expense" — the two primary actions — past the right edge. */
+  @media (max-width: 1599px) and (min-width: 769px) {
     .top-actions-operations #openDataToolsBtn .topbar-btn-label,
     .top-actions-operations #addLoanBtn .topbar-btn-label {
       display: none !important;

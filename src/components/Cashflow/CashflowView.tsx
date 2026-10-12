@@ -670,32 +670,43 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     });
   });
 
-  const totalIncome = forecastRows
-    .filter((e) => (!dateFrom || e.date >= dateFrom) && (!dateTo || e.date <= dateTo))
-    .filter((e) => e.type === 'income')
-    .reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  // Summarise exactly the rows the table renders. Deriving these from the
+  // unfiltered candidate list made the cards report the whole ledger's date span
+  // and totals while the table (and the forecast window) showed a shorter period.
+  const totalIncome = filteredIncome;
+  const totalExpenses = filteredExpenses;
+  const netPeriod = filteredNet;
 
-  const totalExpenses = forecastRows
-    .filter((e) => (!dateFrom || e.date >= dateFrom) && (!dateTo || e.date <= dateTo))
-    .filter((e) => e.type === 'expense')
-    .reduce((s, e) => s + (Number(e.amount) || 0), 0);
-
-  const netPeriod = totalIncome - totalExpenses;
-  const summaryRows = forecastRows.filter((e) => (!dateFrom || e.date >= dateFrom) && (!dateTo || e.date <= dateTo));
+  // Count and date span describe the forecast rows themselves, not the synthetic
+  // opening-balance rows (which are always dated today and would skew the range).
+  const summaryRows = filteredForecastRows;
   const summaryDates = summaryRows.map((e) => e.date).filter(Boolean).sort();
   const summaryRange = summaryDates.length
     ? `${summaryDates[0]} to ${summaryDates[summaryDates.length - 1]}`
     : 'No entries';
 
-  // Expense Mix grouping
+  // Expense Mix grouping — same row set the table renders, grouped by category so
+  // it reconciles with the Dashboard's category breakdown.
   const expensesByCategory: Record<string, number> = {};
-  forecastRows
-    .filter((e) => (!dateFrom || e.date >= dateFrom) && (!dateTo || e.date <= dateTo))
+  filteredForecastRows
     .filter((e) => e.type === 'expense')
     .forEach((e) => {
       const cat = e.category || 'Other';
       expensesByCategory[cat] = (expensesByCategory[cat] || 0) + (Number(e.amount) || 0);
     });
+
+  // Progressive rendering. A year of forecast rows is ~120 rows, and on mobile the
+  // responsive "cards" layout makes each row ~112px tall, so rendering every row put
+  // the page at ~30,000px (about 37 phone screens). Render a window and let the user
+  // extend it, keeping the initial page shallow.
+  const CASHFLOW_PAGE_SIZE = 50;
+  // Keyed by the active filter set so that changing a filter (or navigating in with a
+  // new intent) starts from a short page again instead of carrying an expanded count.
+  const rowWindowKey = `${selectedMonth}|${typeFilter}|${categoryFilter}|${selectedAccount}|${selectedTag}|${searchTerm}|${dateFrom}|${dateTo}`;
+  const [rowWindow, setRowWindow] = useState({ key: '', count: CASHFLOW_PAGE_SIZE });
+  const visibleRowCount = rowWindow.key === rowWindowKey ? rowWindow.count : CASHFLOW_PAGE_SIZE;
+  const renderedRows = allDisplayRows.slice(0, visibleRowCount);
+  const hasMoreRows = allDisplayRows.length > renderedRows.length;
 
   const salaryQuarterTotal = salaryPattern.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 
@@ -1198,15 +1209,15 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                 <th>Date</th>
                 <th>Category</th>
                 <th>Account</th>
-                <th>Type</th>
-                <th>Source</th>
+                <th className="cell-type">Type</th>
+                <th className="cell-source">Source</th>
                 <th className="number">Amount</th>
                 <th className="number" style={{ minWidth: '190px' }}>Actual</th>
                 <th style={{ width: '120px', minWidth: '120px' }}></th>
               </tr>
             </thead>
             <tbody>
-              {allDisplayRows.map((e) => {
+              {renderedRows.map((e) => {
                 const isOpening = e.source === 'starting balance';
                 const isLoan = (e.source || '').toLowerCase().includes('loan') || (e.category || '').toLowerCase().includes('loan');
                 const isCreditSettlement = (e.source || '').toLowerCase().includes('credit') || (e.id && e.id.startsWith('credit-settlement-'));
@@ -1642,6 +1653,20 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
               })}
             </tbody>
           </table>
+          {hasMoreRows && (
+            <div className="table-load-more">
+              <button
+                type="button"
+                className="ghost-button table-load-more-btn"
+                onClick={() => setRowWindow({ key: rowWindowKey, count: visibleRowCount + CASHFLOW_PAGE_SIZE })}
+              >
+                Show {Math.min(CASHFLOW_PAGE_SIZE, allDisplayRows.length - renderedRows.length)} more
+              </button>
+              <small>
+                Showing {renderedRows.length} of {allDisplayRows.length} entries
+              </small>
+            </div>
+          )}
         </div>
       </section>
 
