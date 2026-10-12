@@ -3,7 +3,7 @@ import { inferTag, useBudgetStore } from '../../store/useBudgetStore';
 import { calculateCreditSettlementDate, getCreditCycleHint } from '../../engine/creditCards';
 import { getCurrencyRate, formatNativeCurrency } from '../../engine/currency';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
-import { getEntryActualAmount } from '../../engine/forecast';
+import { getEntryActualAmount, isLoanInflow, findLinkedLoanRepayment, calculateLoanRepaymentScale } from '../../engine/forecast';
 import type { CashEntry, EntryDraw } from '../../types';
 import { AffectedRecordsModal, type AffectedPartyOption } from './AffectedRecordsModal';
 
@@ -29,8 +29,10 @@ export const EntryModal: React.FC<EntryModalProps> = ({
   const dialogRef = useRef<HTMLDialogElement>(null);
   const {
     entries,
+    installments,
     addEntry,
     updateEntry,
+    updateInstallment,
     recordActual,
     clearActual,
     updateCreditSettlementOverride,
@@ -758,13 +760,40 @@ export const EntryModal: React.FC<EntryModalProps> = ({
                   ? Math.round(inputActual * fxRate) || currentActualEgp
                   : inputActual || currentActualEgp;
 
-                updateEntry(entryToEdit.id, {
-                  isClosed: true,
-                  keepOngoing: false,
-                  actualAmount: finalActualEgp > 0 ? finalActualEgp : undefined,
-                  amount: finalActualEgp > 0 ? finalActualEgp : entryToEdit.amount,
+                const targetEntry = activeEntry || entryToEdit;
+                const baseDisbursement = Number(targetEntry.initialAmount || targetEntry.amount || 0);
+
+                runTransaction(`Finish Entry: ${targetEntry.category}`, () => {
+                  updateEntry(
+                    entryToEdit.id,
+                    {
+                      isClosed: true,
+                      keepOngoing: false,
+                      actualAmount: finalActualEgp > 0 ? finalActualEgp : undefined,
+                      amount: finalActualEgp > 0 ? finalActualEgp : entryToEdit.amount,
+                      initialAmount: baseDisbursement,
+                    },
+                    'single',
+                    { skipLoanScaling: true }
+                  );
+                  settleJobForecastPayment(entryToEdit.id, finalActualEgp, true);
+
+                  if (isLoanInflow(targetEntry)) {
+                    const linked = findLinkedLoanRepayment(targetEntry, entries, installments);
+                    if (linked) {
+                      const scaleCalc = calculateLoanRepaymentScale(targetEntry, linked, finalActualEgp);
+                      if (scaleCalc) {
+                        if (linked.type === 'single') {
+                          const baseRep = Number(linked.target.initialAmount || linked.target.amount || 0);
+                          updateEntry(linked.target.id, { amount: scaleCalc.scaledAmount, initialAmount: baseRep });
+                        } else {
+                          const baseRep = Number(linked.target.initialAmount || linked.target.amount || 0);
+                          updateInstallment(linked.target.id, { amount: scaleCalc.scaledAmount, initialAmount: baseRep });
+                        }
+                      }
+                    }
+                  }
                 });
-                settleJobForecastPayment(entryToEdit.id, finalActualEgp, true);
                 onClose();
               }}
             >

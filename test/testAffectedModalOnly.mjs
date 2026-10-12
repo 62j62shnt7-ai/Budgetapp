@@ -908,8 +908,114 @@ console.log('  ✓ buildEntryDeleteOptions calculates and displays exact count o
 console.log('  ✓ deleting actualized history entry treats it as individual record without series scope cascade');
 console.log('  ✓ deleteEntry with seriesMode: "future" deletes calculated future subset accurately\n');
 
+// -------------------------------------------------------------
+// SCENARIO 20: Non-Deposited Entry/Draws Exclude Bank & Storage Revert Option
+// -------------------------------------------------------------
+console.log('▶ Test Scenario 20: Non-Deposited Entry/Draws Exclude Bank & Storage Revert Option');
+
+const nonDepositedEntry = {
+  id: 'e-loan-inflow-no-deposit',
+  date: '2026-10-01',
+  category: 'Loan Inflow: Cash Draw',
+  amount: 25000,
+  type: 'income',
+  account: 'none', // Not deposited to any bank account
+  draws: [
+    { id: 'draw-1', date: '2026-10-01', amount: 25000, account: 'none' },
+  ],
+};
+
+const noDepositAccountsCtx = {
+  cib: { name: 'CIB Current', balance: 50000, maturityDay: 1 },
+  hsbc: { name: 'HSBC Savings', balance: 25000, maturityDay: 1 },
+};
+
+const deleteOptionsNoDeposit = buildEntryDeleteOptions(nonDepositedEntry, {
+  installments: [],
+  storageAssets: [],
+  partTimeJobs: [],
+  asfJobs: [],
+  irqJobs: [],
+  accounts: noDepositAccountsCtx,
+  entryActuals: { 'e-loan-inflow-no-deposit': 25000 },
+});
+
+const bankOptNoDeposit = deleteOptionsNoDeposit.options.find((o) => o.id === 'storage');
+assert.strictEqual(bankOptNoDeposit, undefined, 'Bank account refund option must NOT be present when money was not deposited to an account');
+
+const clearOptionsNoDeposit = buildEntryClearOptions(nonDepositedEntry, {
+  installments: [],
+  storageAssets: [],
+  partTimeJobs: [],
+  asfJobs: [],
+  irqJobs: [],
+  accounts: noDepositAccountsCtx,
+  entryActuals: { 'e-loan-inflow-no-deposit': 25000 },
+});
+
+const bankClearNoDeposit = clearOptionsNoDeposit.options.find((o) => o.id === 'storage');
+assert.strictEqual(bankClearNoDeposit, undefined, 'Bank account refund option must NOT be present on clear actual when money was not deposited');
+
+console.log('  ✓ If draw/entry was not deposited to an account, bank/storage revert option is cleanly omitted\n');
+
+// -------------------------------------------------------------
+// SCENARIO 21: Deleting Loan Inflow Offers to Delete Single Repayment Entry
+// -------------------------------------------------------------
+console.log('▶ Test Scenario 21: Deleting Loan Inflow Offers to Delete Single Repayment Entry');
+
+const singleLoanInflow = {
+  id: 'loan-inflow-single-1',
+  date: '2026-10-05',
+  category: 'Loan Inflow: Fast Capital',
+  amount: 40000,
+  type: 'income',
+  account: 'cib',
+  loanId: 'loan-fast-capital',
+};
+
+const singleLoanRepayment = {
+  id: 'loan-repayment-single-1',
+  date: '2026-11-05',
+  category: 'Loan Repayment: Fast Capital',
+  amount: 42000,
+  type: 'expense',
+  account: 'cib',
+  loanId: 'loan-fast-capital',
+};
+
+const deleteOptionsWithSingleRepayment = buildEntryDeleteOptions(singleLoanInflow, {
+  installments: [],
+  storageAssets: [],
+  partTimeJobs: [],
+  asfJobs: [],
+  irqJobs: [],
+  accounts: accountsCtx,
+  entries: [singleLoanInflow, singleLoanRepayment],
+});
+
+const loanRepaymentOpt = deleteOptionsWithSingleRepayment.options.find((o) => o.id === 'loan');
+assert.ok(loanRepaymentOpt, 'Linked loan repayment option is present for single repayment expense entry');
+assert.ok(loanRepaymentOpt.label.includes('Fast Capital'), 'Label displays linked repayment name');
+assert.strictEqual(loanRepaymentOpt.defaultChecked, true, 'Default checked is true');
+
+// Verify store deleteEntry removes single repayment entry when option is checked
+useBudgetStore.setState({
+  entries: [singleLoanInflow, singleLoanRepayment],
+  archivedEntries: [],
+  installments: [],
+  entryActuals: {},
+  entryActualDates: {},
+});
+
+useBudgetStore.getState().deleteEntry(singleLoanInflow.id, 'single', { deleteLinkedLoan: true });
+const remainingStoreEntries = useBudgetStore.getState().entries;
+assert.strictEqual(remainingStoreEntries.length, 0, 'Both loan inflow and single linked repayment entry are cleanly deleted');
+
+console.log('  ✓ Deleting loan inflow resolves single repayment entry and cascades deletion when confirmed\n');
+
 console.log('===============================================================');
 console.log('🌟 100% OF ALL AFFECTED RECORDS MODAL TESTS PASSED! 🌟');
 console.log('===============================================================');
+
 
 

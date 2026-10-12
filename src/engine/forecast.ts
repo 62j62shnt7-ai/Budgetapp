@@ -93,11 +93,14 @@ export function getEntryId(entry: CashEntry): string {
   return entry.id || `${entry.date}-${entry.category}-${entry.amount}-${entry.type}-${entry.account || 'cash'}`;
 }
 
-// --- isLoanInflow (matches legacy) ---
+// --- isLoanInflow ---
 export function isLoanInflow(entry: CashEntry): boolean {
-  if (!entry) return false;
-  const isLoan = entry.source === 'loan' || (entry.category && /loan/i.test(entry.category));
-  return Boolean(isLoan && entry.type === 'income');
+  if (!entry || entry.type !== 'income') return false;
+  if (entry.loanId) return true;
+  const src = (entry.source || '').toLowerCase();
+  const cat = (entry.category || '').toLowerCase();
+  const tag = (entry.tag || '').toLowerCase();
+  return src.includes('loan') || cat.includes('loan') || tag.includes('loan');
 }
 
 // --- isOngoingEntry (matches legacy) ---
@@ -119,7 +122,7 @@ export function isOngoingEntry(
   return false;
 }
 
-// --- findLinkedLoanRepayment (matches legacy lines 6974-7014) ---
+// --- findLinkedLoanRepayment ---
 export function findLinkedLoanRepayment(
   inflowEntry: CashEntry,
   entries: CashEntry[],
@@ -130,85 +133,125 @@ export function findLinkedLoanRepayment(
   // 1. Check by explicit loanId
   if (inflowEntry.loanId) {
     const singleRepayment = entries.find(
-      (e) => e.loanId === inflowEntry.loanId && e.type === 'expense'
+      (e) => (e.loanId === inflowEntry.loanId || e.id === inflowEntry.loanId) && e.type === 'expense'
     );
     if (singleRepayment) {
       return { type: 'single', target: singleRepayment };
     }
     const installmentRepayment = installments.find(
-      (inst) => inst.loanId === inflowEntry.loanId
+      (inst) => inst.loanId === inflowEntry.loanId || inst.id === inflowEntry.loanId
     );
     if (installmentRepayment) {
       return { type: 'installment', target: installmentRepayment };
     }
   }
 
-  // 2. Fallback check by name: "Loan Inflow: <Name>" <-> "Loan Repayment: <Name>"
+  // 2. Check if inflowEntry.id is referenced as loanId
+  const singleByInflowId = entries.find(
+    (e) => e.loanId === inflowEntry.id && e.type === 'expense'
+  );
+  if (singleByInflowId) {
+    return { type: 'single', target: singleByInflowId };
+  }
+  const instByInflowId = installments.find(
+    (inst) => inst.loanId === inflowEntry.id
+  );
+  if (instByInflowId) {
+    return { type: 'installment', target: instByInflowId };
+  }
+
+  // 3. Fallback check by name matching
   const inflowCat = (inflowEntry.category || '').trim();
-  if (inflowCat.toLowerCase().startsWith('loan inflow:')) {
-    const loanName = inflowCat.replace(/^loan inflow:\s*/i, '').trim();
-    if (loanName) {
-      const expectedRepaymentCat = `loan repayment: ${loanName}`.toLowerCase();
-      const singleRepayment = entries.find(
-        (e) => (e.category || '').trim().toLowerCase() === expectedRepaymentCat && e.type === 'expense'
+  const cleanLoanName = inflowCat
+    .replace(/^(loan\s*inflow|bridge\s*loan|loan)\s*:\s*/i, '')
+    .trim()
+    .toLowerCase();
+
+  if (cleanLoanName) {
+    const singleRepayment = entries.find((e) => {
+      if (e.type !== 'expense') return false;
+      const cat = (e.category || '').toLowerCase();
+      return (
+        cat === `loan repayment: ${cleanLoanName}` ||
+        cat === `${cleanLoanName} repayment` ||
+        (cat.includes('repayment') && cat.includes(cleanLoanName)) ||
+        (cat.includes('loan') && cat.includes(cleanLoanName))
       );
-      if (singleRepayment) {
-        return { type: 'single', target: singleRepayment };
-      }
-      const installmentRepayment = installments.find(
-        (inst) =>
-          (inst.name || '').trim().toLowerCase() === expectedRepaymentCat ||
-          (inst.name || '').trim().toLowerCase() === `${loanName} repayment`.toLowerCase()
+    });
+    if (singleRepayment) {
+      return { type: 'single', target: singleRepayment };
+    }
+
+    const installmentRepayment = installments.find((inst) => {
+      const name = (inst.name || '').toLowerCase();
+      return (
+        name === `loan repayment: ${cleanLoanName}` ||
+        name === `${cleanLoanName} repayment` ||
+        (name.includes('repayment') && name.includes(cleanLoanName)) ||
+        (name.includes('loan') && name.includes(cleanLoanName))
       );
-      if (installmentRepayment) {
-        return { type: 'installment', target: installmentRepayment };
-      }
+    });
+    if (installmentRepayment) {
+      return { type: 'installment', target: installmentRepayment };
     }
   }
 
   return null;
 }
 
-// --- calculateLoanRepaymentScale (matches legacy lines 7035-7071) ---
+export interface LoanRepaymentScaleResult {
+  scaledAmount: number;
+  currentAmount: number;
+  months?: number;
+  isScaleUp: boolean;
+  baseDisbursement: number;
+  baseRepaymentTotal: number;
+  ratio: number;
+}
+
+// --- calculateLoanRepaymentScale ---
 export function calculateLoanRepaymentScale(
   inflowEntry: CashEntry,
   linked: { type: 'single'; target: CashEntry } | { type: 'installment'; target: Installment },
   totalDrawn: number
-): { scaledAmount: number; currentAmount: number; months?: number } | null {
-  const plannedLoan = Number(inflowEntry.amount || 0);
-  if (plannedLoan <= 0 || totalDrawn <= 0) return null;
+): LoanRepaymentScaleResult | null {
+  const baseDisbursement = Number(inflowEntry.initialAmount || inflowEntry.amount || 0);
+  if (baseDisbursement <= 0 || totalDrawn < 0) return null;
 
   const isSingle = linked.type === 'single';
   const currentRepAmount = Number(linked.target.amount || 0);
-  let baselineTotal = 0;
+  let baseRepaymentTotal = 0;
   let months = 1;
 
   if (isSingle) {
     const storedInitial = Number(linked.target.initialAmount || 0);
-    if (storedInitial > 0) {
-      baselineTotal = storedInitial;
-    } else {
-      baselineTotal = Math.max(currentRepAmount, plannedLoan);
-    }
+    baseRepaymentTotal = storedInitial > 0 ? storedInitial : Math.max(currentRepAmount, baseDisbursement);
   } else {
     months = Number(linked.target.totalMonths || linked.target.remainingMonths || 1);
     const storedInitial = Number(linked.target.initialAmount || 0);
-    if (storedInitial > 0) {
-      baselineTotal = storedInitial * months;
-    } else {
-      baselineTotal = Math.max(currentRepAmount * months, plannedLoan);
-    }
+    baseRepaymentTotal = storedInitial > 0 ? storedInitial * months : Math.max(currentRepAmount * months, baseDisbursement);
   }
 
-  const markup = Math.max(1, baselineTotal / plannedLoan);
-  const scaledTotal = Math.round(totalDrawn * markup);
-  const scaledAmount = isSingle ? scaledTotal : Math.max(1, Math.round(scaledTotal / months));
+  // Ratio of drawn funds to original planned facility
+  const ratio = totalDrawn / baseDisbursement;
+  const scaledTotal = Math.round(baseRepaymentTotal * ratio);
+  const scaledAmount = isSingle
+    ? scaledTotal
+    : (totalDrawn === 0 ? 0 : Math.max(1, Math.round(scaledTotal / months)));
 
   if (scaledAmount === currentRepAmount) {
     return null;
   }
 
-  return { scaledAmount, currentAmount: currentRepAmount, months: isSingle ? undefined : months };
+  return {
+    scaledAmount,
+    currentAmount: currentRepAmount,
+    months: isSingle ? undefined : months,
+    isScaleUp: totalDrawn > baseDisbursement,
+    baseDisbursement,
+    baseRepaymentTotal,
+    ratio,
+  };
 }
 
 // --- groupByMonth (matches legacy) ---

@@ -2,12 +2,17 @@ import type { CashEntry, Installment, StorageAsset, JobItem, JobPayment, Account
 import type { AffectedRecordOption } from '../components/Modals/AffectedRecordsModal';
 import { formatMoney, DateUtils } from '../engine/dateUtils';
 import { formatNativeCurrency } from '../engine/currency';
+import { findLinkedLoanRepayment } from '../engine/forecast';
 
 export interface EntryDeleteAffectedData {
   itemDescription: string;
   amountFormatted: string;
   options: AffectedRecordOption[];
 }
+
+export type ResolvedLinkedLoanRepayment =
+  | { type: 'installment'; target: Installment; id: string; name: string }
+  | { type: 'single'; target: CashEntry; id: string; name: string };
 
 // --- Shared installment-occurrence / linked-loan resolution ------------------------
 // These are used both when building the "affected records" checkbox list (what the
@@ -49,14 +54,34 @@ export function findLinkedInstallmentByNameOrId(
   });
 }
 
-// Resolves the installment that should be treated as this entry's "Linked Loan
-// Repayment" — an income entry whose loanId (or, failing that, name-match) points
-// at a debt/loan installment, as opposed to an expense entry that's itself an
-// installment occurrence (which is handled separately via installment_plan).
+// Resolves the linked loan repayment record (installment or single expense entry)
+// for this loan entry.
 export function resolveLinkedLoan(
   entry: CashEntry,
-  installments: Installment[]
-): Installment | undefined {
+  installments: Installment[],
+  entries?: CashEntry[]
+): ResolvedLinkedLoanRepayment | undefined {
+  if (entries && entries.length > 0) {
+    const linked = findLinkedLoanRepayment(entry, entries, installments);
+    if (linked) {
+      if (linked.type === 'installment') {
+        return {
+          type: 'installment',
+          target: linked.target,
+          id: linked.target.id,
+          name: linked.target.name,
+        };
+      } else {
+        return {
+          type: 'single',
+          target: linked.target,
+          id: linked.target.id,
+          name: linked.target.category || 'Loan Repayment',
+        };
+      }
+    }
+  }
+
   const linkedInstallment = findLinkedInstallmentByNameOrId(entry, installments);
   const isInstallmentOccurrence = isInstallmentOccurrenceEntry(entry, linkedInstallment);
 
@@ -64,7 +89,32 @@ export function resolveLinkedLoan(
     ? installments.find((i) => i.id === entry.loanId || i.loanId === entry.loanId)
     : undefined;
 
-  return byLoanId || (!isInstallmentOccurrence ? linkedInstallment : undefined);
+  const resolvedInst = byLoanId || (!isInstallmentOccurrence ? linkedInstallment : undefined);
+  if (resolvedInst) {
+    return {
+      type: 'installment',
+      target: resolvedInst,
+      id: resolvedInst.id,
+      name: resolvedInst.name,
+    };
+  }
+
+  // Also check if entry.loanId or entry.id matches a single expense entry in entries if provided
+  if (entries && (entry.loanId || entry.id)) {
+    const single = entries.find(
+      (e) => e.type === 'expense' && (e.loanId === entry.loanId || e.loanId === entry.id || e.id === entry.loanId)
+    );
+    if (single) {
+      return {
+        type: 'single',
+        target: single,
+        id: single.id,
+        name: single.category || 'Loan Repayment',
+      };
+    }
+  }
+
+  return undefined;
 }
 
 export function buildEntryDeleteOptions(
@@ -121,7 +171,7 @@ export function buildEntryDeleteOptions(
     (entry.frequency && entry.frequency.trim() !== '')
   );
 
-  const linkedLoan = resolveLinkedLoan(entry, context.installments);
+  const linkedLoan = resolveLinkedLoan(entry, context.installments, context.entries);
 
   const allJobs = [
     ...(context.partTimeJobs || []),
@@ -239,6 +289,20 @@ export function buildEntryDeleteOptions(
 
   const targetAccount = (entry.account || '').trim().toLowerCase();
   const currUpper = (entry.currency || 'EGP').toUpperCase();
+
+  // If entry or its recorded draws were not deposited/deducted from any account
+  // (e.g. user selected "Don't deposit", or account is 'none', 'unassigned', or unbanked 'cash'),
+  // don't offer bank account or storage refund/revert options.
+  const isNonDepositAccount = (acc?: string) => {
+    if (!acc) return true;
+    const clean = acc.trim().toLowerCase();
+    return clean === '' || clean === 'none' || clean === 'unassigned' || clean === 'cash' || clean === 'don\'t deposit' || clean === 'dont deposit';
+  };
+
+  const hasTransactedDrawAccount = entry.draws && entry.draws.length > 0
+    ? entry.draws.some((d) => !isNonDepositAccount(d.account) || Boolean(d.storageAssetId))
+    : !isNonDepositAccount(entry.account) || Boolean(entry.storageAssetId);
+
   const matchingStorage = (context.storageAssets || []).find((a) => {
     if (!isFxConversion && entry.storageAssetId && a.id === entry.storageAssetId) return true;
     if (a.name.trim().toLowerCase() === targetAccount) return true;
@@ -247,7 +311,7 @@ export function buildEntryDeleteOptions(
     return false;
   });
 
-  if (hasActualMoneyTransacted) {
+  if (hasActualMoneyTransacted && hasTransactedDrawAccount) {
     const actualFormatted = isForeign
       ? `${formatNativeCurrency(entry.fxRateAtEntry ? Math.round((actualAmount / entry.fxRateAtEntry) * 100) / 100 : (entry.originalAmount || actualAmount), entry.currency)} (≈ ${formatMoney(actualAmount)})`
       : formatMoney(actualAmount);
@@ -641,7 +705,18 @@ export function buildEntryClearOptions(
     return false;
   });
 
+  const isNonDepositAccount = (acc?: string) => {
+    if (!acc) return true;
+    const clean = acc.trim().toLowerCase();
+    return clean === '' || clean === 'none' || clean === 'unassigned' || clean === 'cash' || clean === 'don\'t deposit' || clean === 'dont deposit';
+  };
+
+  const hasTransactedDrawAccount = entry.draws && entry.draws.length > 0
+    ? entry.draws.some((d) => !isNonDepositAccount(d.account) || Boolean(d.storageAssetId))
+    : !isNonDepositAccount(entry.account) || Boolean(entry.storageAssetId);
+
   if (
+    hasTransactedDrawAccount &&
     matchingStorage &&
     (isForeign ||
       targetAccount.includes('storage') ||
@@ -669,7 +744,7 @@ export function buildEntryClearOptions(
       badge: entry.type === 'expense' ? 'Storage Refund' : 'Storage',
       defaultChecked: true,
     });
-  } else if (!isForeign && context.accounts) {
+  } else if (hasTransactedDrawAccount && !isForeign && context.accounts) {
     const matchingAccountKey = Object.keys(context.accounts).find(
       (k) => k.toLowerCase() === targetAccount || (context.accounts![k]?.name || '').toLowerCase().trim() === targetAccount
     );

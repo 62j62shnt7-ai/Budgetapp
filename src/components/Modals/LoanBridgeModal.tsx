@@ -19,11 +19,13 @@ export const LoanBridgeModal: React.FC<LoanBridgeModalProps> = ({ isOpen, onClos
   // Single repayment fields
   const [dueDate, setDueDate] = useState<string>(() => DateUtils.formatDateObj(new Date(Date.now() + 30 * 86400000)));
   const [repaymentAmount, setRepaymentAmount] = useState<string>('');
+  const [isRepaymentManual, setIsRepaymentManual] = useState<boolean>(false);
 
   // Installment repayment fields
   const [installmentMonths, setInstallmentMonths] = useState<number>(6);
   const [installmentStartMonth, setInstallmentStartMonth] = useState<string>(() => DateUtils.addMonths(DateUtils.currentYearMonth(), 1));
   const [installmentAmount, setInstallmentAmount] = useState<string>('');
+  const [isInstallmentManual, setIsInstallmentManual] = useState<boolean>(false);
   const [installmentDay, setInstallmentDay] = useState<number>(15);
 
   if (!isOpen) return null;
@@ -125,10 +127,13 @@ export const LoanBridgeModal: React.FC<LoanBridgeModalProps> = ({ isOpen, onClos
               required
               value={amount}
               onChange={(e) => {
-                setAmount(e.target.value);
-                if (!repaymentAmount) setRepaymentAmount(e.target.value);
-                if (!installmentAmount && installmentMonths > 0) {
-                  setInstallmentAmount(String(Math.round(Number(e.target.value) / installmentMonths)));
+                const val = e.target.value;
+                setAmount(val);
+                if (!isRepaymentManual) {
+                  setRepaymentAmount(val);
+                }
+                if (!isInstallmentManual && installmentMonths > 0) {
+                  setInstallmentAmount(val ? String(Math.round(Number(val) / installmentMonths)) : '');
                 }
               }}
             />
@@ -236,7 +241,12 @@ export const LoanBridgeModal: React.FC<LoanBridgeModalProps> = ({ isOpen, onClos
                   step="1"
                   placeholder="Principal + interest"
                   value={repaymentAmount}
-                  onChange={(e) => setRepaymentAmount(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setRepaymentAmount(val);
+                    // If cleared, allow re-syncing with amount, otherwise mark manual
+                    setIsRepaymentManual(val !== '' && val !== amount);
+                  }}
                   required
                 />
               </label>
@@ -255,7 +265,7 @@ export const LoanBridgeModal: React.FC<LoanBridgeModalProps> = ({ isOpen, onClos
                     onChange={(e) => {
                       const m = Number(e.target.value) || 6;
                       setInstallmentMonths(m);
-                      if (amount) {
+                      if (!isInstallmentManual && amount) {
                         setInstallmentAmount(String(Math.round(Number(amount) / m)));
                       }
                     }}
@@ -282,7 +292,12 @@ export const LoanBridgeModal: React.FC<LoanBridgeModalProps> = ({ isOpen, onClos
                     min="1"
                     step="1"
                     value={installmentAmount}
-                    onChange={(e) => setInstallmentAmount(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setInstallmentAmount(val);
+                      const autoVal = installmentMonths > 0 && amount ? String(Math.round(Number(amount) / installmentMonths)) : '';
+                      setIsInstallmentManual(val !== '' && val !== autoVal);
+                    }}
                     required
                   />
                 </label>

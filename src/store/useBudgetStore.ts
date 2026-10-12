@@ -159,9 +159,8 @@ export interface BudgetStoreState {
   clearPendingNavigation: () => void;
   toggleSidebar: () => void;
   closeMobileSidebar: () => void;
-
   addEntry: (entry: Omit<CashEntry, 'id'>) => string;
-  updateEntry: (id: string, updates: Partial<CashEntry>, seriesMode?: 'single' | 'future') => void;
+  updateEntry: (id: string, updates: Partial<CashEntry>, seriesMode?: 'single' | 'future', options?: { skipLoanScaling?: boolean }) => void;
   deleteEntry: (id: string, seriesMode?: 'single' | 'future', options?: { deleteLinkedLoan?: boolean; deleteInstallmentPlan?: boolean; revertStorage?: boolean; storageAssetId?: string; syncJob?: boolean; restoreForeignAsset?: boolean }) => void;
   recordActual: (entryId: string, amount: number, date?: string, drawMeta?: { note?: string; tag?: string; account?: string }) => void;
   clearActual: (entryId: string, options?: { revertStorage?: boolean; storageAssetId?: string; syncJob?: boolean; keepDraws?: boolean }) => void;
@@ -577,7 +576,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     });
   },
 
-  updateEntry: (id, updates, seriesMode = 'single') => {
+  updateEntry: (id, updates, seriesMode = 'single', options) => {
     const existing = get().entries.find((e) => e.id === id) || get().archivedEntries.find((e) => e.id === id);
     const label = id.startsWith('credit-settlement-')
       ? 'Update Credit Settlement'
@@ -662,6 +661,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     const updatedEntry = updated.find((e) => e.id === id);
     let finalEntries = updated;
     if (
+      !options?.skipLoanScaling &&
       current &&
       updatedEntry &&
       current.type === 'income' &&
@@ -671,14 +671,11 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     ) {
       const baseDisbursement = Number(current.initialAmount || current.amount || 1);
       const ratio = Number(updates.amount) / baseDisbursement;
-      const shouldScale = typeof window === 'undefined' || window.confirm(
-        'This loan disbursement has a linked repayment. Scale the repayment to match the new disbursement amount?'
-      );
       finalEntries = updated.map((entry) => {
         if (entry.id === id) {
           return { ...entry, initialAmount: baseDisbursement };
         }
-        if (shouldScale && entry.loanId === current.loanId && entry.type === 'expense') {
+        if (entry.loanId === current.loanId && entry.type === 'expense') {
           const baseRepayment = Number(entry.initialAmount || entry.amount);
           return {
             ...entry,
@@ -689,22 +686,20 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         return entry;
       });
 
-      if (shouldScale) {
-        const updatedInstallments = get().installments.map((inst) => {
-          if (inst.loanId === current.loanId || inst.id === current.loanId) {
-            const baseRep = Number(inst.initialAmount || inst.amount);
-            return {
-              ...inst,
-              amount: Math.round(baseRep * ratio),
-              initialAmount: baseRep,
-            };
-          }
-          return inst;
-        });
-        if (updatedInstallments !== get().installments) {
-          saveStorage(STORAGE_KEYS.installments, updatedInstallments);
-          set({ installments: updatedInstallments });
+      const updatedInstallments = get().installments.map((inst) => {
+        if (inst.loanId === current.loanId || inst.id === current.loanId) {
+          const baseRep = Number(inst.initialAmount || inst.amount);
+          return {
+            ...inst,
+            amount: Math.max(1, Math.round(baseRep * ratio)),
+            initialAmount: baseRep,
+          };
         }
+        return inst;
+      });
+      if (updatedInstallments !== get().installments) {
+        saveStorage(STORAGE_KEYS.installments, updatedInstallments);
+        set({ installments: updatedInstallments });
       }
     }
     saveStorage(STORAGE_KEYS.entries, finalEntries);
@@ -758,9 +753,9 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
 
     // 2. Handle linked loans & installment plans
     // Resolved the same way buildEntryDeleteOptions resolves it (loanId match, falling
-    // back to name-matching against installments), so the "Linked Loan Repayment"
+    // back to name-matching against installments or single entries), so the "Linked Loan Repayment"
     // checkbox never appears without a matching action, or vice versa.
-    const resolvedLinkedLoan = target ? resolveLinkedLoan(target, get().installments) : undefined;
+    const resolvedLinkedLoan = target ? resolveLinkedLoan(target, get().installments, get().entries) : undefined;
     // Prefer the entry's own loanId (used to match other entries sharing the same loan)
     // when present; otherwise fall back to the resolved installment's id (name-matched
     // case, where no other entries are expected to carry that loanId anyway).
@@ -770,11 +765,20 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     );
     const shouldDeleteInstallmentPlan = Boolean(options?.deleteInstallmentPlan);
     if (shouldDeleteLinked && linkedLoanId) {
-      updatedEntries = updatedEntries.filter((e) => e.loanId !== linkedLoanId);
-      updatedArchived = updatedArchived.filter((e) => e.loanId !== linkedLoanId);
+      updatedEntries = updatedEntries.filter(
+        (e) => e.loanId !== linkedLoanId && e.id !== linkedLoanId && (!resolvedLinkedLoan || e.id !== resolvedLinkedLoan.id)
+      );
+      updatedArchived = updatedArchived.filter(
+        (e) => e.loanId !== linkedLoanId && e.id !== linkedLoanId && (!resolvedLinkedLoan || e.id !== resolvedLinkedLoan.id)
+      );
     }
     let updatedInstallments = shouldDeleteLinked && linkedLoanId
-      ? get().installments.filter((installment) => installment.id !== linkedLoanId && installment.loanId !== linkedLoanId)
+      ? get().installments.filter(
+          (installment) =>
+            installment.id !== linkedLoanId &&
+            installment.loanId !== linkedLoanId &&
+            (!resolvedLinkedLoan || installment.id !== resolvedLinkedLoan.id)
+        )
       : get().installments;
 
     if (shouldDeleteInstallmentPlan) {
@@ -1790,32 +1794,19 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
   updateInstallment: (id, updates) => {
     const current = get().installments.find((i) => i.id === id);
     return get().runTransaction(`Update Installment: ${current?.name || 'Installment'}`, () => {
-      const updated = get().installments.map((i) => (i.id === id ? { ...i, ...updates } : i));
-    if (current?.loanId && Number(updates.amount) > 0 && Number(updates.amount) !== Number(current.amount)) {
-      const baseDisbursement = Number(current.initialAmount || current.amount || 1);
-      const ratio = Number(updates.amount) / baseDisbursement;
-      const shouldScale = typeof window === 'undefined' || window.confirm(
-        'This loan has linked installments. Scale the installments to match the new disbursement amount?'
-      );
-      const linked = updated.map((i) => {
+      const updated = get().installments.map((i) => {
         if (i.id === id) {
-          return { ...i, initialAmount: baseDisbursement };
-        }
-        if (shouldScale && i.loanId === current.loanId) {
-          const baseRepayment = Number(i.initialAmount || i.amount);
+          const preservedInitial = i.initialAmount !== undefined
+            ? i.initialAmount
+            : (updates.amount !== undefined && Number(updates.amount) !== Number(i.amount) ? i.amount : undefined);
           return {
             ...i,
-            amount: Math.round(baseRepayment * ratio),
-            initialAmount: baseRepayment,
+            ...updates,
+            ...(preservedInitial !== undefined ? { initialAmount: preservedInitial } : {}),
           };
         }
         return i;
       });
-      saveStorage(STORAGE_KEYS.installments, linked);
-      set({ installments: linked });
-      scheduleAutoGistSync(get);
-      return;
-    }
       saveStorage(STORAGE_KEYS.installments, updated);
       set({ installments: updated });
       scheduleAutoGistSync(get);

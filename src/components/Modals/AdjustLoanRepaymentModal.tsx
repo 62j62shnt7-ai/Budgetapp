@@ -9,6 +9,7 @@ export type LinkedRepaymentInfo =
       target: CashEntry;
       scaledAmount: number;
       currentAmount: number;
+      isScaleUp?: boolean;
     }
   | {
       type: 'installment';
@@ -16,6 +17,7 @@ export type LinkedRepaymentInfo =
       scaledAmount: number;
       currentAmount: number;
       months: number;
+      isScaleUp?: boolean;
     };
 
 interface AdjustLoanRepaymentModalProps {
@@ -39,10 +41,21 @@ export const AdjustLoanRepaymentModal: React.FC<AdjustLoanRepaymentModalProps> =
 }) => {
   if (!isOpen || !inflowEntry || !linkedInfo) return null;
 
+  const isScaleUp = Boolean(linkedInfo.isScaleUp || totalDrawn > plannedLoan);
   const isSingle = linkedInfo.type === 'single';
   const scaleBtnText = isSingle
     ? `Scale to ${formatMoney(linkedInfo.scaledAmount)}`
     : `Scale to ${formatMoney(linkedInfo.scaledAmount)}/mo`;
+
+  const modalTitle = isScaleUp
+    ? '💳 Scale Up Linked Loan Repayment?'
+    : '💳 Scale Down Linked Loan Repayment?';
+
+  const modalSubtitle = isScaleUp
+    ? 'Since the drawn amount exceeds the planned loan facility, would you like to scale up your future scheduled repayment obligations to proportionally match what was borrowed?'
+    : 'Since this is a partial draw, would you like to scale down your future scheduled repayment obligations to proportionally match what was actually borrowed?';
+
+  const keepBtnText = isScaleUp ? 'Keep Original Repayment' : 'Keep Full Repayment';
 
   return (
     <Modal
@@ -50,18 +63,17 @@ export const AdjustLoanRepaymentModal: React.FC<AdjustLoanRepaymentModalProps> =
       onClose={onKeep}
       id="adjustLoanRepaymentDialog"
       maxWidth="500px"
-      title="💳 Scale Linked Loan Repayment?"
+      title={modalTitle}
     >
       <div className="entry-form entry-form-modern" style={{ padding: '4px 0 0' }}>
 
         <p id="adjustLoanRepaymentMessage" style={{ fontSize: '13.5px', margin: '0 0 10px', lineHeight: '1.5' }}>
-          You recorded a draw of <strong>{formatMoney(totalDrawn)}</strong> (out of{' '}
-          <strong>{formatMoney(plannedLoan)}</strong> loan facility) for <em>{inflowEntry.category}</em>.
+          You recorded a draw of <strong>{formatMoney(totalDrawn)}</strong> (planned facility:{' '}
+          <strong>{formatMoney(plannedLoan)}</strong>) for <em>{inflowEntry.category}</em>.
         </p>
 
         <p style={{ fontSize: '12.5px', color: 'var(--muted)', margin: '0 0 12px', lineHeight: '1.4' }}>
-          Since this is a partial draw, would you like to scale down your future scheduled repayment obligations to
-          proportionally match what was actually borrowed?
+          {modalSubtitle}
         </p>
 
         <div
@@ -114,7 +126,7 @@ export const AdjustLoanRepaymentModal: React.FC<AdjustLoanRepaymentModalProps> =
             onClick={onKeep}
             style={{ padding: '8px 14px' }}
           >
-            Keep Full Repayment
+            {keepBtnText}
           </button>
           <button
             className="primary-button"
