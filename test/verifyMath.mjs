@@ -34,7 +34,7 @@ import {
   isOngoingEntry,
   simulateSpend,
 } from '../src/engine/forecast.ts';
-import { computeSpreadPct, computeAssetEgpValue, defaultRates, autoFetchLatestRates, getAccountNativeCurrency, convertAmountBetweenCurrencies } from '../src/engine/currency.ts';
+import { computeSpreadPct, computeAssetEgpValue, defaultRates, autoFetchLatestRates, getAccountNativeCurrency, convertAmountBetweenCurrencies, getCurrencyRate, getCurrencyRateOr, normalizeCurrencyCode } from '../src/engine/currency.ts';
 import { computeFinancialHealthScore, analyzeSettledMonths } from '../src/engine/healthScore.ts';
 import { DateUtils } from '../src/engine/dateUtils.ts';
 import { calculateJobFinancials } from '../src/engine/jobs.ts';
@@ -1668,6 +1668,39 @@ console.log('✓ Settlement clear: reverts to single planned due (overdue) and r
   assert.strictEqual(convertAmountBetweenCurrencies(250, 'USD', 'USD', testRates), 250);
   // Zero / empty returns unchanged
   assert.strictEqual(convertAmountBetweenCurrencies(0, 'USD', 'EUR', testRates), 0);
+
+  // --- Currency code resolution (regression) ---------------------------------
+  // Codes arrive from backups and user input with padding/lowercase mixed in.
+  assert.strictEqual(normalizeCurrencyCode('  usd '), 'USD');
+  assert.strictEqual(getCurrencyRate(testRates, '  usd '), 50.0, 'Padded/lowercase code must still resolve');
+  assert.strictEqual(getCurrencyRate(testRates, 'egp'), 1.0, 'EGP always resolves to 1');
+
+  // An unpriced non-EGP currency must NOT silently convert at parity with EGP:
+  // doing so understates every EGP figure by the whole exchange rate.
+  assert.strictEqual(getCurrencyRate(testRates, 'CHF'), null, 'Unknown currency has no rate, not 1.0');
+  assert.strictEqual(getCurrencyRate(testRates, 'US'), null, 'Typo currency has no rate, not 1.0');
+  assert.strictEqual(getCurrencyRate(null, 'USD'), null, 'Missing rate table has no rate');
+
+  // A fallback is opt-in and explicit.
+  assert.strictEqual(getCurrencyRateOr(testRates, 'CHF', 48.5), 48.5, 'Explicit fallback honored');
+  assert.strictEqual(getCurrencyRateOr(testRates, 'USD', 1), 50.0, 'Known rate wins over fallback');
+  assert.strictEqual(getCurrencyRateOr(testRates, 'EGP', 48.5), 1, 'EGP ignores the fallback');
+
+  // Legacy flat rate maps still resolve.
+  assert.strictEqual(getCurrencyRate({ currencies: [], gold: [], USD: 50 }, 'USD'), 50, 'Legacy flat rates resolve');
+
+  // Conversion refuses to invent parity for an unpriced side.
+  assert.strictEqual(convertAmountBetweenCurrencies(1000, 'CHF', 'EGP', testRates), 1000, 'Unpriced source is left unchanged');
+  assert.strictEqual(convertAmountBetweenCurrencies(250, 'usd ', 'USD', testRates), 250, 'Same currency after normalizing');
+
+  // Jobs surface the gap rather than reporting a $5,000 invoice as 5,000 EGP.
+  const unpricedJob = { id: 'rates-job-1', title: 'Swiss Gig', currency: 'CHF', type: 'lumpsum', lumpSumAmount: 5000, payments: [] };
+  const unpricedFin = calculateJobFinancials(unpricedJob, testRates);
+  assert.strictEqual(unpricedFin.fxRateMissing, true, 'Unpriced job currency is flagged');
+  const pricedJob = { id: 'rates-job-2', title: 'US Gig', currency: 'USD', type: 'lumpsum', lumpSumAmount: 5000, payments: [] };
+  const pricedFin = calculateJobFinancials(pricedJob, testRates);
+  assert.strictEqual(pricedFin.fxRateMissing, false, 'Priced job currency is not flagged');
+  assert.strictEqual(pricedFin.totalInvoiceEgp, 250000, '$5,000 at 50 = 250,000 EGP');
 
   console.log('✓ Account currency resolution and cross-currency conversion verified');
 }

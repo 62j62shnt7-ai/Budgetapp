@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { inferTag, useBudgetStore } from '../../store/useBudgetStore';
 import { calculateCreditSettlementDate, getCreditCycleHint } from '../../engine/creditCards';
-import { getCurrencyRate, formatNativeCurrency, getAccountNativeCurrency, convertAmountBetweenCurrencies } from '../../engine/currency';
+import { getCurrencyRateOr, formatNativeCurrency, getAccountNativeCurrency, convertAmountBetweenCurrencies } from '../../engine/currency';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { getEntryActualAmount, isLoanInflow, findLinkedLoanRepayment, calculateLoanRepaymentScale } from '../../engine/forecast';
 import type { CashEntry, EntryDraw } from '../../types';
@@ -315,11 +315,11 @@ export const EntryModal: React.FC<EntryModalProps> = ({
 
   // Currency conversion calculation note
   const numericAmount = Number(amount) || 0;
-  const fxRate = currency === 'EGP' ? 1 : getCurrencyRate(rates, currency);
+  const fxRate = getCurrencyRateOr(rates, currency, 1);
   const egpEquivalent = Math.round(numericAmount * fxRate);
 
   const accountNativeCurrency = getAccountNativeCurrency(account, storageAssets);
-  const accountCurrencyRate = accountNativeCurrency === 'EGP' ? 1 : getCurrencyRate(rates, accountNativeCurrency);
+  const accountCurrencyRate = getCurrencyRateOr(rates, accountNativeCurrency, 1);
   const accountEquivalent = accountCurrencyRate > 0
     ? Math.round(((numericAmount * fxRate) / accountCurrencyRate) * 100) / 100
     : numericAmount;
@@ -609,7 +609,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
             <div style={{ maxHeight: '120px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
               {activeEntry.draws.map((d, dIdx) => {
                 const entryIsForeign = (activeEntry.currency || 'EGP').toUpperCase() !== 'EGP';
-                const drawRate = activeEntry.fxRateAtEntry || getCurrencyRate(rates, activeEntry.currency || 'USD') || 48.5;
+                const drawRate = activeEntry.fxRateAtEntry || getCurrencyRateOr(rates, activeEntry.currency || 'USD', 48.5);
                 const nativeDrawQty = entryIsForeign ? Math.round((d.amount / drawRate) * 100) / 100 : d.amount;
                 return (
                   <div key={d.id || dIdx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', padding: '4px 8px', background: 'var(--surface)', borderRadius: '4px', border: '1px solid var(--line)' }}>
@@ -1041,7 +1041,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
           irqJobs.find((j) => j.forecastEntryId === activeEntry.id || j.payments?.some((p) => p.entryId === activeEntry.id));
 
         const entryIsForeign = (activeEntry.currency || 'EGP').toUpperCase() !== 'EGP';
-        const drawRate = activeEntry.fxRateAtEntry || getCurrencyRate(rates, activeEntry.currency || 'USD') || 48.5;
+        const drawRate = activeEntry.fxRateAtEntry || getCurrencyRateOr(rates, activeEntry.currency || 'USD', 48.5);
         const nativeDrawQty = entryIsForeign ? Math.round((deleteDrawTarget.draw.amount / drawRate) * 100) / 100 : deleteDrawTarget.draw.amount;
         const amountDisplay = entryIsForeign
           ? `${formatNativeCurrency(nativeDrawQty, activeEntry.currency)} (≈ ${formatMoney(deleteDrawTarget.draw.amount)})`

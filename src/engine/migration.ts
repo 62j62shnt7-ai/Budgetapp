@@ -9,7 +9,7 @@ import type {
 } from '../types';
 import { DateUtils } from './dateUtils';
 import { inferTag } from './tags';
-import { defaultRates as currencyDefaultRates, inferAssetLocation } from './currency';
+import { defaultRates as currencyDefaultRates, inferAssetLocation, normalizeCurrencyCode } from './currency';
 
 export interface MigratedBudgetDataset {
   schemaVersion: string;
@@ -52,6 +52,52 @@ const defaultSalaryPattern: SalaryPayment[] = [
 // backups are seeded with the same currencies and gold names as the app.
 const defaultRates: RatesData = currencyDefaultRates;
 
+/** Major schema version this migration pipeline produces and understands. */
+export const CURRENT_SCHEMA_MAJOR = '2';
+export const CURRENT_SCHEMA_VERSION = `${CURRENT_SCHEMA_MAJOR}.1`;
+
+/** Payload keys that carry real financial data (used to tell an empty backup from a wrong-shaped file). */
+const FINANCIAL_PAYLOAD_KEYS = [
+  'entries', 'cashEntries', 'items', 'archivedEntries', 'accountBalances', 'accounts',
+  'salaryPattern', 'installments', 'rates', 'ratesData', 'storageAssets', 'storage',
+  'asfJobs', 'irqJobs', 'partTimeJobs', 'entryActuals', 'creditDues',
+] as const;
+
+/**
+ * Parse a stored money value.
+ *
+ * Exports and hand-edited backups routinely contain thousands separators
+ * (`"1,500"`), which `Number()` turns into `NaN`. Returning `undefined` for an
+ * unreadable value lets each call site apply its own fallback instead of
+ * silently writing `0` over a real amount.
+ */
+export function parseMoneyValue(value: unknown): number | undefined {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
+  if (typeof value !== 'string') return undefined;
+  const cleaned = value.replace(/[\s,]/g, '').trim();
+  if (!cleaned) return undefined;
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+/** Parse a count/quantity, treating blank values as `0`. */
+function parseCount(value: unknown): number {
+  return parseMoneyValue(value) ?? 0;
+}
+
+/**
+ * Read the schema version from a payload, checking the wrapper first and then
+ * an embedded `data` object. Returns `undefined` for pre-versioning backups.
+ */
+function readSchemaVersion(payload: Record<string, any>, data: Record<string, any>): string | undefined {
+  for (const candidate of [payload.schemaVersion, payload.version, data.schemaVersion, data.version]) {
+    if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
+    if (typeof candidate === 'number' && Number.isFinite(candidate)) return String(candidate);
+  }
+  return undefined;
+}
+
 export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
   if (!raw || typeof raw !== 'object') {
     throw new Error('Invalid payload: expected an object or array');
@@ -72,7 +118,7 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
     }));
 
     return {
-      schemaVersion: '2.1',
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       migratedAt: new Date().toISOString(),
       entries,
       archivedEntries: [],
@@ -105,19 +151,30 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
       ? data.exportedAt
       : undefined;
 
+  // 0. Version gate. Reject payloads from an incompatible major version rather
+  // than coercing unknown shapes into this one, which would silently replace the
+  // user's ledger with zeroed/garbage fields.
+  const sourceVersion = readSchemaVersion(parsed, data);
+  if (sourceVersion && sourceVersion.split('.')[0] !== CURRENT_SCHEMA_MAJOR) {
+    throw new Error(
+      `Unsupported backup schema version "${sourceVersion}" — this build reads version ${CURRENT_SCHEMA_MAJOR}.x. ` +
+      'Update the app before importing this backup.'
+    );
+  }
+
   // 1. Cash Entries
   const rawEntries = data.cashEntries || data.entries || data.items || parsed.cashEntries || parsed.entries || [];
   const entries: CashEntry[] = (Array.isArray(rawEntries) ? rawEntries : []).map((e: any, idx: number) => ({
     ...e,
     id: e.id || `entry-${Date.now()}-${idx}`,
     date: typeof e.date === 'string' && e.date.length >= 10 ? e.date.slice(0, 10) : DateUtils.todayString(),
-    amount: Number(e.amount) || 0,
+    amount: parseMoneyValue(e.amount) ?? 0,
     type: e.type === 'income' ? 'income' : 'expense',
     category: e.category || 'General',
     account: e.account === 'cash' ? 'cib' : (e.account || 'cib'),
     tag: e.tag || inferTag(e) || '',
-    currency: e.currency || 'EGP',
-    actualAmount: e.actualAmount !== undefined && e.actualAmount !== '' ? Number(e.actualAmount) : undefined,
+    currency: normalizeCurrencyCode(e.currency) || 'EGP',
+    actualAmount: parseMoneyValue(e.actualAmount),
     actualDate: typeof e.actualDate === 'string' ? e.actualDate.slice(0, 10) : undefined,
   }));
 
@@ -127,12 +184,12 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
     ...e,
     id: e.id || `archived-${Date.now()}-${idx}`,
     date: typeof e.date === 'string' && e.date.length >= 10 ? e.date.slice(0, 10) : DateUtils.todayString(),
-    amount: Number(e.amount) || 0,
+    amount: parseMoneyValue(e.amount) ?? 0,
     type: e.type === 'income' ? 'income' : 'expense',
     category: e.category || 'General',
     account: e.account === 'cash' ? 'cib' : (e.account || 'cib'),
-    currency: e.currency || 'EGP',
-    actualAmount: Number(e.actualAmount) || Number(e.amount) || 0,
+    currency: normalizeCurrencyCode(e.currency) || 'EGP',
+    actualAmount: parseMoneyValue(e.actualAmount) ?? parseMoneyValue(e.amount) ?? 0,
     archivedAt: e.archivedAt || new Date().toISOString(),
   }));
 
@@ -147,8 +204,8 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
       if (accRecord && 'balance' in accRecord) {
         accMap[k] = {
           name: typeof accRecord.name === 'string' ? accRecord.name : k.toUpperCase(),
-          balance: Number(accRecord.balance) || 0,
-          maturityDay: Number(accRecord.maturityDay) || (k.toLowerCase().includes('hsbc') ? 30 : 15),
+          balance: parseMoneyValue(accRecord.balance) ?? 0,
+          maturityDay: parseCount(accRecord.maturityDay) || (k.toLowerCase().includes('hsbc') ? 30 : 15),
         };
       } else if (typeof v === 'number') {
         accMap[k] = {
@@ -168,9 +225,9 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
   let salaryPattern: SalaryPayment[] = defaultSalaryPattern;
   if (Array.isArray(rawSalary) && rawSalary.length > 0) {
     salaryPattern = rawSalary.map((s: any) => ({
-      monthOffset: Number(s.monthOffset) || 0,
-      day: Number(s.day) || 15,
-      amount: Number(s.amount) || 0,
+      monthOffset: parseCount(s.monthOffset),
+      day: parseCount(s.day) || 15,
+      amount: parseMoneyValue(s.amount) ?? 0,
     }));
   }
 
@@ -182,13 +239,13 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
       ...inst,
       id: inst.id || `inst-${Date.now()}-${idx}`,
       name: inst.name || inst.item || 'Installment',
-      amount: Number(inst.amount) || Number(inst.monthlyAmount) || 0,
-      totalMonths: Number(inst.totalMonths ?? inst.months ?? inst.installmentsCount ?? 1),
+      amount: parseMoneyValue(inst.amount) ?? parseMoneyValue(inst.monthlyAmount) ?? 0,
+      totalMonths: parseCount(inst.totalMonths ?? inst.months ?? inst.installmentsCount ?? 1),
       remainingMonths: inst.remainingMonths !== undefined
-        ? Math.max(0, Number(inst.remainingMonths))
-        : Number(inst.totalMonths ?? inst.months ?? inst.installmentsCount ?? 1),
+        ? Math.max(0, parseCount(inst.remainingMonths))
+        : parseCount(inst.totalMonths ?? inst.months ?? inst.installmentsCount ?? 1),
       startMonth: inst.startMonth || DateUtils.currentYearMonth(),
-      day: Number(inst.day) || 10,
+      day: parseCount(inst.day) || 10,
       account: inst.account === 'cash' ? 'cib' : (inst.account || 'cib'),
     }));
   }
@@ -216,12 +273,12 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
           id: a.id || `asset-${Date.now()}-${idx}`,
           name: a.name || 'Asset',
           category: a.category || a.type || 'gold',
-          quantity: Number(a.quantity) || Number(a.amount) || 1,
+          quantity: parseMoneyValue(a.quantity) ?? parseMoneyValue(a.amount) ?? 1,
           unit: a.unit || (a.category === 'gold' || a.type === 'gold' ? 'g' : 'units'),
-          buyPrice: Number(a.buyPrice) || Number(a.buyRate) || Number(a.value) || 0,
-          currentPrice: a.currentPrice !== undefined ? Number(a.currentPrice) : undefined,
-          currency: a.currency || 'EGP',
-          rate: Number(a.rate) || undefined,
+          buyPrice: parseMoneyValue(a.buyPrice) ?? parseMoneyValue(a.buyRate) ?? parseMoneyValue(a.value) ?? 0,
+          currentPrice: parseMoneyValue(a.currentPrice),
+          currency: normalizeCurrencyCode(a.currency) || 'EGP',
+          rate: parseMoneyValue(a.rate) || undefined,
           rateSource: a.rateSource || a.karat,
           locationType: a.locationType || loc.locationType,
           location: a.location || loc.location,
@@ -324,8 +381,24 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
     }
   }
 
+  // Reject a payload that clearly carried data but produced nothing usable.
+  // Without this, a wrong-shaped or truncated file replaces the user's whole
+  // ledger with empty/default values while the import still reports success.
+  const payloadLooksPopulated = FINANCIAL_PAYLOAD_KEYS.some((key) => {
+    const value = (data as Record<string, unknown>)[key] ?? (parsed as Record<string, unknown>)[key];
+    if (Array.isArray(value)) return value.length > 0;
+    if (value && typeof value === 'object') return Object.keys(value).length > 0;
+    return false;
+  });
+  if (entries.length === 0 && archivedEntries.length === 0 && payloadLooksPopulated) {
+    throw new Error(
+      'This file contains budget data in a shape this build does not recognise, so no transactions could be read. ' +
+      'Nothing was imported. Check that you selected a Budget Control JSON backup.'
+    );
+  }
+
   return {
-    schemaVersion: '2.1',
+    schemaVersion: CURRENT_SCHEMA_VERSION,
     migratedAt: new Date().toISOString(),
     exportedAt,
     entries,

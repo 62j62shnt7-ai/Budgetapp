@@ -26,7 +26,7 @@ import {
   getEntryId,
 } from '../../engine/forecast';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
-import { formatNativeCurrency, getCurrencyRate } from '../../engine/currency';
+import { formatNativeCurrency, getCurrencyRateOr } from '../../engine/currency';
 import { Plus } from 'lucide-react';
 
 import type { CashEntry, Installment } from '../../types';
@@ -295,7 +295,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     }
 
     const isForeign = Boolean(entry.currency && entry.currency.toUpperCase() !== 'EGP');
-    const fxRate = entry.fxRateAtEntry || (entry.currency ? getCurrencyRate(rates, entry.currency) : 1) || 48.5;
+    const fxRate = entry.fxRateAtEntry || getCurrencyRateOr(rates, entry.currency, 48.5);
     const effectivePlannedAmount = isForeign && entry.originalAmount
       ? Math.round(entry.originalAmount * fxRate)
       : Number(entry.amount || 0);
@@ -1551,7 +1551,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                                 const rawVal = Number(input.value) || 0;
                                 input.value = '';
                                 if (rawVal > 0) {
-                                  const effectiveRate = e.fxRateAtEntry || (e.currency ? getCurrencyRate(rates, e.currency) : 1);
+                                  const effectiveRate = e.fxRateAtEntry || getCurrencyRateOr(rates, e.currency, 1);
                                   const egpVal = isForeign ? Math.round(rawVal * effectiveRate) : Math.round(rawVal);
                                   handleActualSpend(e, egpVal, actualValue);
                                 }
@@ -1562,7 +1562,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                               const rawVal = Number(input.value) || 0;
                               input.value = '';
                               if (rawVal > 0) {
-                                const effectiveRate = e.fxRateAtEntry || (e.currency ? getCurrencyRate(rates, e.currency) : 1);
+                                const effectiveRate = e.fxRateAtEntry || getCurrencyRateOr(rates, e.currency, 1);
                                 const egpVal = isForeign ? Math.round(rawVal * effectiveRate) : Math.round(rawVal);
                                 handleActualSpend(e, egpVal, actualValue);
                               }
@@ -1575,7 +1575,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                                 : isCreditSettlement
                                 ? `Paid so far: ${formatMoney(actualValue)} ${isFull ? '(Settled in full)' : `(Remaining due: ${formatMoney(remainingAmt)})`}`
                                 : isForeign
-                                ? `Spent so far: ${formatNativeCurrency(Math.round((actualValue / (e.fxRateAtEntry || getCurrencyRate(rates, e.currency))) * 100) / 100, e.currency)} (≈ ${formatMoney(actualValue)}) ${isFull ? '(Full budget reached · Ongoing)' : `(Remaining: ≈ ${formatMoney(remainingAmt)})`}`
+                                ? `Spent so far: ${formatNativeCurrency(Math.round((actualValue / (e.fxRateAtEntry || getCurrencyRateOr(rates, e.currency, 1))) * 100) / 100, e.currency)} (≈ ${formatMoney(actualValue)}) ${isFull ? '(Full budget reached · Ongoing)' : `(Remaining: ≈ ${formatMoney(remainingAmt)})`}`
                                 : `Spent so far: ${formatMoney(actualValue)} ${isFull ? '(Full budget reached · Ongoing)' : `(Remaining: ${formatMoney(remainingAmt)})`}`}
                             </small>
                           )}

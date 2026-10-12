@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { formatMoney, DateUtils } from '../../engine/dateUtils';
-import { getCurrencyRate, formatNativeCurrency, getAccountNativeCurrency, convertAmountBetweenCurrencies } from '../../engine/currency';
+import { getCurrencyRateOr, formatNativeCurrency, getAccountNativeCurrency, convertAmountBetweenCurrencies, normalizeCurrencyCode } from '../../engine/currency';
 import type { CashEntry } from '../../types';
 
 interface DeductAccountModalProps {
@@ -40,9 +40,9 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
   const [customEgpAmount, setCustomEgpAmount] = useState<string>('');
 
   const isIncome = entry?.type === 'income';
-  const currency = (entry?.currency || 'EGP').toUpperCase();
+  const currency = normalizeCurrencyCode(entry?.currency) || 'EGP';
   const isForeign = currency !== 'EGP';
-  const defaultRate = entry?.fxRateAtEntry || (isForeign ? getCurrencyRate(rates, currency) : 1) || 48.5;
+  const defaultRate = entry?.fxRateAtEntry || getCurrencyRateOr(rates, currency, 48.5);
 
   // Calculate foreign native amount added
   const foreignNativeAmount = isForeign

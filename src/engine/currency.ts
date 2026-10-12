@@ -20,23 +20,66 @@ export const defaultRates: RatesData = {
   ],
 };
 
-export function getCurrencyRate(rates: RatesData | null | undefined, code?: string): number {
-  if (!rates || !code) return 1.0;
-  const wanted = code.toUpperCase();
-  if (wanted === 'EGP') return 1.0;
+/**
+ * Canonical form of a currency/unit code: trimmed and upper-cased.
+ * Callers must use this rather than a bare `toUpperCase()`, because stored
+ * codes routinely carry padding (`"USD "`) which would otherwise miss the
+ * rate table and silently fall back to 1:1 conversion.
+ */
+export function normalizeCurrencyCode(code?: string | null): string {
+  return (code || '').trim().toUpperCase();
+}
+
+/**
+ * Resolve the EGP value of one unit of `code`.
+ *
+ * Returns `null` — never a silent `1.0` — when a non-EGP code has no known
+ * rate. Converting an unpriced currency at 1:1 understates EGP figures by the
+ * full exchange rate (a $5,000 job would read as 5,000 EGP), so callers must
+ * decide explicitly what to do via {@link getCurrencyRateOr}.
+ */
+export function getCurrencyRate(rates: RatesData | null | undefined, code?: string): number | null {
+  const wanted = normalizeCurrencyCode(code);
+  if (!wanted || wanted === 'EGP') return 1.0;
+  if (!rates) return null;
+
   if (Array.isArray(rates.currencies)) {
-    const c = rates.currencies.find((item) => item?.name && item.name.toUpperCase() === wanted);
-    if (c) return Number(c.sell ?? c.buy) || 1.0;
+    const c = rates.currencies.find((item) => normalizeCurrencyCode(item?.name) === wanted);
+    if (c) {
+      const value = Number(c.sell ?? c.buy);
+      if (Number.isFinite(value) && value > 0) return value;
+    }
   }
-  const legacy = rates as unknown as Record<string, unknown>;
-  if (wanted in legacy) return Number(legacy[wanted]) || 1.0;
-  return 1.0;
+
+  // Legacy flat payloads stored the rate directly on the rates object (e.g. `{ USD: 50 }`).
+  const legacy = (rates as unknown as Record<string, unknown>)[wanted];
+  const legacyValue = Number(legacy);
+  if (legacy !== undefined && Number.isFinite(legacyValue) && legacyValue > 0) {
+    return legacyValue;
+  }
+
+  return null;
+}
+
+/**
+ * Like {@link getCurrencyRate}, but substitutes `fallback` when no rate is known.
+ * Use this only where a missing rate is non-fatal (display helpers, best-effort
+ * conversions). Prefer calling `getCurrencyRate` and surfacing the gap to the
+ * user when the figure is money the user relies on.
+ */
+export function getCurrencyRateOr(
+  rates: RatesData | null | undefined,
+  code: string | undefined,
+  fallback: number
+): number {
+  const normalized = normalizeCurrencyCode(code);
+  if (!normalized || normalized === 'EGP') return 1.0;
+  const rate = getCurrencyRate(rates, normalized);
+  return rate === null ? fallback : rate;
 }
 
 export function resolveCurrencyRate(rates: RatesData | null | undefined, code?: string, fallback = 48.5): number {
-  if (!code || code.toUpperCase() === 'EGP') return 1.0;
-  const rate = getCurrencyRate(rates, code);
-  return rate > 0 && rate !== 1.0 ? rate : fallback;
+  return getCurrencyRateOr(rates, code, fallback);
 }
 
 export function getAccountNativeCurrency(accountName: string, storageAssets: StorageAsset[] = []): string {
@@ -69,10 +112,14 @@ export function convertAmountBetweenCurrencies(
   toCurr: string,
   rates: RatesData | null | undefined
 ): number {
-  if (fromCurr === toCurr || !amountVal) return amountVal;
-  const fromRate = fromCurr === 'EGP' ? 1.0 : getCurrencyRate(rates, fromCurr);
-  const toRate = toCurr === 'EGP' ? 1.0 : getCurrencyRate(rates, toCurr);
-  if (fromRate <= 0 || toRate <= 0) return amountVal;
+  const from = normalizeCurrencyCode(fromCurr) || 'EGP';
+  const to = normalizeCurrencyCode(toCurr) || 'EGP';
+  if (from === to || !amountVal) return amountVal;
+  const fromRate = getCurrencyRate(rates, from);
+  const toRate = getCurrencyRate(rates, to);
+  // Refuse to invent a rate: an unpriced side returns the amount unchanged
+  // rather than pretending the two currencies are at parity.
+  if (fromRate === null || toRate === null || fromRate <= 0 || toRate <= 0) return amountVal;
   return Math.round(((amountVal * fromRate) / toRate) * 100) / 100;
 }
 
@@ -107,6 +154,9 @@ export function storageValue(item: StorageAsset, rates?: RatesData): number {
     const resolved = resolveRateSourceValue(item.rateSource, rates);
     if (resolved !== null) rate = resolved;
   }
+  // A non-numeric rate (e.g. "48,5" from an edited or imported asset) yields NaN,
+  // which would poison every downstream total including the health score.
+  if (!Number.isFinite(rate)) return 0;
   return qty * rate;
 }
 

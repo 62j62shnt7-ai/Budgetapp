@@ -10,7 +10,7 @@ import {
   type DailyDeficitPeriod,
 } from '../../engine/forecast';
 import { computeFinancialHealthScore, generateSmartInsights } from '../../engine/healthScore';
-import { computeAssetEgpValue, computeTotalStorageValue, formatNativeCurrency, getCurrencyRate } from '../../engine/currency';
+import { computeAssetEgpValue, computeTotalStorageValue, formatNativeCurrency, getCurrencyRateOr } from '../../engine/currency';
 import { DateUtils, formatMoney, formatLastUpdated } from '../../engine/dateUtils';
 import { ForecastChart } from '../Forecast/ForecastChart';
 import { CreditCard, CheckCircle2, Clock, Target, AlertTriangle, Lightbulb } from 'lucide-react';
@@ -459,7 +459,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
         );
 
         const fxRate = fx
-          ? Math.max(1, Number(fx.rate || fx.currentPrice || (fx as any).buyPrice || getCurrencyRate(rates, fx.unit || 'USD') || 1))
+          ? Math.max(1, Number(fx.rate || fx.currentPrice || (fx as any).buyPrice || getCurrencyRateOr(rates, fx.unit || 'USD', 1)))
           : 1;
         const fxAmountNeeded = Math.ceil(peak / fxRate);
         const fxLabel = fx ? (fx.unit || fx.name || 'USD') : 'foreign currency';

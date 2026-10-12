@@ -24,7 +24,8 @@ import {
   resolveRateSourceValue,
   computeTotalStorageValue,
   inferAssetLocation,
-  getCurrencyRate,
+  getCurrencyRateOr,
+  normalizeCurrencyCode,
 } from '../engine/currency';
 import { calculateJobFinancials } from '../engine/jobs';
 import {
@@ -376,7 +377,7 @@ function revertStorageOrAccountBalance(
   if (targetAsset) {
     let nativeQty = amount;
     if (isEgpAmount && isForeign) {
-      const rate = fxRate || targetAsset.rate || targetAsset.buyPrice || getCurrencyRate(get().rates, currUpper) || 1;
+      const rate = fxRate || targetAsset.rate || targetAsset.buyPrice || getCurrencyRateOr(get().rates, currUpper, 1);
       nativeQty = Math.round((amount / rate) * 100) / 100;
     }
     const currentQty = Number(targetAsset.quantity) || 0;
@@ -1256,7 +1257,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
               }
             } else if (dest.startsWith('account:') || get().accounts[accountField]) {
               const accKey = dest.startsWith('account:') ? dest.replace('account:', '') : accountField;
-              const egpAmt = linkedPayment.egpAmount || Math.round(paidAmt * (entry?.fxRateAtEntry || getCurrencyRate(get().rates, jobCurrency)));
+              const egpAmt = linkedPayment.egpAmount || Math.round(paidAmt * (entry?.fxRateAtEntry || getCurrencyRateOr(get().rates, jobCurrency, 1)));
               if (get().accounts[accKey]) {
                 const currentBal = get().accounts[accKey].balance || 0;
                 get().updateAccountBalance(accKey, Math.max(0, currentBal - egpAmt));
@@ -2201,9 +2202,9 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     if (!targetJob) return false;
 
     // 3. Currency and amounts
-    const jobCurrency = (targetJob.currency || entry?.currency || 'USD').toUpperCase();
+    const jobCurrency = normalizeCurrencyCode(targetJob.currency || entry?.currency) || 'USD';
     const isForeign = jobCurrency !== 'EGP';
-    const fxRate = entry?.fxRateAtEntry || (isForeign ? getCurrencyRate(get().rates, jobCurrency) : 1);
+    const fxRate = entry?.fxRateAtEntry || (isForeign ? getCurrencyRateOr(get().rates, jobCurrency, 1) : 1);
 
     let nativeAmt = actualEgp;
     if (isForeign) {

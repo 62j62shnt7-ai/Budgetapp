@@ -2,8 +2,7 @@
 // Jobs Calculation Engine (ASF, IRQ, Part-Time Jobs)
 // ==========================================================================
 import type { JobItem, RatesData } from '../types';
-import { getCurrencyRate } from './currency';
-
+import { getCurrencyRate, normalizeCurrencyCode } from './currency';
 export interface JobFinancials {
   type: string;
   currency: string;
@@ -18,6 +17,8 @@ export interface JobFinancials {
   percentPaid: number;
   computedStatus: 'active' | 'invoiced' | 'partial' | 'paid';
   fxRate: number;
+  /** True when the job's currency has no rate, so the `*Egp` fields are not meaningful. */
+  fxRateMissing: boolean;
   totalInvoiceEgp: number;
   netEarningsEgp: number;
   grossFeeEgp: number;
@@ -40,8 +41,14 @@ export interface JobFinancials {
 
 export function calculateJobFinancials(job: JobItem, rates: RatesData): JobFinancials {
   const type = job.type || (job.rateType === 'fixed' ? 'lumpsum' : 'daily_rate');
-  const currency = (job.currency || 'USD').toUpperCase();
-  const fxRate = currency === 'EGP' ? 1 : getCurrencyRate(rates, currency);
+  const currency = normalizeCurrencyCode(job.currency) || 'USD';
+  const resolvedRate = getCurrencyRate(rates, currency);
+  // A currency the rate table does not know must not be treated as parity with
+  // EGP: doing so understates every EGP figure by the whole exchange rate.
+  // Fall back to 1 only so the *_Egp fields stay numeric, and flag it so the UI
+  // can show that the EGP column is unreliable.
+  const fxRateMissing = resolvedRate === null;
+  const fxRate = resolvedRate === null ? 1 : resolvedRate;
 
   const daysWorked = Array.isArray(job.daysWorked)
     ? job.daysWorked
@@ -129,6 +136,7 @@ export function calculateJobFinancials(job: JobItem, rates: RatesData): JobFinan
     percentPaid,
     computedStatus,
     fxRate,
+    fxRateMissing,
     totalInvoiceEgp,
     netEarningsEgp,
     grossFeeEgp,
@@ -150,12 +158,22 @@ export function calculateJobFinancials(job: JobItem, rates: RatesData): JobFinan
   };
 }
 
-export function formatJobCurrency(value: number, currencyCode: string = 'USD'): string {
-  const curr = currencyCode.toUpperCase();
-  const formatted = new Intl.NumberFormat('en-US', {
-    maximumFractionDigits: curr === 'EGP' ? 0 : 2,
-    minimumFractionDigits: curr === 'EGP' ? 0 : 2,
-  }).format(value);
+// Built once per currency rather than per call: constructing an Intl.NumberFormat
+// is expensive and this runs inside the Jobs list render loop.
+const jobCurrencyFormatters = new Map<string, Intl.NumberFormat>();
 
-  return `${formatted} ${curr}`;
+function jobCurrencyFormatter(currency: string): Intl.NumberFormat {
+  const cached = jobCurrencyFormatters.get(currency);
+  if (cached) return cached;
+  const formatter = new Intl.NumberFormat('en-US', {
+    maximumFractionDigits: currency === 'EGP' ? 0 : 2,
+    minimumFractionDigits: currency === 'EGP' ? 0 : 2,
+  });
+  jobCurrencyFormatters.set(currency, formatter);
+  return formatter;
+}
+
+export function formatJobCurrency(value: number, currencyCode: string = 'USD'): string {
+  const curr = normalizeCurrencyCode(currencyCode) || 'USD';
+  return `${jobCurrencyFormatter(curr).format(value)} ${curr}`;
 }
