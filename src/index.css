@@ -2894,6 +2894,26 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     border: none !important;
     min-width: 0 !important;
     background: transparent !important;
+    white-space: normal !important;
+  }
+
+  /* Mobile card row indicators */
+  .table-wrap.responsive-cards tr td:first-child,
+  .table-wrap.responsive-cards .cell-date {
+    box-shadow: none !important;
+  }
+
+  .table-wrap.responsive-cards tr.loan-entry-row {
+    border-left: 4px solid var(--amber) !important;
+  }
+
+  .table-wrap.responsive-cards tr.recovery-entry-row {
+    border-left: 4px solid var(--green) !important;
+  }
+
+  .table-wrap.responsive-cards tr.deficit-entry-row,
+  .table-wrap.responsive-cards tr.danger-row {
+    border-left: 4px solid var(--red) !important;
   }
 
   /* Row 1: Category on left, Forecast Amount on right */
@@ -2905,6 +2925,7 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     color: var(--ink) !important;
     min-width: 0 !important;
     max-width: 100% !important;
+    white-space: normal !important;
     word-break: break-word !important;
     overflow-wrap: break-word !important;
     display: flex !important;
@@ -2919,7 +2940,10 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     font-size: 15px !important;
     word-break: break-word !important;
     overflow-wrap: break-word !important;
+    white-space: normal !important;
     min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
   }
 
   /* Compact Tag Chips in Mobile Cards */
@@ -3351,10 +3375,32 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     color: var(--muted) !important;
     margin-top: 4px !important;
     width: 100% !important;
+    max-width: 100% !important;
     display: flex !important;
     flex-wrap: wrap !important;
     gap: 4px 8px !important;
     align-items: center !important;
+    white-space: normal !important;
+  }
+
+  .table-wrap.responsive-cards .credit-funding-shortfall-tag {
+    display: inline-flex !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    gap: 4px 8px !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    padding: 3px 8px !important;
+    border-radius: 6px !important;
+  }
+
+  .table-wrap.responsive-cards .credit-funding-shortfall-tag span {
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
   }
 
   /* Cashflow Actual Spend Cell & Notes */

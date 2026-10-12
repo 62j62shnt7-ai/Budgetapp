@@ -1316,6 +1316,9 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                           margin: '-1px -5px',
                           borderRadius: '4px',
                           display: 'inline-block',
+                          maxWidth: '100%',
+                          wordBreak: 'break-word',
+                          overflowWrap: 'break-word',
                           color: categoryFilter === e.category ? 'var(--brand-primary, #6366f1)' : undefined,
                         }}
                         onClick={(ev) => {
@@ -1411,6 +1414,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                                   style={{
                                     marginTop: '4px',
                                     display: 'inline-flex',
+                                    flexWrap: 'wrap',
                                     alignItems: 'center',
                                     gap: '5px',
                                     fontSize: '11px',
@@ -1418,7 +1422,9 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                                     border: '1px solid rgba(251, 113, 133, 0.4)',
                                     color: '#fb7185',
                                     borderRadius: '4px',
-                                    padding: '2px 6px',
+                                    padding: '3px 7px',
+                                    maxWidth: '100%',
+                                    boxSizing: 'border-box',
                                     cursor: canTransfer ? 'pointer' : 'default',
                                   }}
                                   onClick={(ev) => {
@@ -1442,23 +1448,35 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                                       : `Account ${alert.accountName} has ${formatMoney(alert.accountBalance)}. Shortfall: ${formatMoney(alert.shortfall)} (no account can cover).`
                                   }
                                 >
-                                  <span><strong>{labelText}</strong> ({alert.accountName})</span>
-                                  {canTransfer && onOpenTransferModal && <span style={{ textDecoration: 'underline', fontWeight: 700 }}>Transfer →</span>}
+                                  <span style={{ wordBreak: 'break-word' }}>
+                                    <strong>{labelText}</strong> ({alert.accountName})
+                                  </span>
+                                  {canTransfer && onOpenTransferModal && (
+                                    <span style={{ textDecoration: 'underline', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                                      Transfer →
+                                    </span>
+                                  )}
                                 </div>
                               );
                             } else if (alert.status === 'funded') {
                               return (
                                 <div
+                                  className="credit-funding-funded-tag"
                                   style={{
                                     marginTop: '4px',
                                     fontSize: '11px',
                                     color: 'var(--green, #10b981)',
                                     display: 'inline-flex',
+                                    flexWrap: 'wrap',
                                     alignItems: 'center',
                                     gap: '4px',
+                                    maxWidth: '100%',
+                                    boxSizing: 'border-box',
                                   }}
                                 >
-                                  <span>🟢 {alert.accountName} funded ({formatMoney(alert.accountBalance)} avail)</span>
+                                  <span style={{ wordBreak: 'break-word' }}>
+                                    🟢 {alert.accountName} funded ({formatMoney(alert.accountBalance)} avail)
+                                  </span>
                                 </div>
                               );
                             }

@@ -239,10 +239,39 @@ export interface BudgetStoreState {
 let lastLocalMutationTimestamp = typeof localStorage !== 'undefined' ? Number(localStorage.getItem(STORAGE_KEYS.lastLocalModified) || 0) || 0 : 0;
 let lastGistUploadTimestamp = typeof localStorage !== 'undefined' ? Number(localStorage.getItem(STORAGE_KEYS.lastGistUpload) || 0) || 0 : 0;
 
-function scheduleAutoGistSync(getState: () => BudgetStoreState, immediate = false): void {
-  lastLocalMutationTimestamp = Date.now();
-  if (typeof localStorage !== 'undefined') {
-    localStorage.setItem(STORAGE_KEYS.lastLocalModified, String(lastLocalMutationTimestamp));
+/**
+ * Raw localStorage write that can never throw.
+ *
+ * A bare `setItem` throws QuotaExceededError once the origin is full. On the sync
+ * path that throw would escape into `runTransaction`'s rollback and silently revert
+ * a legitimate edit, so bookkeeping writes must never be able to abort a mutation.
+ */
+function safeSetItem(key: string, value: string): void {
+  try {
+    if (typeof localStorage !== 'undefined') localStorage.setItem(key, value);
+  } catch {
+    // Bookkeeping only — losing this write must not fail the user's action.
+  }
+}
+
+/** True while applying remote data, so the store write does not re-mark the dataset dirty. */
+let suppressDirtyMarking = false;
+
+function scheduleAutoGistSync(
+  getState: () => BudgetStoreState,
+  immediate = false,
+  options: { rateRefresh?: boolean } = {}
+): void {
+  // Captured by value: the deferred upload runs on a timer, long after any
+  // module-level "we are refreshing rates" flag has been reset.
+  const isRateRefresh = options.rateRefresh === true;
+  // A rate refresh is not a user edit: it must not mark this device as having
+  // unuploaded changes. Otherwise every device looks dirty seconds after launch —
+  // `App.tsx` refreshes rates on load, focus, online and visibilitychange — which
+  // pushes the sync logic toward overwriting a newer remote document.
+  if (!isRateRefresh) {
+    lastLocalMutationTimestamp = Date.now();
+    safeSetItem(STORAGE_KEYS.lastLocalModified, String(lastLocalMutationTimestamp));
   }
   if (gistSyncTimer) {
     clearTimeout(gistSyncTimer);
@@ -253,22 +282,108 @@ function scheduleAutoGistSync(getState: () => BudgetStoreState, immediate = fals
   const executeSync = async () => {
     gistSyncTimer = null;
     const state = getState();
-    if (!state.gistAutoSync || !state.gistToken || !state.gistId) {
+    if (!state.gistAutoSync || !state.gistId) {
       useBudgetStore.setState({ gistSyncStatus: 'idle' });
       return;
     }
     if (gistSyncInFlight) {
-      scheduleAutoGistSync(getState, false);
+      scheduleAutoGistSync(getState, false, options);
       return;
     }
     gistSyncInFlight = true;
     useBudgetStore.setState({ gistSyncStatus: 'syncing' });
     try {
+      const headers: Record<string, string> = { Accept: 'application/vnd.github.v3+json' };
+      if (state.gistToken) headers.Authorization = `Bearer ${state.gistToken}`;
+
+      // Read before writing. Uploading unconditionally let a device that had merely
+      // launched clobber a newer document written by another device, with no prompt.
+      const res = await fetch(`https://api.github.com/gists/${state.gistId}`, { headers });
+      if (!res.ok) {
+        throw new Error(`Gist auto-sync failed: ${res.status} ${res.statusText}`);
+      }
+      const data = await res.json() as {
+        files?: Record<string, { content?: string; truncated?: boolean; raw_url?: string }>;
+      };
+      const file = data.files?.['budget-data.json']
+        || data.files?.['budget-control-backup.json']
+        || Object.values(data.files || {})[0];
+      let remoteContent: string | null = file?.content ?? null;
+      if ((file?.truncated || !remoteContent) && file?.raw_url) {
+        const rawRes = await fetch(file.raw_url, { headers });
+        if (rawRes.ok) remoteContent = await rawRes.text();
+      }
+
+      let remoteTime = 0;
+      if (remoteContent) {
+        try {
+          const parsed = JSON.parse(remoteContent);
+          const exportedAt = parsed?.exportedAt || parsed?.data?.exportedAt;
+          remoteTime = exportedAt ? new Date(exportedAt).getTime() : 0;
+        } catch {
+          // Unparseable remote content: fall through and treat it as unknown.
+        }
+      }
+
+      // Another device wrote something newer than anything this device has seen.
+      if (remoteTime > 0 && remoteTime > Math.max(lastGistUploadTimestamp, lastLocalMutationTimestamp) + 1000) {
+        if (lastLocalMutationTimestamp > lastGistUploadTimestamp) {
+          // Both sides moved — let the user choose instead of guessing.
+          let conflictExportedAt: string | null = null;
+          if (remoteContent) {
+            try {
+              const parsed = JSON.parse(remoteContent);
+              conflictExportedAt = parsed?.exportedAt || parsed?.data?.exportedAt || null;
+            } catch {
+              conflictExportedAt = null;
+            }
+          }
+          useBudgetStore.setState({
+            gistConflict: {
+              remoteTime: conflictExportedAt ?? new Date(remoteTime).toISOString(),
+              remoteData: remoteContent as string,
+            },
+            gistSyncStatus: 'idle',
+          });
+          return;
+        }
+        if (remoteContent) {
+          suppressDirtyMarking = true;
+          let imported = false;
+          try {
+            imported = useBudgetStore.getState().importJSON(remoteContent, { isRemoteSync: true });
+          } finally {
+            suppressDirtyMarking = false;
+          }
+          if (imported) {
+            // The import is itself a store mutation, so the subscriber recorded it as
+            // local work. Reset the flags afterwards: this device now matches the
+            // server exactly. Without this, the freshly-synced device immediately
+            // looks dirty and re-uploads what it just downloaded.
+            lastGistUploadTimestamp = remoteTime;
+            safeSetItem(STORAGE_KEYS.lastGistUpload, String(lastGistUploadTimestamp));
+            lastLocalMutationTimestamp = 0;
+            safeSetItem(STORAGE_KEYS.lastLocalModified, '0');
+            useBudgetStore.setState({ gistSyncStatus: 'synced', gistConflict: null });
+            return;
+          }
+        }
+      }
+
+      // A rate refresh only publishes when this device actually holds unuploaded
+      // work. Publishing speculatively is what let a freshly opened device
+      // overwrite a newer document written by another device.
+      const hasUnuploadedWork = lastLocalMutationTimestamp > lastGistUploadTimestamp;
+      if (isRateRefresh && !hasUnuploadedWork) {
+        useBudgetStore.setState({ gistSyncStatus: 'synced' });
+        return;
+      }
+
+      // No newer remote — publish this device's snapshot.
       const response = await fetch(`https://api.github.com/gists/${state.gistId}`, {
         method: 'PATCH',
         headers: {
-          Authorization: `Bearer ${state.gistToken}`,
-          Accept: 'application/vnd.github.v3+json',
+          ...headers,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -281,10 +396,12 @@ function scheduleAutoGistSync(getState: () => BudgetStoreState, immediate = fals
       if (!response.ok) {
         throw new Error(`Gist auto-sync failed: ${response.status} ${response.statusText}`);
       }
-      lastGistUploadTimestamp = Date.now();
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(STORAGE_KEYS.lastGistUpload, String(lastGistUploadTimestamp));
-      }
+      // Adopt the remote's timestamp when it is newer so our next comparison starts
+      // from what the server actually holds.
+      lastGistUploadTimestamp = Math.max(Date.now(), remoteTime);
+      safeSetItem(STORAGE_KEYS.lastGistUpload, String(lastGistUploadTimestamp));
+      lastLocalMutationTimestamp = 0;
+      safeSetItem(STORAGE_KEYS.lastLocalModified, '0');
       useBudgetStore.setState({ gistSyncStatus: 'synced' });
     } catch (error) {
       console.error(error);
@@ -1895,13 +2012,26 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       }
       return item;
     });
-    if (changed) {
-      saveStorage(STORAGE_KEYS.storage, updatedStorage);
-      set({ rates: ratesToSave, storageAssets: updatedStorage });
-    } else {
-      set({ rates: ratesToSave });
+    // A rate refresh is machine-initiated, so it syncs without marking this device
+    // dirty. An explicit save from the Rates screen is a user edit and does mark it.
+    //
+    // The `suppressDirtyMarking` guard is essential: `rates` and `storageAssets` are
+    // in `syncedDataKeys`, so the store subscriber also fires for this write and
+    // would schedule a *dirty* upload that overwrites the `rateRefresh` option set
+    // below. That is exactly what made a freshly opened device look dirty.
+    const isMachineRateRefresh = !syncImmediately;
+    if (isMachineRateRefresh) suppressDirtyMarking = true;
+    try {
+      if (changed) {
+        saveStorage(STORAGE_KEYS.storage, updatedStorage);
+        set({ rates: ratesToSave, storageAssets: updatedStorage });
+      } else {
+        set({ rates: ratesToSave });
+      }
+      scheduleAutoGistSync(get, syncImmediately, { rateRefresh: isMachineRateRefresh });
+    } finally {
+      if (isMachineRateRefresh) suppressDirtyMarking = false;
     }
-    scheduleAutoGistSync(get, syncImmediately);
   },
 
   addStorageAsset: (assetData) => {
@@ -2336,9 +2466,9 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
   },
 
   setGistConfig: (token, gistId, autoSync) => {
-    localStorage.setItem(STORAGE_KEYS.gistToken, token);
-    localStorage.setItem(STORAGE_KEYS.gistId, gistId);
-    localStorage.setItem(STORAGE_KEYS.gistAutoSync, String(autoSync));
+    safeSetItem(STORAGE_KEYS.gistToken, token);
+    safeSetItem(STORAGE_KEYS.gistId, gistId);
+    safeSetItem(STORAGE_KEYS.gistAutoSync, String(autoSync));
     set({ gistToken: token, gistId, gistAutoSync: autoSync, gistSyncStatus: 'idle' });
   },
 
@@ -2350,6 +2480,16 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       set({ gistSyncStatus: 'error' });
       return false;
     }
+
+    // Share the in-flight guard with the auto-upload path. `App.tsx` fires a pull
+    // and (via the rate refresh) an upload together on every focus and
+    // visibilitychange, so without this the two can interleave and a pull's import
+    // can land mid-upload.
+    if (gistSyncInFlight) {
+      return false;
+    }
+    gistSyncInFlight = true;
+    try {
 
     set({ gistSyncStatus: 'syncing' });
     try {
@@ -2459,12 +2599,16 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         localStorage.setItem(STORAGE_KEYS.lastGistUpload, String(lastGistUploadTimestamp));
       }
       lastLocalMutationTimestamp = 0;
+      safeSetItem(STORAGE_KEYS.lastLocalModified, '0');
       set({ gistSyncStatus: 'synced', gistConflict: null });
       return true;
     } catch (error) {
       console.error('Gist download failed:', error);
       set({ gistSyncStatus: 'error' });
       return false;
+    }
+    } finally {
+      gistSyncInFlight = false;
     }
   },
 
@@ -3043,6 +3187,7 @@ const syncedDataKeys: Array<keyof BudgetStoreState> = [
 
 useBudgetStore.subscribe((state, previousState) => {
   if (suppressAutoSync) return;
+  if (suppressDirtyMarking) return;
   if (syncedDataKeys.some((key) => state[key] !== previousState[key])) {
     scheduleAutoGistSync(() => useBudgetStore.getState());
   }

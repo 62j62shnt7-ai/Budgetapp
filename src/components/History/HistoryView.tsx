@@ -976,6 +976,9 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                                 margin: '-1px -5px',
                                 borderRadius: '4px',
                                 display: 'inline-block',
+                                maxWidth: '100%',
+                                wordBreak: 'break-word',
+                                overflowWrap: 'break-word',
                                 color: selectedCategory === entry.category ? 'var(--brand-primary, #6366f1)' : undefined,
                               }}
                               onClick={(e) => {
