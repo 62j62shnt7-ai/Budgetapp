@@ -5,7 +5,18 @@ import path from 'path';
 import http from 'http';
 import { spawn } from 'child_process';
 
-const sampleData = JSON.parse(fs.readFileSync('test/sample-data.json', 'utf-8'));
+// Optional first argument: path to a backup JSON to audit against.
+// Defaults to the committed sample fixture so `npm run test:ui` behaves as before.
+const dataPath = process.argv[2] || 'test/sample-data.json';
+if (!fs.existsSync(dataPath)) {
+  throw new Error(`Data file not found: ${dataPath}`);
+}
+const sampleData = JSON.parse(fs.readFileSync(dataPath, 'utf-8'));
+console.log(`Auditing with data from: ${dataPath}`);
+
+// Optional second argument: prefix for the screenshot filenames, so a run
+// against different data does not overwrite the committed reference set.
+const shotPrefix = process.argv[3] || '';
 
 function checkServer(url) {
   return new Promise((resolve) => {
@@ -212,7 +223,7 @@ async function run() {
       }
 
       await page.screenshot({
-        path: path.join(screenshotDir, `${vp.name}-${tab}.png`),
+        path: path.join(screenshotDir, `${shotPrefix}${vp.name}-${tab}.png`),
         fullPage: true
       });
     }
@@ -252,7 +263,7 @@ async function run() {
         return Boolean(dialog && dialog.contains(document.activeElement));
       });
       assert.equal(entryDialogKeepsFocus, true, 'Tab navigation should remain inside the entry dialog');
-      await page.screenshot({ path: path.join(screenshotDir, `desktop-modal-entry.png`) });
+      await page.screenshot({ path: path.join(screenshotDir, `${shotPrefix}desktop-modal-entry.png`) });
       await closeModal();
       assert.equal(
         await page.evaluate(() => document.activeElement?.getAttribute('data-view')),
@@ -263,19 +274,19 @@ async function run() {
       // Test Manage Data Tools Modal
       await page.click('#openDataToolsBtn');
       await page.waitForTimeout(300);
-      await page.screenshot({ path: path.join(screenshotDir, `desktop-modal-tools.png`) });
+      await page.screenshot({ path: path.join(screenshotDir, `${shotPrefix}desktop-modal-tools.png`) });
       await closeModal();
 
       // Test Take Loan Modal
       await page.click('#addLoanBtn');
       await page.waitForTimeout(300);
-      await page.screenshot({ path: path.join(screenshotDir, `desktop-modal-loan.png`) });
+      await page.screenshot({ path: path.join(screenshotDir, `${shotPrefix}desktop-modal-loan.png`) });
       await closeModal();
 
       // Test Gist Sync Modal
       await page.click('#gistSyncBtn');
       await page.waitForTimeout(300);
-      await page.screenshot({ path: path.join(screenshotDir, `desktop-modal-gist.png`) });
+      await page.screenshot({ path: path.join(screenshotDir, `${shotPrefix}desktop-modal-gist.png`) });
       await closeModal();
     }
 
