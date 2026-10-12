@@ -85,7 +85,7 @@ export function buildInstallmentEntries(installments: Installment[]): CashEntry[
         date: DateUtils.formatDate(y, m, day),
         category: installment.name,
         subcategory: installment.name,
-        account: installment.account || 'cib',
+        account: installment.account || 'hsbc',
         type: 'expense',
         amount: Number(installment.amount) || 0,
         source: 'installment',

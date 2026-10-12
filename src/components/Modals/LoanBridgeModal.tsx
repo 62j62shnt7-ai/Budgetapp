@@ -13,7 +13,7 @@ export const LoanBridgeModal: React.FC<LoanBridgeModalProps> = ({ isOpen, onClos
   const [name, setName] = useState<string>('Bridge Loan');
   const [amount, setAmount] = useState<string>('');
   const [disbursementDate, setDisbursementDate] = useState<string>(() => DateUtils.todayString());
-  const [account, setAccount] = useState<string>('cib');
+  const [account, setAccount] = useState<string>('hsbc');
   const [repaymentType, setRepaymentType] = useState<'single' | 'installments'>('single');
 
   // Single repayment fields
@@ -154,8 +154,8 @@ export const LoanBridgeModal: React.FC<LoanBridgeModalProps> = ({ isOpen, onClos
         <label>
           Deposit into account
           <select value={account} onChange={(e) => setAccount(e.target.value)} required>
-            <option value="cib">CIB</option>
             <option value="hsbc">HSBC</option>
+            <option value="cib">CIB</option>
           </select>
         </label>
 

@@ -14,7 +14,7 @@ export const InstallmentModal: React.FC<InstallmentModalProps> = ({ isOpen, inst
 
   const [name, setName] = useState<string>('');
   const [tag, setTag] = useState<string>('Installment');
-  const [account, setAccount] = useState<string>('cib');
+  const [account, setAccount] = useState<string>('hsbc');
   const [amount, setAmount] = useState<string>('');
   const [frequency, setFrequency] = useState<number>(1);
   const [day, setDay] = useState<number>(30);
@@ -28,7 +28,7 @@ export const InstallmentModal: React.FC<InstallmentModalProps> = ({ isOpen, inst
     if (installmentToEdit) {
       setName(installmentToEdit.name || '');
       setTag(installmentToEdit.tag || 'Installment');
-      setAccount(installmentToEdit.account || 'cib');
+      setAccount(installmentToEdit.account || 'hsbc');
       setAmount(String(installmentToEdit.amount || ''));
       setFrequency(Number(installmentToEdit.frequency) || 1);
       setDay(Number(installmentToEdit.day) || 30);
@@ -37,7 +37,7 @@ export const InstallmentModal: React.FC<InstallmentModalProps> = ({ isOpen, inst
     } else {
       setName('');
       setTag('Installment');
-      setAccount('cib');
+      setAccount('hsbc');
       setAmount('');
       setFrequency(1);
       setDay(30);
@@ -57,7 +57,7 @@ export const InstallmentModal: React.FC<InstallmentModalProps> = ({ isOpen, inst
       updateInstallment(installmentToEdit.id, {
         name: name.trim(),
         tag: tag.trim() || 'Installment',
-        account: account.trim().toLowerCase() || 'cib',
+        account: account.trim().toLowerCase() || 'hsbc',
         amount: amt,
         frequency,
         day: Number(day) || 30,
@@ -69,7 +69,7 @@ export const InstallmentModal: React.FC<InstallmentModalProps> = ({ isOpen, inst
       addInstallment({
         name: name.trim(),
         tag: tag.trim() || 'Installment',
-        account: account.trim().toLowerCase() || 'cib',
+        account: account.trim().toLowerCase() || 'hsbc',
         amount: amt,
         frequency,
         day: Number(day) || 30,
@@ -82,7 +82,7 @@ export const InstallmentModal: React.FC<InstallmentModalProps> = ({ isOpen, inst
     onClose();
   };
 
-  const accountKeys = Object.keys(accounts || {});
+  const accountKeys = Object.keys(accounts || {}).sort((a, b) => (a === 'hsbc' ? -1 : b === 'hsbc' ? 1 : 0));
 
   return (
     <dialog open className="native-dialog" onClick={(e) => e.target === e.currentTarget && onClose()} style={{ display: 'block', zIndex: 1000 }}>
@@ -118,22 +118,18 @@ export const InstallmentModal: React.FC<InstallmentModalProps> = ({ isOpen, inst
           </label>
           <label>
             Account
-            <input
+            <select
               name="account"
-              type="text"
-              list="installmentAccountsList"
-              placeholder="cib, hsbc, cash..."
               value={account}
               onChange={(e) => setAccount(e.target.value)}
               required
-            />
-            <datalist id="installmentAccountsList">
+            >
               {accountKeys.map((key) => (
                 <option key={key} value={key}>
                   {accounts[key]?.name || key.toUpperCase()}
                 </option>
               ))}
-            </datalist>
+            </select>
           </label>
         </div>
         <label>

@@ -409,7 +409,7 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({
                         } else {
                           recordActual(entry.id, plannedAmt, today, {
                             tag: entry.tag || '',
-                            account: entry.account || 'cash',
+                            account: entry.account || 'hsbc',
                           });
                           // Offer to deduct the paid amount from the operating account
                           // (same flow as recording an actual spend elsewhere).

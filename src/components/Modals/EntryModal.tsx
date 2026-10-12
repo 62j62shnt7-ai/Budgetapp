@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { inferTag, useBudgetStore } from '../../store/useBudgetStore';
 import { calculateCreditSettlementDate, getCreditCycleHint } from '../../engine/creditCards';
-import { getCurrencyRate, formatNativeCurrency } from '../../engine/currency';
+import { getCurrencyRate, formatNativeCurrency, getAccountNativeCurrency, convertAmountBetweenCurrencies } from '../../engine/currency';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { getEntryActualAmount, isLoanInflow, findLinkedLoanRepayment, calculateLoanRepaymentScale } from '../../engine/forecast';
 import type { CashEntry, EntryDraw } from '../../types';
@@ -58,7 +58,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
   const [creditSettlementHint, setCreditSettlementHint] = useState<string>('');
   const [category, setCategory] = useState<string>('');
   const [tag, setTag] = useState<string>('');
-  const [account, setAccount] = useState<string>('cib');
+  const [account, setAccount] = useState<string>('hsbc');
   const [type, setType] = useState<'income' | 'expense'>(initialType);
   const [currency, setCurrency] = useState<string>('EGP');
   const [amount, setAmount] = useState<string>('');
@@ -122,7 +122,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
       setDate(activeEntry.date);
       setCategory(activeEntry.category);
       setTag(activeEntry.tag || activeEntry.subcategory || '');
-      setAccount(activeEntry.account || 'cib');
+      setAccount(activeEntry.account || 'hsbc');
       setType(activeEntry.type);
       setCurrency(entryCurr);
       
@@ -158,7 +158,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
       setDate(DateUtils.todayString());
       setCategory('');
       setTag('');
-      setAccount('cib');
+      setAccount('hsbc');
       setCurrency('EGP');
       setAmount('');
       setActualAmount('');
@@ -174,35 +174,121 @@ export const EntryModal: React.FC<EntryModalProps> = ({
 
   const handleCreditTypeChange = (nextCreditType: string) => {
     setCreditType(nextCreditType);
-    if (nextCreditType === 'cib_card') {
-      const settDate = calculateCreditSettlementDate(date, 'cib');
-      setCreditSettlementDate(settDate);
-      setCreditSettlementHint(getCreditCycleHint(date, 'cib'));
-      setAccount('cib');
-    } else if (nextCreditType === 'hsbc_card') {
+    let nextAcc = account;
+    if (nextCreditType === 'hsbc_card') {
+      nextAcc = 'HSBC Credit';
+      setAccount('HSBC Credit');
       const settDate = calculateCreditSettlementDate(date, 'hsbc');
       setCreditSettlementDate(settDate);
       setCreditSettlementHint(getCreditCycleHint(date, 'hsbc'));
-      setAccount('hsbc');
-    } else if (nextCreditType === 'cib') {
-      setCategory('CIB Credit Due');
-      setAccount('cib');
-      setCreditSettlementHint('');
+      if (category.toLowerCase().includes('credit due')) setCategory('');
+      if (!tag.trim() || tag === 'Credit') setTag('Credit');
+    } else if (nextCreditType === 'cib_card') {
+      nextAcc = 'CIB Credit';
+      setAccount('CIB Credit');
+      const settDate = calculateCreditSettlementDate(date, 'cib');
+      setCreditSettlementDate(settDate);
+      setCreditSettlementHint(getCreditCycleHint(date, 'cib'));
+      if (category.toLowerCase().includes('credit due')) setCategory('');
+      if (!tag.trim() || tag === 'Credit') setTag('Credit');
     } else if (nextCreditType === 'hsbc') {
-      setCategory('HSBC Credit Due');
+      nextAcc = 'hsbc';
       setAccount('hsbc');
+      setCategory('HSBC Credit Due');
+      setTag('Credit');
+      setCreditSettlementDate('');
+      setCreditSettlementHint('');
+    } else if (nextCreditType === 'cib') {
+      nextAcc = 'cib';
+      setAccount('cib');
+      setCategory('CIB Credit Due');
+      setTag('Credit');
+      setCreditSettlementDate('');
       setCreditSettlementHint('');
     } else {
+      // Direct (Bank account)
+      setCreditSettlementDate('');
+      setCreditSettlementHint('');
+      if (category.toLowerCase().includes('credit due')) {
+        setCategory('');
+      }
+      if (tag === 'Credit') {
+        setTag('');
+      }
+      if (account.toLowerCase().includes('credit') || !account.trim()) {
+        nextAcc = 'hsbc';
+        setAccount('hsbc');
+      }
+    }
+
+    const targetCurrency = getAccountNativeCurrency(nextAcc, storageAssets);
+    if (targetCurrency !== currency) {
+      if (amount && Number(amount) > 0) {
+        const converted = convertAmountBetweenCurrencies(Number(amount), currency, targetCurrency, rates);
+        setAmount(String(converted));
+      }
+      if (actualAmount && Number(actualAmount) > 0) {
+        const convertedActual = convertAmountBetweenCurrencies(Number(actualAmount), currency, targetCurrency, rates);
+        setActualAmount(String(convertedActual));
+      }
+      setCurrency(targetCurrency);
+    }
+  };
+
+  const handleAccountChange = (nextAccount: string) => {
+    setAccount(nextAccount);
+    const acc = nextAccount.toLowerCase().trim();
+    if (acc.includes('credit') || acc.includes('card')) {
+      const cardBank = acc.includes('cib') ? 'cib' : 'hsbc';
+      const cType = `${cardBank}_card`;
+      setCreditType(cType);
+      setCreditSettlementDate(calculateCreditSettlementDate(date, cardBank));
+      setCreditSettlementHint(getCreditCycleHint(date, cardBank));
+      if (!tag.trim()) setTag('Credit');
+    } else if (creditType === 'cib_card' || creditType === 'hsbc_card') {
+      setCreditType('');
+      setCreditSettlementDate('');
       setCreditSettlementHint('');
     }
-    if (!tag.trim()) {
-      const inferred = inferTag({
-        category,
-        creditType: nextCreditType,
-        account: nextCreditType.includes('hsbc') ? 'hsbc' : 'cib',
-        type,
-      });
-      if (inferred) setTag(inferred);
+
+    // Auto-default currency to match destination account's native currency
+    const targetCurrency = getAccountNativeCurrency(nextAccount, storageAssets);
+    if (targetCurrency !== currency) {
+      if (amount && Number(amount) > 0) {
+        const converted = convertAmountBetweenCurrencies(Number(amount), currency, targetCurrency, rates);
+        setAmount(String(converted));
+      }
+      if (actualAmount && Number(actualAmount) > 0) {
+        const convertedActual = convertAmountBetweenCurrencies(Number(actualAmount), currency, targetCurrency, rates);
+        setActualAmount(String(convertedActual));
+      }
+      setCurrency(targetCurrency);
+    }
+  };
+
+  const handleCurrencyChange = (nextCurrency: string) => {
+    if (nextCurrency === currency) return;
+    if (amount && Number(amount) > 0) {
+      const converted = convertAmountBetweenCurrencies(Number(amount), currency, nextCurrency, rates);
+      setAmount(String(converted));
+    }
+    if (actualAmount && Number(actualAmount) > 0) {
+      const convertedActual = convertAmountBetweenCurrencies(Number(actualAmount), currency, nextCurrency, rates);
+      setActualAmount(String(convertedActual));
+    }
+    setCurrency(nextCurrency);
+  };
+
+  const handleTypeChange = (nextType: 'income' | 'expense') => {
+    setType(nextType);
+    if (nextType === 'income') {
+      if (creditType) {
+        setCreditType('');
+        setCreditSettlementDate('');
+        setCreditSettlementHint('');
+      }
+      if (category === 'HSBC Credit Due' || category === 'CIB Credit Due') setCategory('');
+      if (account.toLowerCase().includes('credit')) setAccount('hsbc');
     }
   };
 
@@ -232,22 +318,44 @@ export const EntryModal: React.FC<EntryModalProps> = ({
   const fxRate = currency === 'EGP' ? 1 : getCurrencyRate(rates, currency);
   const egpEquivalent = Math.round(numericAmount * fxRate);
 
-  const isSettlement =
-    creditType === 'cib' ||
-    creditType === 'hsbc' ||
-    Boolean(entryToEdit?.id && entryToEdit.id.startsWith('credit-settlement-')) ||
-    category.toLowerCase().includes('settlement') ||
-    category.toLowerCase().includes('credit due') ||
-    category.toLowerCase().includes('card payment') ||
-    category.toLowerCase().includes('credit payment') ||
-    category.toLowerCase().includes('bill payment') ||
-    category.toLowerCase().includes('card bill') ||
-    tag.toLowerCase().includes('settlement');
+  const accountNativeCurrency = getAccountNativeCurrency(account, storageAssets);
+  const accountCurrencyRate = accountNativeCurrency === 'EGP' ? 1 : getCurrencyRate(rates, accountNativeCurrency);
+  const accountEquivalent = accountCurrencyRate > 0
+    ? Math.round(((numericAmount * fxRate) / accountCurrencyRate) * 100) / 100
+    : numericAmount;
+  const accountPairRate = accountCurrencyRate > 0 ? fxRate / accountCurrencyRate : 1;
 
-  const isCardExpense = (creditType === 'cib_card' || creditType === 'hsbc_card') && !isSettlement;
-  const isCreditDue = creditType === 'cib' || creditType === 'hsbc' || isSettlement;
+  const getAccountDisplayName = (acc: string): string => {
+    if (!acc) return 'Account';
+    if (acc === 'hsbc') return 'HSBC';
+    if (acc === 'cib') return 'CIB';
+    if (acc === 'HSBC Credit') return 'HSBC Credit';
+    if (acc === 'CIB Credit') return 'CIB Credit';
+    const found = storageAssets.find((a) => a.id === acc || a.name.toLowerCase() === acc.toLowerCase());
+    if (found) return found.name;
+    if (accounts[acc.toLowerCase()]) return accounts[acc.toLowerCase()].name;
+    return acc;
+  };
+  const accountDisplayName = getAccountDisplayName(account);
+
+  const isSettlement =
+    type === 'expense' && (
+      creditType === 'cib' ||
+      creditType === 'hsbc' ||
+      Boolean(entryToEdit?.id && entryToEdit.id.startsWith('credit-settlement-')) ||
+      category.toLowerCase().includes('settlement') ||
+      category.toLowerCase().includes('credit due') ||
+      category.toLowerCase().includes('card payment') ||
+      category.toLowerCase().includes('credit payment') ||
+      category.toLowerCase().includes('bill payment') ||
+      category.toLowerCase().includes('card bill') ||
+      tag.toLowerCase().includes('settlement')
+    );
+
+  const isCardExpense = type === 'expense' && (creditType === 'cib_card' || creditType === 'hsbc_card') && !isSettlement;
+  const isCreditDue = isSettlement;
   const settlementDate = isCardExpense
-    ? creditSettlementDate || calculateCreditSettlementDate(date, creditType.includes('hsbc') ? 'hsbc' : 'cib')
+    ? creditSettlementDate || calculateCreditSettlementDate(date, creditType.includes('cib') ? 'cib' : 'hsbc')
     : '';
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -257,11 +365,11 @@ export const EntryModal: React.FC<EntryModalProps> = ({
     const shouldPromptDeduct = Boolean(onDeductPrompt) && !isCardExpense;
 
     const normalizedCategory = category.trim() || (isCreditDue
-      ? `${creditType.includes('hsbc') ? 'HSBC' : 'CIB'} Credit Due`
+      ? `${creditType.includes('cib') ? 'CIB' : 'HSBC'} Credit Due`
       : type === 'income' ? 'Income' : 'Other');
-    const chosenAccount = isCardExpense && (!account.trim() || account.toLowerCase() === 'cash')
-      ? (creditType.includes('hsbc') ? 'HSBC Credit' : 'CIB Credit')
-      : account.toLowerCase().trim() || (creditType === 'hsbc' ? 'hsbc' : 'cib');
+    const chosenAccount = isCardExpense && (!account.trim() || account.toLowerCase() === 'hsbc')
+      ? (creditType.includes('cib') ? 'CIB Credit' : 'HSBC Credit')
+      : account.trim() || (creditType === 'cib' ? 'cib' : 'hsbc');
 
     const resolvedActual = isCardExpense
       ? egpEquivalent
@@ -418,16 +526,18 @@ export const EntryModal: React.FC<EntryModalProps> = ({
           </button>
         </div>
 
-        <label>
-          Payment / Credit Mode
-          <select value={creditType} onChange={(e) => handleCreditTypeChange(e.target.value)}>
-            <option value="">Direct (Cash / Bank account)</option>
-            <option value="cib_card">💳 Card Spend: Charged to CIB Card (Settles next cycle)</option>
-            <option value="hsbc_card">💳 Card Spend: Charged to HSBC Card (Settles next cycle)</option>
-            <option value="cib">🏛️ Card Bill Settlement: Pay CIB Card (Deducts from account)</option>
-            <option value="hsbc">🏛️ Card Bill Settlement: Pay HSBC Card (Deducts from account)</option>
-          </select>
-        </label>
+        {type === 'expense' && (
+          <label>
+            Payment / Credit Mode
+            <select value={creditType} onChange={(e) => handleCreditTypeChange(e.target.value)}>
+              <option value="">Direct (Bank account)</option>
+              <option value="hsbc_card">💳 Card Spend: Charged to HSBC Card (Settles next cycle)</option>
+              <option value="cib_card">💳 Card Spend: Charged to CIB Card (Settles next cycle)</option>
+              <option value="hsbc">🏛️ Card Bill Settlement: Pay HSBC Card (Deducts from account)</option>
+              <option value="cib">🏛️ Card Bill Settlement: Pay CIB Card (Deducts from account)</option>
+            </select>
+          </label>
+        )}
 
         {entryToEdit?.id.startsWith('credit-settlement-') && (
           <div style={{ padding: '10px 12px', background: 'var(--bg-card)', borderRadius: '8px', border: '1px solid var(--border)', marginTop: '8px' }}>
@@ -579,24 +689,46 @@ export const EntryModal: React.FC<EntryModalProps> = ({
           <input
             name="category"
             type="text"
-            list="expenseCategories"
-            placeholder="Home, Training, Kids, Food, Bills..."
+            list="categorySuggestions"
+            placeholder={type === 'income' ? 'Salary, Bonus, Freelance, Part-Time...' : 'Home, Training, Kids, Food, Bills...'}
             value={category}
             onChange={(e) => handleCategoryChange(e.target.value)}
           />
         </label>
-        <datalist id="expenseCategories">
-          <option value="Home" />
-          <option value="Training" />
-          <option value="Kids" />
-          <option value="Transportation" />
-          <option value="Garage" />
-          <option value="Bills" />
-          <option value="Food" />
-          <option value="Groceries" />
-          <option value="Dining Out" />
-          <option value="Medical" />
-          <option value="Other" />
+        <datalist id="categorySuggestions">
+          {type === 'income' ? (
+            <>
+              <option value="Salary" />
+              <option value="Part-Time" />
+              <option value="Freelance" />
+              <option value="Bonus" />
+              <option value="Profit share" />
+              <option value="Consulting" />
+              <option value="Investment" />
+              <option value="Gift" />
+              <option value="Refund" />
+              <option value="Other Income" />
+            </>
+          ) : (
+            <>
+              <option value="Home" />
+              <option value="Food" />
+              <option value="Groceries" />
+              <option value="Dining Out" />
+              <option value="Bills" />
+              <option value="Electricity" />
+              <option value="Internet" />
+              <option value="Water" />
+              <option value="Kids" />
+              <option value="School" />
+              <option value="Transportation" />
+              <option value="Garage" />
+              <option value="Medical" />
+              <option value="Maintenance" />
+              <option value="Shopping" />
+              <option value="Other" />
+            </>
+          )}
         </datalist>
 
         <label id="tagField" className="entry-field">
@@ -631,28 +763,54 @@ export const EntryModal: React.FC<EntryModalProps> = ({
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
           <label>
             Account / Destination
-            <input
+            <select
               name="account"
-              type="text"
-              list="accountSuggestions"
-              placeholder="cib, hsbc, cash, hsbc_usd..."
               value={account}
-              onChange={(e) => setAccount(e.target.value)}
+              onChange={(e) => handleAccountChange(e.target.value)}
               required
-            />
+            >
+              <optgroup label="🏦 Bank Operating Accounts">
+                {Object.entries(accounts)
+                  .sort(([idA], [idB]) => (idA === 'hsbc' ? -1 : idB === 'hsbc' ? 1 : 0))
+                  .map(([id, a]) => (
+                    <option key={id} value={id}>
+                      {a.name} ({formatMoney(a.balance)})
+                    </option>
+                  ))}
+              </optgroup>
+
+              {type === 'expense' && (
+                <optgroup label="💳 Credit Cards">
+                  <option value="HSBC Credit">HSBC Credit Card</option>
+                  <option value="CIB Credit">CIB Credit Card</option>
+                </optgroup>
+              )}
+
+              <optgroup label="💵 Foreign & Storage Reserves">
+                {storageAssets.map((a) => (
+                  <option key={a.id} value={a.name}>
+                    {a.name} ({formatNativeCurrency(a.quantity, a.unit)})
+                  </option>
+                ))}
+              </optgroup>
+
+              {/* Preserve existing account if editing older historical entry */}
+              {Boolean(
+                account &&
+                !accounts[account.toLowerCase()] &&
+                !['HSBC Credit', 'CIB Credit'].includes(account) &&
+                !storageAssets.some((a) => a.id === account || a.name.toLowerCase() === account.toLowerCase())
+              ) && (
+                <optgroup label="Historical / Custom Account">
+                  <option value={account}>{account}</option>
+                </optgroup>
+              )}
+            </select>
           </label>
-          <datalist id="accountSuggestions">
-            <option value="cib">🏦 CIB Operating Account</option>
-            <option value="hsbc">🏦 HSBC Operating Account</option>
-            <option value="hsbc_usd">🏦 HSBC USD Sub-Account (Storage)</option>
-            <option value="hsbc_eur">🏦 HSBC EUR Sub-Account (Storage)</option>
-            <option value="cash_usd">💵 USD Cash in Hand (Storage)</option>
-            <option value="cash">💵 Cash in Hand (EGP)</option>
-          </datalist>
 
           <label id="typeField" className="entry-field">
             Type
-            <select value={type} onChange={(e) => setType(e.target.value as 'income' | 'expense')}>
+            <select value={type} onChange={(e) => handleTypeChange(e.target.value as 'income' | 'expense')}>
               <option value="income">Income</option>
               <option value="expense">Expense</option>
             </select>
@@ -662,7 +820,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '10px' }}>
           <label>
             Currency
-            <select value={currency} onChange={(e) => setCurrency(e.target.value)}>
+            <select value={currency} onChange={(e) => handleCurrencyChange(e.target.value)}>
               <option value="EGP">EGP (Local)</option>
               <option value="USD">USD ($)</option>
               <option value="EUR">EUR (€)</option>
@@ -688,10 +846,19 @@ export const EntryModal: React.FC<EntryModalProps> = ({
           </label>
         </div>
 
-        {currency !== 'EGP' && numericAmount > 0 && (
-          <small style={{ color: 'var(--muted)', fontSize: '12px', margin: '-4px 0 0', display: 'block' }}>
-            ≈ {formatMoney(egpEquivalent)} (FX: {fxRate.toFixed(2)})
-          </small>
+        {numericAmount > 0 && (
+          currency !== accountNativeCurrency ? (
+            <small style={{ color: 'var(--muted)', fontSize: '12px', margin: '-4px 0 0', display: 'block' }}>
+              ≈ {accountNativeCurrency === 'EGP' ? formatMoney(accountEquivalent) : formatNativeCurrency(accountEquivalent, accountNativeCurrency)} in {accountDisplayName} (FX: {accountPairRate.toFixed(2)})
+              {accountNativeCurrency !== 'EGP' && currency !== 'EGP' && (
+                <span> · Local: {formatMoney(egpEquivalent)}</span>
+              )}
+            </small>
+          ) : currency !== 'EGP' ? (
+            <small style={{ color: 'var(--muted)', fontSize: '12px', margin: '-4px 0 0', display: 'block' }}>
+              ≈ {formatMoney(egpEquivalent)} (FX: {fxRate.toFixed(2)})
+            </small>
+          ) : null
         )}
 
         {isCardExpense ? (
@@ -730,10 +897,16 @@ export const EntryModal: React.FC<EntryModalProps> = ({
                 onChange={(e) => setActualAmount(e.target.value)}
               />
             </label>
-            {currency !== 'EGP' && Number(actualAmount) > 0 && (
-              <small style={{ color: 'var(--muted)', fontSize: '12px', margin: '-4px 0 0', display: 'block' }}>
-                Actual in EGP: ≈ {formatMoney(Math.round(Number(actualAmount) * fxRate))}
-              </small>
+            {Number(actualAmount) > 0 && (
+              currency !== accountNativeCurrency ? (
+                <small style={{ color: 'var(--muted)', fontSize: '12px', margin: '-4px 0 0', display: 'block' }}>
+                  Actual in {accountDisplayName}: ≈ {accountNativeCurrency === 'EGP' ? formatMoney(Math.round((Number(actualAmount) * fxRate) / accountCurrencyRate)) : formatNativeCurrency(Math.round(((Number(actualAmount) * fxRate) / accountCurrencyRate) * 100) / 100, accountNativeCurrency)}
+                </small>
+              ) : currency !== 'EGP' ? (
+                <small style={{ color: 'var(--muted)', fontSize: '12px', margin: '-4px 0 0', display: 'block' }}>
+                  Actual in EGP: ≈ {formatMoney(Math.round(Number(actualAmount) * fxRate))}
+                </small>
+              ) : null
             )}
           </>
         )}

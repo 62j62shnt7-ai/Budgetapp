@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { formatMoney, DateUtils } from '../../engine/dateUtils';
-import { getCurrencyRate, formatNativeCurrency } from '../../engine/currency';
+import { getCurrencyRate, formatNativeCurrency, getAccountNativeCurrency, convertAmountBetweenCurrencies } from '../../engine/currency';
 import type { CashEntry } from '../../types';
 
 interface DeductAccountModalProps {
@@ -25,16 +25,17 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
     rates,
     depositToStorageAsset,
     addStorageAsset,
+    updateStorageAsset,
     updateAccountBalance,
     updateEntry,
     runTransaction,
     creditSettlementOverrides,
   } = useBudgetStore();
 
-  const [selectedAccountId, setSelectedAccountId] = useState<string>('cib');
+  const [selectedAccountId, setSelectedAccountId] = useState<string>('hsbc');
   const [tag, setTag] = useState('');
   const [settlementMode, setSettlementMode] = useState<'foreign' | 'convert_egp'>('foreign');
-  const [foreignDestination, setForeignDestination] = useState<string>('storage:hsbc_usd');
+  const [foreignDestination, setForeignDestination] = useState<string>('');
   const [customFxRate, setCustomFxRate] = useState<string>('');
   const [customEgpAmount, setCustomEgpAmount] = useState<string>('');
 
@@ -47,6 +48,30 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
   const foreignNativeAmount = isForeign
     ? Math.round((actualAmount / defaultRate) * 100) / 100
     : actualAmount;
+
+  const targetStorageAsset = useMemo(() => {
+    if (!isForeign || settlementMode !== 'foreign') return null;
+    const assetId = foreignDestination.replace('storage:existing-', '').replace('storage:', '');
+    return storageAssets.find((ast) => ast.id === assetId || ast.name.toLowerCase() === assetId.toLowerCase()) || null;
+  }, [isForeign, settlementMode, foreignDestination, storageAssets]);
+
+  const targetAssetUnit = targetStorageAsset
+    ? (targetStorageAsset.unit || targetStorageAsset.currency || currency).toUpperCase()
+    : currency;
+
+  const targetAssetDeductAmount = useMemo(() => {
+    if (!targetStorageAsset) return foreignNativeAmount;
+    const targetCurr = getAccountNativeCurrency(targetStorageAsset.name, storageAssets);
+    return convertAmountBetweenCurrencies(foreignNativeAmount, currency, targetCurr, rates);
+  }, [targetStorageAsset, foreignNativeAmount, currency, rates, storageAssets]);
+
+  const targetAccountLabel = useMemo(() => {
+    if (isForeign && settlementMode === 'foreign') {
+      return targetStorageAsset ? targetStorageAsset.name : 'Storage';
+    }
+    const acc = accounts[selectedAccountId];
+    return acc ? acc.name : selectedAccountId.toUpperCase();
+  }, [isForeign, settlementMode, targetStorageAsset, accounts, selectedAccountId]);
 
   const tagSuggestions = useMemo(() => {
     const baseSuggestions = [
@@ -82,23 +107,58 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
     setPrevDeductKey(currentDeductKey);
     if (entry && isOpen) {
       const isSettlement = entry.id.startsWith('credit-settlement-');
-      let defaultAccId = 'cib';
+      let defaultAccId = 'hsbc';
 
       if (isSettlement) {
         const parsedKey = (entry.id.split('-')[2] || entry.account || '').toLowerCase();
         const matched = Object.keys(accounts).find((k) => k.toLowerCase() === parsedKey);
-        defaultAccId = matched || (accounts[entry.account || ''] ? entry.account! : (accounts['cib'] ? 'cib' : Object.keys(accounts)[0] || 'cib'));
+        defaultAccId = matched || (accounts[entry.account || ''] ? entry.account! : (accounts['hsbc'] ? 'hsbc' : accounts['cib'] ? 'cib' : Object.keys(accounts)[0] || 'hsbc'));
       } else {
-        defaultAccId = accounts[entry.account || ''] ? entry.account! : (accounts['cib'] ? 'cib' : Object.keys(accounts)[0] || 'cib');
+        const entryAccClean = (entry.account || '').trim();
+        const entryAccLower = entryAccClean.toLowerCase();
+        const matchedOperating = Object.keys(accounts).find((k) => k.toLowerCase() === entryAccLower);
+        const matchedStorage = storageAssets.find(
+          (a) => a.id === entryAccClean || a.name.toLowerCase() === entryAccLower
+        );
+
+        const isTargetingStorage = Boolean(
+          matchedStorage ||
+          entryAccLower.startsWith('storage:') ||
+          ((entryAccLower.includes('cash') || entryAccLower.includes('storage')) && isForeign)
+        );
+
+        defaultAccId = matchedOperating || (accounts['hsbc'] ? 'hsbc' : accounts['cib'] ? 'cib' : Object.keys(accounts)[0] || 'hsbc');
+
+        let defaultForeignDest = '';
+        if (matchedStorage) {
+          defaultForeignDest = `storage:${matchedStorage.id}`;
+        } else {
+          const matchedByCurrency = storageAssets.find((a) => {
+            const u = (a.unit || a.currency || '').toUpperCase();
+            return u === currency || (currency === 'USD' && u === 'DOLLARS') || (currency === 'EUR' && u === 'EUROS');
+          });
+          if (matchedByCurrency) {
+            defaultForeignDest = `storage:${matchedByCurrency.id}`;
+          } else if (storageAssets.length > 0) {
+            defaultForeignDest = `storage:${storageAssets[0].id}`;
+          }
+        }
+
+        setSelectedAccountId(defaultAccId);
+        setForeignDestination(defaultForeignDest);
+
+        // If user chose a bank operating account in EntryModal, default to convert_egp.
+        // If user chose a storage asset or foreign reserve in EntryModal, default to foreign.
+        if (isForeign) {
+          setSettlementMode(isTargetingStorage ? 'foreign' : 'convert_egp');
+        } else {
+          setSettlementMode('convert_egp');
+        }
       }
 
-      setSelectedAccountId(defaultAccId);
       setTag(entry.tag || entry.subcategory || '');
       setCustomFxRate(String(defaultRate));
       setCustomEgpAmount(String(actualAmount));
-      const defaultForeignDest = currency === 'EUR' ? 'storage:hsbc_eur' : 'storage:hsbc_usd';
-      setForeignDestination(defaultForeignDest);
-      setSettlementMode(isForeign ? 'foreign' : 'convert_egp');
     }
   }
 
@@ -137,7 +197,7 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
           date: entry.actualDate || entry.date || DateUtils.todayString(),
           amount: actualAmount,
           tag: trimmedTag,
-          account: entry.account || (isSettlement ? (entry.id.split('-')[2] || 'cib') : 'cash'),
+          account: entry.account || (isSettlement ? (entry.id.split('-')[2] || 'hsbc') : 'hsbc'),
         },
       ];
     }
@@ -157,83 +217,37 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
       const trimmedTag = tag.trim();
       let accountName = '';
 
-    if (isForeign && isIncome && settlementMode === 'foreign') {
-      // 1. Keep in Foreign Currency -> Deposit to Storage
-      if (foreignDestination.startsWith('storage:existing-')) {
-        const assetId = foreignDestination.replace('storage:existing-', '');
-        depositToStorageAsset(assetId, foreignNativeAmount);
-        const existing = storageAssets.find((a) => a.id === assetId);
+      if (isForeign && settlementMode === 'foreign') {
+        // 1. Keep in Foreign Currency -> Deposit or Deduct from Storage
+        const assetId = foreignDestination.replace('storage:existing-', '').replace('storage:', '');
+        const existing = storageAssets.find((a) => a.id === assetId || a.name.toLowerCase() === assetId.toLowerCase());
         if (existing) {
+          const targetCurr = getAccountNativeCurrency(existing.name, storageAssets);
+          const targetAmount = convertAmountBetweenCurrencies(foreignNativeAmount, currency, targetCurr, rates);
+          if (isIncome) {
+            depositToStorageAsset(existing.id, targetAmount);
+          } else {
+            const nextQty = Math.max(0, (Number(existing.quantity) || 0) - targetAmount);
+            updateStorageAsset(existing.id, { quantity: nextQty });
+          }
           accountName = existing.name;
-        }
-      } else if (foreignDestination === 'storage:hsbc_usd') {
-        const existing = storageAssets.find(
-          (a) => a.name.toLowerCase().includes('hsbc') && a.unit.toUpperCase() === 'USD'
-        );
-        if (existing) {
-          depositToStorageAsset(existing.id, foreignNativeAmount);
-        } else {
+        } else if (isIncome) {
           addStorageAsset({
-            name: 'HSBC USD Account',
+            name: `${currency} Holdings`,
             category: 'Currency',
             quantity: foreignNativeAmount,
-            unit: 'USD',
+            unit: currency,
             buyPrice: Number(customFxRate) || defaultRate,
             rate: Number(customFxRate) || defaultRate,
-            rateSource: 'currency:USD',
+            rateSource: `currency:${currency}`,
             currency: 'EGP',
-            locationType: 'bank',
-            location: 'hsbc',
-            locationLabel: 'HSBC Foreign Account',
+            locationType: 'vault',
+            location: 'vault',
+            locationLabel: 'Reserve Holding',
           });
+          accountName = `${currency} Holdings`;
         }
-        accountName = 'HSBC USD Account';
-      } else if (foreignDestination === 'storage:cash_usd') {
-        const existing = storageAssets.find(
-          (a) => a.name.toLowerCase().includes('cash') && a.unit.toUpperCase() === 'USD'
-        );
-        if (existing) {
-          depositToStorageAsset(existing.id, foreignNativeAmount);
-        } else {
-          addStorageAsset({
-            name: 'USD Cash in Hand',
-            category: 'Currency',
-            quantity: foreignNativeAmount,
-            unit: 'USD',
-            buyPrice: Number(customFxRate) || defaultRate,
-            rate: Number(customFxRate) || defaultRate,
-            rateSource: 'currency:USD',
-            currency: 'EGP',
-            locationType: 'cash',
-            location: 'cash',
-            locationLabel: 'Physical Cash',
-          });
-        }
-        accountName = 'USD Cash in Hand';
-      } else if (foreignDestination === 'storage:hsbc_eur') {
-        const existing = storageAssets.find(
-          (a) => a.name.toLowerCase().includes('hsbc') && a.unit.toUpperCase() === 'EUR'
-        );
-        if (existing) {
-          depositToStorageAsset(existing.id, foreignNativeAmount);
-        } else {
-          addStorageAsset({
-            name: 'HSBC EUR Account',
-            category: 'Currency',
-            quantity: foreignNativeAmount,
-            unit: 'EUR',
-            buyPrice: Number(customFxRate) || defaultRate,
-            rate: Number(customFxRate) || defaultRate,
-            rateSource: 'currency:EUR',
-            currency: 'EGP',
-            locationType: 'bank',
-            location: 'hsbc',
-            locationLabel: 'HSBC Foreign Account',
-          });
-        }
-        accountName = 'HSBC EUR Account';
-      }
-    } else {
+      } else {
       // 2. Deposit or Deduct from Operating EGP Account
       const acc = accounts[selectedAccountId];
       if (acc) {
@@ -241,7 +255,7 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
         const currentBal = acc.balance || 0;
         const newBal = isIncome ? currentBal + effectiveEgp : currentBal - effectiveEgp;
         updateAccountBalance(selectedAccountId, newBal);
-        accountName = acc.name;
+        accountName = selectedAccountId;
       }
     }
 
@@ -271,7 +285,7 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
           date: entry.actualDate || entry.date || DateUtils.todayString(),
           amount: actualAmount,
           tag: trimmedTag,
-          account: accountName || entry.account || (isSettlement ? (entry.id.split('-')[2] || 'cib') : 'cash'),
+          account: accountName || entry.account || (isSettlement ? (entry.id.split('-')[2] || 'hsbc') : 'hsbc'),
         },
       ];
     }
@@ -295,7 +309,7 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
       style={{ display: 'block', zIndex: 1000 }}
     >
       <div className="dialog-heading">
-        <h3>{isIncome ? 'Deposit Payment' : 'Adjust Account Balance'}</h3>
+        <h3>{isIncome ? `Deposit to ${targetAccountLabel}` : `Deduct from ${targetAccountLabel}`}</h3>
         <button className="icon-button" type="button" aria-label="Close" onClick={onClose}>
           x
         </button>
@@ -304,24 +318,54 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
       <p style={{ margin: '12px 0 8px', fontSize: '14px', lineHeight: '1.5' }}>
         {isIncome ? (
           <>
-            Recorded income of{' '}
+            Deposit{' '}
             <strong>
-              {isForeign ? `${formatNativeCurrency(foreignNativeAmount, currency)} (≈ ${formatMoney(actualAmount)})` : formatMoney(actualAmount)}
+              {isForeign && settlementMode === 'foreign' ? (
+                targetStorageAsset && targetAssetUnit !== currency ? (
+                  <>
+                    {formatNativeCurrency(targetAssetDeductAmount, targetAssetUnit)}{' '}
+                    <span style={{ fontSize: '12px', color: 'var(--muted)', fontWeight: 500 }}>
+                      (≈ {formatNativeCurrency(foreignNativeAmount, currency)})
+                    </span>
+                  </>
+                ) : (
+                  formatNativeCurrency(targetAssetDeductAmount, currency)
+                )
+              ) : (
+                formatMoney(Number(customEgpAmount) || actualAmount)
+              )}
             </strong>{' '}
-            for <em>{entry.category}</em>.
+            for <em>{entry.category}</em> into <strong>{targetAccountLabel}</strong>?
           </>
         ) : (
           <>
-            Deduct <strong>{formatMoney(actualAmount)}</strong> for <em>{entry.category}</em> from your account balance?
+            Deduct{' '}
+            <strong>
+              {isForeign && settlementMode === 'foreign' ? (
+                targetStorageAsset && targetAssetUnit !== currency ? (
+                  <>
+                    {formatNativeCurrency(targetAssetDeductAmount, targetAssetUnit)}{' '}
+                    <span style={{ fontSize: '12px', color: 'var(--muted)', fontWeight: 500 }}>
+                      (≈ {formatNativeCurrency(foreignNativeAmount, currency)})
+                    </span>
+                  </>
+                ) : (
+                  formatNativeCurrency(targetAssetDeductAmount, currency)
+                )
+              ) : (
+                formatMoney(Number(customEgpAmount) || actualAmount)
+              )}
+            </strong>{' '}
+            for <em>{entry.category}</em> from <strong>{targetAccountLabel}</strong>?
           </>
         )}
       </p>
 
       {/* Decision: Keep in Foreign Currency vs Convert to EGP */}
-      {isForeign && isIncome && (
+      {isForeign && (
         <div style={{ marginBottom: '14px' }}>
           <label style={{ fontWeight: 600, marginBottom: '6px', display: 'block', fontSize: '13px' }}>
-            Choose Currency &amp; Destination:
+            {isIncome ? 'Choose Currency & Destination:' : 'Choose Source Currency & Account:'}
           </label>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
             <button
@@ -337,7 +381,7 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
                 cursor: 'pointer',
               }}
             >
-              <div style={{ fontWeight: 700, fontSize: '13px' }}>💵 Keep in {currency}</div>
+              <div style={{ fontWeight: 700, fontSize: '13px' }}>💵 {isIncome ? `Keep in ${currency}` : `Deduct from ${currency}`}</div>
               <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '2px' }}>
                 Storage Reserves (Bank / Cash)
               </div>
@@ -356,7 +400,7 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
                 cursor: 'pointer',
               }}
             >
-              <div style={{ fontWeight: 700, fontSize: '13px' }}>💱 Convert to EGP</div>
+              <div style={{ fontWeight: 700, fontSize: '13px' }}>💱 {isIncome ? 'Convert to EGP' : 'Deduct EGP Equivalent'}</div>
               <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '2px' }}>
                 Operating Bank Account
               </div>
@@ -366,35 +410,34 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
       )}
 
       {/* 1. Storage Foreign Destination */}
-      {isForeign && isIncome && settlementMode === 'foreign' && (
+      {isForeign && settlementMode === 'foreign' && (
         <div style={{ background: 'var(--surface-soft)', padding: '12px', borderRadius: '8px', border: '1px solid var(--line)', marginBottom: '12px' }}>
           <label style={{ marginTop: 0 }}>
-            <span>Foreign Storage Destination</span>
+            <span>{isIncome ? 'Foreign Storage Destination' : 'Foreign Storage Source'}</span>
             <select value={foreignDestination} onChange={(e) => setForeignDestination(e.target.value)}>
-              <option value="storage:hsbc_usd">🏦 HSBC USD Account (Foreign Bank)</option>
-              <option value="storage:cash_usd">💵 USD Cash in Hand (Physical Cash)</option>
-              {currency === 'EUR' && (
-                <option value="storage:hsbc_eur">🏦 HSBC EUR Account (Foreign Bank)</option>
-              )}
-              {storageAssets
-                .filter((a) => a.unit.toUpperCase() === currency)
-                .map((a) => (
-                  <option key={a.id} value={`storage:existing-${a.id}`}>
-                    📁 {a.name} ({a.quantity} {a.unit}) · {a.locationType === 'cash' ? 'Cash' : 'Bank'}
-                  </option>
-                ))}
+              {storageAssets.map((a) => (
+                <option key={a.id} value={`storage:${a.id}`}>
+                  📁 {a.name} ({formatNativeCurrency(a.quantity, a.unit)})
+                </option>
+              ))}
             </select>
           </label>
           <small style={{ color: 'var(--muted)', fontSize: '11.5px', display: 'block', marginTop: '4px' }}>
-            ✓ Will add +{formatNativeCurrency(foreignNativeAmount, currency)} to your Storage tab balance.
+            {targetStorageAsset && targetAssetUnit !== currency
+              ? isIncome
+                ? `✓ Will add +${formatNativeCurrency(targetAssetDeductAmount, targetAssetUnit)} to ${targetStorageAsset.name} (converted from ${formatNativeCurrency(foreignNativeAmount, currency)}).`
+                : `✓ Will deduct -${formatNativeCurrency(targetAssetDeductAmount, targetAssetUnit)} from ${targetStorageAsset.name} (converted from ${formatNativeCurrency(foreignNativeAmount, currency)}).`
+              : isIncome
+                ? `✓ Will add +${formatNativeCurrency(targetAssetDeductAmount, currency)} to your Storage tab balance.`
+                : `✓ Will deduct -${formatNativeCurrency(targetAssetDeductAmount, currency)} from your Storage tab balance.`}
           </small>
         </div>
       )}
 
       {/* 2. Operating Account Destination */}
-      {((!isForeign && isIncome) || !isIncome || settlementMode === 'convert_egp') && (
+      {((!isForeign) || settlementMode === 'convert_egp') && (
         <div style={{ background: 'var(--surface-soft)', padding: '12px', borderRadius: '8px', border: '1px solid var(--line)', marginBottom: '12px' }}>
-          {isForeign && isIncome && (
+          {isForeign && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
               <label style={{ margin: 0 }}>
                 <span>FX Rate</span>
@@ -417,9 +460,11 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
             </div>
           )}
           <label style={{ marginTop: 0 }}>
-            <span>Select Operating Account</span>
+            <span>{isIncome ? 'Select Operating Account to Deposit' : 'Select Operating Account to Deduct'}</span>
             <select value={selectedAccountId} onChange={(e) => setSelectedAccountId(e.target.value)}>
-              {Object.entries(accounts).map(([id, a]) => (
+              {Object.entries(accounts)
+                .sort(([idA], [idB]) => (idA === 'hsbc' ? -1 : idB === 'hsbc' ? 1 : 0))
+                .map(([id, a]) => (
                 <option key={id} value={id}>
                   {a.name} (Current: {formatMoney(a.balance)})
                 </option>
@@ -450,7 +495,7 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
           Don't {isIncome ? 'deposit' : 'deduct'}
         </button>
         <button className="primary-button" type="button" onClick={handleDepositAndSave}>
-          {isIncome ? 'Deposit & Save' : 'Deduct & Save'}
+          {isIncome ? `Deposit to ${targetAccountLabel} & Save` : `Deduct from ${targetAccountLabel} & Save`}
         </button>
       </div>
     </dialog>

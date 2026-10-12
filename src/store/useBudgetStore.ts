@@ -301,8 +301,8 @@ function scheduleAutoGistSync(getState: () => BudgetStoreState, immediate = fals
 }
 
 const defaultAccounts: Record<string, AccountBalance> = {
-  cib: { name: 'CIB', balance: 0, maturityDay: 15 },
   hsbc: { name: 'HSBC', balance: 0, maturityDay: 30 },
+  cib: { name: 'CIB', balance: 0, maturityDay: 15 },
 };
 
 function withoutCashAccount(accounts: Record<string, AccountBalance>): Record<string, AccountBalance> {
@@ -946,6 +946,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
 
     if (entryId.startsWith('credit-settlement-')) {
       const existingOverride = get().creditSettlementOverrides[entryId] || {};
+      const settlementAcc = entryId.split('-')[2] || 'hsbc';
       const prevActual = Number(get().entryActuals[entryId] ?? 0);
       const tranche = amount > prevActual ? amount - prevActual : amount;
 
@@ -956,7 +957,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
           date: actDate,
           amount: prevActual,
           tag: existingOverride.tag || 'Credit',
-          account: existingOverride.account || 'cib',
+          account: existingOverride.account || settlementAcc,
         });
       }
 
@@ -966,7 +967,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
           date: actDate,
           amount: tranche,
           tag: drawMeta?.tag || existingOverride.tag || 'Credit',
-          account: drawMeta?.account || existingOverride.account || 'cib',
+          account: drawMeta?.account || existingOverride.account || settlementAcc,
           note: drawMeta?.note,
         });
       }
@@ -974,7 +975,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       const updatedOverride = {
         ...existingOverride,
         tag: drawMeta?.tag || existingOverride.tag || 'Credit',
-        account: drawMeta?.account || existingOverride.account || 'cib',
+        account: drawMeta?.account || existingOverride.account || settlementAcc,
         draws,
       };
       const nextOverrides = { ...get().creditSettlementOverrides, [entryId]: updatedOverride };
@@ -998,7 +999,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
           date: entry.actualDate || entry.date || actDate,
           amount: prevActual,
           tag: entry.tag || '',
-          account: entry.account || 'cash',
+          account: entry.account || 'hsbc',
         });
       }
 
@@ -1008,7 +1009,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
           date: actDate,
           amount: tranche,
           tag: drawMeta?.tag || entry.tag || '',
-          account: drawMeta?.account || entry.account || 'cash',
+          account: drawMeta?.account || entry.account || 'hsbc',
           note: drawMeta?.note,
         });
       }
@@ -1036,7 +1037,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
             date: entry.actualDate || entry.date || actDate,
             amount: prevActual,
             tag: entry.tag || '',
-            account: entry.account || 'cash',
+            account: entry.account || 'hsbc',
           });
         }
 
@@ -1046,7 +1047,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
             date: actDate,
             amount: tranche,
             tag: drawMeta?.tag || entry.tag || '',
-            account: drawMeta?.account || entry.account || 'cash',
+            account: drawMeta?.account || entry.account || 'hsbc',
             note: drawMeta?.note,
           });
         }
@@ -1105,7 +1106,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       if (options?.revertStorage && prevActualAmt > 0) {
         // Synthetic settlement rows have no stored entry; the owning account key is
         // encoded in the id: credit-settlement-{accountKey}-{year}-{month}.
-        const settlementAccountKey = entryId.split('-')[2] || 'cib';
+        const settlementAccountKey = entryId.split('-')[2] || 'hsbc';
         revertStorageOrAccountBalance(get, {
           account: settlementOverride?.account || settlementAccountKey,
           currency: 'EGP',
@@ -1325,11 +1326,12 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       const totalAmount = newDraws.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
       const validDates = newDraws.map((d) => d.date).filter(Boolean).sort();
       const lastDate = validDates.length > 0 ? validDates[validDates.length - 1] : draw.date || DateUtils.todayString();
+      const settlementAcc = entryId.split('-')[2] || 'hsbc';
       const updatedOverride = {
         ...existingOverride,
         draws: newDraws,
         tag: draw.tag || existingOverride.tag || 'Credit',
-        account: draw.account || existingOverride.account || 'cib',
+        account: draw.account || existingOverride.account || settlementAcc,
       };
       const nextOverrides = { ...get().creditSettlementOverrides, [entryId]: updatedOverride };
       saveStorage(STORAGE_KEYS.creditSettlementOverrides, nextOverrides);
@@ -1398,11 +1400,12 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       const totalAmount = newDraws.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
       const validDates = newDraws.map((d) => d.date).filter(Boolean).sort();
       const lastDate = validDates.length > 0 ? validDates[validDates.length - 1] : DateUtils.todayString();
+      const settlementAcc = entryId.split('-')[2] || 'hsbc';
       const updatedOverride = {
         ...existingOverride,
         draws: newDraws,
         tag: draw.tag || existingOverride.tag || 'Credit',
-        account: draw.account || existingOverride.account || 'cib',
+        account: draw.account || existingOverride.account || settlementAcc,
       };
       const nextOverrides = { ...get().creditSettlementOverrides, [entryId]: updatedOverride };
       saveStorage(STORAGE_KEYS.creditSettlementOverrides, nextOverrides);
@@ -1496,9 +1499,10 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       });
 
       if (options?.revertStorage && deletedDraw) {
+        const settlementAcc = entryId.split('-')[2] || 'hsbc';
         revertStorageOrAccountBalance(get, {
           assetId: options.storageAssetId || deletedDraw.storageAssetId,
-          account: deletedDraw.account || existingOverride.account || 'cib',
+          account: deletedDraw.account || existingOverride.account || settlementAcc,
           currency: 'EGP',
           amount: deletedDraw.amount,
           isEgpAmount: true,

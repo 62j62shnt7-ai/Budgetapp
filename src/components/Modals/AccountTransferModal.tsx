@@ -37,7 +37,7 @@ export const AccountTransferModal: React.FC<AccountTransferModalProps> = ({
     if (isOpen) {
       const resolvedTo = initialToAccount && accounts[initialToAccount]
         ? initialToAccount
-        : accountKeys[0] || 'cib';
+        : accountKeys.find((k) => k === 'hsbc') || accountKeys[0] || 'hsbc';
 
       let resolvedFrom = initialFromAccount && accounts[initialFromAccount] && initialFromAccount !== resolvedTo
         ? initialFromAccount

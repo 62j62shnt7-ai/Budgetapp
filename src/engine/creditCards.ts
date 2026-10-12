@@ -125,10 +125,11 @@ export function isCardExpenseForAccount(entry: CashEntry, accountKey: string): b
   const tag = (entry.tag || '').toLowerCase();
   const target = (accountKey || '').toLowerCase();
   if (target === 'cib') {
-    return t.includes('cib') || acc.includes('cib') || (!t.includes('hsbc') && !acc.includes('hsbc') && !cat.includes('hsbc') && !tag.includes('hsbc'));
+    return t.includes('cib') || acc.includes('cib') || cat.includes('cib') || tag.includes('cib');
   }
   if (target === 'hsbc') {
-    return t.includes('hsbc') || acc.includes('hsbc') || cat.includes('hsbc') || tag.includes('hsbc');
+    return t.includes('hsbc') || acc.includes('hsbc') || cat.includes('hsbc') || tag.includes('hsbc') ||
+      (!t.includes('cib') && !acc.includes('cib') && !cat.includes('cib') && !tag.includes('cib'));
   }
   return false;
 }
@@ -142,7 +143,7 @@ export function getCreditSettlementDate(
   if (isCreditCardExpense(entry)) {
     const type = (entry.creditType || '').toLowerCase();
     const account = (entry.account || '').toLowerCase();
-    const accKey = type.includes('hsbc') || account.includes('hsbc') ? 'hsbc' : 'cib';
+    const accKey = type.includes('cib') || account.includes('cib') ? 'cib' : 'hsbc';
     const actualDate = (entryActualDates && entry.id && entryActualDates[entry.id]) || entry.actualDate || entry.date;
     const defaultDate = entry.creditSettlementDate || calculateCreditSettlementDate(actualDate, `${accKey}_card`);
     const sMonth = defaultDate ? DateUtils.getMonthKey(defaultDate) : '';
@@ -167,7 +168,7 @@ export function getCreditSettlementMonth(
   if (isCreditCardExpense(entry)) {
     const type = (entry.creditType || '').toLowerCase();
     const account = (entry.account || '').toLowerCase();
-    const accKey = type.includes('hsbc') || account.includes('hsbc') ? 'hsbc' : 'cib';
+    const accKey = type.includes('cib') || account.includes('cib') ? 'cib' : 'hsbc';
     const actualDate = (entryActualDates && entry.id && entryActualDates[entry.id]) || entry.actualDate || entry.date;
     const defaultDate = entry.creditSettlementDate || calculateCreditSettlementDate(actualDate, `${accKey}_card`);
     return defaultDate ? DateUtils.getMonthKey(defaultDate) : '';
@@ -359,8 +360,8 @@ export function getCoveredCreditSettlementKeys(
 }
 
 export function getCreditAccountKey(entry: CashEntry): 'hsbc' | 'cib' {
-  const acc = `${entry.account || ''} ${entry.creditType || ''}`.toLowerCase();
-  return acc.includes('hsbc') ? 'hsbc' : 'cib';
+  const acc = `${entry.account || ''} ${entry.creditType || ''} ${entry.category || ''}`.toLowerCase();
+  return acc.includes('cib') ? 'cib' : 'hsbc';
 }
 
 export function isCreditSettlementRow(entry: CashEntry): boolean {

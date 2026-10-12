@@ -7,7 +7,7 @@ import { StorageTransferModal } from '../Modals/StorageTransferModal';
 import { StorageFxModal } from '../Modals/StorageFxModal';
 
 // Preferred display order; any other configured account is appended automatically.
-const preferredAccountOrder = ['cib', 'hsbc'];
+const preferredAccountOrder = ['hsbc', 'cib'];
 
 export const AccountsView: React.FC = () => {
   const { accounts, updateAccountBalance, transferAccountFunds, storageAssets, rates, navigateTo } = useBudgetStore();

@@ -33,11 +33,11 @@ export function resolveSettlementAccountKey(
     if (accounts['cib']) return 'cib';
   }
 
-  // Find any account key that partially matches or default to first available or 'cib'
+  // Find any account key that partially matches or default to first available or 'hsbc'
   const matchedKey = Object.keys(accounts).find((k) => k.toLowerCase() === acc);
   if (matchedKey) return matchedKey;
 
-  return accounts['cib'] ? 'cib' : (Object.keys(accounts)[0] || 'cib');
+  return accounts['hsbc'] ? 'hsbc' : (accounts['cib'] ? 'cib' : (Object.keys(accounts)[0] || 'hsbc'));
 }
 
 export function resolveCardDisplayName(entry: CashEntry): string {

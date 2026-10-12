@@ -39,6 +39,43 @@ export function resolveCurrencyRate(rates: RatesData | null | undefined, code?: 
   return rate > 0 && rate !== 1.0 ? rate : fallback;
 }
 
+export function getAccountNativeCurrency(accountName: string, storageAssets: StorageAsset[] = []): string {
+  const clean = (accountName || '').toLowerCase().trim();
+  if (!clean) return 'EGP';
+  const matchedStorage = storageAssets.find(
+    (a) => a.id.toLowerCase() === clean || a.name.toLowerCase() === clean
+  );
+  if (matchedStorage) {
+    const unit = (matchedStorage.unit || matchedStorage.currency || '').toUpperCase();
+    if (['USD', 'DOLLARS', '$'].includes(unit)) return 'USD';
+    if (['EUR', 'EUROS', '€'].includes(unit)) return 'EUR';
+    if (['GBP', 'POUNDS', '£'].includes(unit)) return 'GBP';
+    if (['SAR'].includes(unit)) return 'SAR';
+    if (['AED'].includes(unit)) return 'AED';
+    if (['EGP'].includes(unit)) return 'EGP';
+    if (['USD', 'EUR', 'GBP', 'SAR', 'AED', 'EGP'].includes(unit)) return unit;
+  }
+  if (clean === 'usd' || clean.includes('usd')) return 'USD';
+  if (clean === 'eur' || clean.includes('eur')) return 'EUR';
+  if (clean === 'gbp' || clean.includes('gbp')) return 'GBP';
+  if (clean === 'sar' || clean.includes('sar')) return 'SAR';
+  if (clean === 'aed' || clean.includes('aed')) return 'AED';
+  return 'EGP';
+}
+
+export function convertAmountBetweenCurrencies(
+  amountVal: number,
+  fromCurr: string,
+  toCurr: string,
+  rates: RatesData | null | undefined
+): number {
+  if (fromCurr === toCurr || !amountVal) return amountVal;
+  const fromRate = fromCurr === 'EGP' ? 1.0 : getCurrencyRate(rates, fromCurr);
+  const toRate = toCurr === 'EGP' ? 1.0 : getCurrencyRate(rates, toCurr);
+  if (fromRate <= 0 || toRate <= 0) return amountVal;
+  return Math.round(((amountVal * fromRate) / toRate) * 100) / 100;
+}
+
 export function computeSpreadPct(sell: number, buy: number): number {
   const mid = (Number(sell) + Number(buy)) / 2;
   if (!mid) return 0.006;

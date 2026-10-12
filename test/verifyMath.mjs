@@ -34,7 +34,7 @@ import {
   isOngoingEntry,
   simulateSpend,
 } from '../src/engine/forecast.ts';
-import { computeSpreadPct, computeAssetEgpValue, defaultRates, autoFetchLatestRates } from '../src/engine/currency.ts';
+import { computeSpreadPct, computeAssetEgpValue, defaultRates, autoFetchLatestRates, getAccountNativeCurrency, convertAmountBetweenCurrencies } from '../src/engine/currency.ts';
 import { computeFinancialHealthScore, analyzeSettledMonths } from '../src/engine/healthScore.ts';
 import { DateUtils } from '../src/engine/dateUtils.ts';
 import { calculateJobFinancials } from '../src/engine/jobs.ts';
@@ -1620,6 +1620,56 @@ console.log('✓ Settlement clear: reverts to single planned due (overdue) and r
   console.log('✓ Cross-account transfer coverage vs uncovered shortfall differentiation verified');
   console.log('✓ Partial transfer coverage and remaining shortfall calculation verified');
   console.log('✓ Source account transferable capacity based on projected settlement date verified');
+}
+
+// =========================================================================
+// Account Currency Auto-default & Cross-Currency Conversion
+// =========================================================================
+{
+  const mockStorageAssets = [
+    { id: 'storage-usd', name: 'USD', unit: 'dollars', quantity: 2900, buyPrice: 48, currency: 'USD', category: 'currency' },
+    { id: 'storage-eur', name: 'EUR', unit: 'euros', quantity: 3280, buyPrice: 52, currency: 'EUR', category: 'currency' },
+    { id: 'dubai_safe', name: 'Dubai Safe Reserve', unit: 'AED', quantity: 1000, buyPrice: 13, currency: 'AED', category: 'cash' },
+    { id: 'gold_bars', name: 'Gold Bars', unit: 'grams', quantity: 50, buyPrice: 3200, currency: 'EGP', category: 'gold' },
+  ];
+
+  // Native Currency Resolution
+  assert.strictEqual(getAccountNativeCurrency('hsbc', mockStorageAssets), 'EGP');
+  assert.strictEqual(getAccountNativeCurrency('cib', mockStorageAssets), 'EGP');
+  assert.strictEqual(getAccountNativeCurrency('HSBC Credit', mockStorageAssets), 'EGP');
+  assert.strictEqual(getAccountNativeCurrency('CIB Credit', mockStorageAssets), 'EGP');
+  assert.strictEqual(getAccountNativeCurrency('USD', mockStorageAssets), 'USD');
+  assert.strictEqual(getAccountNativeCurrency('storage-usd', mockStorageAssets), 'USD');
+  assert.strictEqual(getAccountNativeCurrency('EUR', mockStorageAssets), 'EUR');
+  assert.strictEqual(getAccountNativeCurrency('storage-eur', mockStorageAssets), 'EUR');
+  assert.strictEqual(getAccountNativeCurrency('Dubai Safe Reserve', mockStorageAssets), 'AED');
+  assert.strictEqual(getAccountNativeCurrency('dubai_safe', mockStorageAssets), 'AED');
+  assert.strictEqual(getAccountNativeCurrency('Gold Bars', mockStorageAssets), 'EGP');
+  assert.strictEqual(getAccountNativeCurrency('', mockStorageAssets), 'EGP');
+
+  // Cross-Currency Conversion with Rates
+  const testRates = {
+    currencies: [
+      { name: 'USD', sell: 50.0, buy: 49.5 },
+      { name: 'EUR', sell: 54.0, buy: 53.5 },
+      { name: 'AED', sell: 13.5, buy: 13.4 },
+    ],
+  };
+
+  // EGP to USD: 5,000 EGP / 50 = 100 USD
+  assert.strictEqual(convertAmountBetweenCurrencies(5000, 'EGP', 'USD', testRates), 100);
+  // USD to EGP: 100 USD * 50 = 5,000 EGP
+  assert.strictEqual(convertAmountBetweenCurrencies(100, 'USD', 'EGP', testRates), 5000);
+  // USD to EUR: 100 USD * 50 / 54 = 92.59 EUR
+  assert.strictEqual(convertAmountBetweenCurrencies(100, 'USD', 'EUR', testRates), 92.59);
+  // EUR to USD: 100 EUR * 54 / 50 = 108 USD
+  assert.strictEqual(convertAmountBetweenCurrencies(100, 'EUR', 'USD', testRates), 108);
+  // Identity: same currency returns unchanged
+  assert.strictEqual(convertAmountBetweenCurrencies(250, 'USD', 'USD', testRates), 250);
+  // Zero / empty returns unchanged
+  assert.strictEqual(convertAmountBetweenCurrencies(0, 'USD', 'EUR', testRates), 0);
+
+  console.log('✓ Account currency resolution and cross-currency conversion verified');
 }
 
 console.log('\n=================================================================');
