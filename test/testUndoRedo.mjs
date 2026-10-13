@@ -316,4 +316,27 @@ assert.strictEqual(state.redoStack.length, 0);
 assert.strictEqual(state.undoToast, null);
 console.log('✓ Test 7 passed!');
 
+// Test 8: Remote Cloud Sync does NOT count as an undo step, but manual import does
+console.log('Test 8: Remote sync vs manual import undo behavior...');
+const samplePayload = JSON.stringify({
+  version: 2,
+  entries: [{ id: 'sync-entry-1', date: '2026-10-20', category: 'General', account: 'Cash', type: 'expense', amount: 100 }],
+  accounts: state.accounts,
+});
+
+// 8a: Remote Cloud Sync
+useBudgetStore.getState().importJSON(samplePayload, { isRemoteSync: true });
+state = useBudgetStore.getState();
+assert.strictEqual(state.undoStack.length, 0, 'undoStack must remain 0 after remote cloud sync');
+assert.strictEqual(state.redoStack.length, 0, 'redoStack must remain 0 after remote cloud sync');
+assert.strictEqual(state.undoToast, null, 'undoToast must be null after remote cloud sync');
+
+// 8b: Manual Import
+useBudgetStore.getState().importJSON(samplePayload);
+state = useBudgetStore.getState();
+assert.strictEqual(state.undoStack.length, 1, 'undoStack should have 1 item after manual import');
+assert.strictEqual(state.undoStack[0].label, 'Data Import', 'Undo step should be labeled Data Import');
+console.log('✓ Test 8 passed!');
+
 console.log('All Undo/Redo tests passed successfully!');
+

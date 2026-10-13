@@ -3023,12 +3023,15 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         return false;
       }
 
-      // 1. Create a full snapshot before mutating state (for both user import and undo stack)
+      // 1. Handle undo snapshot & backup
+      const isRemoteSync = Boolean(options?.isRemoteSync);
       const currentSnapshot = captureFinancialSnapshot(get());
-      saveStorage(STORAGE_KEYS.importUndoBackup, currentSnapshot);
 
-      // Record undo step so user can revert remote or manual sync via standard Undo button
-      recordUndoableStep(set, get, options?.isRemoteSync ? 'Remote Cloud Sync' : 'Data Import');
+      if (!isRemoteSync) {
+        // Only user-initiated imports create an undo step and an import backup
+        saveStorage(STORAGE_KEYS.importUndoBackup, currentSnapshot);
+        recordUndoableStep(set, get, 'Data Import');
+      }
 
       // 2. Run versioned migration pipeline
       const migrated = migrateBackupPayload(parsed);
@@ -3076,6 +3079,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         deletedForecasts: migrated.deletedForecasts,
         redoStack: [],
         undoToast: null,
+        ...(isRemoteSync ? { undoStack: [] } : {}),
       });
 
       if (!options?.isRemoteSync) {
