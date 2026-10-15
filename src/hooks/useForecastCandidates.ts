@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../store/useBudgetStore';
 import { DateUtils } from '../engine/dateUtils';
 import { buildSalaryEntries, buildInstallmentEntries } from '../engine/salaryAndInstallments';
@@ -30,7 +31,21 @@ export function useForecastCandidates(forecastRangeMonths: number = 12): Forecas
     entryActuals,
     entryActualDates,
     deletedForecasts,
-  } = useBudgetStore();
+  } = useBudgetStore(
+    useShallow((state) => ({
+      accounts: state.accounts,
+      entries: state.entries,
+      archivedEntries: state.archivedEntries,
+      salaryPattern: state.salaryPattern,
+      salaryAnchorMonth: state.salaryAnchorMonth,
+      installments: state.installments,
+      creditDues: state.creditDues,
+      creditSettlementOverrides: state.creditSettlementOverrides,
+      entryActuals: state.entryActuals,
+      entryActualDates: state.entryActualDates,
+      deletedForecasts: state.deletedForecasts,
+    }))
+  );
 
   return useMemo(() => {
     const totalCash = Object.values(accounts || {}).reduce(

@@ -198,9 +198,15 @@ export function buildCreditDueEntries(params: {
   const entries: CashEntry[] = [];
   const targetAccounts = ['cib', 'hsbc'];
 
-  const allExpenses = [...cashEntries, ...(archivedEntries || [])].filter(
-    (entry) => entry && entry.type === 'expense'
-  );
+  const seenExpenseIds = new Set<string>();
+  const allExpenses = [...cashEntries, ...(archivedEntries || [])].filter((entry) => {
+    if (!entry || entry.type !== 'expense') return false;
+    if (entry.id) {
+      if (seenExpenseIds.has(entry.id)) return false;
+      seenExpenseIds.add(entry.id);
+    }
+    return true;
+  });
 
   const getActual = (entry: CashEntry): number => {
     if (entryActuals[entry.id] !== undefined) return Number(entryActuals[entry.id]) || 0;
@@ -343,7 +349,15 @@ export function getCoveredCreditSettlementKeys(
   archivedEntries: CashEntry[] = []
 ): Set<string> {
   const coveredKeys = new Set<string>();
-  const all = [...(entries || []), ...(archivedEntries || [])];
+  const seenIds = new Set<string>();
+  const all = [...(entries || []), ...(archivedEntries || [])].filter((entry) => {
+    if (!entry) return false;
+    if (entry.id) {
+      if (seenIds.has(entry.id)) return false;
+      seenIds.add(entry.id);
+    }
+    return true;
+  });
   all.forEach((entry) => {
     const act = (entryActuals && entryActuals[entry.id] !== undefined)
       ? Number(entryActuals[entry.id]) || 0

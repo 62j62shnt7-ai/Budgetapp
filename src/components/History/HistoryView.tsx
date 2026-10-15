@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { formatNativeCurrency } from '../../engine/currency';
@@ -47,7 +48,30 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
     irqJobs,
     pendingNavigation,
     clearPendingNavigation,
-  } = useBudgetStore();
+  } = useBudgetStore(
+    useShallow((state) => ({
+      entries: state.entries,
+      archivedEntries: state.archivedEntries,
+      installments: state.installments,
+      accounts: state.accounts,
+      creditDues: state.creditDues,
+      creditSettlementOverrides: state.creditSettlementOverrides,
+      entryActuals: state.entryActuals,
+      entryActualDates: state.entryActualDates,
+      deletedForecasts: state.deletedForecasts,
+      recordActual: state.recordActual,
+      clearActual: state.clearActual,
+      deleteEntry: state.deleteEntry,
+      updateEntry: state.updateEntry,
+      runTransaction: state.runTransaction,
+      storageAssets: state.storageAssets,
+      partTimeJobs: state.partTimeJobs,
+      asfJobs: state.asfJobs,
+      irqJobs: state.irqJobs,
+      pendingNavigation: state.pendingNavigation,
+      clearPendingNavigation: state.clearPendingNavigation,
+    }))
+  );
 
   const [deleteEntryTarget, setDeleteEntryTarget] = useState<CashEntry | null>(null);
   const [clearEntryTarget, setClearEntryTarget] = useState<CashEntry | null>(null);

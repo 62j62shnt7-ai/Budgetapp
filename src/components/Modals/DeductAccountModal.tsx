@@ -189,6 +189,7 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
       updatedDraws[lastIndex] = {
         ...updatedDraws[lastIndex],
         tag: trimmedTag,
+        account: 'none',
       };
     } else if (actualAmount > 0) {
       updatedDraws = [
@@ -197,7 +198,7 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
           date: entry.actualDate || entry.date || DateUtils.todayString(),
           amount: actualAmount,
           tag: trimmedTag,
-          account: entry.account || (isSettlement ? (entry.id.split('-')[2] || 'hsbc') : 'hsbc'),
+          account: 'none',
         },
       ];
     }
@@ -205,7 +206,7 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
     updateEntry(entry.id, {
       tag: trimmedTag,
       draws: updatedDraws,
-      ...(isSettlement ? { isClosed: entry.isClosed ?? true } : {}),
+      ...(isSettlement ? { isClosed: entry.isClosed ?? true, account: 'none' } : {}),
     });
 
     onClose();

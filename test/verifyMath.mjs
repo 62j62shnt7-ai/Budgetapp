@@ -1727,6 +1727,175 @@ console.log('✓ Settlement clear: reverts to single planned due (overdue) and r
   console.log('✓ Account currency resolution and cross-currency conversion verified');
 }
 
+// =========================================================================
+// Audit Regression Suite: Foreign-Currency Refunds, Deduplication & Multi-Tranche Health Score
+// =========================================================================
+{
+  // 1. Foreign-currency expense with originalAmount: clearActual & deleteEntry must refund native USD (100 USD), NOT EGP (5000 USD)
+  useBudgetStore.setState({
+    accounts: {
+      hsbc: { name: 'HSBC', balance: 20000, maturityDay: 30 },
+      cib: { name: 'CIB', balance: 15000, maturityDay: 15 },
+    },
+    storageAssets: [
+      {
+        id: 'usd-vault',
+        name: 'USD Cash Vault',
+        category: 'Currency',
+        quantity: 400,
+        unit: 'USD',
+        buyPrice: 50,
+        rate: 50,
+        currency: 'EGP',
+      },
+    ],
+    entries: [
+      {
+        id: 'fx-exp-storage',
+        date: '2026-08-10',
+        category: 'Software License',
+        account: 'USD Cash Vault',
+        type: 'expense',
+        currency: 'USD',
+        originalAmount: 100,
+        fxRateAtEntry: 50,
+        amount: 5000,
+        actualAmount: 5000,
+        actualDate: '2026-08-10',
+        draws: [{ id: 'd-fx-1', date: '2026-08-10', amount: 5000, account: 'USD Cash Vault' }],
+      },
+    ],
+    entryActuals: { 'fx-exp-storage': 5000 },
+    entryActualDates: { 'fx-exp-storage': '2026-08-10' },
+  });
+
+  useBudgetStore.getState().clearActual('fx-exp-storage', { revertStorage: true });
+  const vaultAfterClear = useBudgetStore.getState().storageAssets.find((a) => a.id === 'usd-vault');
+  assert.strictEqual(vaultAfterClear.quantity, 500, 'Clearing $100 (5000 EGP) expense must refund 100 USD (to 500 USD), not 5000 USD');
+
+  useBudgetStore.setState({
+    storageAssets: [{ ...vaultAfterClear, quantity: 400 }],
+    entries: [
+      {
+        id: 'fx-exp-storage',
+        date: '2026-08-10',
+        category: 'Software License',
+        account: 'USD Cash Vault',
+        type: 'expense',
+        currency: 'USD',
+        originalAmount: 100,
+        fxRateAtEntry: 50,
+        amount: 5000,
+        actualAmount: 5000,
+        actualDate: '2026-08-10',
+        draws: [{ id: 'd-fx-1', date: '2026-08-10', amount: 5000, account: 'USD Cash Vault' }],
+      },
+    ],
+    entryActuals: { 'fx-exp-storage': 5000 },
+  });
+  useBudgetStore.getState().deleteEntry('fx-exp-storage', 'single', { revertStorage: true });
+  const vaultAfterDelete = useBudgetStore.getState().storageAssets.find((a) => a.id === 'usd-vault');
+  assert.strictEqual(vaultAfterDelete.quantity, 500, 'Deleting $100 (5000 EGP) expense must refund 100 USD (to 500 USD), not 5000 USD');
+
+  // 2. Foreign-currency entry settled via convert_egp into an EGP operating account (cib)
+  const convertEgpEntry = {
+    id: 'fx-exp-cib',
+    date: '2026-08-12',
+    category: 'Cloud Hosting',
+    account: 'cib',
+    type: 'expense',
+    currency: 'USD',
+    originalAmount: 100,
+    fxRateAtEntry: 50,
+    amount: 5000,
+    actualAmount: 5000,
+    actualDate: '2026-08-12',
+    draws: [{ id: 'd-cib-1', date: '2026-08-12', amount: 5000, account: 'cib' }],
+  };
+  useBudgetStore.setState({
+    entries: [convertEgpEntry],
+    entryActuals: { 'fx-exp-cib': 5000 },
+  });
+
+  const clearOpts = buildEntryClearOptions(convertEgpEntry, {
+    accounts: useBudgetStore.getState().accounts,
+    storageAssets: useBudgetStore.getState().storageAssets,
+    entryActuals: useBudgetStore.getState().entryActuals,
+  });
+  const storageOpt = clearOpts.options.find((o) => o.id === 'storage');
+  assert.ok(storageOpt && storageOpt.label.includes('CIB'), 'Foreign entry settled into CIB EGP account must offer CIB Bank Account Refund');
+
+  useBudgetStore.getState().clearActual('fx-exp-cib', { revertStorage: true });
+  assert.strictEqual(useBudgetStore.getState().accounts.cib.balance, 20000, 'Clearing foreign entry settled in CIB must refund 5000 EGP to CIB');
+  assert.strictEqual(useBudgetStore.getState().storageAssets[0].quantity, 500, 'USD vault must remain untouched when refunding CIB EGP account');
+
+  // 3. Credit settlement with skipped bank deduction (account: 'none') must not phantom-refund bank on clearActual
+  useBudgetStore.setState({
+    accounts: { hsbc: { name: 'HSBC', balance: 25000, maturityDay: 30 } },
+    creditDues: { hsbc: { '2026-08': 4000 } },
+    creditSettlementOverrides: {
+      'credit-settlement-hsbc-2026-08': {
+        amount: 4000,
+        account: 'none',
+        isClosed: true,
+        draws: [{ id: 'd-none', date: '2026-08-30', amount: 4000, account: 'none' }],
+      },
+    },
+    entryActuals: { 'credit-settlement-hsbc-2026-08': 4000 },
+  });
+  useBudgetStore.getState().clearActual('credit-settlement-hsbc-2026-08', { revertStorage: true });
+  assert.strictEqual(useBudgetStore.getState().accounts.hsbc.balance, 25000, 'Skipped-deduction credit settlement must not phantom-refund HSBC');
+
+  // 4. Credit card swipe deduplication across cashEntries and archivedEntries
+  const dupSwipe = {
+    id: 'dup-swipe-1',
+    date: '2026-05-05',
+    amount: 1500,
+    actualAmount: 1500,
+    type: 'expense',
+    category: 'Groceries',
+    account: 'CIB Credit',
+    creditType: 'cib_card',
+    source: 'credit card',
+  };
+  const dedupedDues = buildCreditDueEntries({
+    accounts: { cib: { name: 'CIB', balance: 10000, maturityDay: 15 } },
+    creditDues: {},
+    cashEntries: [dupSwipe],
+    archivedEntries: [dupSwipe],
+    entryActuals: { 'dup-swipe-1': 1500 },
+  });
+  const cibDeduped = dedupedDues.find((d) => d.id === 'credit-settlement-cib-2026-06');
+  assert.strictEqual(cibDeduped.cardSpendTotal, 1500, 'Duplicate swipe in cashEntries and archivedEntries must be counted once');
+
+  // 5. Multi-tranche draws across months in analyzeSettledMonths
+  const settledRows = analyzeSettledMonths({
+    historyEntries: [
+      { id: 'inc-july', date: '2026-07-05', type: 'income', category: 'Salary', amount: 20000, actualAmount: 20000 },
+      { id: 'inc-aug', date: '2026-08-05', type: 'income', category: 'Salary', amount: 20000, actualAmount: 20000 },
+      {
+        id: 'multi-month-budget',
+        date: '2026-07-01',
+        type: 'expense',
+        category: 'Home Renovation',
+        amount: 10000,
+        actualAmount: 10000,
+        draws: [
+          { id: 'tr-1', date: '2026-07-10', amount: 6000 },
+          { id: 'tr-2', date: '2026-08-12', amount: 4000 },
+        ],
+      },
+    ],
+    today: '2026-09-15',
+  });
+  const julyRow = settledRows.find((r) => r.month === '2026-07');
+  const augRow = settledRows.find((r) => r.month === '2026-08');
+  assert.strictEqual(julyRow.realizedExpense, 6000, 'July realized expense reflects July tranche (6000)');
+  assert.strictEqual(augRow.realizedExpense, 4000, 'August realized expense reflects August tranche (4000)');
+
+  console.log('✓ Audit regression suite (FX storage/bank refunds, settlement skip-deduct, swipe dedup, multi-month draws) verified');
+}
+
 console.log('\n=================================================================');
 console.log('🌟 100% OF ENGINE, STORE, AND BUSINESS LOGIC TESTS PASSED! 🌟');
 console.log('=================================================================');

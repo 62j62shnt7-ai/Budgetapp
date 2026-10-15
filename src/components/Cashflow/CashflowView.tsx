@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import {
   buildSalaryEntries,
@@ -90,7 +91,39 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     setActiveTab,
     pendingNavigation,
     clearPendingNavigation,
-  } = useBudgetStore();
+  } = useBudgetStore(
+    useShallow((state) => ({
+      accounts: state.accounts,
+      entries: state.entries,
+      updateEntry: state.updateEntry,
+      deleteEntry: state.deleteEntry,
+      salaryPattern: state.salaryPattern,
+      salaryAnchorMonth: state.salaryAnchorMonth,
+      updateSalaryPattern: state.updateSalaryPattern,
+      populateSalaryForecast: state.populateSalaryForecast,
+      clearSalaryForecast: state.clearSalaryForecast,
+      installments: state.installments,
+      updateInstallment: state.updateInstallment,
+      deleteInstallment: state.deleteInstallment,
+      creditDues: state.creditDues,
+      creditSettlementOverrides: state.creditSettlementOverrides,
+      archivedEntries: state.archivedEntries,
+      entryActuals: state.entryActuals,
+      entryActualDates: state.entryActualDates,
+      deletedForecasts: state.deletedForecasts,
+      recordActual: state.recordActual,
+      settleJobForecastPayment: state.settleJobForecastPayment,
+      runTransaction: state.runTransaction,
+      rates: state.rates,
+      storageAssets: state.storageAssets,
+      partTimeJobs: state.partTimeJobs,
+      asfJobs: state.asfJobs,
+      irqJobs: state.irqJobs,
+      setActiveTab: state.setActiveTab,
+      pendingNavigation: state.pendingNavigation,
+      clearPendingNavigation: state.clearPendingNavigation,
+    }))
+  );
 
   const initialMonth = pendingNavigation?.tab === 'cashflow' && pendingNavigation.filters?.month
     ? pendingNavigation.filters.month

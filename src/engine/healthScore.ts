@@ -285,7 +285,15 @@ export function analyzeSettledMonths(params: {
     maxMonths = MEASURED_MONTHS,
   } = params;
   const currentMonth = today.slice(0, 7);
-  const ledger = [...(historyEntries || []), ...archivedEntries];
+  const seenLedgerIds = new Set<string>();
+  const ledger = [...(historyEntries || []), ...archivedEntries].filter((entry) => {
+    if (!entry) return false;
+    if (entry.id) {
+      if (seenLedgerIds.has(entry.id)) return false;
+      seenLedgerIds.add(entry.id);
+    }
+    return true;
+  });
 
   const realizedAmount = (entry: CashEntry) => {
     const actual = getEntryActualAmount(entry, entryActuals);
@@ -320,24 +328,51 @@ export function analyzeSettledMonths(params: {
     return !(month && coveredSettlementKeys.has(`${accountKey}-${month}`));
   });
 
-  const settledMonths = Array.from(
-    new Set(
-      countableEntries
-        .map((entry) => DateUtils.getMonthKey(entry.date))
-        .filter((month) => month && month < currentMonth)
-    )
-  )
+  const monthCandidates = new Set<string>();
+  countableEntries.forEach((entry) => {
+    const plannedMonth = DateUtils.getMonthKey(entry.date);
+    if (plannedMonth && plannedMonth < currentMonth) monthCandidates.add(plannedMonth);
+    if (Array.isArray(entry.draws) && entry.draws.length > 0) {
+      entry.draws.forEach((draw) => {
+        const drawMonth = DateUtils.getMonthKey(draw.date || entry.actualDate || entry.date);
+        if (drawMonth && drawMonth < currentMonth && (Number(draw.amount) || 0) > 0) {
+          monthCandidates.add(drawMonth);
+        }
+      });
+    }
+  });
+
+  const settledMonths = Array.from(monthCandidates)
     .sort()
     .slice(-Math.max(1, maxMonths));
+
+  const realizedAmountForMonth = (entry: CashEntry, month: string): number => {
+    if (Array.isArray(entry.draws) && entry.draws.length > 0) {
+      const drawsSum = entry.draws.reduce((sum, d) => sum + Math.max(0, Math.round(Number(d.amount) || 0)), 0);
+      if (drawsSum > 0) {
+        const hasCrossMonthDraws = entry.draws.some(
+          (d) => DateUtils.getMonthKey(d.date || entry.actualDate || entry.date) !== DateUtils.getMonthKey(entry.date)
+        );
+        if (hasCrossMonthDraws) {
+          return entry.draws
+            .filter((d) => DateUtils.getMonthKey(d.date || entry.actualDate || entry.date) === month)
+            .reduce((sum, d) => sum + Math.max(0, Math.round(Number(d.amount) || 0)), 0);
+        }
+      }
+    }
+    return DateUtils.getMonthKey(entry.date) === month ? realizedAmount(entry) : 0;
+  };
 
   return settledMonths.map((month) => {
     const monthEntries = countableEntries.filter((entry) => DateUtils.getMonthKey(entry.date) === month);
     const expenseEntries = monthEntries.filter((entry) => entry.type === 'expense');
     const plannedExpense = expenseEntries.reduce((sum, entry) => sum + Math.max(0, Number(entry.amount) || 0), 0);
-    const realizedExpense = expenseEntries.reduce((sum, entry) => sum + realizedAmount(entry), 0);
-    const realizedIncome = monthEntries
+    const realizedExpense = countableEntries
+      .filter((entry) => entry.type === 'expense')
+      .reduce((sum, entry) => sum + realizedAmountForMonth(entry, month), 0);
+    const realizedIncome = countableEntries
       .filter((entry) => entry.type === 'income')
-      .reduce((sum, entry) => sum + realizedAmount(entry), 0);
+      .reduce((sum, entry) => sum + realizedAmountForMonth(entry, month), 0);
     const ratio = plannedExpense > 0 ? realizedExpense / plannedExpense : null;
 
     return {

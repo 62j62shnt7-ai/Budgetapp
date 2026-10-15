@@ -89,7 +89,18 @@ function loadStorage<T>(key: string, fallback: T): T {
     if (typeof localStorage === 'undefined') return fallback;
     const raw = localStorage.getItem(key);
     if (!raw) return fallback;
-    return JSON.parse(raw);
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed === null || parsed === undefined) return fallback;
+    if (Array.isArray(fallback)) {
+      return Array.isArray(parsed) ? (parsed as T) : fallback;
+    }
+    if (typeof fallback === 'object' && fallback !== null) {
+      return typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as T) : fallback;
+    }
+    if (typeof fallback === 'string' || typeof fallback === 'number' || typeof fallback === 'boolean') {
+      return typeof parsed === typeof fallback ? (parsed as T) : fallback;
+    }
+    return parsed as T;
   } catch (err) {
     console.warn(`Error reading ${key} from localStorage:`, err);
     return fallback;
@@ -473,8 +484,9 @@ function revertStorageOrAccountBalance(
     );
   }
 
-  // 3. Match by account keyword and currency
-  if (!targetAsset && isForeign) {
+  // 3. Match by account keyword and currency (only when not directly targeting an EGP operating account key)
+  const isDirectOperatingAccount = Boolean(!assetId && accountLower && get().accounts[accountLower]);
+  if (!targetAsset && isForeign && !isDirectOperatingAccount) {
     if (accountLower.includes('hsbc') || accountLower.includes('bank')) {
       targetAsset = storageAssets.find(
         (a) => a.name.toLowerCase().includes('hsbc') && (a.unit || '').toUpperCase() === currUpper
@@ -487,7 +499,7 @@ function revertStorageOrAccountBalance(
   }
 
   // 4. Fallback match by unit / currency
-  if (!targetAsset && isForeign) {
+  if (!targetAsset && isForeign && !isDirectOperatingAccount) {
     targetAsset = storageAssets.find(
       (a) => (a.unit || '').toUpperCase() === currUpper || (a.currency || '').toUpperCase() === currUpper
     );
@@ -507,12 +519,17 @@ function revertStorageOrAccountBalance(
     return;
   }
 
-  // If it's a bank account in accounts (e.g. cib, hsbc EGP)
-  if (!isForeign && get().accounts[accountLower]) {
+  // If it's a bank account in accounts (e.g. cib, hsbc EGP, including convert_egp settlements)
+  if (get().accounts[accountLower]) {
+    let egpDelta = amount;
+    if (!isEgpAmount && isForeign) {
+      const rate = fxRate || getCurrencyRateOr(get().rates, currUpper, 1);
+      egpDelta = Math.round(amount * rate);
+    }
     const currentBal = get().accounts[accountLower].balance || 0;
     const nextBal = entryType === 'expense'
-      ? currentBal + amount // Reverting an expense refunds/adds back to bank balance
-      : currentBal - amount; // Reverting an income deducts the deposited money
+      ? currentBal + egpDelta // Reverting an expense refunds/adds back to bank balance
+      : currentBal - egpDelta; // Reverting an income deducts the deposited money
     get().updateAccountBalance(accountLower, nextBal);
   }
 }
@@ -1025,14 +1042,13 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
 
     // 8. Revert storage holding if selected
     if (options?.revertStorage && target) {
-      const isForeign = (target.currency || 'EGP').toUpperCase() !== 'EGP';
       const actualAmt = Number(get().entryActuals[id] ?? target.actualAmount ?? target.amount ?? 0);
       revertStorageOrAccountBalance(get, {
         assetId: options.storageAssetId,
         account: target.account,
         currency: target.currency,
         amount: actualAmt,
-        isEgpAmount: !isForeign || !target.originalAmount,
+        isEgpAmount: true,
         fxRate: target.fxRateAtEntry,
         entryType: target.type,
       });
@@ -1240,13 +1256,23 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         // Synthetic settlement rows have no stored entry; the owning account key is
         // encoded in the id: credit-settlement-{accountKey}-{year}-{month}.
         const settlementAccountKey = entryId.split('-')[2] || 'hsbc';
-        revertStorageOrAccountBalance(get, {
-          account: settlementOverride?.account || settlementAccountKey,
-          currency: 'EGP',
-          amount: prevActualAmt,
-          isEgpAmount: true,
-          entryType: 'expense',
-        });
+        const isNonDeductAcc = (acc?: string) => {
+          if (!acc) return false;
+          const clean = acc.trim().toLowerCase();
+          return clean === 'none' || clean === 'unassigned' || clean === 'cash' || clean === "don't deposit" || clean === 'dont deposit';
+        };
+        const hasDeductedDraw = settlementOverride?.draws && settlementOverride.draws.length > 0
+          ? settlementOverride.draws.some((d) => !isNonDeductAcc(d.account))
+          : !isNonDeductAcc(settlementOverride?.account);
+        if (hasDeductedDraw) {
+          revertStorageOrAccountBalance(get, {
+            account: settlementOverride?.account || settlementAccountKey,
+            currency: 'EGP',
+            amount: prevActualAmt,
+            isEgpAmount: true,
+            entryType: 'expense',
+          });
+        }
       }
 
       saveStorage(STORAGE_KEYS.entryActuals, actuals);
@@ -1432,13 +1458,12 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     }
 
     if (!targetJob && options?.revertStorage && target) {
-      const isForeign = (target.currency || 'EGP').toUpperCase() !== 'EGP';
       revertStorageOrAccountBalance(get, {
         assetId: options.storageAssetId,
         account: target.account,
         currency: target.currency || 'EGP',
         amount: prevActualAmt,
-        isEgpAmount: !isForeign || !target.originalAmount,
+        isEgpAmount: true,
         fxRate: target.fxRateAtEntry,
         entryType: target.type,
       });
@@ -2747,7 +2772,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
 
   resetData: () => {
     const state = get();
-    localStorage.setItem(STORAGE_KEYS.resetBackup, JSON.stringify({
+    saveStorage(STORAGE_KEYS.resetBackup, {
       salaryPattern: state.salaryPattern,
       salaryAnchorMonth: state.salaryAnchorMonth,
       cashEntries: state.entries,
@@ -2765,7 +2790,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       deletedForecasts: state.deletedForecasts,
       creditSettlementOverrides: state.creditSettlementOverrides,
       archivedEntries: state.archivedEntries,
-    }));
+    });
     const emptyEntries: CashEntry[] = [];
     const emptyInstallments: Installment[] = [];
     const emptyStorage: StorageAsset[] = [];

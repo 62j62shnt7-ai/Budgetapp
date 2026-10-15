@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import {
   getLowestProjectedBalance,
@@ -38,7 +39,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
     creditSettlementOverrides,
     setActiveTab,
     navigateTo,
-  } = useBudgetStore();
+  } = useBudgetStore(
+    useShallow((state) => ({
+      rates: state.rates,
+      accounts: state.accounts,
+      storageAssets: state.storageAssets,
+      entries: state.entries,
+      archivedEntries: state.archivedEntries,
+      entryActuals: state.entryActuals,
+      entryActualDates: state.entryActualDates,
+      creditSettlementOverrides: state.creditSettlementOverrides,
+      setActiveTab: state.setActiveTab,
+      navigateTo: state.navigateTo,
+    }))
+  );
 
   const [forecastRangeMonths, setForecastRangeMonths] = useState<number>(12);
   const [forecastMode, setForecastMode] = useState<'entries' | 'monthly'>('entries');

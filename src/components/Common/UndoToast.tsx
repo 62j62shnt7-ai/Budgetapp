@@ -1,9 +1,17 @@
 import React, { useEffect } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { RotateCcw, X } from 'lucide-react';
 
 export const UndoToast: React.FC = () => {
-  const { undoToast, undo, undoStack, dismissUndoToast } = useBudgetStore();
+  const { undoToast, undo, undoStack, dismissUndoToast } = useBudgetStore(
+    useShallow((state) => ({
+      undoToast: state.undoToast,
+      undo: state.undo,
+      undoStack: state.undoStack,
+      dismissUndoToast: state.dismissUndoToast,
+    }))
+  );
 
   useEffect(() => {
     if (!undoToast) return;

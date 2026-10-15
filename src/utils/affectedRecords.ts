@@ -309,20 +309,28 @@ export function buildEntryDeleteOptions(
     ? entry.draws.some((d) => !isNonDepositAccount(d.account) || Boolean(d.storageAssetId))
     : !isNonDepositAccount(entry.account) || Boolean(entry.storageAssetId);
 
+  const isDirectOperatingBank = Boolean(
+    !entry.storageAssetId &&
+      context.accounts &&
+      Object.keys(context.accounts).some(
+        (k) => k.toLowerCase() === targetAccount || (context.accounts![k]?.name || '').toLowerCase().trim() === targetAccount
+      )
+  );
+
   const matchingStorage = (context.storageAssets || []).find((a) => {
     if (!isFxConversion && entry.storageAssetId && a.id === entry.storageAssetId) return true;
     if (a.name.trim().toLowerCase() === targetAccount) return true;
-    if (isForeign && ((a.unit || '').toUpperCase() === currUpper || (a.currency || '').toUpperCase() === currUpper)) return true;
+    if (!isDirectOperatingBank && isForeign && ((a.unit || '').toUpperCase() === currUpper || (a.currency || '').toUpperCase() === currUpper)) return true;
     if (entry.draws && entry.draws.some((d) => d.storageAssetId === a.id || (d.account && d.account.trim().toLowerCase() === a.name.trim().toLowerCase()))) return true;
     return false;
   });
 
   if (hasActualMoneyTransacted && hasTransactedDrawAccount) {
-    const actualFormatted = isForeign
+    const actualFormatted = isForeign && !isDirectOperatingBank
       ? `${formatNativeCurrency(entry.fxRateAtEntry ? Math.round((actualAmount / entry.fxRateAtEntry) * 100) / 100 : (entry.originalAmount || actualAmount), entry.currency)} (≈ ${formatMoney(actualAmount)})`
       : formatMoney(actualAmount);
 
-    if (matchingStorage && (isForeign || targetAccount.includes('storage') || targetAccount.includes('vault') || entry.storageAssetId)) {
+    if (matchingStorage && !isDirectOperatingBank && (isForeign || targetAccount.includes('storage') || targetAccount.includes('vault') || entry.storageAssetId)) {
       options.push({
         id: 'storage',
         label: entry.type === 'expense'
@@ -335,7 +343,7 @@ export function buildEntryDeleteOptions(
         badge: entry.type === 'expense' ? 'Storage Refund' : 'Storage',
         defaultChecked: false,
       });
-    } else if (!isForeign && context.accounts) {
+    } else if ((!isForeign || isDirectOperatingBank) && context.accounts) {
       const matchingAccountKey = Object.keys(context.accounts).find(
         (k) => k.toLowerCase() === targetAccount || (context.accounts![k]?.name || '').toLowerCase().trim() === targetAccount
       );
@@ -691,10 +699,18 @@ export function buildEntryClearOptions(
 
   const targetAccount = (entry.account || '').trim().toLowerCase();
   const currUpper = (entry.currency || 'EGP').toUpperCase();
+  const isDirectOperatingBank = Boolean(
+    !entry.storageAssetId &&
+      context.accounts &&
+      Object.keys(context.accounts).some(
+        (k) => k.toLowerCase() === targetAccount || (context.accounts![k]?.name || '').toLowerCase().trim() === targetAccount
+      )
+  );
   const matchingStorage = (context.storageAssets || []).find((a) => {
     if (!isFxConversion && entry.storageAssetId && a.id === entry.storageAssetId) return true;
     if (a.name.trim().toLowerCase() === targetAccount) return true;
     if (
+      !isDirectOperatingBank &&
       isForeign &&
       ((a.unit || '').toUpperCase() === currUpper || (a.currency || '').toUpperCase() === currUpper)
     )
@@ -724,6 +740,7 @@ export function buildEntryClearOptions(
   if (
     hasTransactedDrawAccount &&
     matchingStorage &&
+    !isDirectOperatingBank &&
     (isForeign ||
       targetAccount.includes('storage') ||
       targetAccount.includes('vault') ||
@@ -750,7 +767,7 @@ export function buildEntryClearOptions(
       badge: entry.type === 'expense' ? 'Storage Refund' : 'Storage',
       defaultChecked: true,
     });
-  } else if (hasTransactedDrawAccount && !isForeign && context.accounts) {
+  } else if (hasTransactedDrawAccount && (!isForeign || isDirectOperatingBank) && context.accounts) {
     const matchingAccountKey = Object.keys(context.accounts).find(
       (k) => k.toLowerCase() === targetAccount || (context.accounts![k]?.name || '').toLowerCase().trim() === targetAccount
     );

@@ -371,12 +371,19 @@ export const EntryModal: React.FC<EntryModalProps> = ({
       ? (creditType.includes('cib') ? 'CIB Credit' : 'HSBC Credit')
       : account.trim() || (creditType === 'cib' ? 'cib' : 'hsbc');
 
+    const previousActual = entryToEdit ? getEntryActualAmount(entryToEdit, entryActuals) : 0;
     const resolvedActual = isCardExpense
       ? egpEquivalent
       : (actualAmount ? Math.round(Number(actualAmount) * fxRate) : undefined);
     const resolvedActualDate = isCardExpense
       ? date
-      : (actualAmount ? date : undefined);
+      : actualAmount
+        ? (entryToEdit && resolvedActual === previousActual && entryToEdit.actualDate ? entryToEdit.actualDate : date)
+        : undefined;
+
+    const preservedSource = entryToEdit && entryToEdit.source !== 'credit card' && entryToEdit.source !== 'recurring credit'
+      ? entryToEdit.source
+      : undefined;
 
     const baseEntry: Omit<CashEntry, 'id'> = {
       date,
@@ -391,14 +398,13 @@ export const EntryModal: React.FC<EntryModalProps> = ({
       fxRateAtEntry: fxRate,
       creditType: creditType || undefined,
       creditSettlementDate: settlementDate || undefined,
-      source: isCardExpense ? 'credit card' : isSettlement ? 'recurring credit' : undefined,
+      source: isCardExpense ? 'credit card' : isSettlement ? 'recurring credit' : preservedSource,
       actualAmount: resolvedActual,
       actualDate: resolvedActualDate,
     };
 
     if (entryToEdit) {
       const newActual = resolvedActual ?? 0;
-      const previousActual = getEntryActualAmount(entryToEdit, entryActuals);
       runTransaction(`Update ${entryToEdit.type === 'income' ? 'Income' : 'Expense'}: ${normalizedCategory}`, () => {
         if (entryToEdit.id.startsWith('credit-settlement-')) {
           updateCreditSettlementOverride(entryToEdit.id, {
@@ -409,13 +415,13 @@ export const EntryModal: React.FC<EntryModalProps> = ({
         } else {
           updateEntry(entryToEdit.id, baseEntry, seriesEditMode);
         }
-        if (newActual > 0) {
-          recordActual(entryToEdit.id, newActual, date, {
+        if (newActual > 0 && (newActual !== previousActual || entryToEdit.id.startsWith('credit-settlement-'))) {
+          recordActual(entryToEdit.id, newActual, resolvedActualDate || date, {
             tag: baseEntry.tag,
             account: baseEntry.account,
             note: baseEntry.note,
           });
-        } else if (previousActual > 0) {
+        } else if (newActual === 0 && previousActual > 0) {
           clearActual(entryToEdit.id);
         }
       });
