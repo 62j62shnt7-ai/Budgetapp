@@ -25,13 +25,23 @@ export function getEntryActualAmount(
     if (parts.length >= 4) {
       // id is installment-{instId}-{year}-{month}
       const instId = parts.slice(1, parts.length - 2).join('-');
-      // search for any installment-{instId}-{index} matching entry
-      const legacyPattern = new RegExp(`^installment-${instId}-\\d+$`);
+      const yStr = parts[parts.length - 2];
+      const mStr = parts[parts.length - 1];
+      const escapedId = instId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const legacyPattern = new RegExp(`^installment-${escapedId}-(\\d+)$`);
       for (const [key, val] of Object.entries(entryActuals || {})) {
-        if (legacyPattern.test(key) && val !== undefined && val !== null) {
-          // If the note or matching index corresponds
-          rawValue = val;
-          break;
+        const match = key.match(legacyPattern);
+        if (match && val !== undefined && val !== null) {
+          // If installment has note/occurrence matching this year and month
+          const legacyIdx = parseInt(match[1], 10);
+          if (entry.note && (entry.note.includes(`(${legacyIdx + 1}/`) || entry.note.includes(`(${legacyIdx}/`))) {
+            rawValue = val;
+            break;
+          }
+          if (entry.date && (entry.date.startsWith(`${yStr}-${mStr}`) || entry.date.startsWith(`${yStr}-${mStr.padStart(2, '0')}`))) {
+            rawValue = val;
+            break;
+          }
         }
       }
     }
@@ -128,12 +138,12 @@ export function findLinkedLoanRepayment(
   entries: CashEntry[],
   installments: Installment[]
 ): { type: 'single'; target: CashEntry } | { type: 'installment'; target: Installment } | null {
-  if (!inflowEntry) return null;
+  if (!inflowEntry || inflowEntry.type !== 'income') return null;
 
   // 1. Check by explicit loanId
   if (inflowEntry.loanId) {
     const singleRepayment = entries.find(
-      (e) => (e.loanId === inflowEntry.loanId || e.id === inflowEntry.loanId) && e.type === 'expense'
+      (e) => e.id !== inflowEntry.id && (e.loanId === inflowEntry.loanId || e.id === inflowEntry.loanId) && e.type === 'expense'
     );
     if (singleRepayment) {
       return { type: 'single', target: singleRepayment };
@@ -148,7 +158,7 @@ export function findLinkedLoanRepayment(
 
   // 2. Check if inflowEntry.id is referenced as loanId
   const singleByInflowId = entries.find(
-    (e) => e.loanId === inflowEntry.id && e.type === 'expense'
+    (e) => e.id !== inflowEntry.id && e.loanId === inflowEntry.id && e.type === 'expense'
   );
   if (singleByInflowId) {
     return { type: 'single', target: singleByInflowId };
@@ -169,7 +179,7 @@ export function findLinkedLoanRepayment(
 
   if (cleanLoanName) {
     const singleRepayment = entries.find((e) => {
-      if (e.type !== 'expense') return false;
+      if (e.type !== 'expense' || e.id === inflowEntry.id) return false;
       const cat = (e.category || '').toLowerCase();
       return (
         cat === `loan repayment: ${cleanLoanName}` ||
@@ -330,11 +340,19 @@ export function getActiveForecastEntries(
     })
     .map((entry) => {
       let effDate = entry.date;
-      // Carry forward undrawn/unspent to today. Credit due rows (settlements and
-      // lump-sum dues) are single-dated obligations: their due date must be preserved
-      // so they surface as OVERDUE in the deficits view instead of sliding to today.
-      const isSingleDatedCreditDue = entry.id.startsWith('credit-settlement-') || isCreditDueLumpSum(entry);
-      if (!isSingleDatedCreditDue && isPartialTracked(entry) && effDate && effDate < today && getRemainingForecastAmount(entry, entryActuals) > 0) {
+      // Single-dated contractual obligations: credit card settlements, installments,
+      // and loan repayments. Their due date must be preserved when unpaid so they surface
+      // as OVERDUE in deficits and dashboard views instead of sliding to today.
+      const isStrictObligation =
+        entry.id.startsWith('credit-settlement-') ||
+        entry.id.startsWith('installment-') ||
+        isCreditDueLumpSum(entry) ||
+        entry.tag === 'Loan Repayment' ||
+        entry.subcategory === 'Loan Repayment' ||
+        Boolean(entry.loanId && entry.type === 'expense');
+
+      // Regular ongoing flexible expenses: undrawn/unspent carry forward to today
+      if (!isStrictObligation && isPartialTracked(entry) && effDate && effDate < today && getRemainingForecastAmount(entry, entryActuals) > 0) {
         effDate = today;
       }
       if (isPartialTracked(entry) && getEntryActualAmount(entry, entryActuals) > 0) {
@@ -372,21 +390,46 @@ export function calculateForecast(
   // label, or "across N months" statement from it reports the wrong window.
   const firstYm = currentYm;
   const lastYm = DateUtils.addMonths(currentYm, Math.max(0, monthsAhead - 1));
+
+  // Prior-month overdue entries (e.g. overdue settlements or installments from before firstYm)
+  // must be included in firstYm expenses so the monthly balance projection matches daily deficit cashflow
+  const priorNet = Object.keys(months)
+    .filter((month) => month < firstYm)
+    .reduce((sum, m) => sum + (months[m] || 0), 0);
+
+  const priorIncome = entries
+    .filter((e) => {
+      const m = DateUtils.getMonthKey(e.date);
+      return m && m < firstYm && e.type === 'income';
+    })
+    .reduce((s, e) => s + (Number(e.amount) || 0), 0);
+
+  const priorExpense = entries
+    .filter((e) => {
+      const m = DateUtils.getMonthKey(e.date);
+      return m && m < firstYm && e.type === 'expense';
+    })
+    .reduce((s, e) => s + (Number(e.amount) || 0), 0);
+
   const ordered = Object.keys(months)
     .filter((month) => month >= firstYm && month <= lastYm)
     .sort();
   let running = openingCashBalance;
   const result: MonthlyForecast[] = [];
 
-  ordered.forEach((month) => {
-    const net = months[month];
+  ordered.forEach((month, idx) => {
+    const net = months[month] + (idx === 0 ? priorNet : 0);
     // Split into income/expense for the MonthlyForecast interface
-    const income = entries
+    const currentMonthIncome = entries
       .filter((e) => DateUtils.getMonthKey(e.date) === month && e.type === 'income')
       .reduce((s, e) => s + (Number(e.amount) || 0), 0);
-    const expense = entries
+    const currentMonthExpense = entries
       .filter((e) => DateUtils.getMonthKey(e.date) === month && e.type === 'expense')
       .reduce((s, e) => s + (Number(e.amount) || 0), 0);
+
+    const income = currentMonthIncome + (idx === 0 ? priorIncome : 0);
+    const expense = currentMonthExpense + (idx === 0 ? priorExpense : 0);
+
     running = Math.round((running + net) * 100) / 100;
     result.push({
       month,
@@ -697,7 +740,8 @@ export function getDeficitPeriods(
   periods.forEach((p) => {
     if (!p.isResolved) {
       const lastStepDate = p.steps.length ? p.steps[p.steps.length - 1].date : p.startDate;
-      p.daysInDeficit = DateUtils.daysBetween(p.startDate, lastStepDate);
+      const days = DateUtils.daysBetween(p.startDate, lastStepDate);
+      p.daysInDeficit = Math.max(1, days);
     }
   });
 
@@ -731,6 +775,7 @@ export function getDeficitSummary(
   const today = DateUtils.todayString();
   const overdueItems = candidateEntries
     .filter((entry) => entry.date && entry.date < today)
+    .filter((entry) => !isCreditCardExpense(entry))
     .filter((entry) => !isOngoingEntry(entry, entryActuals))
     .map((entry) => {
       const partial = isPartialTracked(entry);
@@ -738,7 +783,7 @@ export function getDeficitSummary(
       const settled = Boolean(entry.isClosed) || (partial ? remaining <= 0 : getEntryActualAmount(entry, entryActuals) > 0);
       return { entry, remaining, settled, daysOverdue: DateUtils.daysBetween(entry.date, today) };
     })
-    .filter((item) => !item.settled)
+    .filter((item) => !item.settled && item.remaining > 0)
     .sort((a, b) => b.daysOverdue - a.daysOverdue);
 
   return { forecastMonths, deficitPeriods, overdueItems };

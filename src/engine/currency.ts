@@ -78,8 +78,11 @@ export function getCurrencyRateOr(
   return rate === null ? fallback : rate;
 }
 
-export function resolveCurrencyRate(rates: RatesData | null | undefined, code?: string, fallback = 48.5): number {
-  return getCurrencyRateOr(rates, code, fallback);
+export function resolveCurrencyRate(rates: RatesData | null | undefined, code?: string, fallback?: number): number {
+  const norm = normalizeCurrencyCode(code);
+  const foundDefault = defaultRates.currencies.find((c) => normalizeCurrencyCode(c.name) === norm);
+  const defaultFallback = (foundDefault && (foundDefault.sell ?? foundDefault.buy)) || 48.5;
+  return getCurrencyRateOr(rates, code, fallback ?? defaultFallback);
 }
 
 export function getAccountNativeCurrency(accountName: string, storageAssets: StorageAsset[] = []): string {
@@ -89,7 +92,9 @@ export function getAccountNativeCurrency(accountName: string, storageAssets: Sto
     (a) => a.id.toLowerCase() === clean || a.name.toLowerCase() === clean
   );
   if (matchedStorage) {
-    const unit = (matchedStorage.unit || matchedStorage.currency || '').toUpperCase();
+    const rawUnit = (matchedStorage.unit || '').toUpperCase();
+    const rawCurr = (matchedStorage.currency || '').toUpperCase();
+    const unit = rawUnit && rawUnit !== 'UNITS' ? rawUnit : rawCurr;
     if (['USD', 'DOLLARS', '$'].includes(unit)) return 'USD';
     if (['EUR', 'EUROS', '€'].includes(unit)) return 'EUR';
     if (['GBP', 'POUNDS', '£'].includes(unit)) return 'GBP';
@@ -98,11 +103,11 @@ export function getAccountNativeCurrency(accountName: string, storageAssets: Sto
     if (['EGP'].includes(unit)) return 'EGP';
     if (['USD', 'EUR', 'GBP', 'SAR', 'AED', 'EGP'].includes(unit)) return unit;
   }
-  if (clean === 'usd' || clean.includes('usd')) return 'USD';
-  if (clean === 'eur' || clean.includes('eur')) return 'EUR';
-  if (clean === 'gbp' || clean.includes('gbp')) return 'GBP';
-  if (clean === 'sar' || clean.includes('sar')) return 'SAR';
-  if (clean === 'aed' || clean.includes('aed')) return 'AED';
+  if (/\b(usd|\$|dollar|dollars)\b/i.test(clean)) return 'USD';
+  if (/\b(eur|€|euro|euros)\b/i.test(clean)) return 'EUR';
+  if (/\b(gbp|£|pound|pounds)\b/i.test(clean)) return 'GBP';
+  if (/\b(sar|riyal|riyals)\b/i.test(clean)) return 'SAR';
+  if (/\b(aed|dirham|dirhams)\b/i.test(clean)) return 'AED';
   return 'EGP';
 }
 
@@ -339,17 +344,21 @@ export async function autoFetchLatestRates(
     });
 
     let updatedGold = currentRates.gold || [];
-    if (xauUsd && liveRates.EGP) {
-      const egpPerOz = xauUsd * liveRates.EGP;
+    const egpRate = liveRates.EGP || (currentRates.currencies || []).find((c) => c.name.toUpperCase() === 'USD')?.sell;
+    if (xauUsd && egpRate) {
+      const egpPerOz = xauUsd * egpRate;
       const egpPerGram24k = egpPerOz / TROY_OUNCE_GRAMS;
       updatedGold = (currentRates.gold || []).map((item) => {
         let mid: number | null = null;
-        const match = item.name.match(/(\d+)/);
-        if (match) {
-          const karat = Number(match[1]);
-          mid = egpPerGram24k * (karat / 24);
-        } else if (item.name.toLowerCase().includes('coin') || item.name.toLowerCase().includes('pound')) {
+        const lowerName = item.name.toLowerCase();
+        if (lowerName.includes('coin') || lowerName.includes('pound')) {
           mid = egpPerGram24k * (21 / 24) * 8;
+        } else {
+          const match = item.name.match(/(\d+)\s*k/i) || item.name.match(/(\d+)/);
+          if (match) {
+            const karat = Math.min(24, Math.max(1, Number(match[1])));
+            mid = egpPerGram24k * (karat / 24);
+          }
         }
         if (mid === null) return item;
         const spreadPct = computeSpreadPct(item.sell, item.buy);
@@ -364,6 +373,7 @@ export async function autoFetchLatestRates(
     return {
       currencies: updatedCurrencies,
       gold: updatedGold,
+      previousStorageTotal: currentRates.previousStorageTotal,
       lastFetched: nowIso,
       currenciesLastFetched: nowIso,
       goldLastFetched: xauUsd ? nowIso : (currentRates.goldLastFetched || currentRates.lastFetched),

@@ -13,23 +13,6 @@ export function inferTag(entry: Partial<CashEntry>): string {
   const account = (entry.account || '').toLowerCase();
   const tag = (entry.tag || '').toLowerCase();
 
-  // Credit settlements (CIB & HSBC credit dues, lump sums, recurring credit)
-  if (
-    isCreditSettlementRow(asEntry) ||
-    creditType === 'cib' ||
-    creditType === 'hsbc' ||
-    category.includes('credit due') ||
-    category.includes('settlement') ||
-    source.includes('recurring credit') ||
-    (account.includes('cib') && category.includes('credit')) ||
-    (account.includes('hsbc') && category.includes('credit')) ||
-    category.includes('cib credit') ||
-    category.includes('hsbc credit') ||
-    Boolean(entry.id && entry.id.startsWith('credit-settlement-'))
-  ) {
-    return 'Credit Settlement';
-  }
-
   // Credit swipes (card expenses on CIB, HSBC, or any credit card account/source)
   if (
     isCreditCardExpense(asEntry) ||
@@ -38,13 +21,30 @@ export function inferTag(entry: Partial<CashEntry>): string {
     source === 'credit card' ||
     source.includes('credit card') ||
     source.includes('card swipe') ||
-    account.includes('credit') ||
     tag.includes('credit card') ||
     tag.includes('credit swipe') ||
     tag.includes('card spend')
   ) {
     return 'Credit Swipes';
   }
+
+  // Credit settlements (CIB & HSBC credit dues, lump sums, recurring credit)
+  if (
+    isCreditSettlementRow(asEntry) ||
+    creditType === 'cib' ||
+    creditType === 'hsbc' ||
+    category.includes('credit due') ||
+    category.includes('settlement') ||
+    source.includes('recurring credit') ||
+    (account.includes('cib') && category.includes('credit') && !isCreditCardExpense(asEntry)) ||
+    (account.includes('hsbc') && category.includes('credit') && !isCreditCardExpense(asEntry)) ||
+    category.includes('cib credit') ||
+    category.includes('hsbc credit') ||
+    Boolean(entry.id && entry.id.startsWith('credit-settlement-'))
+  ) {
+    return 'Credit Settlement';
+  }
+
   if (source.includes('loan') || category.includes('loan') || category.includes('repayment')) return 'Loan';
   if (source === 'salary' || category === 'salary' || category.includes('bonus')) return 'Salary';
   if (source.includes('part-time') || category.includes('freelance')) return 'Part-Time';

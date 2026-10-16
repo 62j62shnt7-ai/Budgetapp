@@ -161,17 +161,19 @@ export function getCreditSettlementDate(
 
 export function getCreditSettlementMonth(
   entry: CashEntry,
-  _creditSettlementOverrides?: Record<string, CreditSettlementOverride>,
+  creditSettlementOverrides?: Record<string, CreditSettlementOverride>,
   entryActualDates?: Record<string, string>
 ): string {
   if (!entry) return '';
   if (isCreditCardExpense(entry)) {
-    const type = (entry.creditType || '').toLowerCase();
-    const account = (entry.account || '').toLowerCase();
-    const accKey = type.includes('cib') || account.includes('cib') ? 'cib' : 'hsbc';
-    const actualDate = (entryActualDates && entry.id && entryActualDates[entry.id]) || entry.actualDate || entry.date;
-    const defaultDate = entry.creditSettlementDate || calculateCreditSettlementDate(actualDate, `${accKey}_card`);
-    return defaultDate ? DateUtils.getMonthKey(defaultDate) : '';
+    const sDate = getCreditSettlementDate(entry, creditSettlementOverrides, entryActualDates);
+    return sDate ? DateUtils.getMonthKey(sDate) : '';
+  }
+  if (entry.id && entry.id.startsWith('credit-settlement-')) {
+    const parts = entry.id.split('-');
+    if (parts.length >= 4) {
+      return `${parts[parts.length - 2]}-${parts[parts.length - 1]}`;
+    }
   }
   return entry.settlementDate ? DateUtils.getMonthKey(entry.settlementDate) : DateUtils.getMonthKey(entry.date);
 }
@@ -421,7 +423,9 @@ export function computeSettlementUncovered(
     .sort((a, b) => (getDate(a) || '').localeCompare(getDate(b) || '') || (a.id || '').localeCompare(b.id || ''))
     .forEach((s) => {
       const amt = getAmount(s);
-      const key = `${getCreditAccountKey(s)}|${DateUtils.getMonthKey(getDate(s))}`;
+      const sMonth = getCreditSettlementMonth(s, creditSettlementOverrides, entryActualDates) ||
+        DateUtils.getMonthKey(getDate(s));
+      const key = `${getCreditAccountKey(s)}|${sMonth}`;
       const covered = Math.min(amt, pool.get(key) || 0);
       pool.set(key, (pool.get(key) || 0) - covered);
       result.set(s.id, amt - covered);

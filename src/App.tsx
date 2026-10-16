@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { STORAGE_KEYS, useBudgetStore } from './store/useBudgetStore';
 import { useAppUpdateStatus } from './hooks/useAppUpdateStatus';
 import { Topbar } from './components/Layout/Topbar';
@@ -51,7 +52,21 @@ export const App: React.FC = () => {
     updateRates,
     gistConflict,
     resolveGistConflict
-  } = useBudgetStore();
+  } = useBudgetStore(
+    useShallow((state) => ({
+      activeTab: state.activeTab,
+      theme: state.theme,
+      sidebarCollapsed: state.sidebarCollapsed,
+      toggleSidebar: state.toggleSidebar,
+      closeMobileSidebar: state.closeMobileSidebar,
+      gistToken: state.gistToken,
+      gistAutoSync: state.gistAutoSync,
+      setGistConfig: state.setGistConfig,
+      updateRates: state.updateRates,
+      gistConflict: state.gistConflict,
+      resolveGistConflict: state.resolveGistConflict,
+    }))
+  );
 
   const [tabConflictDetected, setTabConflictDetected] = useState(false);
 
@@ -143,26 +158,7 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  useEffect(() => {
-    const dismissModalOnOutsideClick = (event: PointerEvent) => {
-      const openDialogs = Array.from(document.querySelectorAll<HTMLDialogElement>('dialog.native-dialog[open]'));
-      const dialog = openDialogs.at(-1);
-      if (!dialog) return;
 
-      const bounds = dialog.getBoundingClientRect();
-      if (
-        event.clientX < bounds.left ||
-        event.clientX > bounds.right ||
-        event.clientY < bounds.top ||
-        event.clientY > bounds.bottom
-      ) {
-        dialog.querySelector<HTMLButtonElement>('button[aria-label="Close"], button[aria-label="Close dialog"], button.close-dialog-btn')?.click();
-      }
-    };
-
-    document.addEventListener('pointerdown', dismissModalOnOutsideClick);
-    return () => document.removeEventListener('pointerdown', dismissModalOnOutsideClick);
-  }, []);
 
   useEffect(() => {
     if (!('serviceWorker' in navigator) || !/^https?:$/.test(window.location.protocol)) return;

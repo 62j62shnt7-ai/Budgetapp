@@ -18,6 +18,45 @@ interface StorageViewProps {
   onOpenStorageModal: () => void;
 }
 
+const StorageNumericInput: React.FC<{
+  initialValue: number;
+  min?: string;
+  step?: string;
+  onCommit: (val: number) => void;
+}> = ({ initialValue, min = '0', step = '0.01', onCommit }) => {
+  const [val, setVal] = useState(String(initialValue ?? 0));
+  const [prevInitial, setPrevInitial] = useState(initialValue);
+  if (initialValue !== prevInitial) {
+    setPrevInitial(initialValue);
+    setVal(String(initialValue ?? 0));
+  }
+
+  const handleCommit = () => {
+    const num = Number(val);
+    if (!Number.isNaN(num) && num !== initialValue) {
+      onCommit(num);
+    }
+  };
+
+  return (
+    <input
+      type="number"
+      className="form-input"
+      min={min}
+      step={step}
+      value={val}
+      onChange={(e) => setVal(e.target.value)}
+      onBlur={handleCommit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          handleCommit();
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
+    />
+  );
+};
+
 export const StorageView: React.FC<StorageViewProps> = ({ onOpenStorageModal }) => {
   const {
     storageAssets,
@@ -185,7 +224,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenStorageModal }) 
               className={`chip-button ${activeFilter === 'bank' ? 'active' : ''}`}
               onClick={() => setActiveFilter('bank')}
             >
-              🏦 HSBC Bank Accounts
+              🏦 Bank Foreign Accounts
             </button>
             <button
               type="button"
@@ -338,26 +377,18 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenStorageModal }) 
 
                     <div className="storage-fields-grid" style={{ marginTop: '10px' }}>
                       <label className="storage-field-item">
-                        <span className="field-label-text">Quantity</span>
-                        <input
-                          type="number"
-                          className="form-input"
-                          min="0"
-                          step="0.01"
-                          value={item.quantity}
-                          onChange={(e) => handleFieldChange(item.id, 'quantity', Number(e.target.value) || 0)}
-                        />
+                         <span className="field-label-text">Quantity</span>
+                         <StorageNumericInput
+                           initialValue={Number(item.quantity) || 0}
+                           onCommit={(val) => handleFieldChange(item.id, 'quantity', val)}
+                         />
                       </label>
                       <label className="storage-field-item">
-                        <span className="field-label-text">Rate (EGP)</span>
-                        <input
-                          type="number"
-                          className="form-input"
-                          min="0"
-                          step="0.01"
-                          value={currentRate}
-                          onChange={(e) => handleFieldChange(item.id, 'rate', Number(e.target.value) || 0)}
-                        />
+                         <span className="field-label-text">Rate (EGP)</span>
+                         <StorageNumericInput
+                           initialValue={Number(currentRate) || 0}
+                           onCommit={(val) => handleFieldChange(item.id, 'rate', val)}
+                         />
                       </label>
                     </div>
 
@@ -447,7 +478,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenStorageModal }) 
 
             <div style={{ marginTop: '16px', borderTop: '1px dashed var(--line)', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-                <span style={{ color: 'var(--muted)' }}>🏦 HSBC Bank Foreign:</span>
+                <span style={{ color: 'var(--muted)' }}>🏦 Bank Foreign Accounts:</span>
                 <strong>{formatMoney(bankTotal)}</strong>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>

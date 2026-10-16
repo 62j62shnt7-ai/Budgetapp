@@ -54,6 +54,7 @@ export const InstallmentModal: React.FC<InstallmentModalProps> = ({ isOpen, inst
     if (!name.trim() || !amt || amt <= 0) return;
 
     if (installmentToEdit) {
+      const origTotal = installmentToEdit.totalMonths ?? installmentToEdit.remainingMonths ?? months;
       updateInstallment(installmentToEdit.id, {
         name: name.trim(),
         tag: tag.trim() || 'Installment',
@@ -61,7 +62,7 @@ export const InstallmentModal: React.FC<InstallmentModalProps> = ({ isOpen, inst
         amount: amt,
         frequency,
         day: Number(day) || 30,
-        totalMonths: months,
+        totalMonths: Math.max(origTotal, months),
         remainingMonths: months,
         startMonth,
       });

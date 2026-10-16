@@ -91,7 +91,9 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
 
   const today = DateUtils.todayString();
   const currentYm = DateUtils.currentYearMonth();
-  const cutoffDate = DateUtils.addMonths(today, rangeMonths);
+  const targetEndMonth = DateUtils.addMonths(currentYm, Math.max(0, rangeMonths - 1));
+  const [endYear, endMonth] = DateUtils.parseYearMonth(targetEndMonth);
+  const cutoffDate = DateUtils.formatDate(endYear, endMonth, DateUtils.getLastDayOfMonth(endYear, endMonth));
   const isSimActive = simAmount > 0 && !!simDate;
 
   // Build time series based on mode
@@ -116,11 +118,14 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
         isOpening: true,
       });
 
-      // Filter entries within date range [today, cutoffDate]
+      // Filter entries within date range [up to cutoffDate].
+      // Overdue obligations (< today) are mapped so they take effect from today's starting balance.
       const filtered = entries
-        .filter((e) => e.date && e.date >= today && e.date <= cutoffDate)
+        .filter((e) => e.date && e.date <= cutoffDate)
         .sort((a, b) => {
-          if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+          const dateA = a.date < today ? today : a.date;
+          const dateB = b.date < today ? today : b.date;
+          if (dateA !== dateB) return dateA < dateB ? -1 : 1;
           if (a.type !== b.type) return a.type === 'income' ? -1 : 1;
           return 0;
         });

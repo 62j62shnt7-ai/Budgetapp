@@ -11,7 +11,14 @@ import {
   type DailyDeficitPeriod,
 } from '../../engine/forecast';
 import { computeFinancialHealthScore, generateSmartInsights } from '../../engine/healthScore';
-import { computeAssetEgpValue, computeTotalStorageValue, formatNativeCurrency, getCurrencyRateOr } from '../../engine/currency';
+import {
+  computeAssetEgpValue,
+  computeTotalStorageValue,
+  formatNativeCurrency,
+  getCurrencyRate,
+  resolveRateSourceValue,
+} from '../../engine/currency';
+import { isCreditCardExpense } from '../../engine/creditCards';
 import { DateUtils, formatMoney, formatLastUpdated } from '../../engine/dateUtils';
 import { ForecastChart } from '../Forecast/ForecastChart';
 import { CreditCard, CheckCircle2, Clock, Target, AlertTriangle, Lightbulb } from 'lucide-react';
@@ -65,6 +72,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
 
   const {
     totalCash,
+    installmentEntries,
     creditDueEntries,
     allCandidateEntries,
     forecast,
@@ -331,7 +339,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
     storageTotal,
     entryActuals,
     // Settled ledger rows so budget adherence and savings rate can be measured.
-    historyEntries: entries,
+    historyEntries: [...entries, ...installmentEntries, ...creditDueEntries],
     archivedEntries,
     entryActualDates,
     creditSettlementOverrides,
@@ -372,7 +380,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
   // but a zero that hides a negative floor must not be styled as good news.
   const hasSpendableFloor = lowestPoint > 0;
   const safeToSpend = Math.max(0, lowestPoint);
-  const targetCutoffYm = DateUtils.addMonths(DateUtils.todayString(), forecastRangeMonths);
+  const targetCutoffYm = DateUtils.addMonths(DateUtils.currentYearMonth(), Math.max(0, forecastRangeMonths - 1));
   const [cutoffY, cutoffM] = DateUtils.parseYearMonth(targetCutoffYm);
   const lastDayOfCutoffMonth = DateUtils.getLastDayOfMonth(cutoffY, cutoffM);
   const plottedCutoff = `${targetCutoffYm}-${String(lastDayOfCutoffMonth).padStart(2, '0')}`;
@@ -386,9 +394,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
   // Group by category, not subcategory. Grouping on `subcategory || category`
   // split a category across two rows and made this panel disagree with the
   // Cashflow "Expense mix", which groups by category — the same label showed two
-  // different totals. Both views now key on `category`.
-  const categoryTotals = allCandidateEntries
-    .filter((entry) => entry.type === 'expense')
+  // different totals. Both views now key on `category`, and scope to the active horizon.
+  const categoryTotals = plottedEntryRows
+    .filter((entry) => entry.type === 'expense' && !isCreditCardExpense(entry))
     .reduce<Record<string, number>>((totals, entry) => {
       const label = entry.category || 'Other';
       totals[label] = (totals[label] || 0) + Number(entry.amount || 0);
@@ -459,12 +467,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
         );
         const goldAsset = storageAssets.find(
           (asset) =>
-            /gold/i.test(`${asset.name || ''} ${asset.unit || ''}`) &&
+            /gold/i.test(`${asset.name || ''} ${asset.unit || ''} ${asset.category || ''}`) &&
             Number(asset.quantity ?? (asset as any).amount ?? 0) > 0
         );
-        const goldRate = goldAsset
-          ? Number(goldAsset.rate || goldAsset.currentPrice || (goldAsset as any).buyPrice || 0)
-          : 0;
+        let goldRate = 0;
+        if (goldAsset) {
+          if (rates && goldAsset.rateSource && goldAsset.rateSource !== 'manual') {
+            const resolved = resolveRateSourceValue(goldAsset.rateSource, rates);
+            if (resolved) goldRate = resolved;
+          }
+          if (!goldRate) {
+            goldRate = Number(goldAsset.rate || goldAsset.currentPrice || (goldAsset as any).buyPrice || 0);
+          }
+        }
         const goldGramsNeeded = goldRate > 0 ? (peak / goldRate).toFixed(1) : null;
 
         const flexible = targetPeriod.steps.find(
@@ -479,9 +494,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
             step.amount > 0
         );
 
-        const fxRate = fx
-          ? Math.max(1, Number(fx.rate || fx.currentPrice || (fx as any).buyPrice || getCurrencyRateOr(rates, fx.unit || 'USD', 1)))
-          : 1;
+        let fxRate = 1;
+        if (fx) {
+          const resolved = getCurrencyRate(rates, fx.unit || fx.currency || 'USD');
+          fxRate = resolved || Number(fx.rate || fx.currentPrice || (fx as any).buyPrice || 1);
+        }
         const fxAmountNeeded = Math.ceil(peak / fxRate);
         const fxLabel = fx ? (fx.unit || fx.name || 'USD') : 'foreign currency';
 

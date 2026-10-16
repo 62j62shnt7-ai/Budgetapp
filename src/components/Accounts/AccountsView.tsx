@@ -9,6 +9,44 @@ import { StorageFxModal } from '../Modals/StorageFxModal';
 // Preferred display order; any other configured account is appended automatically.
 const preferredAccountOrder = ['hsbc', 'cib'];
 
+const AccountBalanceInput: React.FC<{
+  accountName: string;
+  initialBalance: number;
+  onCommit: (val: number) => void;
+}> = ({ accountName, initialBalance, onCommit }) => {
+  const [val, setVal] = useState(String(initialBalance ?? 0));
+  const [prevInitial, setPrevInitial] = useState(initialBalance);
+  if (initialBalance !== prevInitial) {
+    setPrevInitial(initialBalance);
+    setVal(String(initialBalance ?? 0));
+  }
+
+  const handleCommit = () => {
+    const num = Number(val);
+    if (!Number.isNaN(num) && num !== initialBalance) {
+      onCommit(num);
+    }
+  };
+
+  return (
+    <input
+      type="number"
+      inputMode="decimal"
+      className="form-input account-balance-input"
+      aria-label={`${accountName} balance in EGP`}
+      value={val}
+      onChange={(e) => setVal(e.target.value)}
+      onBlur={handleCommit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          handleCommit();
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
+    />
+  );
+};
+
 export const AccountsView: React.FC = () => {
   const { accounts, updateAccountBalance, transferAccountFunds, storageAssets, rates, navigateTo } = useBudgetStore();
 
@@ -35,12 +73,6 @@ export const AccountsView: React.FC = () => {
     transferTo && accounts[transferTo]
       ? transferTo
       : accountIds.find((id) => id !== activeFrom) || '';
-
-  // Filter foreign holdings by institution
-  const hsbcForeignAssets = storageAssets.filter((a) => {
-    const loc = inferAssetLocation(a);
-    return loc.location === 'hsbc' || (loc.locationType === 'bank' && a.name.toLowerCase().includes('hsbc'));
-  });
 
   const cashForeignAssets = storageAssets.filter((a) => {
     const loc = inferAssetLocation(a);
@@ -79,7 +111,6 @@ export const AccountsView: React.FC = () => {
           </div>
           <div id="accountsList" className="stack-list" style={{ marginTop: '12px' }}>
             {displayedAccounts.map(([id, acc]) => {
-              const isHsbc = id === 'hsbc';
               return (
                 <div key={id} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <div className="list-row account-row-card">
@@ -107,69 +138,73 @@ export const AccountsView: React.FC = () => {
                     </div>
                     <div className="account-balance-input-wrap">
                       <span className="account-currency-prefix">EGP</span>
-                      <input
-                        type="number"
-                        inputMode="decimal"
-                        className="form-input account-balance-input"
-                        aria-label={`${acc.name} balance in EGP`}
-                        value={acc.balance}
-                        onChange={(e) => handleBalanceChange(id, Number(e.target.value) || 0)}
+                      <AccountBalanceInput
+                        accountName={acc.name}
+                        initialBalance={acc.balance}
+                        onCommit={(val) => handleBalanceChange(id, val)}
                       />
                     </div>
                   </div>
 
-                  {/* If HSBC, show associated foreign sub-accounts */}
-                  {isHsbc && hsbcForeignAssets.length > 0 && (
-                    <div
-                      style={{
-                        marginLeft: '18px',
-                        padding: '10px 14px',
-                        background: 'var(--surface-soft)',
-                        borderRadius: '8px',
-                        borderLeft: '3px solid #2563eb',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '6px',
-                      }}
-                    >
-                      <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase' }}>
-                        HSBC Foreign Sub-Accounts (Reserves)
-                      </span>
-                      {hsbcForeignAssets.map((fAsset) => (
-                        <div
-                          key={fAsset.id}
-                          className="history-summary-clickable-row"
-                          style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            fontSize: '13px',
-                            cursor: 'pointer',
-                            padding: '4px 6px',
-                            borderRadius: '4px',
-                          }}
-                          onClick={() => navigateTo('storage')}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              e.preventDefault();
-                              navigateTo('storage');
-                            }
-                          }}
-                          tabIndex={0}
-                          role="button"
-                          title="Click to view and manage in Storage & Assets"
-                        >
-                          <span>{fAsset.name}</span>
-                          <div>
-                            <strong style={{ marginRight: '8px' }}>{formatNativeCurrency(fAsset.quantity, fAsset.unit)}</strong>
-                            <span style={{ color: 'var(--muted)', fontSize: '12px' }}>
-                              (≈ {formatMoney(storageValue(fAsset, rates))})
-                            </span>
+                  {/* Associated foreign sub-accounts for any bank */}
+                  {(() => {
+                    const bankForeignAssets = storageAssets.filter((a) => {
+                      const loc = inferAssetLocation(a);
+                      return loc.location === id || (loc.locationType === 'bank' && a.name.toLowerCase().includes(id));
+                    });
+                    if (bankForeignAssets.length === 0) return null;
+                    return (
+                      <div
+                        style={{
+                          marginLeft: '18px',
+                          padding: '10px 14px',
+                          background: 'var(--surface-soft)',
+                          borderRadius: '8px',
+                          borderLeft: '3px solid #2563eb',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '6px',
+                        }}
+                      >
+                        <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase' }}>
+                          {acc.name} Foreign Sub-Accounts (Reserves)
+                        </span>
+                        {bankForeignAssets.map((fAsset) => (
+                          <div
+                            key={fAsset.id}
+                            className="history-summary-clickable-row"
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              fontSize: '13px',
+                              cursor: 'pointer',
+                              padding: '4px 6px',
+                              borderRadius: '4px',
+                            }}
+                            onClick={() => navigateTo('storage')}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                navigateTo('storage');
+                              }
+                            }}
+                            tabIndex={0}
+                            role="button"
+                            title="Click to view and manage in Storage & Assets"
+                          >
+                            <span>{fAsset.name}</span>
+                            <div>
+                              <strong style={{ marginRight: '8px' }}>{formatNativeCurrency(fAsset.quantity, fAsset.unit)}</strong>
+                              <span style={{ color: 'var(--muted)', fontSize: '12px' }}>
+                                (≈ {formatMoney(storageValue(fAsset, rates))})
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })}

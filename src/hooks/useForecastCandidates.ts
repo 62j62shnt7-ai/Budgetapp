@@ -53,10 +53,15 @@ export function useForecastCandidates(forecastRangeMonths: number = 12): Forecas
       0
     );
     const currentYm = DateUtils.currentYearMonth();
+    const cutoffDateStr = DateUtils.formatDate(
+      ...DateUtils.parseYearMonth(DateUtils.addMonths(currentYm, Math.max(0, forecastRangeMonths - 1))),
+      DateUtils.getLastDayOfMonth(...DateUtils.parseYearMonth(DateUtils.addMonths(currentYm, Math.max(0, forecastRangeMonths - 1))))
+    );
     const hasMaterializedSalary = (entries || []).some((entry) => entry.source === 'salary');
     const salaryEntries = hasMaterializedSalary
       ? []
       : buildSalaryEntries(salaryPattern || [], currentYm, Math.ceil(forecastRangeMonths / 3), salaryAnchorMonth);
+
     const installmentEntries = buildInstallmentEntries(installments || []);
     const creditDueEntries = buildCreditDueEntries({
       accounts: accounts || {},
@@ -68,12 +73,17 @@ export function useForecastCandidates(forecastRangeMonths: number = 12): Forecas
       creditSettlementOverrides: creditSettlementOverrides || {},
     });
 
-    const allCandidateEntries = getActiveForecastEntries(
+    const candidateEntries = getActiveForecastEntries(
       [...(entries || []), ...salaryEntries],
       installmentEntries,
       creditDueEntries,
       deletedForecasts || [],
       entryActuals || {}
+    );
+
+    // Clamp candidate entries to the active forecast horizon so salary and installment horizons match
+    const allCandidateEntries = candidateEntries.filter(
+      (entry) => !entry.date || entry.date <= cutoffDateStr
     );
 
     const forecast = calculateForecast(allCandidateEntries, totalCash, forecastRangeMonths);

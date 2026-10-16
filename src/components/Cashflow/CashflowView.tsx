@@ -499,6 +499,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
       cashEntries: entries,
       archivedEntries,
       entryActuals,
+      entryActualDates,
       creditSettlementOverrides,
     });
     const candidates = getForecastCandidateEntries(
@@ -514,15 +515,6 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
         if (actual <= 0) return true;
         if ((entry as CashEntry & { keepOngoing?: boolean }).keepOngoing) return true;
         return isPartialTracked(entry) && getRemainingForecastAmount(entry, entryActuals) > 0;
-      })
-      .map((entry) => {
-        const actual = getEntryActualAmount(entry, entryActuals);
-        const remaining = isPartialTracked(entry) && actual > 0
-          ? getRemainingForecastAmount(entry, entryActuals)
-          : Number(entry.amount || 0);
-        return actual > 0 && isPartialTracked(entry)
-          ? { ...entry, amount: remaining }
-          : entry;
       });
     const rows = getActiveForecastEntries(
       [...entries, ...salary],
@@ -550,6 +542,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     creditDues,
     archivedEntries,
     entryActuals,
+    entryActualDates,
     creditSettlementOverrides,
     deletedForecasts,
   ]);
@@ -711,12 +704,14 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
 
   const allDisplayRows = [...filteredOpeningRows, ...filteredForecastRows];
 
-  const filteredIncome = allDisplayRows
+  // Only real forecast rows (not synthetic bank balance rows) count towards period income
+  const filteredIncome = filteredForecastRows
     .filter((e) => e.type === 'income')
     .reduce((sum, e) => sum + Number(e.amount || 0), 0);
 
-  const filteredExpenses = allDisplayRows
-    .filter((e) => e.type === 'expense')
+  // Credit card purchases are already rolled up in credit-settlement-* rows; exclude them to avoid double-counting
+  const filteredExpenses = filteredForecastRows
+    .filter((e) => e.type === 'expense' && !isCreditCardExpense(e))
     .reduce((sum, e) => sum + Number(e.amount || 0), 0);
 
   const filteredNet = filteredIncome - filteredExpenses;
@@ -733,7 +728,8 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     (sum, acc) => sum + (Number(acc.balance) || 0),
     0
   );
-  const deficitPeriods = getDeficitPeriods(allCandidate, totalCash);
+  // Pass forecastRows (active forecast) rather than allCandidate to avoid double-counting card swipes + settlements
+  const deficitPeriods = getDeficitPeriods(forecastRows, totalCash);
   const entryStatusMap = new Map<string, { type: 'deficit' | 'recovery'; balance: number }>();
   deficitPeriods.forEach((period) => {
     (period.steps || []).forEach((step) => {
@@ -763,10 +759,10 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     : 'No entries';
 
   // Expense Mix grouping — same row set the table renders, grouped by category so
-  // it reconciles with the Dashboard's category breakdown.
+  // it reconciles with the Dashboard's category breakdown (excluding duplicate card swipes).
   const expensesByCategory: Record<string, number> = {};
   filteredForecastRows
-    .filter((e) => e.type === 'expense')
+    .filter((e) => e.type === 'expense' && !isCreditCardExpense(e))
     .forEach((e) => {
       const cat = e.category || 'Other';
       expensesByCategory[cat] = (expensesByCategory[cat] || 0) + (Number(e.amount) || 0);
@@ -1315,8 +1311,13 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                   ? 'Add actual'
                   : 'Add spend';
                 const actualValue = getEntryActualAmount(e, entryActuals);
-                const originalEntry = entries.find((entry) => entry.id === e.id) || e;
-                const plannedAmt = Number(originalEntry.amount || e.amount || 0);
+                const originalEntry = entries.find((entry) => entry.id === e.id);
+                const plannedAmt = Number(
+                  originalEntry?.amount ??
+                  (e as CashEntry & { plannedAmount?: number }).plannedAmount ??
+                  e.amount ??
+                  0
+                );
                 const remainingAmt = Math.max(0, plannedAmt - actualValue);
                 const isFull = plannedAmt > 0 && actualValue >= plannedAmt;
                 const isPartial = isPartialTracked(e);
@@ -1632,9 +1633,21 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                           <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 500 }}>
                             ≈ {formatMoney(e.amount)}
                           </span>
+                          {actualValue > 0 && remainingAmt > 0 && (
+                            <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600 }}>
+                              ({formatMoney(remainingAmt)} rem)
+                            </span>
+                          )}
                         </div>
                       ) : (
-                        <span>{e.type === 'income' ? '+' : '-'}{formatMoney(e.amount)}</span>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+                          <span>{e.type === 'income' ? '+' : '-'}{formatMoney(e.amount)}</span>
+                          {actualValue > 0 && remainingAmt > 0 && (
+                            <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600 }}>
+                              ({formatMoney(remainingAmt)} rem)
+                            </span>
+                          )}
+                        </div>
                       )}
                     </td>
                     <td className="cell-actual number">

@@ -25,6 +25,19 @@ export const StorageTransferModal: React.FC<StorageTransferModalProps> = ({
   const [amount, setAmount] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  const [prevOpenState, setPrevOpenState] = useState<{ open: boolean; assetId?: string }>({ open: false });
+  if (isOpen !== prevOpenState.open || (isOpen && initialFromAsset?.id !== prevOpenState.assetId)) {
+    setPrevOpenState({ open: isOpen, assetId: initialFromAsset?.id });
+    if (isOpen) {
+      const fromId = initialFromAsset?.id || storageAssets[0]?.id || '';
+      const toId = storageAssets.find((a) => a.id !== fromId)?.id || '';
+      setFromAssetId(fromId);
+      setToAssetId(toId);
+      setAmount('');
+      setErrorMsg(null);
+    }
+  }
+
   if (!isOpen) return null;
 
   const fromAsset = storageAssets.find((a) => a.id === fromAssetId);

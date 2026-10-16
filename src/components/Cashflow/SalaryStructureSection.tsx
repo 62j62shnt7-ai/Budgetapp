@@ -22,6 +22,48 @@ interface SalaryStructureSectionProps {
   onRemovePayment: (idx: number) => void;
 }
 
+const SalaryNumericInput: React.FC<{
+  initialValue: number;
+  min?: string;
+  max?: string;
+  step?: string;
+  className?: string;
+  onCommit: (val: number) => void;
+}> = ({ initialValue, min, max, step, className = 'form-input', onCommit }) => {
+  const [val, setVal] = React.useState(String(initialValue ?? 0));
+  const [prevInitial, setPrevInitial] = React.useState(initialValue);
+  if (initialValue !== prevInitial) {
+    setPrevInitial(initialValue);
+    setVal(String(initialValue ?? 0));
+  }
+
+  const handleCommit = () => {
+    const num = Number(val);
+    if (!Number.isNaN(num) && num !== initialValue) {
+      onCommit(num);
+    }
+  };
+
+  return (
+    <input
+      type="number"
+      min={min}
+      max={max}
+      step={step}
+      className={className}
+      value={val}
+      onChange={(e) => setVal(e.target.value)}
+      onBlur={handleCommit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          handleCommit();
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
+    />
+  );
+};
+
 export const SalaryStructureSection: React.FC<SalaryStructureSectionProps> = ({
   salaryOpen,
   setSalaryOpen,
@@ -42,8 +84,13 @@ export const SalaryStructureSection: React.FC<SalaryStructureSectionProps> = ({
   const salaryGroupMonths = (offset: number) => {
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const anchorIndex = monthIndexFromYearMonth(salaryAnchorMonth || DateUtils.currentYearMonth());
+    const safeOffset = ((Number(offset) % 3) + 3) % 3;
     let firstMatch = anchorIndex;
-    while (groupPhaseForMonthIndex(firstMatch, salaryAnchorMonth) !== offset) firstMatch += 1;
+    let guard = 0;
+    while (groupPhaseForMonthIndex(firstMatch, salaryAnchorMonth) !== safeOffset && guard < 12) {
+      firstMatch += 1;
+      guard += 1;
+    }
     return [0, 1, 2, 3]
       .map((quarter) => monthNames[((firstMatch + quarter * 3) % 12 + 12) % 12])
       .join(', ');
@@ -150,24 +197,20 @@ export const SalaryStructureSection: React.FC<SalaryStructureSectionProps> = ({
                   </label>
                   <label className="salary-field-item">
                     <span className="field-label-text">Day of month</span>
-                    <input
-                      type="number"
+                    <SalaryNumericInput
+                      initialValue={Number(p.day) || 15}
                       min="1"
                       max="31"
-                      className="form-input"
-                      value={p.day}
-                      onChange={(e) => onUpdatePayment(idx, 'day', Number(e.target.value))}
+                      onCommit={(val) => onUpdatePayment(idx, 'day', val)}
                     />
                   </label>
                   <label className="salary-field-item">
                     <span className="field-label-text">Amount (EGP)</span>
-                    <input
-                      type="number"
+                    <SalaryNumericInput
+                      initialValue={Number(p.amount) || 0}
                       min="0"
                       step="100"
-                      className="form-input"
-                      value={p.amount}
-                      onChange={(e) => onUpdatePayment(idx, 'amount', Number(e.target.value))}
+                      onCommit={(val) => onUpdatePayment(idx, 'amount', val)}
                     />
                   </label>
                 </div>

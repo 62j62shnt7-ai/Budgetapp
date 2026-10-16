@@ -59,17 +59,21 @@ export function calculateJobFinancials(job: JobItem, rates: RatesData): JobFinan
   const expenses = Array.isArray(job.expenses) ? job.expenses : [];
   const payments = Array.isArray(job.payments) ? job.payments : [];
 
-  const totalDays = daysWorked.reduce((sum, d) => sum + (Number(d.units) || 1), 0);
+  const totalDays = daysWorked.reduce((sum, d) => sum + (d.units !== undefined && d.units !== null ? Number(d.units) : 1), 0);
   const totalLoggedHours = daysWorked.reduce((sum, d) => sum + (Number(d.hours) || 0), 0);
   const totalPaid = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 
   let grossFee = 0;
   if (type === 'daily_rate' || job.rateType === 'daily') {
-    const rate = Number(job.dailyRate) || Number(job.rateAmount) || 0;
-    if (totalDays > 0) {
-      grossFee = rate * totalDays;
+    const defaultRate = Number(job.dailyRate) || Number(job.rateAmount) || 0;
+    if (daysWorked.length > 0) {
+      grossFee = daysWorked.reduce((sum, d) => {
+        const logRate = d.rate !== undefined && d.rate !== null ? Number(d.rate) : defaultRate;
+        const units = d.units !== undefined && d.units !== null ? Number(d.units) : 1;
+        return sum + (logRate * units);
+      }, 0);
     } else {
-      grossFee = Number(job.lumpSumAmount) || Number(job.forecastAmount) || rate || 0;
+      grossFee = Number(job.lumpSumAmount) || Number(job.forecastAmount) || 0;
     }
   } else if (job.rateType === 'hourly') {
     const rate = Number(job.rateAmount) || 0;
@@ -99,27 +103,23 @@ export function calculateJobFinancials(job: JobItem, rates: RatesData): JobFinan
   const remainingBalance = Math.max(0, Math.round((totalInvoice - totalPaid) * 100) / 100);
   const percentPaid = totalInvoice > 0 ? Math.min(100, Math.round((totalPaid / totalInvoice) * 100)) : (totalPaid > 0 ? 100 : 0);
 
-  let computedStatus: 'active' | 'invoiced' | 'partial' | 'paid' =
-    job.status === 'invoiced' || job.status === 'partial' || job.status === 'paid' ? job.status : 'active';
-  if (totalPaid >= totalInvoice && totalInvoice > 0 && job.status !== 'active') {
+  let computedStatus: 'active' | 'invoiced' | 'partial' | 'paid' = 'active';
+  if (totalPaid >= totalInvoice && totalInvoice > 0) {
     computedStatus = 'paid';
-  } else if (totalPaid > 0 && remainingBalance > 0 && job.status !== 'active' && job.status !== 'invoiced') {
+  } else if (totalPaid > 0 && remainingBalance > 0) {
     computedStatus = 'partial';
-  } else if (job.status === 'paid') {
-    computedStatus = 'paid';
-  } else if (job.status === 'invoiced') {
-    computedStatus = 'invoiced';
-  } else if (job.status === 'partial') {
-    computedStatus = 'partial';
+  } else if (job.status === 'invoiced' || job.status === 'paid' || job.status === 'partial') {
+    computedStatus = job.status;
   } else {
     computedStatus = 'active';
   }
 
+  const recordedPaidEgp = payments.reduce((sum, p) => sum + (Number(p.egpAmount) || Math.round(Number(p.amount || 0) * fxRate)), 0);
+  const totalPaidEgp = recordedPaidEgp > 0 ? recordedPaidEgp : Math.round(totalPaid * fxRate);
   const totalInvoiceEgp = Math.round(totalInvoice * fxRate);
   const netEarningsEgp = Math.round(netEarnings * fxRate);
   const grossFeeEgp = Math.round(grossFee * fxRate);
   const billableExpensesEgp = Math.round(billableExpenses * fxRate);
-  const totalPaidEgp = Math.round(totalPaid * fxRate);
   const remainingBalanceEgp = Math.round(remainingBalance * fxRate);
 
   return {

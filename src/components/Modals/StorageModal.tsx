@@ -22,6 +22,21 @@ export const StorageModal: React.FC<StorageModalProps> = ({ isOpen, onClose }) =
   const [locationType, setLocationType] = useState<StorageLocationType>('bank');
   const [location, setLocation] = useState<string>('hsbc');
 
+  const [prevOpen, setPrevOpen] = useState(false);
+  if (isOpen !== prevOpen) {
+    setPrevOpen(isOpen);
+    if (isOpen) {
+      setName('');
+      setQuantity('1');
+      setUnit('USD');
+      setRateSource('currency:USD');
+      const usd = rates.currencies.find((c) => c.name === 'USD');
+      setRate(usd ? String(usd.sell) : '48.5');
+      setLocationType('bank');
+      setLocation('hsbc');
+    }
+  }
+
   if (!isOpen) return null;
 
   const handleRateSourceChange = (src: string) => {

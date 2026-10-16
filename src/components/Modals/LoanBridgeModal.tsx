@@ -77,6 +77,7 @@ export const LoanBridgeModal: React.FC<LoanBridgeModalProps> = ({ isOpen, onClos
           tag: 'Loan Repayment',
           amount: perMonth,
           frequency: 1,
+          day: installmentDay,
           totalMonths: installmentMonths,
           remainingMonths: installmentMonths,
           startMonth: installmentStartMonth,

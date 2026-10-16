@@ -43,12 +43,39 @@ self.addEventListener('fetch', (event) => {
     url.hostname.includes('githubusercontent.com') ||
     url.hostname.includes('open.er-api.com') ||
     url.hostname.includes('goldprice.org') ||
+    url.hostname.includes('gold-api.com') ||
     !event.request.url.startsWith('http')
   ) {
     return;
   }
 
-  // Stale-while-revalidate or Network-first strategy
+  // Network-first for navigation / HTML documents to guarantee users get latest app build
+  if (event.request.mode === 'navigate' || event.request.destination === 'document') {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
+          return networkResponse;
+        })
+        .catch(async () => {
+          const cached = await caches.match(event.request);
+          if (cached) return cached;
+          const fallback = await caches.match('/');
+          if (fallback) return fallback;
+          return new Response('Offline - Budget Control', {
+            status: 503,
+            statusText: 'Service Unavailable',
+            headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+          });
+        })
+    );
+    return;
+  }
+
+  // Stale-while-revalidate for static assets
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       const fetchPromise = fetch(event.request)

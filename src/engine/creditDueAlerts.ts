@@ -99,7 +99,11 @@ export function getCreditDueFundingAlerts(
           const candAcc = (cand.account || '').toLowerCase().trim();
           return candAcc === accountKey && cand.date >= today && cand.date <= settlementDate;
         })
-        .sort((a, b) => a.date.localeCompare(b.date));
+        .sort((a, b) => {
+          if (a.date !== b.date) return a.date.localeCompare(b.date);
+          if (a.type !== b.type) return a.type === 'income' ? -1 : 1;
+          return 0;
+        });
 
       let runningBal = accountBalance;
       let minBal = accountBalance;
@@ -116,12 +120,12 @@ export function getCreditDueFundingAlerts(
         }
       }
 
-      projectedAccountBalance = Math.round(runningBal);
+      projectedAccountBalance = Math.round(runningBal * 100) / 100;
       // The settlement account can only contribute its positive balance towards this settlement due.
       // A negative balance (prior overdraft) cannot inflate the credit card due beyond remainingDue.
       const availableProjected = Math.max(0, projectedAccountBalance);
-      projectedShortfall = Math.max(0, remainingDue - availableProjected);
-      lowestProjectedBalance = Math.round(minBal);
+      projectedShortfall = Math.max(0, Math.round((remainingDue - availableProjected) * 100) / 100);
+      lowestProjectedBalance = Math.round(minBal * 100) / 100;
 
       // If the settlement date is in the future or today:
       // An upcoming income covers the due if:
@@ -140,6 +144,10 @@ export function getCreditDueFundingAlerts(
     if (settlementDate >= today && projectedShortfall !== undefined) {
       if (isFundedByProjectedIncome) {
         effectiveShortfall = 0;
+      } else if (lowestProjectedBalance !== undefined && lowestProjectedBalance < 0) {
+        // Intermediate deficit before settlement date: shortfall is at least the interim deficit
+        const interimShortfall = Math.min(remainingDue, Math.abs(lowestProjectedBalance));
+        effectiveShortfall = Math.max(projectedShortfall, interimShortfall);
       } else {
         effectiveShortfall = Math.min(remainingDue, projectedShortfall);
       }
@@ -184,7 +192,7 @@ export function getCreditDueFundingAlerts(
       let totalProjectedLiquidCash = 0;
       if (candidateEntries.length > 0 && settlementDate >= today) {
         for (const [k, acc] of Object.entries(accounts)) {
-          let running = Math.round(Number(acc.balance || 0));
+          let running = Math.round(Number(acc.balance || 0) * 100) / 100;
           const accEntries = candidateEntries
             .filter((cand) => {
               if (!cand || cand.id === entry.id || !cand.date) return false;
@@ -196,11 +204,11 @@ export function getCreditDueFundingAlerts(
             if (item.type === 'income') running += amt;
             else if (item.type === 'expense') running -= amt;
           }
-          totalProjectedLiquidCash += Math.round(running);
+          totalProjectedLiquidCash += Math.round(running * 100) / 100;
         }
       } else {
         totalProjectedLiquidCash = Object.values(accounts).reduce(
-          (sum, a) => sum + Math.round(Number(a.balance || 0)),
+          (sum, a) => sum + Math.round(Number(a.balance || 0) * 100) / 100,
           0
         );
       }
@@ -210,7 +218,7 @@ export function getCreditDueFundingAlerts(
       const candidateSources = Object.entries(accounts)
         .filter(([key]) => key !== accountKey)
         .map(([key, acc]) => {
-          const startingBal = Math.round(Number(acc.balance || 0));
+          const startingBal = Math.round(Number(acc.balance || 0) * 100) / 100;
           let projectedBal = startingBal;
           let minInterimBal = startingBal;
 
@@ -221,7 +229,11 @@ export function getCreditDueFundingAlerts(
                 const candAcc = (cand.account || '').toLowerCase().trim();
                 return candAcc === key && cand.date >= today && cand.date <= settlementDate;
               })
-              .sort((a, b) => a.date.localeCompare(b.date));
+              .sort((a, b) => {
+                if (a.date !== b.date) return a.date.localeCompare(b.date);
+                if (a.type !== b.type) return a.type === 'income' ? -1 : 1;
+                return 0;
+              });
 
             let running = startingBal;
             for (const item of sourceEntries) {
@@ -235,7 +247,7 @@ export function getCreditDueFundingAlerts(
                 minInterimBal = running;
               }
             }
-            projectedBal = Math.round(running);
+            projectedBal = Math.round(running * 100) / 100;
           }
 
           // The transferable amount available at settlementDate is the account's projected balance at settlement date,

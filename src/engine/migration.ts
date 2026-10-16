@@ -279,7 +279,7 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
           currentPrice: parseMoneyValue(a.currentPrice),
           currency: normalizeCurrencyCode(a.currency) || 'EGP',
           rate: parseMoneyValue(a.rate) || undefined,
-          rateSource: a.rateSource || a.karat,
+          rateSource: a.rateSource ? String(a.rateSource) : (a.karat ? String(a.karat) : undefined),
           locationType: a.locationType || loc.locationType,
           location: a.location || loc.location,
           locationLabel: a.locationLabel || loc.locationLabel,
@@ -298,8 +298,9 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
   const entryActuals: Record<string, number> = {};
   if (typeof rawActuals === 'object') {
     for (const [k, v] of Object.entries(rawActuals)) {
-      if (v !== undefined && v !== null && !isNaN(Number(v))) {
-        entryActuals[k] = Number(v);
+      const parsedVal = parseMoneyValue(v);
+      if (parsedVal !== undefined && parsedVal !== null && !isNaN(parsedVal)) {
+        entryActuals[k] = parsedVal;
       }
     }
   }
@@ -365,16 +366,17 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
     }
   }
 
+  // Tighter name-based installment linking: only match expense entries that explicitly reference the installment
   for (const inst of installments) {
     const instName = (inst.name || '').toLowerCase().trim();
     if (!instName) continue;
     for (const e of entries) {
-      if (!e.loanId) {
+      if (!e.loanId && e.type === 'expense') {
         const cat = (e.category || '').toLowerCase().trim();
         const sub = (e.subcategory || '').toLowerCase().trim();
-        const note = (e.note || '').toLowerCase().trim();
-        const src = (e.source || '').toLowerCase().trim();
-        if (cat === instName || sub === instName || note.includes(instName) || src.includes(instName) || e.id.includes(inst.id)) {
+        const tag = (e.tag || '').toLowerCase().trim();
+        const isLoanCat = cat.includes('loan') || sub.includes('loan') || tag.includes('loan') || tag === 'installment';
+        if (e.id.includes(inst.id) || (isLoanCat && (cat === instName || sub === instName || cat.includes(`repayment: ${instName}`)))) {
           e.loanId = inst.id;
         }
       }

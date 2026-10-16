@@ -10,6 +10,7 @@ import {
   getCoveredCreditSettlementKeys,
 } from '../../engine/creditCards';
 import { buildInstallmentEntries } from '../../engine/salaryAndInstallments';
+import { isLoanInflow } from '../../engine/forecast';
 import type { CashEntry } from '../../types';
 import { Lock, Unlock, Trash2, RotateCcw } from 'lucide-react';
 import { HistorySummaryTab } from './HistorySummaryTab';
@@ -339,6 +340,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
       let creditSettled = 0;
 
       actualEntries.forEach((entry) => {
+        // Exclude internal FX conversions and borrowed loan principal from realized earnings/spending
+        if (entry.conversionType === 'fx-sale' || isLoanInflow(entry)) return;
         const isSwipe = isCreditCardExpense(entry);
         const isSettlement = isCreditSettlementRow(entry);
         if (entry.draws && entry.draws.length > 0) {
@@ -698,31 +701,33 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
     ? filteredIncome - filteredCredit
     : filteredIncome - (filteredDirectExpenses + filteredCredit);
 
-  const groups: Record<string, { count: number; total: number; type: 'income' | 'expense' }> = {};
+  const groups: Record<string, { name: string; count: number; total: number; type: 'income' | 'expense' }> = {};
   filteredEntries.forEach((e) => {
     if (groupBy === 'tag' && e.draws && e.draws.length > 0) {
       e.draws.forEach((draw) => {
         if (selectedMonth !== 'all' && DateUtils.getMonthKey(draw.date) !== selectedMonth) return;
-        const tag = draw.tag?.trim() || 'Untagged';
+        const tag = draw.tag?.trim() || e.tag?.trim() || 'Untagged';
         if (selectedTag === '__untagged__' && tag !== 'Untagged') return;
         if (selectedTag !== 'all' && selectedTag !== '__untagged__'
           && selectedTag.toLowerCase() !== tag.toLowerCase()) return;
         const key = `${tag}|${e.type}`;
-        if (!groups[key]) groups[key] = { count: 0, total: 0, type: e.type };
+        if (!groups[key]) groups[key] = { name: tag, count: 0, total: 0, type: e.type };
         groups[key].count += 1;
-        groups[key].total += Number(draw.amount) || 0;
+        const drawAmt = Number(draw.amount) || 0;
+        groups[key].total += drawAmt;
       });
       return;
     }
-    const key = `${groupBy === 'category' ? getSmartGroupBucket(e) : (e.tag || 'Untagged')}|${e.type}`;
+    const name = groupBy === 'category' ? getSmartGroupBucket(e) : (e.tag?.trim() || 'Untagged');
+    const key = `${name}|${e.type}`;
     const amt = e.type === 'expense' ? getNettedExpenseAmount(e) : getFilteredEntryAmount(e);
-    if (!groups[key]) groups[key] = { count: 0, total: 0, type: e.type };
+    if (!groups[key]) groups[key] = { name, count: 0, total: 0, type: e.type };
     groups[key].count += 1;
     groups[key].total += amt;
   });
 
   const sortedGroups = Object.entries(groups)
-    .map(([key, value]) => [key.split('|')[0], value] as [string, typeof value])
+    .map(([, value]) => [value.name, value] as [string, typeof value])
     .sort((a, b) => b[1].total - a[1].total);
   const totalAnalyticsAmount = sortedGroups.reduce((s, g) => s + g[1].total, 0);
 

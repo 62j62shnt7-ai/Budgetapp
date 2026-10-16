@@ -4190,8 +4190,7 @@ input[type="date"]::-webkit-date-and-time-value {
     position: fixed !important;
     inset: 0 !important;
     margin: auto !important;
-    width: min(580px, calc(100vw - 48px)) !important;
-    max-width: 580px !important;
+    width: min(100%, calc(100vw - 48px)) !important;
     max-height: min(88vh, 850px) !important;
     padding: 24px !important;
     border-radius: 18px !important;

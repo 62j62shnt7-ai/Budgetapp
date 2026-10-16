@@ -9,7 +9,7 @@
 // ==========================================================================
 import { DateUtils } from './dateUtils';
 import { groupByMonth, getEntryActualAmount, isLoanInflow } from './forecast';
-import { isCreditCardExpense, getCreditSettlementMonth, getCreditAccountKey } from './creditCards';
+import { computeSettlementUncovered } from './creditCards';
 import type {
   CashEntry,
   CreditSettlementOverride,
@@ -191,8 +191,11 @@ export function computeFinancialHealthScore(
   // Savings = aggregate rate across the measured window (income and expense totalled), which
   // is stable and easy to explain: "earned X, spent Y, kept Z% of income".
   const reserveMonths = avgMonthlyExpense > 0 ? Math.round((storageTotal / avgMonthlyExpense) * 10) / 10 : 0;
+  const reservePoints =
+    reserveMonths >= 3 ? 10 : reserveMonths >= 2 ? 8 : reserveMonths >= 1 ? 5 : storageTotal > 0 ? 3 : 0;
   let savingsScore = 15;
   let savingsRatePct: number | undefined;
+
   if (monthsAnalyzed > 0 && realizedIncomeTotal > 0) {
     const aggregateSavingsRate = (realizedIncomeTotal - realizedExpenseTotal) / realizedIncomeTotal;
     savingsRatePct = Math.round(aggregateSavingsRate * 100);
@@ -204,9 +207,10 @@ export function computeFinancialHealthScore(
               : aggregateSavingsRate >= 0 ? 6
                 : aggregateSavingsRate >= -0.1 ? 3
                   : 0;
-    const reservePoints =
-      reserveMonths >= 3 ? 10 : reserveMonths >= 2 ? 8 : reserveMonths >= 1 ? 5 : storageTotal > 0 ? 3 : 0;
     savingsScore = Math.min(25, savingsPoints + reservePoints);
+  } else if (monthsAnalyzed > 0 && realizedIncomeTotal === 0) {
+    // 0 income: savings points are 0, plus reserve points (capped at 10)
+    savingsScore = reservePoints;
   }
 
   const rawScore = Math.round(deficitScore + runwayScore + budgetScore + savingsScore);
@@ -217,7 +221,17 @@ export function computeFinancialHealthScore(
   let tone = 'strong';
   let summaryNote = 'Strong liquidity runway and positive cashflow horizon.';
 
-  if (score < 55) {
+  if (score < 30) {
+    grade = 'F';
+    label = 'Critical';
+    tone = 'attention';
+    summaryNote = deficitSummaryNote || 'Immediate deficit risks or exhausted liquid reserves. Take action to stabilize cashflow.';
+  } else if (score < 45) {
+    grade = 'D';
+    label = 'Vulnerable';
+    tone = 'attention';
+    summaryNote = deficitSummaryNote || 'Substantial cashflow strain or short liquidity runway detected.';
+  } else if (score < 60) {
     grade = 'C';
     label = 'Needs Focus';
     tone = 'attention';
@@ -305,14 +319,14 @@ export function analyzeSettledMonths(params: {
     entry.source === 'recurring credit' ||
     (entry.id || '').startsWith('credit-settlement-');
 
-  // Settlement months whose card purchases are already counted on their own purchase dates.
-  const coveredSettlementKeys = new Set<string>();
-  ledger.filter((entry) => isCreditCardExpense(entry)).forEach((entry) => {
-    const accKey = getCreditAccountKey(entry);
-    const settlementMonth = getCreditSettlementMonth(entry, creditSettlementOverrides, entryActualDates);
-    if (!settlementMonth) return;
-    coveredSettlementKeys.add(`${accKey}-${settlementMonth}`);
-  });
+  // Compute uncovered settlement portions so payments are netted against card swipes
+  const uncoveredMap = computeSettlementUncovered(
+    ledger,
+    (e) => realizedAmount(e),
+    (e) => (entryActualDates && entryActualDates[e.id]) || e.actualDate || e.date,
+    creditSettlementOverrides,
+    entryActualDates
+  );
 
   // Loan inflows and loan repayments are financing, not earnings or consumption:
   // borrowed money must not read as income and repayment must not read as spending.
@@ -322,10 +336,11 @@ export function analyzeSettledMonths(params: {
   const countableEntries = ledger.filter((entry) => {
     if (entry.excludeFromForecast || entry.conversionType) return false;
     if (isLoanInflow(entry) || isLoanRepayment(entry)) return false;
-    if (!isCreditDueLump(entry)) return true;
-    const accountKey = getCreditAccountKey(entry);
-    const month = DateUtils.getMonthKey(entry.date);
-    return !(month && coveredSettlementKeys.has(`${accountKey}-${month}`));
+    if (isCreditDueLump(entry)) {
+      const uncovered = uncoveredMap.get(entry.id);
+      return uncovered === undefined || uncovered > 0;
+    }
+    return true;
   });
 
   const monthCandidates = new Set<string>();

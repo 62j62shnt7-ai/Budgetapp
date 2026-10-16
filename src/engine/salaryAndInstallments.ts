@@ -66,13 +66,10 @@ export function buildInstallmentEntries(installments: Installment[]): CashEntry[
     const [startYear, startMonth] = DateUtils.parseYearMonth(installment.startMonth);
     const frequency = Math.max(1, Number(installment.frequency) || 1);
     const total = Math.max(0, Number(installment.totalMonths ?? installment.remainingMonths ?? 0));
-    const count = installment.remainingMonths !== undefined
-      ? Math.max(0, Number(installment.remainingMonths))
-      : total;
-    if (count === 0) return [];
+    if (total === 0) return [];
     const entries: CashEntry[] = [];
 
-    for (let i = 0; i < count; i += 1) {
+    for (let i = 0; i < total; i += 1) {
       const totalMonthIndex = startYear * 12 + (startMonth - 1) + i * frequency;
       const y = Math.floor(totalMonthIndex / 12);
       const m = (totalMonthIndex % 12) + 1;
@@ -91,7 +88,7 @@ export function buildInstallmentEntries(installments: Installment[]): CashEntry[
         source: 'installment',
         loanId: installment.id,
         tag: installment.tag || 'Installment',
-        note: `Installment: ${installment.name} (${i + 1}/${count})`,
+        note: `Installment: ${installment.name} (${i + 1}/${total})`,
       });
     }
 
@@ -117,16 +114,13 @@ export function calculateInstallmentProgress(
   const [startYear, startMonth] = DateUtils.parseYearMonth(installment.startMonth);
   const frequency = Math.max(1, Number(installment.frequency) || 1);
   const total = Math.max(0, Number(installment.totalMonths ?? installment.remainingMonths ?? 0));
-  const count = installment.remainingMonths !== undefined
-    ? Math.max(0, Number(installment.remainingMonths))
-    : total;
   const deletedSet = new Set(deletedForecasts || []);
   const amount = Number(installment.amount) || 0;
 
-  if (count === 0) {
+  if (total === 0) {
     return {
-      total: total,
-      paid: total,
+      total: 0,
+      paid: 0,
       dismissed: 0,
       remaining: 0,
       outstandingAmount: 0,
@@ -137,8 +131,9 @@ export function calculateInstallmentProgress(
 
   let paid = 0;
   let dismissed = 0;
+  let totalActualPaid = 0;
 
-  for (let i = 0; i < count; i += 1) {
+  for (let i = 0; i < total; i += 1) {
     const totalMonthIndex = startYear * 12 + (startMonth - 1) + i * frequency;
     const y = Math.floor(totalMonthIndex / 12);
     const m = (totalMonthIndex % 12) + 1;
@@ -148,19 +143,23 @@ export function calculateInstallmentProgress(
       dismissed += 1;
     } else {
       const actual = Number(entryActuals[dateId]) || 0;
-      if (actual >= amount && actual > 0) {
-        paid += 1;
+      if (actual > 0) {
+        totalActualPaid += Math.min(amount, actual);
+        if (actual >= amount) {
+          paid += 1;
+        }
       }
     }
   }
 
-  const remaining = Math.max(0, count - paid - dismissed);
-  const outstandingAmount = amount * remaining;
+  const remaining = Math.max(0, total - paid - dismissed);
+  const maxPossiblePayable = amount * Math.max(0, total - dismissed);
+  const outstandingAmount = Math.max(0, Math.round((maxPossiblePayable - totalActualPaid) * 100) / 100);
   const isActive = remaining > 0;
   const monthlyAmount = isActive ? amount : 0;
 
   return {
-    total: count,
+    total,
     paid,
     dismissed,
     remaining,

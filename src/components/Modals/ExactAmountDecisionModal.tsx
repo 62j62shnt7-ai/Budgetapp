@@ -1,7 +1,8 @@
 import React from 'react';
 import type { CashEntry } from '../../types';
 import { formatMoney } from '../../engine/dateUtils';
-import { formatNativeCurrency } from '../../engine/currency';
+import { formatNativeCurrency, resolveCurrencyRate } from '../../engine/currency';
+import { useBudgetStore } from '../../store/useBudgetStore';
 import { Modal } from '../Common/Modal';
 
 export interface LinkedRepaymentOption {
@@ -31,6 +32,7 @@ export const ExactAmountDecisionModal: React.FC<ExactAmountDecisionModalProps> =
   onKeep,
   onFinish,
 }) => {
+  const rates = useBudgetStore((state) => state.rates);
   const [scaleLinkedLoan, setScaleLinkedLoan] = React.useState<boolean>(true);
 
   if (!isOpen || !entry) return null;
@@ -45,7 +47,7 @@ export const ExactAmountDecisionModal: React.FC<ExactAmountDecisionModalProps> =
   const verb = isLoanInflowEntry ? 'drawn' : isIncome ? 'received' : 'spent';
 
   const isForeign = Boolean(entry.currency && entry.currency.toUpperCase() !== 'EGP');
-  const fxRate = entry.fxRateAtEntry || 48.5;
+  const fxRate = entry.fxRateAtEntry || (isForeign ? resolveCurrencyRate(rates, entry.currency) : 1);
   const nativePlanned = isForeign ? (entry.originalAmount || Math.round((plannedAmount / fxRate) * 100) / 100) : plannedAmount;
   const nativeActual = isForeign ? Math.round((actualAmount / fxRate) * 100) / 100 : actualAmount;
   const nativeRemaining = isForeign ? Math.max(0, Math.round((nativePlanned - nativeActual) * 100) / 100) : Math.max(0, plannedAmount - actualAmount);
@@ -99,10 +101,10 @@ export const ExactAmountDecisionModal: React.FC<ExactAmountDecisionModalProps> =
       id="exactAmountDecisionDialog"
       maxWidth="480px"
       title={<span id="exactAmountDecisionTitle">{title}</span>}
-      subtitle={subtitle}
+      subtitle={<span id="exactAmountDecisionSubtitle">{subtitle}</span>}
     >
       <div className="entry-form entry-form-modern" style={{ padding: '4px 0 0' }}>
-        <p id="exactAmountDecisionMessage" style={{ fontSize: '13.5px', margin: '0 0 8px', lineHeight: '1.5' }}>
+        <p id="exactAmountDecisionMessage" style={{ fontSize: '13.5px', margin: '0 0 12px', lineHeight: '1.5' }}>
           You recorded {verb} of{' '}
           <strong>
             {isForeign
@@ -116,13 +118,6 @@ export const ExactAmountDecisionModal: React.FC<ExactAmountDecisionModalProps> =
               : formatMoney(displayPlannedEgp)}
           </strong>
           ) for <em>{itemName}</em>.
-        </p>
-
-        <p
-          id="exactAmountDecisionSubtitle"
-          style={{ fontSize: '12.5px', color: 'var(--muted)', margin: '0 0 14px', lineHeight: '1.4' }}
-        >
-          {subtitle}
         </p>
 
         <div

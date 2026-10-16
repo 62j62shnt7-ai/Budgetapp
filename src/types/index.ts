@@ -17,6 +17,7 @@ export interface EntryDraw {
 
 export interface CreditSettlementOverride {
   amount?: number;
+  actualPaid?: number;
   date?: string;
   note?: string;
   tag?: string;

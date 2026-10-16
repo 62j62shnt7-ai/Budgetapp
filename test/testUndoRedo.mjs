@@ -336,7 +336,34 @@ useBudgetStore.getState().importJSON(samplePayload);
 state = useBudgetStore.getState();
 assert.strictEqual(state.undoStack.length, 1, 'undoStack should have 1 item after manual import');
 assert.strictEqual(state.undoStack[0].label, 'Data Import', 'Undo step should be labeled Data Import');
-console.log('✓ Test 8 passed!');
+// Test 9: Salary forecast date editing & anchor month persistence
+console.log('Test 9: Salary forecast date editing & anchor month persistence...');
+// 9a: setSalaryAnchorMonth persists and updates store & storage
+useBudgetStore.getState().setSalaryAnchorMonth('2026-11');
+state = useBudgetStore.getState();
+assert.strictEqual(state.salaryAnchorMonth, '2026-11', 'salaryAnchorMonth should be updated in store');
+assert.strictEqual(globalThis.localStorage.getItem('budget-control-salary-anchor'), '"2026-11"', 'salaryAnchor should be saved in localStorage');
+
+// 9b: Updating virtual salary entry date materializes it and persists new date
+const virtualSalaryId = 'salary-2026-11-15-0';
+useBudgetStore.getState().updateEntry(virtualSalaryId, {
+  date: '2026-11-20',
+  amount: 25000,
+  category: 'Salary',
+  account: 'hsbc',
+  type: 'income',
+});
+state = useBudgetStore.getState();
+const materialized = state.entries.find((e) => e.id === virtualSalaryId);
+assert.ok(materialized, 'Virtual salary entry should be materialized into entries');
+assert.strictEqual(materialized?.date, '2026-11-20', 'Materialized salary entry should have the updated date');
+assert.strictEqual(materialized?.amount, 25000, 'Materialized salary entry should have the updated amount');
+
+// 9c: Undo should remove the materialized salary entry
+useBudgetStore.getState().undo();
+state = useBudgetStore.getState();
+assert.strictEqual(state.entries.some((e) => e.id === virtualSalaryId), false, 'Undo should remove the materialized salary entry');
+console.log('✓ Test 9 passed!');
 
 console.log('All Undo/Redo tests passed successfully!');
 
