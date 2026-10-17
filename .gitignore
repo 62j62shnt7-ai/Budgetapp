@@ -30,3 +30,8 @@ test-results/
 # Personal finance backups (never commit user data exports)
 budget-control-backup*.json
 *-backup-????-??-??.json
+test/audit_user_data.json
+test/*_user_data.json
+
+# Local agent config
+.agents/

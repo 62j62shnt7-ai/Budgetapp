@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { calculateJobFinancials, formatJobCurrency } from '../../engine/jobs';
@@ -14,7 +15,7 @@ interface JobFormModalProps {
 }
 
 export const JobFormModal: React.FC<JobFormModalProps> = ({ isOpen, jobToEdit, onClose }) => {
-  const { saveJob } = useBudgetStore();
+  const saveJob = useBudgetStore((state) => state.saveJob);
 
   const [title, setTitle] = useState('');
   const [client, setClient] = useState('');
@@ -238,7 +239,12 @@ interface JobLogDayModalProps {
 }
 
 export const JobLogDayModal: React.FC<JobLogDayModalProps> = ({ isOpen, jobId, onClose }) => {
-  const { partTimeJobs, saveJob } = useBudgetStore();
+  const { partTimeJobs, saveJob } = useBudgetStore(
+    useShallow((state) => ({
+      partTimeJobs: state.partTimeJobs,
+      saveJob: state.saveJob,
+    }))
+  );
   const [date, setDate] = useState(DateUtils.todayString());
   const [preset, setPreset] = useState<'1' | '0.5' | 'custom'>('1');
   const [customUnits, setCustomUnits] = useState('1.0');
@@ -346,7 +352,12 @@ interface JobExpenseModalProps {
 }
 
 export const JobExpenseModal: React.FC<JobExpenseModalProps> = ({ isOpen, jobId, onClose }) => {
-  const { partTimeJobs, saveJob } = useBudgetStore();
+  const { partTimeJobs, saveJob } = useBudgetStore(
+    useShallow((state) => ({
+      partTimeJobs: state.partTimeJobs,
+      saveJob: state.saveJob,
+    }))
+  );
   const [date, setDate] = useState(DateUtils.todayString());
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
@@ -492,7 +503,22 @@ export const JobPaymentModal: React.FC<JobPaymentModalProps> = ({ isOpen, jobId,
     updateEntry,
     entries,
     runTransaction,
-  } = useBudgetStore();
+  } = useBudgetStore(
+    useShallow((state) => ({
+      partTimeJobs: state.partTimeJobs,
+      rates: state.rates,
+      saveJob: state.saveJob,
+      accounts: state.accounts,
+      updateAccountBalance: state.updateAccountBalance,
+      storageAssets: state.storageAssets,
+      depositToStorageAsset: state.depositToStorageAsset,
+      addStorageAsset: state.addStorageAsset,
+      addEntry: state.addEntry,
+      updateEntry: state.updateEntry,
+      entries: state.entries,
+      runTransaction: state.runTransaction,
+    }))
+  );
 
   const job = partTimeJobs.find((j) => j.id === jobId);
   const fin = job ? calculateJobFinancials(job, rates) : null;
@@ -997,7 +1023,20 @@ export const JobForecastModal: React.FC<JobForecastModalProps> = ({ isOpen, jobI
     deleteEntry,
     entries,
     runTransaction,
-  } = useBudgetStore();
+  } = useBudgetStore(
+    useShallow((state) => ({
+      partTimeJobs: state.partTimeJobs,
+      rates: state.rates,
+      saveJob: state.saveJob,
+      accounts: state.accounts,
+      storageAssets: state.storageAssets,
+      addEntry: state.addEntry,
+      updateEntry: state.updateEntry,
+      deleteEntry: state.deleteEntry,
+      entries: state.entries,
+      runTransaction: state.runTransaction,
+    }))
+  );
 
   const [expectedDate, setExpectedDate] = useState(DateUtils.todayString());
   const [forecastAmount, setForecastAmount] = useState('');

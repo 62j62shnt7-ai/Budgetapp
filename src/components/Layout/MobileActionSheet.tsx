@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore, type ViewTab } from '../../store/useBudgetStore';
 import { 
   Sun, 
@@ -52,7 +53,21 @@ export const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
     redo,
     undoStack,
     redoStack
-  } = useBudgetStore();
+  } = useBudgetStore(
+    useShallow((state) => ({
+      theme: state.theme,
+      setTheme: state.setTheme,
+      gistId: state.gistId,
+      gistAutoSync: state.gistAutoSync,
+      gistSyncStatus: state.gistSyncStatus,
+      activeTab: state.activeTab,
+      setActiveTab: state.setActiveTab,
+      undo: state.undo,
+      redo: state.redo,
+      undoStack: state.undoStack,
+      redoStack: state.redoStack,
+    }))
+  );
 
   useEffect(() => {
     if (!isOpen) return;

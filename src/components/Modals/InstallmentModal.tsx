@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { DateUtils } from '../../engine/dateUtils';
 import type { Installment } from '../../types';
@@ -10,7 +11,13 @@ interface InstallmentModalProps {
 }
 
 export const InstallmentModal: React.FC<InstallmentModalProps> = ({ isOpen, installmentToEdit, onClose }) => {
-  const { addInstallment, updateInstallment, accounts } = useBudgetStore();
+  const { addInstallment, updateInstallment, accounts } = useBudgetStore(
+    useShallow((state) => ({
+      addInstallment: state.addInstallment,
+      updateInstallment: state.updateInstallment,
+      accounts: state.accounts,
+    }))
+  );
 
   const [name, setName] = useState<string>('');
   const [tag, setTag] = useState<string>('Installment');

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { calculateJobFinancials, formatJobCurrency } from '../../engine/jobs';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
@@ -37,7 +38,18 @@ export const JobsView: React.FC<JobsViewProps> = ({
   onOpenPaymentModal,
   onOpenForecastModal,
 }) => {
-  const { partTimeJobs, rates, entries, deletedForecasts, deleteJob, saveJob, deleteJobPayment, storageAssets } = useBudgetStore();
+  const { partTimeJobs, rates, entries, deletedForecasts, deleteJob, saveJob, deleteJobPayment, storageAssets } = useBudgetStore(
+    useShallow((state) => ({
+      partTimeJobs: state.partTimeJobs,
+      rates: state.rates,
+      entries: state.entries,
+      deletedForecasts: state.deletedForecasts,
+      deleteJob: state.deleteJob,
+      saveJob: state.saveJob,
+      deleteJobPayment: state.deleteJobPayment,
+      storageAssets: state.storageAssets,
+    }))
+  );
 
   const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'invoiced' | 'partial' | 'paid'>('all');
   const [activeCurrencyFilter, setActiveCurrencyFilter] = useState<string>('all');

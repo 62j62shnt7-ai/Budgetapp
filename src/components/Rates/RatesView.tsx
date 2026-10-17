@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import {
   computeSpreadPct,
@@ -17,7 +18,12 @@ interface RatesViewProps {
 }
 
 export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
-  const { rates, updateRates } = useBudgetStore();
+  const { rates, updateRates } = useBudgetStore(
+    useShallow((state) => ({
+      rates: state.rates,
+      updateRates: state.updateRates,
+    }))
+  );
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [draftRates, setDraftRates] = useState<RatesData | null>(null);
   const [isFetching, setIsFetching] = useState<boolean>(false);
@@ -102,8 +108,8 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
 
           const spreadPct = computeSpreadPct(item.sell, item.buy);
           const next = applySpread(mid, spreadPct);
-          next.sell = Math.round(next.sell);
-          next.buy = Math.round(next.buy);
+          next.sell = Math.round(next.sell * 100) / 100;
+          next.buy = Math.round(next.buy * 100) / 100;
           if (next.sell !== item.sell || next.buy !== item.buy) {
             changes.push(`• ${item.name}: ${item.sell}/${item.buy} → ${next.sell}/${next.buy}`);
           }

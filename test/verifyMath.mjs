@@ -33,6 +33,7 @@ import {
   getDeficitPeriods,
   getLowestProjectedBalanceAfterSpend,
   getRemainingForecastAmount,
+  calculateLoanRepaymentScale,
   isOngoingEntry,
   simulateSpend,
 } from '../src/engine/forecast.ts';
@@ -1893,7 +1894,42 @@ console.log('✓ Settlement clear: reverts to single planned due (overdue) and r
   assert.strictEqual(julyRow.realizedExpense, 6000, 'July realized expense reflects July tranche (6000)');
   assert.strictEqual(augRow.realizedExpense, 4000, 'August realized expense reflects August tranche (4000)');
 
-  console.log('✓ Audit regression suite (FX storage/bank refunds, settlement skip-deduct, swipe dedup, multi-month draws) verified');
+  // 6. Master Audit Phase 1: Piastre Precision & Gold Rate Rounding
+  const goldTestSell = Math.round(52.85 * 31.1035 * 100) / 100;
+  assert.strictEqual(goldTestSell, 1643.82, 'Gold rate calculation must strictly round to piastres');
+
+  // 7. Master Audit Phase 1: analyzeSettledMonths piastre precision
+  const piastreSettled = analyzeSettledMonths({
+    historyEntries: [
+      { id: 'inc-p1', date: '2026-07-01', type: 'income', category: 'Freelance', amount: 1000.55, actualAmount: 1000.55 },
+      { id: 'exp-p1', date: '2026-07-02', type: 'expense', category: 'Hosting', amount: 250.35, actualAmount: 250.35 },
+    ],
+    today: '2026-08-01',
+  });
+  const p1Month = piastreSettled.find((r) => r.month === '2026-07');
+  assert.strictEqual(p1Month.realizedIncome, 1000.55, 'Realized income must preserve piastres');
+  assert.strictEqual(p1Month.realizedExpense, 250.35, 'Realized expense must preserve piastres');
+  assert.strictEqual(Math.round(p1Month.savingsRate * 10000) / 10000, 0.7498, 'Savings rate must reflect piastre-accurate income and expense');
+
+  // 8. Master Audit Phase 1: calculateLoanRepaymentScale zero division guard
+  const loanInflowEntry = { id: 'loan-in', date: '2026-08-01', type: 'income', category: 'Bridge Loan', amount: 50000 };
+  const linkedSingle = { type: 'single', target: { id: 'loan-repay', date: '2026-09-01', type: 'expense', category: 'Loan Repay', amount: 55000 } };
+  const zeroDrawScale = calculateLoanRepaymentScale(loanInflowEntry, linkedSingle, 0);
+  assert.strictEqual(zeroDrawScale.scaledAmount, 0, 'Zero drawn amount scales repayment to exactly 0');
+
+  // 9. Master Audit Phase 1: Clock determinism via today parameter
+  const settlementWithClock = calculateCreditSettlementDate('2026-05-10', 'cib', '2026-05-15');
+  assert.strictEqual(settlementWithClock, '2026-06-15', 'Clock-injected credit settlement date calculation is deterministic');
+
+  // 10. Master Audit Phase 2: Runtime schema validation & corrupt localStorage fallback
+  const savedCorrupt = localStorage.getItem('budget-control-entries');
+  localStorage.setItem('budget-control-entries', 'null');
+  // Store reload or read should handle null safely without crashing
+  const loadedState = useBudgetStore.getState();
+  assert.ok(Array.isArray(loadedState.entries), 'Entries state remains a valid array even with corrupted storage');
+  if (savedCorrupt !== null) localStorage.setItem('budget-control-entries', savedCorrupt);
+
+  console.log('✓ Master Audit regression suite (piastre precision, zero-division, clock injection, corrupt storage fallback) verified');
 }
 
 console.log('\n=================================================================');

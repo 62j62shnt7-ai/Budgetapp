@@ -78,7 +78,9 @@ test/                         # See section 4 — 9 files, wired individually in
 * Any calculation logic (forecasts, deficits, health scores, interest, settlement dates, recurring schedules) must live strictly in `src/engine/`.
 * **Zero UI coupling:** engine modules must NEVER import React, JSX, or Zustand store hooks. They must remain pure deterministic functions.
 * **Determinism:** engine functions must not read the ambient clock. Pass `today`/`todayString` in as an optional trailing parameter (see `computeFinancialHealthScore` and `analyzeSettledMonths`) rather than calling `new Date()` inside. Network access also does not belong here; `autoFetchLatestRates` in `currency.ts` is the one historical exception.
-* **Money rounding:** round to piastres (`Math.round(v * 100) / 100`) at every accumulation step, and never mix whole-EGP rounding with piastre rounding for the same quantity — several modules disagree today, which makes two screens report different balances for the same account.
+* **Money rounding:** round to piastres (`Math.round(v * 100) / 100`) at every accumulation step, and never mix whole-EGP rounding with piastre rounding for the same quantity.
+* **Credit Settlement Netting in Historical Analysis:** `analyzeSettledMonths` in `healthScore.ts` must only count the uncovered excess delta (`uncoveredMap.get(entry.id)`) for lump credit settlement entries to avoid double-counting card purchases already accounted for in their swipe months.
+* **Installment Frequency Amortization:** In `salaryAndInstallments.ts`, `monthlyAmount` must divide the installment amount by `frequency` (`Math.round((amount / freq) * 100) / 100`) so multi-month obligations (quarterly, semi-annual) amortize accurately without distorting monthly burn rates.
 * When updating calculation logic, verify engine math immediately:
   ```bash
   npm test
@@ -139,6 +141,7 @@ Additional suites that exist but are **not** part of `npm test` — run them whe
 | Command | Covers |
 | --- | --- |
 | `npm run test:ui` | Playwright visual/UI audit against a Vite dev server (spawns its own if port 5173 is free) |
+| `npx tsx test/universalAuditRunner.mjs` | Universal domain audit runner against live real-world payload (`test/audit_user_data.json`) |
 | `npx tsx test/testCreditSettlementModal.mjs` | Credit settlement modal |
 | `node test/test-jobs-playwright.mjs` | Jobs flows via Playwright |
 | `npm run score` | `healthReport.mjs` — health-score report |

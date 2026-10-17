@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { formatMoney } from '../../engine/dateUtils';
 import type { StorageLocationType } from '../../types';
@@ -9,7 +10,12 @@ interface StorageModalProps {
 }
 
 export const StorageModal: React.FC<StorageModalProps> = ({ isOpen, onClose }) => {
-  const { addStorageAsset, rates } = useBudgetStore();
+  const { addStorageAsset, rates } = useBudgetStore(
+    useShallow((state) => ({
+      addStorageAsset: state.addStorageAsset,
+      rates: state.rates,
+    }))
+  );
 
   const [name, setName] = useState<string>('');
   const [quantity, setQuantity] = useState<string>('1');

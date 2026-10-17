@@ -144,7 +144,7 @@ export function calculateInstallmentProgress(
     } else {
       const actual = Number(entryActuals[dateId]) || 0;
       if (actual > 0) {
-        totalActualPaid += Math.min(amount, actual);
+        totalActualPaid = Math.round((totalActualPaid + Math.min(amount, actual)) * 100) / 100;
         if (actual >= amount) {
           paid += 1;
         }
@@ -156,7 +156,8 @@ export function calculateInstallmentProgress(
   const maxPossiblePayable = amount * Math.max(0, total - dismissed);
   const outstandingAmount = Math.max(0, Math.round((maxPossiblePayable - totalActualPaid) * 100) / 100);
   const isActive = remaining > 0;
-  const monthlyAmount = isActive ? amount : 0;
+  const freq = Math.max(1, Number(installment.frequency) || 1);
+  const monthlyAmount = isActive ? Math.round((amount / freq) * 100) / 100 : 0;
 
   return {
     total,

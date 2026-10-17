@@ -463,12 +463,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
         const fx = storageAssets.find(
           (asset) =>
             /eur|euro|usd|dollar|currency|foreign/i.test(`${asset.name || ''} ${asset.unit || ''}`) &&
-            Number(asset.quantity ?? (asset as any).amount ?? 0) > 0
+            Number(asset.quantity ?? 0) > 0
         );
         const goldAsset = storageAssets.find(
           (asset) =>
             /gold/i.test(`${asset.name || ''} ${asset.unit || ''} ${asset.category || ''}`) &&
-            Number(asset.quantity ?? (asset as any).amount ?? 0) > 0
+            Number(asset.quantity ?? 0) > 0
         );
         let goldRate = 0;
         if (goldAsset) {
@@ -477,7 +477,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
             if (resolved) goldRate = resolved;
           }
           if (!goldRate) {
-            goldRate = Number(goldAsset.rate || goldAsset.currentPrice || (goldAsset as any).buyPrice || 0);
+            goldRate = Number(goldAsset.rate || goldAsset.currentPrice || goldAsset.buyPrice || 0);
           }
         }
         const goldGramsNeeded = goldRate > 0 ? (peak / goldRate).toFixed(1) : null;
@@ -497,7 +497,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
         let fxRate = 1;
         if (fx) {
           const resolved = getCurrencyRate(rates, fx.unit || fx.currency || 'USD');
-          fxRate = resolved || Number(fx.rate || fx.currentPrice || (fx as any).buyPrice || 1);
+          fxRate = resolved || Number(fx.rate || fx.currentPrice || fx.buyPrice || 1);
         }
         const fxAmountNeeded = Math.ceil(peak / fxRate);
         const fxLabel = fx ? (fx.unit || fx.name || 'USD') : 'foreign currency';

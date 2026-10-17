@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { formatMoney } from '../../engine/dateUtils';
 import { formatNativeCurrency, resolveRateSourceValue } from '../../engine/currency';
@@ -16,7 +17,14 @@ export const StorageFxModal: React.FC<StorageFxModalProps> = ({
   initialAsset,
   onClose,
 }) => {
-  const { storageAssets, accounts, rates, convertStorageAssetToEgp } = useBudgetStore();
+  const { storageAssets, accounts, rates, convertStorageAssetToEgp } = useBudgetStore(
+    useShallow((state) => ({
+      storageAssets: state.storageAssets,
+      accounts: state.accounts,
+      rates: state.rates,
+      convertStorageAssetToEgp: state.convertStorageAssetToEgp,
+    }))
+  );
 
   const [assetId, setAssetId] = useState<string>(() => initialAsset?.id || storageAssets[0]?.id || '');
   const [foreignAmount, setForeignAmount] = useState<string>('');

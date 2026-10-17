@@ -312,7 +312,7 @@ export function analyzeSettledMonths(params: {
   const realizedAmount = (entry: CashEntry) => {
     const actual = getEntryActualAmount(entry, entryActuals);
     if (actual > 0) return actual;
-    return Math.max(0, Math.round(Number(entry.amount) || 0));
+    return Math.max(0, Math.round((Number(entry.amount) || 0) * 100) / 100);
   };
   const isCreditDueLump = (entry: CashEntry) =>
     Boolean(entry.isCreditSettlement) ||
@@ -362,8 +362,14 @@ export function analyzeSettledMonths(params: {
     .slice(-Math.max(1, maxMonths));
 
   const realizedAmountForMonth = (entry: CashEntry, month: string): number => {
+    if (isCreditDueLump(entry)) {
+      const uncovered = uncoveredMap.get(entry.id);
+      if (uncovered !== undefined) {
+        return DateUtils.getMonthKey(entry.date) === month ? Math.max(0, uncovered) : 0;
+      }
+    }
     if (Array.isArray(entry.draws) && entry.draws.length > 0) {
-      const drawsSum = entry.draws.reduce((sum, d) => sum + Math.max(0, Math.round(Number(d.amount) || 0)), 0);
+      const drawsSum = entry.draws.reduce((sum, d) => sum + Math.max(0, Math.round((Number(d.amount) || 0) * 100) / 100), 0);
       if (drawsSum > 0) {
         const hasCrossMonthDraws = entry.draws.some(
           (d) => DateUtils.getMonthKey(d.date || entry.actualDate || entry.date) !== DateUtils.getMonthKey(entry.date)
@@ -371,7 +377,7 @@ export function analyzeSettledMonths(params: {
         if (hasCrossMonthDraws) {
           return entry.draws
             .filter((d) => DateUtils.getMonthKey(d.date || entry.actualDate || entry.date) === month)
-            .reduce((sum, d) => sum + Math.max(0, Math.round(Number(d.amount) || 0)), 0);
+            .reduce((sum, d) => sum + Math.max(0, Math.round((Number(d.amount) || 0) * 100) / 100), 0);
         }
       }
     }
@@ -381,7 +387,14 @@ export function analyzeSettledMonths(params: {
   return settledMonths.map((month) => {
     const monthEntries = countableEntries.filter((entry) => DateUtils.getMonthKey(entry.date) === month);
     const expenseEntries = monthEntries.filter((entry) => entry.type === 'expense');
-    const plannedExpense = expenseEntries.reduce((sum, entry) => sum + Math.max(0, Number(entry.amount) || 0), 0);
+    const plannedExpense = expenseEntries.reduce((sum, entry) => {
+      if (isCreditDueLump(entry)) {
+        const uncovered = uncoveredMap.get(entry.id);
+        const uncoveredVal = uncovered !== undefined ? uncovered : (Number(entry.amount) || 0);
+        return sum + Math.max(0, uncoveredVal);
+      }
+      return sum + Math.max(0, Number(entry.amount) || 0);
+    }, 0);
     const realizedExpense = countableEntries
       .filter((entry) => entry.type === 'expense')
       .reduce((sum, entry) => sum + realizedAmountForMonth(entry, month), 0);
@@ -415,11 +428,12 @@ export function generateSmartInsights(params: {
   deficitPeriods: DailyDeficitPeriod[];
   actualCashNow: number;
   storageTotal: number;
+  today?: string;
 }): SmartInsight[] {
   const { entries, forecast, deficitPeriods, actualCashNow, storageTotal } = params;
   const insights: SmartInsight[] = [];
-  const currentMonth = DateUtils.currentYearMonth();
-  const today = DateUtils.todayString();
+  const today = params.today || DateUtils.todayString();
+  const currentMonth = today.slice(0, 7);
   const formatMoney = (v: number) => `${Math.round(v).toLocaleString()} EGP`;
 
   // 1. Deficit Horizon or Clean Projection

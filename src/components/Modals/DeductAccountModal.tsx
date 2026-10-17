@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { formatMoney, DateUtils } from '../../engine/dateUtils';
 import { getCurrencyRateOr, formatNativeCurrency, getAccountNativeCurrency, convertAmountBetweenCurrencies, normalizeCurrencyCode } from '../../engine/currency';
@@ -30,7 +31,22 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
     updateEntry,
     runTransaction,
     creditSettlementOverrides,
-  } = useBudgetStore();
+  } = useBudgetStore(
+    useShallow((state) => ({
+      accounts: state.accounts,
+      entries: state.entries,
+      archivedEntries: state.archivedEntries,
+      storageAssets: state.storageAssets,
+      rates: state.rates,
+      depositToStorageAsset: state.depositToStorageAsset,
+      addStorageAsset: state.addStorageAsset,
+      updateStorageAsset: state.updateStorageAsset,
+      updateAccountBalance: state.updateAccountBalance,
+      updateEntry: state.updateEntry,
+      runTransaction: state.runTransaction,
+      creditSettlementOverrides: state.creditSettlementOverrides,
+    }))
+  );
 
   const [selectedAccountId, setSelectedAccountId] = useState<string>('hsbc');
   const [tag, setTag] = useState('');

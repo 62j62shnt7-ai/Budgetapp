@@ -4,8 +4,8 @@
 import { DateUtils } from './dateUtils';
 import type { CashEntry, CreditSettlementOverride } from '../types';
 
-export function calculateCreditSettlementDate(dateStr: string, creditType?: string): string {
-  const safeDate = dateStr || DateUtils.todayString();
+export function calculateCreditSettlementDate(dateStr: string, creditType?: string, today?: string): string {
+  const safeDate = dateStr || today || DateUtils.todayString();
   const [y, m, d] = DateUtils.parseDate(safeDate);
   const type = (creditType || '').toLowerCase();
 
@@ -282,8 +282,8 @@ export function buildCreditDueEntries(params: {
       const overrideDrawsTotal = Array.isArray(override?.draws)
         ? override.draws.reduce((sum, d) => sum + (Number(d.amount) || 0), 0)
         : 0;
-      const actualPaid = Math.max(Number(entryActuals[settlementId] || 0), lumpActual, overrideDrawsTotal);
-      const calculatedPlannedDue = baseDue + lumpAmount + cardSpendTotal;
+      const actualPaid = Math.round(Math.max(Number(entryActuals[settlementId] || 0), lumpActual, overrideDrawsTotal) * 100) / 100;
+      const calculatedPlannedDue = Math.round((baseDue + lumpAmount + cardSpendTotal) * 100) / 100;
 
       const hasPlannedOverride =
         override &&
@@ -291,9 +291,9 @@ export function buildCreditDueEntries(params: {
         override.amount !== null &&
         !isNaN(Number(override.amount));
       
-      const statementAmount = hasPlannedOverride ? Number(override.amount) : undefined;
-      const totalPlannedDue = hasPlannedOverride ? Number(override.amount) : calculatedPlannedDue;
-      const variance = hasPlannedOverride ? Number(override.amount) - calculatedPlannedDue : 0;
+      const statementAmount = hasPlannedOverride ? Math.round(Number(override.amount) * 100) / 100 : undefined;
+      const totalPlannedDue = hasPlannedOverride ? Math.round(Number(override.amount) * 100) / 100 : calculatedPlannedDue;
+      const variance = hasPlannedOverride ? Math.round((Number(override.amount) - calculatedPlannedDue) * 100) / 100 : 0;
 
       if (totalPlannedDue <= 0 && actualPaid <= 0 && calculatedPlannedDue <= 0) return;
 
@@ -414,7 +414,7 @@ export function computeSettlementUncovered(
     if (!isCreditCardExpense(e)) return;
     const month = getCreditSettlementMonth(e, creditSettlementOverrides, entryActualDates);
     const key = `${getCreditAccountKey(e)}|${month}`;
-    pool.set(key, (pool.get(key) || 0) + getAmount(e));
+    pool.set(key, Math.round(((pool.get(key) || 0) + getAmount(e)) * 100) / 100);
   });
 
   const result = new Map<string, number>();
@@ -427,8 +427,8 @@ export function computeSettlementUncovered(
         DateUtils.getMonthKey(getDate(s));
       const key = `${getCreditAccountKey(s)}|${sMonth}`;
       const covered = Math.min(amt, pool.get(key) || 0);
-      pool.set(key, (pool.get(key) || 0) - covered);
-      result.set(s.id, amt - covered);
+      pool.set(key, Math.round(((pool.get(key) || 0) - covered) * 100) / 100);
+      result.set(s.id, Math.round((amt - covered) * 100) / 100);
     });
   return result;
 }

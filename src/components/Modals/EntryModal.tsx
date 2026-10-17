@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { inferTag, useBudgetStore } from '../../store/useBudgetStore';
 import { calculateCreditSettlementDate, getCreditCycleHint } from '../../engine/creditCards';
 import { getCurrencyRateOr, formatNativeCurrency, getAccountNativeCurrency, convertAmountBetweenCurrencies } from '../../engine/currency';
@@ -47,7 +48,29 @@ export const EntryModal: React.FC<EntryModalProps> = ({
     irqJobs,
     storageAssets,
     accounts,
-  } = useBudgetStore();
+  } = useBudgetStore(
+    useShallow((state) => ({
+      entries: state.entries,
+      installments: state.installments,
+      addEntry: state.addEntry,
+      updateEntry: state.updateEntry,
+      updateInstallment: state.updateInstallment,
+      recordActual: state.recordActual,
+      clearActual: state.clearActual,
+      updateCreditSettlementOverride: state.updateCreditSettlementOverride,
+      recalculateCreditSettlement: state.recalculateCreditSettlement,
+      deleteDraw: state.deleteDraw,
+      settleJobForecastPayment: state.settleJobForecastPayment,
+      runTransaction: state.runTransaction,
+      rates: state.rates,
+      entryActuals: state.entryActuals,
+      partTimeJobs: state.partTimeJobs,
+      asfJobs: state.asfJobs,
+      irqJobs: state.irqJobs,
+      storageAssets: state.storageAssets,
+      accounts: state.accounts,
+    }))
+  );
 
   const activeEntry = (entryToEdit ? entries.find((e) => e.id === entryToEdit.id) : null) || entryToEdit;
   const [deleteDrawTarget, setDeleteDrawTarget] = useState<{ drawIndex: number; draw: EntryDraw } | null>(null);

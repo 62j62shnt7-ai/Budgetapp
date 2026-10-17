@@ -93,15 +93,42 @@ function loadStorage<T>(key: string, fallback: T): T {
     if (!raw) return fallback;
     const parsed: unknown = JSON.parse(raw);
     if (parsed === null || parsed === undefined) return fallback;
+
     if (Array.isArray(fallback)) {
-      return Array.isArray(parsed) ? (parsed as T) : fallback;
+      if (!Array.isArray(parsed)) return fallback;
+      if (key === STORAGE_KEYS.deletedForecasts) {
+        return (parsed.filter((item): item is string => typeof item === 'string') as unknown) as T;
+      }
+      return (parsed.filter((item) => item !== null && item !== undefined && typeof item === 'object') as unknown) as T;
     }
+
     if (typeof fallback === 'object' && fallback !== null) {
-      return typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as T) : fallback;
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return fallback;
+      if (key === STORAGE_KEYS.rates) {
+        const r = parsed as Partial<RatesData>;
+        if (!Array.isArray(r.currencies) || !Array.isArray(r.gold)) return fallback;
+      }
+      if (key === STORAGE_KEYS.accounts) {
+        const accs = parsed as Record<string, unknown>;
+        if (Object.keys(accs).length === 0) return fallback;
+      }
+      return parsed as T;
     }
-    if (typeof fallback === 'string' || typeof fallback === 'number' || typeof fallback === 'boolean') {
-      return typeof parsed === typeof fallback ? (parsed as T) : fallback;
+
+    if (typeof fallback === 'string') {
+      if (typeof parsed !== 'string') return fallback;
+      if (key === STORAGE_KEYS.salaryAnchor && parsed.length < 7) return fallback;
+      return parsed as T;
     }
+
+    if (typeof fallback === 'number') {
+      return (typeof parsed === 'number' && !isNaN(parsed)) ? (parsed as T) : fallback;
+    }
+
+    if (typeof fallback === 'boolean') {
+      return typeof parsed === 'boolean' ? (parsed as T) : fallback;
+    }
+
     return parsed as T;
   } catch (err) {
     console.warn(`Error reading ${key} from localStorage:`, err);
@@ -1992,7 +2019,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     return get().runTransaction(`Update ${accName} Balance`, () => {
       const accounts = { ...get().accounts };
       if (accounts[accountKey]) {
-        accounts[accountKey] = { ...accounts[accountKey], balance: Math.round(newBalance) };
+        accounts[accountKey] = { ...accounts[accountKey], balance: Math.round(newBalance * 100) / 100 };
         saveStorage(STORAGE_KEYS.accounts, accounts);
         set({ accounts });
         scheduleAutoGistSync(get);
@@ -2003,18 +2030,18 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
   transferAccountFunds: (fromAccountKey, toAccountKey, amount, note) => {
     const fromAcc = get().accounts[fromAccountKey];
     const toAcc = get().accounts[toAccountKey];
-    const amt = Math.round(Number(amount));
+    const amt = Math.round(Number(amount) * 100) / 100;
     if (!fromAcc || !toAcc || amt <= 0 || fromAccountKey === toAccountKey) return false;
     const label = note || `Transfer ${formatMoney(amt)} from ${fromAcc.name} to ${toAcc.name}`;
     get().runTransaction(label, () => {
       const accounts = { ...get().accounts };
       accounts[fromAccountKey] = {
         ...accounts[fromAccountKey],
-        balance: Math.round(Number(accounts[fromAccountKey].balance || 0) - amt),
+        balance: Math.round((Number(accounts[fromAccountKey].balance || 0) - amt) * 100) / 100,
       };
       accounts[toAccountKey] = {
         ...accounts[toAccountKey],
-        balance: Math.round(Number(accounts[toAccountKey].balance || 0) + amt),
+        balance: Math.round((Number(accounts[toAccountKey].balance || 0) + amt) * 100) / 100,
       };
       saveStorage(STORAGE_KEYS.accounts, accounts);
       set({ accounts });
@@ -2371,7 +2398,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
 
     return get().runTransaction(`Convert ${foreignAmount} ${asset.unit || asset.currency} to EGP`, () => {
       const rate = customRate || (asset.rateSource ? resolveRateSourceValue(asset.rateSource, get().rates) : null) || asset.rate || asset.buyPrice || 1;
-      const egpGained = Math.round(foreignAmount * rate);
+      const egpGained = Math.round(foreignAmount * rate * 100) / 100;
 
       // 1. Deduct foreign quantity from storage asset
       const updatedAssets = get().storageAssets.map((a) => {
@@ -2388,7 +2415,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       if (accounts[targetAccount]) {
         accounts[targetAccount] = {
           ...accounts[targetAccount],
-          balance: (accounts[targetAccount].balance || 0) + egpGained,
+          balance: Math.round(((accounts[targetAccount].balance || 0) + egpGained) * 100) / 100,
         };
         saveStorage(STORAGE_KEYS.accounts, accounts);
       }
@@ -2734,14 +2761,16 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       }
 
       // Check for remote conflict if local data has also changed
-      let parsedRemote: any = null;
+      let parsedRemote: Record<string, unknown> | null = null;
       try {
-        parsedRemote = JSON.parse(content);
+        parsedRemote = JSON.parse(content) as Record<string, unknown>;
       } catch {
         // ignore
       }
 
-      const remoteExportedAt = parsedRemote?.exportedAt || parsedRemote?.data?.exportedAt;
+      const remoteData = (parsedRemote?.data && typeof parsedRemote.data === 'object') ? parsedRemote.data as Record<string, unknown> : null;
+      const remoteExportedAt = (typeof parsedRemote?.exportedAt === 'string' ? parsedRemote.exportedAt : undefined)
+        || (typeof remoteData?.exportedAt === 'string' ? remoteData.exportedAt : undefined);
       const remoteTime = remoteExportedAt ? new Date(remoteExportedAt).getTime() : 0;
 
       // Remote is genuinely newer than local state if remoteTime > lastLocalMutationTimestamp + 1000
@@ -2764,9 +2793,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       if (!isActuallyDifferent && !localHasUnuploadedChanges) {
         const newSyncTimestamp = remoteTime > 0 ? remoteTime : (lastGistUploadTimestamp || Date.now());
         lastGistUploadTimestamp = newSyncTimestamp;
-        if (typeof localStorage !== 'undefined') {
-          localStorage.setItem(STORAGE_KEYS.lastGistUpload, String(lastGistUploadTimestamp));
-        }
+        safeSetItem(STORAGE_KEYS.lastGistUpload, String(lastGistUploadTimestamp));
         lastLocalMutationTimestamp = 0;
         set({ gistSyncStatus: 'synced', gistConflict: null });
         return true;
@@ -2803,10 +2830,8 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       }
       const newSyncTimestamp = remoteTime > 0 ? remoteTime : Date.now();
       lastGistUploadTimestamp = newSyncTimestamp;
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(STORAGE_KEYS.lastGistUpload, String(lastGistUploadTimestamp));
-        localStorage.setItem(STORAGE_KEYS.lastGistSync, String(lastGistUploadTimestamp));
-      }
+      safeSetItem(STORAGE_KEYS.lastGistUpload, String(lastGistUploadTimestamp));
+      safeSetItem(STORAGE_KEYS.lastGistSync, String(lastGistUploadTimestamp));
       lastLocalMutationTimestamp = 0;
       safeSetItem(STORAGE_KEYS.lastLocalModified, '0');
       set({ gistSyncStatus: 'synced', gistConflict: null });
@@ -2839,11 +2864,9 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         return;
       }
       lastGistUploadTimestamp = Date.now();
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(STORAGE_KEYS.lastGistUpload, String(lastGistUploadTimestamp));
-        localStorage.setItem(STORAGE_KEYS.lastGistSync, String(lastGistUploadTimestamp));
-        localStorage.setItem(STORAGE_KEYS.lastLocalModified, '0');
-      }
+      safeSetItem(STORAGE_KEYS.lastGistUpload, String(lastGistUploadTimestamp));
+      safeSetItem(STORAGE_KEYS.lastGistSync, String(lastGistUploadTimestamp));
+      safeSetItem(STORAGE_KEYS.lastLocalModified, '0');
       lastLocalMutationTimestamp = 0;
       set({ gistConflict: null, gistSyncStatus: 'synced' });
     } else {
@@ -2965,9 +2988,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         creditSettlementOverrides: state.creditSettlementOverrides,
         archivedEntries: state.archivedEntries,
       };
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(STORAGE_KEYS.resetBackup, JSON.stringify(backupPayload));
-      }
+      saveStorage(STORAGE_KEYS.resetBackup, backupPayload);
       const emptyEntries: CashEntry[] = [];
       const emptyInstallments: Installment[] = [];
       const emptyStorage: StorageAsset[] = [];
@@ -2975,24 +2996,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
       const resetAccounts = structuredClone(defaultAccounts);
       const resetSalary = structuredClone(defaultSalaryPattern);
       const resetRates = structuredClone(defaultRates);
-      saveStorage(STORAGE_KEYS.entries, emptyEntries);
-      saveStorage(STORAGE_KEYS.archivedEntries, emptyEntries);
-      saveStorage(STORAGE_KEYS.installments, emptyInstallments);
-      saveStorage(STORAGE_KEYS.storage, emptyStorage);
-      saveStorage(STORAGE_KEYS.asf, emptyJobs);
-      saveStorage(STORAGE_KEYS.irq, emptyJobs);
-      saveStorage(STORAGE_KEYS.partTimeJobs, emptyJobs);
-      saveStorage(STORAGE_KEYS.accounts, resetAccounts);
-      saveStorage(STORAGE_KEYS.salary, resetSalary);
-      saveStorage(STORAGE_KEYS.rates, resetRates);
-      saveStorage(STORAGE_KEYS.entryActuals, {});
-      saveStorage(STORAGE_KEYS.entryActualDates, {});
-      saveStorage(STORAGE_KEYS.deletedForecasts, []);
-      saveStorage(STORAGE_KEYS.creditDues, {});
-      saveStorage(STORAGE_KEYS.creditDueMonths, {});
-      saveStorage(STORAGE_KEYS.creditSettlementOverrides, {});
-      saveStorage(STORAGE_KEYS.salaryAnchor, DateUtils.currentYearMonth());
-      set({
+      const resetSnapshot: BudgetFinancialSnapshot = {
         entries: emptyEntries,
         archivedEntries: emptyEntries,
         accounts: resetAccounts,
@@ -3010,7 +3014,9 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         entryActuals: {},
         entryActualDates: {},
         deletedForecasts: [],
-      });
+      };
+      persistFinancialSnapshot(resetSnapshot);
+      set(resetSnapshot);
       scheduleAutoGistSync(get);
     });
   },
@@ -3020,7 +3026,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     if (!raw) return false;
     try {
       const backup = JSON.parse(raw);
-      const restored = {
+      const restored: BudgetFinancialSnapshot = {
         salaryPattern: backup.salaryPattern || defaultSalaryPattern,
         salaryAnchorMonth: backup.salaryAnchorMonth || DateUtils.currentYearMonth(),
         entries: backup.cashEntries || [],
@@ -3039,23 +3045,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         creditSettlementOverrides: backup.creditSettlementOverrides || {},
         archivedEntries: backup.archivedEntries || [],
       };
-      saveStorage(STORAGE_KEYS.salary, restored.salaryPattern);
-      saveStorage(STORAGE_KEYS.salaryAnchor, restored.salaryAnchorMonth);
-      saveStorage(STORAGE_KEYS.entries, restored.entries);
-      saveStorage(STORAGE_KEYS.installments, restored.installments);
-      saveStorage(STORAGE_KEYS.storage, restored.storageAssets);
-      saveStorage(STORAGE_KEYS.accounts, restored.accounts);
-      saveStorage(STORAGE_KEYS.asf, restored.asfJobs);
-      saveStorage(STORAGE_KEYS.irq, restored.irqJobs);
-      saveStorage(STORAGE_KEYS.partTimeJobs, restored.partTimeJobs);
-      saveStorage(STORAGE_KEYS.rates, restored.rates);
-      saveStorage(STORAGE_KEYS.creditDues, restored.creditDues);
-      saveStorage(STORAGE_KEYS.creditDueMonths, restored.creditDueMonths);
-      saveStorage(STORAGE_KEYS.entryActuals, restored.entryActuals);
-      saveStorage(STORAGE_KEYS.entryActualDates, restored.entryActualDates);
-      saveStorage(STORAGE_KEYS.deletedForecasts, restored.deletedForecasts);
-      saveStorage(STORAGE_KEYS.creditSettlementOverrides, restored.creditSettlementOverrides);
-      saveStorage(STORAGE_KEYS.archivedEntries, restored.archivedEntries);
+      persistFinancialSnapshot(restored);
       localStorage.removeItem(STORAGE_KEYS.resetBackup);
       set(restored);
       scheduleAutoGistSync(get);
@@ -3071,7 +3061,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     if (!raw) return false;
     try {
       const backup = JSON.parse(raw);
-      const restored = {
+      const restored: BudgetFinancialSnapshot = {
         salaryPattern: backup.salaryPattern || defaultSalaryPattern,
         salaryAnchorMonth: backup.salaryAnchorMonth || DateUtils.currentYearMonth(),
         entries: backup.entries || [],
@@ -3090,23 +3080,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
         creditSettlementOverrides: backup.creditSettlementOverrides || {},
         archivedEntries: backup.archivedEntries || [],
       };
-      saveStorage(STORAGE_KEYS.salary, restored.salaryPattern);
-      saveStorage(STORAGE_KEYS.salaryAnchor, restored.salaryAnchorMonth);
-      saveStorage(STORAGE_KEYS.entries, restored.entries);
-      saveStorage(STORAGE_KEYS.installments, restored.installments);
-      saveStorage(STORAGE_KEYS.storage, restored.storageAssets);
-      saveStorage(STORAGE_KEYS.accounts, restored.accounts);
-      saveStorage(STORAGE_KEYS.asf, restored.asfJobs);
-      saveStorage(STORAGE_KEYS.irq, restored.irqJobs);
-      saveStorage(STORAGE_KEYS.partTimeJobs, restored.partTimeJobs);
-      saveStorage(STORAGE_KEYS.rates, restored.rates);
-      saveStorage(STORAGE_KEYS.creditDues, restored.creditDues);
-      saveStorage(STORAGE_KEYS.creditDueMonths, restored.creditDueMonths);
-      saveStorage(STORAGE_KEYS.entryActuals, restored.entryActuals);
-      saveStorage(STORAGE_KEYS.entryActualDates, restored.entryActualDates);
-      saveStorage(STORAGE_KEYS.deletedForecasts, restored.deletedForecasts);
-      saveStorage(STORAGE_KEYS.creditSettlementOverrides, restored.creditSettlementOverrides);
-      saveStorage(STORAGE_KEYS.archivedEntries, restored.archivedEntries);
+      persistFinancialSnapshot(restored);
       localStorage.removeItem(STORAGE_KEYS.importUndoBackup);
       set(restored);
       scheduleAutoGistSync(get);
@@ -3306,9 +3280,9 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
     let isPromise = false;
     try {
       const result = fn();
-      if (result && typeof (result as any).then === 'function') {
+      if (result && typeof (result as unknown as { then?: unknown }).then === 'function') {
         isPromise = true;
-        return (result as any)
+        return ((result as unknown as Promise<unknown>)
           .catch((err: unknown) => {
             persistFinancialSnapshot(snapshot);
             set({
@@ -3324,7 +3298,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get) => ({
               transactionDepth = 0;
               isTransactionRunning = false;
             }
-          });
+          })) as unknown as T;
       }
       return result;
     } catch (err) {

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { DateUtils } from '../../engine/dateUtils';
 
@@ -8,7 +9,13 @@ interface LoanBridgeModalProps {
 }
 
 export const LoanBridgeModal: React.FC<LoanBridgeModalProps> = ({ isOpen, onClose }) => {
-  const { addEntry, addInstallment, runTransaction } = useBudgetStore();
+  const { addEntry, addInstallment, runTransaction } = useBudgetStore(
+    useShallow((state) => ({
+      addEntry: state.addEntry,
+      addInstallment: state.addInstallment,
+      runTransaction: state.runTransaction,
+    }))
+  );
 
   const [name, setName] = useState<string>('Bridge Loan');
   const [amount, setAmount] = useState<string>('');

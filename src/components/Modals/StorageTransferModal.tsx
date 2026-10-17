@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { formatNativeCurrency } from '../../engine/currency';
 import type { StorageAsset } from '../../types';
@@ -15,7 +16,12 @@ export const StorageTransferModal: React.FC<StorageTransferModalProps> = ({
   initialFromAsset,
   onClose,
 }) => {
-  const { storageAssets, transferStorageAsset } = useBudgetStore();
+  const { storageAssets, transferStorageAsset } = useBudgetStore(
+    useShallow((state) => ({
+      storageAssets: state.storageAssets,
+      transferStorageAsset: state.transferStorageAsset,
+    }))
+  );
 
   const [fromAssetId, setFromAssetId] = useState<string>(() => initialFromAsset?.id || storageAssets[0]?.id || '');
   const [toAssetId, setToAssetId] = useState<string>(() => {

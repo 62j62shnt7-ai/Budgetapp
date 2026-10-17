@@ -11,8 +11,9 @@ Budget Control v2 is a local-first, privacy-focused financial management web app
 ### 📊 1. Predictive Cash Flow & Day-Level Forecasting
 - **Rolling Multi-Month Horizon:** Projects daily and month-end liquid cash balances across all liquid bank accounts.
 - **Salary Cycle Matrix:** Configurable 3-month recurring salary distribution patterns with customizable day offsets.
-- **Recurring Commitments & Installments:** Track scheduled monthly installments, remaining terms, and remaining principal balances.
-- **Credit Card Billing Automation:** Faithfully models grace periods, statement closing dates, and settlement due dates for cards (e.g. CIB and HSBC 56-day rollover logic).
+- **Recurring Commitments & Installment Amortization:** Track scheduled installments across flexible frequency intervals (monthly, quarterly, semi-annual, annual). Displays true amortized monthly burn rates alongside lump commitments and outstanding balances.
+- **Universal Piastre Precision Standard:** Enforces strict two-decimal precision (`Math.round(v * 100) / 100`) across all bank account balances, transfers, foreign asset sales, and transaction actuals, eliminating integer truncation and float drift.
+- **Credit Card Billing Automation:** Faithfully models grace periods, statement closing dates, and settlement due dates for cards (e.g. CIB and HSBC 56-day rollover logic) with pre-settlement funding shortfall alerts.
 - **Proactive Deficit Detection:** Flags exact negative-balance spells before they happen, identifying the specific date liquidity drops below zero and when upcoming income will restore it.
 
 ### 🧪 2. Interactive Spend Simulator & Deficit Bridging
@@ -44,6 +45,7 @@ Budget Control v2 is a local-first, privacy-focused financial management web app
 
 ### 📈 7. Historical Auditing & Financial Health Index
 - **Composite Financial Health Score (0–100):** Real-time rating analyzing liquid runway, deficit safety, budget adherence, and reserve funding.
+- **Credit Settlement Netting:** Historical settled-month auditing nets credit settlements against swiped transactions so only newly incurred excess deltas (bank fees, interest, or statement variance) count as expenses, preventing double-counting.
 - **Validated Entry Analytics:** Filter historical transactions by month, type, account, and subcategory tags, with automatic variance analysis (favorable vs. unfavorable).
 - **Admin Edit Mode:** Unlockable administrative table controls to quickly edit historical records, adjust actuals, or remove erroneous entries.
 
@@ -114,21 +116,29 @@ These scripts automatically ensure dependencies are installed, start the Vite de
 
 ## 🧪 Testing & Quality Assurance
 
-Budget Control v2 includes a dedicated unit test suite verifying all core math, financial algorithms, and edge cases:
+Budget Control v2 includes a dedicated unit and integration test suite verifying all core math, financial algorithms, and edge cases:
 
 - Credit card statement cycle and 56-day settlement rules
 - Salary matrix schedule calculation
+- Multi-interval installment amortized burn rate calculations
 - Forecast calculation & deficit detection algorithms
 - Day-level spend simulator and recovery timelines
 - Multi-draw tranches and partial entry handling
-- Currency FX and gold Gram valuation formulas
-- Financial health score scoring matrix
-- Legacy JSON data backup normalization
+- Currency FX bid/ask and gold gram valuation formulas
+- Financial health score scoring matrix and settlement netting
+- Legacy JSON data backup normalization and schema migrations
+- Universal real-world user payload verification (`test/audit_user_data.json`)
 
 Run the test suite with:
 
 ```bash
-npm run test
+npm test
+```
+
+To run the live real-world payload universal audit runner:
+
+```bash
+npx tsx test/universalAuditRunner.mjs
 ```
 
 To build for production with full type-checking and automated test verification:
@@ -136,6 +146,10 @@ To build for production with full type-checking and automated test verification:
 ```bash
 npm run build
 ```
+
+For detailed architectural and audit deliverables, see:
+- [`UNIVERSAL_LOGIC_AUDIT.md`](UNIVERSAL_LOGIC_AUDIT.md) — Comprehensive Universal Domain & Business Logic Audit Report
+- [`AUDIT_REPORT.md`](AUDIT_REPORT.md) — Master Verification & Defect Ledger Report
 
 ---
 
@@ -146,22 +160,24 @@ Budgetapp/
 ├── src/
 │   ├── components/
 │   │   ├── Accounts/        # Account balances & CD maturity tracking
-│   │   ├── Cashflow/        # Forecast table, filters & spend actions
+│   │   ├── Cashflow/        # Forecast table, installments, filters & spend actions
 │   │   ├── Dashboard/       # Net worth, health index & overview widgets
 │   │   ├── Deficits/        # Timeline of negative cash spells & top KPI cards
 │   │   ├── History/         # Historical transactions, analytics & admin tools
 │   │   ├── Jobs/            # Project billing, logged days & client expenses
-│   │   ├── Layout/          # Header, Sidebar & Topbar
-│   │   ├── Modals/          # Decision modals, loan bridge, sync & forms
+│   │   ├── Layout/          # Header, Sidebar, Topbar, BottomNav & MobileActionSheet
+│   │   ├── Modals/          # Decision modals, loan bridge, sync, deduct & forms
 │   │   ├── Rates/           # Currency rates & gold prices editor
 │   │   └── Storage/         # Physical storage assets & valuables
 │   ├── engine/              # Pure business logic and financial calculation functions
 │   │   ├── creditCards.ts
+│   │   ├── creditDueAlerts.ts
 │   │   ├── currency.ts
 │   │   ├── dateUtils.ts
 │   │   ├── forecast.ts
 │   │   ├── healthScore.ts
 │   │   ├── jobs.ts
+│   │   ├── migration.ts
 │   │   └── salaryAndInstallments.ts
 │   ├── hooks/              # Shared React hooks (forecast candidates, update status)
 │   ├── store/
@@ -171,11 +187,19 @@ Budgetapp/
 │   ├── styles/             # Modular base stylesheets (base.css)
 │   ├── index.css           # Design tokens, modern glassmorphism & responsive overrides
 │   └── utils/
-│       └── appRefresh.ts    # Service Worker cache purge & update utilities
+│       ├── affectedRecords.ts # Linked entity discovery & cascading options
+│       ├── appRefresh.ts    # Service Worker cache purge & update utilities
+│       └── recurringDetector.ts # Recurring candidate grouping & series linking
 ├── public/                 # Static PWA assets (manifest, service worker, 404)
-└── test/
-    ├── verifyMath.mjs       # Comprehensive financial math test suite
-    └── ui-audit.mjs         # Playwright visual audit test suite
+├── test/
+│   ├── audit_user_data.json # Full real-world backup test payload
+│   ├── universalAuditRunner.mjs # Universal domain test runner
+│   ├── verifyMath.mjs       # Comprehensive financial math test suite
+│   ├── testCreditSettlementModal.mjs # Credit settlement modal test suite
+│   ├── test-jobs-playwright.mjs # Jobs flows visual Playwright tests
+│   └── ui-audit.mjs         # Playwright visual audit test suite
+├── AUDIT_REPORT.md         # Master Verification & Defect Ledger Report
+└── UNIVERSAL_LOGIC_AUDIT.md # Comprehensive Universal Domain & Business Logic Audit Report
 ```
 
 ---

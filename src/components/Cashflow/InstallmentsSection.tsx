@@ -28,7 +28,7 @@ export const InstallmentsSection: React.FC<InstallmentsSectionProps> = ({
   getInstallmentProgress,
   onDeleteInstallment,
 }) => {
-  const { entries } = useBudgetStore();
+  const entries = useBudgetStore((state) => state.entries);
   return (
     <section className="panel collapsible-panel cashflow-collapsible-panel">
       <div
@@ -105,7 +105,10 @@ export const InstallmentsSection: React.FC<InstallmentsSectionProps> = ({
                   <div>
                     <strong>{inst.name}</strong>
                     <span style={{ fontSize: '12px', color: 'var(--muted)', display: 'block', marginTop: '2px' }}>
-                      {formatMoney(inst.amount)}/mo · Total: {formatMoney((Number(inst.amount) || 0) * progress.total)}
+                      {inst.frequency && inst.frequency > 1
+                        ? `${formatMoney(inst.amount)} every ${inst.frequency} mos (${formatMoney(progress.monthlyAmount || 0)}/mo)`
+                        : `${formatMoney(inst.amount)}/mo`}{' '}
+                      · Total: {formatMoney((Number(inst.amount) || 0) * progress.total)}
                       {inst.account ? ` · Account: ${inst.account.toUpperCase()}` : ''}
                     </span>
                     <span style={{ fontSize: '12px', color: 'var(--muted)', display: 'block' }}>

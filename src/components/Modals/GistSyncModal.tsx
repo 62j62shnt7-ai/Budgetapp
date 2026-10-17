@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
 
 interface GistSyncModalProps {
@@ -15,7 +16,17 @@ export const GistSyncModal: React.FC<GistSyncModalProps> = ({ isOpen, onClose })
     syncFromGist,
     exportJSON,
     importJSON,
-  } = useBudgetStore();
+  } = useBudgetStore(
+    useShallow((state) => ({
+      gistToken: state.gistToken,
+      gistId: state.gistId,
+      gistAutoSync: state.gistAutoSync,
+      setGistConfig: state.setGistConfig,
+      syncFromGist: state.syncFromGist,
+      exportJSON: state.exportJSON,
+      importJSON: state.importJSON,
+    }))
+  );
 
   const [tokenInput, setTokenInput] = useState('');
   const [idInput, setIdInput] = useState('');

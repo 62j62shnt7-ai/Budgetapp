@@ -237,17 +237,17 @@ export function calculateLoanRepaymentScale(
     const storedInitial = Number(linked.target.initialAmount || 0);
     baseRepaymentTotal = storedInitial > 0 ? storedInitial : Math.max(currentRepAmount, baseDisbursement);
   } else {
-    months = Number(linked.target.totalMonths || linked.target.remainingMonths || 1);
+    months = Math.max(1, Number(linked.target.totalMonths || linked.target.remainingMonths || 1));
     const storedInitial = Number(linked.target.initialAmount || 0);
     baseRepaymentTotal = storedInitial > 0 ? storedInitial * months : Math.max(currentRepAmount * months, baseDisbursement);
   }
 
   // Ratio of drawn funds to original planned facility
   const ratio = totalDrawn / baseDisbursement;
-  const scaledTotal = Math.round(baseRepaymentTotal * ratio);
+  const scaledTotal = Math.round(baseRepaymentTotal * ratio * 100) / 100;
   const scaledAmount = isSingle
     ? scaledTotal
-    : (totalDrawn === 0 ? 0 : Math.max(1, Math.round(scaledTotal / months)));
+    : (totalDrawn === 0 ? 0 : Math.max(1, Math.round((scaledTotal / months) * 100) / 100));
 
   if (scaledAmount === currentRepAmount) {
     return null;
@@ -307,9 +307,9 @@ export function getActiveForecastEntries(
   installmentEntries: CashEntry[],
   creditDueEntries: CashEntry[],
   deletedForecasts: string[],
-  entryActuals: Record<string, number>
+  entryActuals: Record<string, number>,
+  today: string = DateUtils.todayString()
 ): CashEntry[] {
-  const today = DateUtils.todayString();
   const candidates = getForecastCandidateEntries(
     cashEntries,
     installmentEntries,
@@ -372,10 +372,11 @@ export function getActiveForecastEntries(
 export function calculateForecast(
   entries: CashEntry[],
   openingCashBalance: number,
-  monthsAhead: number = 12
+  monthsAhead: number = 12,
+  startYm?: string
 ): MonthlyForecast[] {
   const months = groupByMonth(entries, (entry) => Number(entry.amount || 0) * (entry.type === 'income' ? 1 : -1));
-  const currentYm = DateUtils.currentYearMonth();
+  const currentYm = startYm || DateUtils.currentYearMonth();
 
   // Ensure all horizon months exist
   for (let i = 0; i < monthsAhead; i += 1) {
@@ -762,7 +763,8 @@ export function getDeficitSummary(
   forecastEntriesArr: CashEntry[],
   candidateEntries: CashEntry[],
   openingBalance: number,
-  entryActuals: Record<string, number>
+  entryActuals: Record<string, number>,
+  today: string = DateUtils.todayString()
 ): {
   forecastMonths: MonthlyForecast[];
   deficitPeriods: DailyDeficitPeriod[];
@@ -772,7 +774,6 @@ export function getDeficitSummary(
     (item) => item.balance < 0
   );
   const deficitPeriods = getDeficitPeriods(forecastEntriesArr, openingBalance);
-  const today = DateUtils.todayString();
   const overdueItems = candidateEntries
     .filter((entry) => entry.date && entry.date < today)
     .filter((entry) => !isCreditCardExpense(entry))

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore, type ViewTab } from '../../store/useBudgetStore';
 import { useAppUpdateStatus } from '../../hooks/useAppUpdateStatus';
 import { 
@@ -51,7 +52,21 @@ export const Topbar: React.FC<TopbarProps> = ({
     redoStack,
     undo,
     redo,
-  } = useBudgetStore();
+  } = useBudgetStore(
+    useShallow((state) => ({
+      theme: state.theme,
+      setTheme: state.setTheme,
+      activeTab: state.activeTab,
+      toggleSidebar: state.toggleSidebar,
+      gistId: state.gistId,
+      gistAutoSync: state.gistAutoSync,
+      gistSyncStatus: state.gistSyncStatus,
+      undoStack: state.undoStack,
+      redoStack: state.redoStack,
+      undo: state.undo,
+      redo: state.redo,
+    }))
+  );
   const updateStatus = useAppUpdateStatus();
   const syncLabel = !gistId
     ? 'Setup'

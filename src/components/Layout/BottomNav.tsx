@@ -1,4 +1,5 @@
 import React from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { LayoutDashboard, TrendingUp, AlertTriangle, History, MoreHorizontal, Plus } from 'lucide-react';
 
@@ -8,7 +9,12 @@ interface BottomNavProps {
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({ onOpenMobileMenu, onOpenQuickAdd }) => {
-  const { activeTab, setActiveTab } = useBudgetStore();
+  const { activeTab, setActiveTab } = useBudgetStore(
+    useShallow((state) => ({
+      activeTab: state.activeTab,
+      setActiveTab: state.setActiveTab,
+    }))
+  );
 
   return (
     <nav className="mobile-bottom-nav" aria-label="Mobile primary navigation">

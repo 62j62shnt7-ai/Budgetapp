@@ -234,10 +234,10 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
 
   const getEntryActualAmount = React.useCallback((entry: CashEntry): number => {
     if (!entry) return 0;
-    if (entryActuals[entry.id] !== undefined) return Math.round(Number(entryActuals[entry.id]) || 0);
+    if (entryActuals[entry.id] !== undefined) return Math.round((Number(entryActuals[entry.id]) || 0) * 100) / 100;
     const legacyId = `${entry.date}-${entry.category}-${entry.amount}-${entry.type}-${entry.account || 'cash'}`;
-    if (entryActuals[legacyId] !== undefined) return Math.round(Number(entryActuals[legacyId]) || 0);
-    if (entry.actualAmount !== undefined && entry.actualAmount !== null) return Math.round(Number(entry.actualAmount) || 0);
+    if (entryActuals[legacyId] !== undefined) return Math.round((Number(entryActuals[legacyId]) || 0) * 100) / 100;
+    if (entry.actualAmount !== undefined && entry.actualAmount !== null) return Math.round((Number(entry.actualAmount) || 0) * 100) / 100;
     return 0;
   }, [entryActuals]);
 
@@ -1449,12 +1449,12 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                                 <input
                                   type="number"
                                   min="0"
-                                  step="1"
+                                  step="any"
                                   defaultValue={actual || ''}
                                   className="history-admin-input form-input"
                                   onKeyDown={(event) => {
                                     if (event.key === 'Enter') {
-                                      const value = Math.round(Number(event.currentTarget.value) || 0);
+                                      const value = Math.round((Number(event.currentTarget.value) || 0) * 100) / 100;
                                       if (value <= 0) handleClearActual(entry);
                                       else recordActual(entry.id, value, actDate, { tag: entry.tag, account: entry.account });
                                       event.currentTarget.blur();

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { formatMoney } from '../../engine/dateUtils';
 import {
@@ -67,7 +68,18 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenStorageModal }) 
     partTimeJobs,
     asfJobs,
     irqJobs,
-  } = useBudgetStore();
+  } = useBudgetStore(
+    useShallow((state) => ({
+      storageAssets: state.storageAssets,
+      rates: state.rates,
+      updateStorageAsset: state.updateStorageAsset,
+      deleteStorageAsset: state.deleteStorageAsset,
+      syncStorageRates: state.syncStorageRates,
+      partTimeJobs: state.partTimeJobs,
+      asfJobs: state.asfJobs,
+      irqJobs: state.irqJobs,
+    }))
+  );
 
   const [activeFilter, setActiveFilter] = useState<'all' | 'bank' | 'cash' | 'vault'>('all');
   const [transferModalOpen, setTransferModalOpen] = useState<boolean>(false);
@@ -108,15 +120,16 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenStorageModal }) 
     return loc.locationType === activeFilter;
   });
 
-  const handleFieldChange = (assetId: string, field: string, value: any) => {
+  const handleFieldChange = (assetId: string, field: keyof StorageAsset | string, value: string | number) => {
     const asset = storageAssets.find((a) => a.id === assetId);
     if (!asset) return;
     if (field === 'rate') {
+      const numVal = Number(value) || 0;
       updateStorageAsset(asset.id, {
         ...asset,
         rateSource: 'manual',
-        rate: value,
-        buyPrice: value,
+        rate: numVal,
+        buyPrice: numVal,
       });
     } else {
       updateStorageAsset(asset.id, {

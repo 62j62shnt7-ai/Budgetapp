@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { formatMoney } from '../../engine/dateUtils';
 import { formatNativeCurrency, inferAssetLocation, storageValue } from '../../engine/currency';
@@ -48,7 +49,16 @@ const AccountBalanceInput: React.FC<{
 };
 
 export const AccountsView: React.FC = () => {
-  const { accounts, updateAccountBalance, transferAccountFunds, storageAssets, rates, navigateTo } = useBudgetStore();
+  const { accounts, updateAccountBalance, transferAccountFunds, storageAssets, rates, navigateTo } = useBudgetStore(
+    useShallow((state) => ({
+      accounts: state.accounts,
+      updateAccountBalance: state.updateAccountBalance,
+      transferAccountFunds: state.transferAccountFunds,
+      storageAssets: state.storageAssets,
+      rates: state.rates,
+      navigateTo: state.navigateTo,
+    }))
+  );
 
   const [transferFrom, setTransferFrom] = useState<string>('');
   const [transferTo, setTransferTo] = useState<string>('');

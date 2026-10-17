@@ -1,4 +1,5 @@
 import React from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore, type ViewTab } from '../../store/useBudgetStore';
 import {
   LayoutDashboard,
@@ -14,7 +15,15 @@ import {
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
-  const { activeTab, setActiveTab, sidebarCollapsed, toggleSidebar, closeMobileSidebar } = useBudgetStore();
+  const { activeTab, setActiveTab, sidebarCollapsed, toggleSidebar, closeMobileSidebar } = useBudgetStore(
+    useShallow((state) => ({
+      activeTab: state.activeTab,
+      setActiveTab: state.setActiveTab,
+      sidebarCollapsed: state.sidebarCollapsed,
+      toggleSidebar: state.toggleSidebar,
+      closeMobileSidebar: state.closeMobileSidebar,
+    }))
+  );
 
   const tabs: Array<{ id: ViewTab; label: string; icon: React.ReactNode }> = [
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={18} /> },

@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
+import type { RatesData } from '../../types';
 
 interface RateModalProps {
   isOpen: boolean;
@@ -8,7 +10,12 @@ interface RateModalProps {
 }
 
 export const RateModal: React.FC<RateModalProps> = ({ isOpen, rateType = 'currency', onClose }) => {
-  const { rates, updateRates } = useBudgetStore();
+  const { rates, updateRates } = useBudgetStore(
+    useShallow((state) => ({
+      rates: state.rates,
+      updateRates: state.updateRates,
+    }))
+  );
 
   const [selectedItemName, setSelectedItemName] = useState<string>('');
   const [sell, setSell] = useState<string>('');
@@ -44,10 +51,10 @@ export const RateModal: React.FC<RateModalProps> = ({ isOpen, rateType = 'curren
     const buyVal = Number(buy);
     if (!selectedItemName || !sellVal || !buyVal) return;
 
-    const copy = JSON.parse(JSON.stringify(rates));
+    const copy: RatesData = JSON.parse(JSON.stringify(rates));
     const now = new Date().toISOString();
     if (rateType === 'currency') {
-      const idx = copy.currencies.findIndex((c: any) => c.name === selectedItemName);
+      const idx = copy.currencies.findIndex((c) => c.name === selectedItemName);
       if (idx !== -1) {
         copy.currencies[idx].sell = sellVal;
         copy.currencies[idx].buy = buyVal;
@@ -57,7 +64,7 @@ export const RateModal: React.FC<RateModalProps> = ({ isOpen, rateType = 'curren
         }
       }
     } else {
-      const idx = copy.gold.findIndex((g: any) => g.name === selectedItemName);
+      const idx = copy.gold.findIndex((g) => g.name === selectedItemName);
       if (idx !== -1) {
         copy.gold[idx].sell = sellVal;
         copy.gold[idx].buy = buyVal;

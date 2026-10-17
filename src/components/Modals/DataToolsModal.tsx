@@ -1,4 +1,5 @@
 import React, { useState, useRef, useMemo } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { executeAppRefresh } from '../../utils/appRefresh';
 import { detectRecurringCandidateGroups } from '../../utils/recurringDetector';
@@ -35,7 +36,27 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
     restoreResetBackup,
     undoImport,
     archiveSettledEntries,
-  } = useBudgetStore();
+  } = useBudgetStore(
+    useShallow((state) => ({
+      exportJSON: state.exportJSON,
+      importJSON: state.importJSON,
+      entries: state.entries,
+      archivedEntries: state.archivedEntries,
+      deletedForecasts: state.deletedForecasts,
+      restoreDeletedForecast: state.restoreDeletedForecast,
+      clearAllDeletedForecasts: state.clearAllDeletedForecasts,
+      linkRecurringSeries: state.linkRecurringSeries,
+      unlinkRecurringSeries: state.unlinkRecurringSeries,
+      autoLinkAllRecurringCandidates: state.autoLinkAllRecurringCandidates,
+      entryActuals: state.entryActuals,
+      entryActualDates: state.entryActualDates,
+      autoTagEntries: state.autoTagEntries,
+      resetData: state.resetData,
+      restoreResetBackup: state.restoreResetBackup,
+      undoImport: state.undoImport,
+      archiveSettledEntries: state.archiveSettledEntries,
+    }))
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [feedbackMsg, setFeedbackMsg] = useState<string>('');
   const [showDeletedModal, setShowDeletedModal] = useState<boolean>(false);

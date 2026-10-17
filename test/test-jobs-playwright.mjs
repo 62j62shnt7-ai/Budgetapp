@@ -10,11 +10,11 @@ async function runJobsVisualTest() {
 
   const sampleData = JSON.parse(fs.readFileSync('test/sample-data.json', 'utf-8'));
   
-  // Launch Playwright using the system Google Chrome
-  const browser = await chromium.launch({
-    executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    headless: true,
-  });
+  // Launch Playwright using the system Google Chrome if available, otherwise default chromium
+  const macPath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+  const browser = fs.existsSync(macPath)
+    ? await chromium.launch({ executablePath: macPath, headless: true })
+    : await chromium.launch({ headless: true });
 
   try {
     const context = await browser.newContext({

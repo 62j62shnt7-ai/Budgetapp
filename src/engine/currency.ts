@@ -162,7 +162,7 @@ export function storageValue(item: StorageAsset, rates?: RatesData): number {
   // A non-numeric rate (e.g. "48,5" from an edited or imported asset) yields NaN,
   // which would poison every downstream total including the health score.
   if (!Number.isFinite(rate)) return 0;
-  return qty * rate;
+  return Math.round(qty * rate * 100) / 100;
 }
 
 export function getCurrencySymbol(code: string): string {
@@ -262,7 +262,8 @@ export function computeAssetEgpValue(asset: StorageAsset, rates: RatesData): num
 }
 
 export function computeTotalStorageValue(assets: StorageAsset[], rates: RatesData): number {
-  return (assets || []).reduce((sum, asset) => sum + storageValue(asset, rates), 0);
+  const total = (assets || []).reduce((sum, asset) => sum + storageValue(asset, rates), 0);
+  return Math.round(total * 100) / 100;
 }
 
 
@@ -363,8 +364,8 @@ export async function autoFetchLatestRates(
         if (mid === null) return item;
         const spreadPct = computeSpreadPct(item.sell, item.buy);
         const next = applySpread(mid, spreadPct);
-        next.sell = Math.round(next.sell);
-        next.buy = Math.round(next.buy);
+        next.sell = Math.round(next.sell * 100) / 100;
+        next.buy = Math.round(next.buy * 100) / 100;
         return { ...item, ...next };
       });
     }

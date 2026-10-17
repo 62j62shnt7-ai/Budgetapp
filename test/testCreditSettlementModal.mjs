@@ -27,7 +27,8 @@ async function ensureServer(port = 5173) {
   console.log(`Starting Vite dev server on port ${port}...`);
   const serverProcess = spawn('npx', ['vite', '--port', String(port)], {
     stdio: 'ignore',
-    detached: false
+    detached: false,
+    shell: process.platform === 'win32',
   });
 
   for (let i = 0; i < 30; i++) {

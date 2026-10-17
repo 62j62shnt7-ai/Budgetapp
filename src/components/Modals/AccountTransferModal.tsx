@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { formatMoney } from '../../engine/dateUtils';
 import { ArrowRightLeft, AlertCircle } from 'lucide-react';
@@ -20,7 +21,12 @@ export const AccountTransferModal: React.FC<AccountTransferModalProps> = ({
   reason,
   onClose,
 }) => {
-  const { accounts, transferAccountFunds } = useBudgetStore();
+  const { accounts, transferAccountFunds } = useBudgetStore(
+    useShallow((state) => ({
+      accounts: state.accounts,
+      transferAccountFunds: state.transferAccountFunds,
+    }))
+  );
 
   const accountKeys = Object.keys(accounts);
 

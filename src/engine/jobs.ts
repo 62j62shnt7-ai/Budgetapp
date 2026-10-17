@@ -114,13 +114,13 @@ export function calculateJobFinancials(job: JobItem, rates: RatesData): JobFinan
     computedStatus = 'active';
   }
 
-  const recordedPaidEgp = payments.reduce((sum, p) => sum + (Number(p.egpAmount) || Math.round(Number(p.amount || 0) * fxRate)), 0);
-  const totalPaidEgp = recordedPaidEgp > 0 ? recordedPaidEgp : Math.round(totalPaid * fxRate);
-  const totalInvoiceEgp = Math.round(totalInvoice * fxRate);
-  const netEarningsEgp = Math.round(netEarnings * fxRate);
-  const grossFeeEgp = Math.round(grossFee * fxRate);
-  const billableExpensesEgp = Math.round(billableExpenses * fxRate);
-  const remainingBalanceEgp = Math.round(remainingBalance * fxRate);
+  const recordedPaidEgp = payments.reduce((sum, p) => sum + (Number(p.egpAmount) || Math.round(Number(p.amount || 0) * fxRate * 100) / 100), 0);
+  const totalPaidEgp = recordedPaidEgp > 0 ? recordedPaidEgp : Math.round(totalPaid * fxRate * 100) / 100;
+  const totalInvoiceEgp = Math.round(totalInvoice * fxRate * 100) / 100;
+  const netEarningsEgp = Math.round(netEarnings * fxRate * 100) / 100;
+  const grossFeeEgp = Math.round(grossFee * fxRate * 100) / 100;
+  const billableExpensesEgp = Math.round(billableExpenses * fxRate * 100) / 100;
+  const remainingBalanceEgp = Math.round(remainingBalance * fxRate * 100) / 100;
 
   return {
     type,

@@ -90,7 +90,7 @@ function parseCount(value: unknown): number {
  * Read the schema version from a payload, checking the wrapper first and then
  * an embedded `data` object. Returns `undefined` for pre-versioning backups.
  */
-function readSchemaVersion(payload: Record<string, any>, data: Record<string, any>): string | undefined {
+function readSchemaVersion(payload: Record<string, unknown>, data: Record<string, unknown>): string | undefined {
   for (const candidate of [payload.schemaVersion, payload.version, data.schemaVersion, data.version]) {
     if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
     if (typeof candidate === 'number' && Number.isFinite(candidate)) return String(candidate);
@@ -140,9 +140,9 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
     };
   }
 
-  const parsed = raw as Record<string, any>;
+  const parsed = raw as Record<string, unknown>;
   const data = (parsed.data && typeof parsed.data === 'object' && !Array.isArray(parsed.data))
-    ? parsed.data
+    ? (parsed.data as Record<string, unknown>)
     : parsed;
 
   const exportedAt = typeof parsed.exportedAt === 'string'
@@ -164,34 +164,40 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
 
   // 1. Cash Entries
   const rawEntries = data.cashEntries || data.entries || data.items || parsed.cashEntries || parsed.entries || [];
-  const entries: CashEntry[] = (Array.isArray(rawEntries) ? rawEntries : []).map((e: any, idx: number) => ({
-    ...e,
-    id: e.id || `entry-${Date.now()}-${idx}`,
-    date: typeof e.date === 'string' && e.date.length >= 10 ? e.date.slice(0, 10) : DateUtils.todayString(),
-    amount: parseMoneyValue(e.amount) ?? 0,
-    type: e.type === 'income' ? 'income' : 'expense',
-    category: e.category || 'General',
-    account: e.account === 'cash' ? 'cib' : (e.account || 'cib'),
-    tag: e.tag || inferTag(e) || '',
-    currency: normalizeCurrencyCode(e.currency) || 'EGP',
-    actualAmount: parseMoneyValue(e.actualAmount),
-    actualDate: typeof e.actualDate === 'string' ? e.actualDate.slice(0, 10) : undefined,
-  }));
+  const entries: CashEntry[] = (Array.isArray(rawEntries) ? rawEntries : []).map((rawItem: unknown, idx: number) => {
+    const e = (rawItem && typeof rawItem === 'object' ? rawItem : {}) as Record<string, unknown>;
+    return {
+      ...(e as unknown as Partial<CashEntry>),
+      id: typeof e.id === 'string' && e.id ? e.id : `entry-${Date.now()}-${idx}`,
+      date: typeof e.date === 'string' && e.date.length >= 10 ? e.date.slice(0, 10) : DateUtils.todayString(),
+      amount: parseMoneyValue(e.amount) ?? 0,
+      type: (e.type === 'income' ? 'income' : 'expense') as 'income' | 'expense',
+      category: typeof e.category === 'string' ? e.category : 'General',
+      account: e.account === 'cash' ? 'cib' : (typeof e.account === 'string' ? e.account : 'cib'),
+      tag: typeof e.tag === 'string' ? e.tag : (inferTag(e as unknown as CashEntry) || ''),
+      currency: normalizeCurrencyCode(typeof e.currency === 'string' ? e.currency : undefined) || 'EGP',
+      actualAmount: parseMoneyValue(e.actualAmount),
+      actualDate: typeof e.actualDate === 'string' ? e.actualDate.slice(0, 10) : undefined,
+    };
+  });
 
   // 2. Archived Entries
   const rawArchived = data.archivedEntries || parsed.archivedEntries || [];
-  const archivedEntries: CashEntry[] = (Array.isArray(rawArchived) ? rawArchived : []).map((e: any, idx: number) => ({
-    ...e,
-    id: e.id || `archived-${Date.now()}-${idx}`,
-    date: typeof e.date === 'string' && e.date.length >= 10 ? e.date.slice(0, 10) : DateUtils.todayString(),
-    amount: parseMoneyValue(e.amount) ?? 0,
-    type: e.type === 'income' ? 'income' : 'expense',
-    category: e.category || 'General',
-    account: e.account === 'cash' ? 'cib' : (e.account || 'cib'),
-    currency: normalizeCurrencyCode(e.currency) || 'EGP',
-    actualAmount: parseMoneyValue(e.actualAmount) ?? parseMoneyValue(e.amount) ?? 0,
-    archivedAt: e.archivedAt || new Date().toISOString(),
-  }));
+  const archivedEntries: CashEntry[] = (Array.isArray(rawArchived) ? rawArchived : []).map((rawItem: unknown, idx: number) => {
+    const e = (rawItem && typeof rawItem === 'object' ? rawItem : {}) as Record<string, unknown>;
+    return {
+      ...(e as unknown as Partial<CashEntry>),
+      id: typeof e.id === 'string' && e.id ? e.id : `archived-${Date.now()}-${idx}`,
+      date: typeof e.date === 'string' && e.date.length >= 10 ? e.date.slice(0, 10) : DateUtils.todayString(),
+      amount: parseMoneyValue(e.amount) ?? 0,
+      type: (e.type === 'income' ? 'income' : 'expense') as 'income' | 'expense',
+      category: typeof e.category === 'string' ? e.category : 'General',
+      account: e.account === 'cash' ? 'cib' : (typeof e.account === 'string' ? e.account : 'cib'),
+      currency: normalizeCurrencyCode(typeof e.currency === 'string' ? e.currency : undefined) || 'EGP',
+      actualAmount: parseMoneyValue(e.actualAmount) ?? parseMoneyValue(e.amount) ?? 0,
+      archivedAt: typeof e.archivedAt === 'string' ? e.archivedAt : new Date().toISOString(),
+    };
+  });
 
   // 3. Accounts
   const rawAccounts = data.accountBalances || data.accounts || parsed.accountBalances || parsed.accounts;
@@ -224,30 +230,36 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
   const rawSalary = data.salaryPattern || parsed.salaryPattern;
   let salaryPattern: SalaryPayment[] = defaultSalaryPattern;
   if (Array.isArray(rawSalary) && rawSalary.length > 0) {
-    salaryPattern = rawSalary.map((s: any) => ({
-      monthOffset: parseCount(s.monthOffset),
-      day: parseCount(s.day) || 15,
-      amount: parseMoneyValue(s.amount) ?? 0,
-    }));
+    salaryPattern = rawSalary.map((rawItem: unknown) => {
+      const s = (rawItem && typeof rawItem === 'object' ? rawItem : {}) as Record<string, unknown>;
+      return {
+        monthOffset: parseCount(s.monthOffset),
+        day: parseCount(s.day) || 15,
+        amount: parseMoneyValue(s.amount) ?? 0,
+      };
+    });
   }
 
   // 5. Installments
   const rawInstallments = data.installments || parsed.installments;
   let installments: Installment[] = [];
   if (Array.isArray(rawInstallments)) {
-    installments = rawInstallments.map((inst: any, idx: number) => ({
-      ...inst,
-      id: inst.id || `inst-${Date.now()}-${idx}`,
-      name: inst.name || inst.item || 'Installment',
-      amount: parseMoneyValue(inst.amount) ?? parseMoneyValue(inst.monthlyAmount) ?? 0,
-      totalMonths: parseCount(inst.totalMonths ?? inst.months ?? inst.installmentsCount ?? 1),
-      remainingMonths: inst.remainingMonths !== undefined
-        ? Math.max(0, parseCount(inst.remainingMonths))
-        : parseCount(inst.totalMonths ?? inst.months ?? inst.installmentsCount ?? 1),
-      startMonth: inst.startMonth || DateUtils.currentYearMonth(),
-      day: parseCount(inst.day) || 10,
-      account: inst.account === 'cash' ? 'cib' : (inst.account || 'cib'),
-    }));
+    installments = rawInstallments.map((rawItem: unknown, idx: number) => {
+      const inst = (rawItem && typeof rawItem === 'object' ? rawItem : {}) as Record<string, unknown>;
+      return {
+        ...(inst as unknown as Partial<Installment>),
+        id: typeof inst.id === 'string' && inst.id ? inst.id : `inst-${Date.now()}-${idx}`,
+        name: typeof inst.name === 'string' ? inst.name : (typeof inst.item === 'string' ? inst.item : 'Installment'),
+        amount: parseMoneyValue(inst.amount) ?? parseMoneyValue(inst.monthlyAmount) ?? 0,
+        totalMonths: parseCount(inst.totalMonths ?? inst.months ?? inst.installmentsCount ?? 1),
+        remainingMonths: inst.remainingMonths !== undefined
+          ? Math.max(0, parseCount(inst.remainingMonths))
+          : parseCount(inst.totalMonths ?? inst.months ?? inst.installmentsCount ?? 1),
+        startMonth: typeof inst.startMonth === 'string' ? inst.startMonth : DateUtils.currentYearMonth(),
+        day: parseCount(inst.day) || 10,
+        account: inst.account === 'cash' ? 'cib' : (typeof inst.account === 'string' ? inst.account : 'cib'),
+      };
+    });
   }
 
   // 6. Rates
@@ -255,49 +267,53 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
   let rates: RatesData = defaultRates;
   if (rawRates && typeof rawRates === 'object') {
     rates = {
-      currencies: Array.isArray(rawRates.currencies) && rawRates.currencies.length > 0 ? rawRates.currencies : defaultRates.currencies,
-      gold: Array.isArray(rawRates.gold) && rawRates.gold.length > 0 ? rawRates.gold : defaultRates.gold,
-      lastFetched: typeof rawRates.lastFetched === 'string' ? rawRates.lastFetched : undefined,
-      currenciesLastFetched: typeof rawRates.currenciesLastFetched === 'string' ? rawRates.currenciesLastFetched : undefined,
-      goldLastFetched: typeof rawRates.goldLastFetched === 'string' ? rawRates.goldLastFetched : undefined,
-      previousStorageTotal: typeof rawRates.previousStorageTotal === 'number' ? rawRates.previousStorageTotal : undefined,
+      currencies: Array.isArray((rawRates as Record<string, unknown>).currencies) && ((rawRates as Record<string, unknown>).currencies as unknown[]).length > 0 ? (rawRates as Record<string, unknown>).currencies as RatesData['currencies'] : defaultRates.currencies,
+      gold: Array.isArray((rawRates as Record<string, unknown>).gold) && ((rawRates as Record<string, unknown>).gold as unknown[]).length > 0 ? (rawRates as Record<string, unknown>).gold as RatesData['gold'] : defaultRates.gold,
+      lastFetched: typeof (rawRates as Record<string, unknown>).lastFetched === 'string' ? (rawRates as Record<string, unknown>).lastFetched as string : undefined,
+      currenciesLastFetched: typeof (rawRates as Record<string, unknown>).currenciesLastFetched === 'string' ? (rawRates as Record<string, unknown>).currenciesLastFetched as string : undefined,
+      goldLastFetched: typeof (rawRates as Record<string, unknown>).goldLastFetched === 'string' ? (rawRates as Record<string, unknown>).goldLastFetched as string : undefined,
+      previousStorageTotal: typeof (rawRates as Record<string, unknown>).previousStorageTotal === 'number' ? (rawRates as Record<string, unknown>).previousStorageTotal as number : undefined,
     };
   }
 
   // 7. Storage Assets
   const rawStorage = data.storageAssets || data.storage || parsed.storageAssets || parsed.storage;
   const storageAssets: StorageAsset[] = Array.isArray(rawStorage)
-    ? rawStorage.map((a: any, idx: number) => {
+    ? rawStorage.map((rawItem: unknown, idx: number) => {
+        const a = (rawItem && typeof rawItem === 'object' ? rawItem : {}) as Record<string, unknown>;
         const loc = inferAssetLocation(a);
         return {
-          id: a.id || `asset-${Date.now()}-${idx}`,
-          name: a.name || 'Asset',
-          category: a.category || a.type || 'gold',
+          id: typeof a.id === 'string' && a.id ? a.id : `asset-${Date.now()}-${idx}`,
+          name: typeof a.name === 'string' ? a.name : 'Asset',
+          category: (typeof a.category === 'string' ? a.category : (typeof a.type === 'string' ? a.type : 'gold')) as StorageAsset['category'],
           quantity: parseMoneyValue(a.quantity) ?? parseMoneyValue(a.amount) ?? 1,
-          unit: a.unit || (a.category === 'gold' || a.type === 'gold' ? 'g' : 'units'),
+          unit: typeof a.unit === 'string' ? a.unit : (a.category === 'gold' || a.type === 'gold' ? 'g' : 'units'),
           buyPrice: parseMoneyValue(a.buyPrice) ?? parseMoneyValue(a.buyRate) ?? parseMoneyValue(a.value) ?? 0,
           currentPrice: parseMoneyValue(a.currentPrice),
-          currency: normalizeCurrencyCode(a.currency) || 'EGP',
+          currency: normalizeCurrencyCode(typeof a.currency === 'string' ? a.currency : undefined) || 'EGP',
           rate: parseMoneyValue(a.rate) || undefined,
           rateSource: a.rateSource ? String(a.rateSource) : (a.karat ? String(a.karat) : undefined),
-          locationType: a.locationType || loc.locationType,
-          location: a.location || loc.location,
-          locationLabel: a.locationLabel || loc.locationLabel,
-          notes: a.notes,
+          locationType: (a.locationType as StorageAsset['locationType']) || loc.locationType,
+          location: typeof a.location === 'string' ? a.location : loc.location,
+          locationLabel: typeof a.locationLabel === 'string' ? a.locationLabel : loc.locationLabel,
+          notes: typeof a.notes === 'string' ? a.notes : undefined,
         };
       })
     : [];
 
   // 8. Jobs
-  const asfJobs: JobItem[] = Array.isArray(data.asfJobs || parsed.asfJobs) ? (data.asfJobs || parsed.asfJobs) : [];
-  const irqJobs: JobItem[] = Array.isArray(data.irqJobs || parsed.irqJobs) ? (data.irqJobs || parsed.irqJobs) : [];
-  const partTimeJobs: JobItem[] = Array.isArray(data.partTimeJobs || parsed.partTimeJobs) ? (data.partTimeJobs || parsed.partTimeJobs) : [];
+  const rawAsf = data.asfJobs || parsed.asfJobs;
+  const asfJobs: JobItem[] = Array.isArray(rawAsf) ? (rawAsf as JobItem[]) : [];
+  const rawIrq = data.irqJobs || parsed.irqJobs;
+  const irqJobs: JobItem[] = Array.isArray(rawIrq) ? (rawIrq as JobItem[]) : [];
+  const rawPt = data.partTimeJobs || parsed.partTimeJobs;
+  const partTimeJobs: JobItem[] = Array.isArray(rawPt) ? (rawPt as JobItem[]) : [];
 
   // 9. Actuals Maps & Overrides
   const rawActuals = data.entryActuals || parsed.entryActuals || {};
   const entryActuals: Record<string, number> = {};
-  if (typeof rawActuals === 'object') {
-    for (const [k, v] of Object.entries(rawActuals)) {
+  if (typeof rawActuals === 'object' && rawActuals !== null) {
+    for (const [k, v] of Object.entries(rawActuals as Record<string, unknown>)) {
       const parsedVal = parseMoneyValue(v);
       if (parsedVal !== undefined && parsedVal !== null && !isNaN(parsedVal)) {
         entryActuals[k] = parsedVal;
@@ -307,29 +323,28 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
 
   const rawActualDates = data.entryActualDates || parsed.entryActualDates || {};
   const entryActualDates: Record<string, string> = {};
-  if (typeof rawActualDates === 'object') {
-    for (const [k, v] of Object.entries(rawActualDates)) {
+  if (typeof rawActualDates === 'object' && rawActualDates !== null) {
+    for (const [k, v] of Object.entries(rawActualDates as Record<string, unknown>)) {
       if (typeof v === 'string') {
         entryActualDates[k] = v.slice(0, 10);
       }
     }
   }
 
-  const rawCreditDues = data.creditDues || parsed.creditDues;
-  const creditDues = rawCreditDues && typeof rawCreditDues === 'object' ? rawCreditDues : {};
+  const rawCreditDues = (data.creditDues || parsed.creditDues) as Record<string, Record<string, number>> | undefined;
+  const creditDues: Record<string, Record<string, number>> = rawCreditDues && typeof rawCreditDues === 'object' ? rawCreditDues : {};
 
-  const rawCreditDueMonths = data.creditDueMonths || parsed.creditDueMonths;
-  const creditDueMonths = rawCreditDueMonths && typeof rawCreditDueMonths === 'object' ? rawCreditDueMonths : {};
+  const rawCreditDueMonths = (data.creditDueMonths || parsed.creditDueMonths) as Record<string, string[]> | undefined;
+  const creditDueMonths: Record<string, string[]> = rawCreditDueMonths && typeof rawCreditDueMonths === 'object' ? rawCreditDueMonths : {};
 
-  const rawSettlementOverrides = data.creditSettlementOverrides || parsed.creditSettlementOverrides;
-  const creditSettlementOverrides = rawSettlementOverrides && typeof rawSettlementOverrides === 'object' ? rawSettlementOverrides : {};
+  const rawSettlementOverrides = (data.creditSettlementOverrides || parsed.creditSettlementOverrides) as Record<string, { amount?: number; date?: string; note?: string }> | undefined;
+  const creditSettlementOverrides: Record<string, { amount?: number; date?: string; note?: string }> = rawSettlementOverrides && typeof rawSettlementOverrides === 'object' ? rawSettlementOverrides : {};
 
   const rawSalaryAnchor = data.salaryAnchorMonth || parsed.salaryAnchorMonth;
   const salaryAnchorMonth = typeof rawSalaryAnchor === 'string' ? rawSalaryAnchor : DateUtils.currentYearMonth();
 
-  const deletedForecasts = Array.isArray(data.deletedForecasts || parsed.deletedForecasts)
-    ? (data.deletedForecasts || parsed.deletedForecasts)
-    : [];
+  const rawDeleted = data.deletedForecasts || parsed.deletedForecasts;
+  const deletedForecasts: string[] = Array.isArray(rawDeleted) ? (rawDeleted as string[]) : [];
 
   // Auto-reconcile & link entities together for smooth affected tracking
   const allMigratedJobs = [...partTimeJobs, ...asfJobs, ...irqJobs];
