@@ -98,7 +98,18 @@ export const EntryModal: React.FC<EntryModalProps> = ({
       ? document.activeElement
       : null;
     if (!dialog.open) dialog.showModal();
-    dialog.querySelector<HTMLElement>('select, input:not([type="hidden"]), textarea')?.focus();
+
+    const isMobile =
+      typeof window !== 'undefined' &&
+      (window.innerWidth <= 768 ||
+        window.matchMedia('(pointer: coarse)').matches ||
+        window.matchMedia('(hover: none)').matches);
+
+    if (isMobile) {
+      dialog.querySelector<HTMLElement>('button.close-dialog-btn')?.focus({ preventScroll: true });
+    } else {
+      dialog.querySelector<HTMLElement>('select, input:not([type="hidden"]), textarea')?.focus();
+    }
 
     return () => {
       if (dialog.open) dialog.close();

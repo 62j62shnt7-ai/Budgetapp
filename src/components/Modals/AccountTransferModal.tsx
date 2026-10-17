@@ -240,7 +240,6 @@ export const AccountTransferModal: React.FC<AccountTransferModalProps> = ({
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             required
-            autoFocus
           />
         </label>
 
