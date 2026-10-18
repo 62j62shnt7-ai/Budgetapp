@@ -2588,13 +2588,6 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     width: 100% !important;
   }
 
-  .dashboard-density-toggle {
-    width: 100% !important;
-    min-height: 40px !important;
-    border-radius: 10px !important;
-    justify-content: center !important;
-  }
-
   /* Forecast Trajectory Mobile Toolbar */
   .forecast-line-heading {
     flex-direction: column !important;

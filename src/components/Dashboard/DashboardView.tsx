@@ -66,9 +66,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
   const [simAmount, setSimAmount] = useState<string>('');
   const [simDate, setSimDate] = useState<string>(DateUtils.todayString());
   const [simVerdict, setSimVerdict] = useState<{ text: string; isDanger: boolean } | null>(null);
-  const [dashboardDensity, setDashboardDensity] = useState<'comfortable' | 'compact'>(() =>
-    localStorage.getItem('budget-control-dashboard-density') === 'compact' ? 'compact' : 'comfortable'
-  );
 
   const {
     totalCash,
@@ -80,9 +77,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
     hasDeficit,
   } = useForecastCandidates(forecastRangeMonths);
 
-  useEffect(() => {
-    localStorage.setItem('budget-control-dashboard-density', dashboardDensity);
-  }, [dashboardDensity]);
 
   // Periodic ticker so relative timestamps ("Just now", "5m ago") stay fresh in real-time
   const [, setTick] = useState(0);
@@ -519,7 +513,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
     : '';
 
   return (
-    <section className={`view dashboard-view dashboard-density-${dashboardDensity}`} id="dashboard" style={{ display: 'block' }}>
+    <section className="view dashboard-view" id="dashboard" style={{ display: 'block' }}>
       {/* Credit Settlement Account Funding Deficit Warning Banner */}
       {criticalFundingAlerts.length > 0 && (() => {
         const hasUncovered = criticalFundingAlerts.some((a) => !a.canBeCoveredByTransfer);
@@ -1151,14 +1145,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
             <h3 id="dashboardFocusHeading">Today at a glance</h3>
             <span className="panel-kicker">Your next useful actions</span>
           </div>
-          <button
-            type="button"
-            className="ghost-button dashboard-density-toggle"
-            aria-pressed={dashboardDensity === 'compact'}
-            onClick={() => setDashboardDensity((current) => current === 'compact' ? 'comfortable' : 'compact')}
-          >
-            {dashboardDensity === 'compact' ? 'Comfortable view' : 'Compact view'}
-          </button>
         </div>
         <div className="dashboard-focus-grid">
           <div className={`dashboard-focus-card ${hasSpendableFloor ? 'dashboard-focus-card--safe' : 'dashboard-focus-card--danger'}`}>

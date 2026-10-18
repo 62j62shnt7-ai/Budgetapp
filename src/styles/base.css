@@ -3225,18 +3225,6 @@ label {
   white-space: nowrap;
 }
 
-.dashboard-density-compact .metric {
-  padding: 14px;
-}
-
-.dashboard-density-compact .dashboard-focus-card {
-  padding: 11px;
-}
-
-.dashboard-density-compact .dashboard-section-block {
-  margin-top: 12px;
-}
-
 [data-theme="dark"] .dashboard-focus-card--safe {
   background: rgba(16, 185, 129, 0.08);
   border-color: rgba(16, 185, 129, 0.25);
@@ -3269,10 +3257,6 @@ label {
 
   .dashboard-focus-panel .panel-heading {
     align-items: stretch;
-  }
-
-  .dashboard-density-toggle {
-    width: 100%;
   }
 
   .dashboard-upcoming-row {
