@@ -383,7 +383,7 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
       open
       className="native-dialog gist-sync-dialog"
       onClick={(e) => e.target === e.currentTarget && onClose()}
-      style={{ display: 'block', zIndex: 1000, maxWidth: '620px', width: '92vw' }}
+      style={{ display: 'block', zIndex: 1000, maxWidth: '720px', width: 'min(720px, 94vw)' }}
     >
       <div className="dialog-heading">
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -700,7 +700,7 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
                   </div>
 
                   {/* List Container */}
-                  <div style={{ maxHeight: '180px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px', paddingRight: '2px' }}>
+                  <div style={{ maxHeight: '240px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px', paddingRight: '2px' }}>
                     {currentTabList.length === 0 ? (
                       <div style={{ fontSize: '11px', opacity: 0.6, fontStyle: 'italic', padding: '12px', textAlign: 'center' }}>
                         {activeSnapshotTab === 'daily' && 'No daily backups created yet. Created once per day whenever you make ledger changes.'}

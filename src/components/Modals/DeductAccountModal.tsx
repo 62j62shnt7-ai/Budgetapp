@@ -323,7 +323,7 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
       open
       className="native-dialog"
       onClick={(e) => e.target === e.currentTarget && onClose()}
-      style={{ display: 'block', zIndex: 1000 }}
+      style={{ display: 'block', zIndex: 1000, maxWidth: '580px', width: 'min(580px, 94vw)' }}
     >
       <div className="dialog-heading">
         <h3>{isIncome ? `Deposit to ${targetAccountLabel}` : `Deduct from ${targetAccountLabel}`}</h3>

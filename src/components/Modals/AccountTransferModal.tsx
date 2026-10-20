@@ -128,9 +128,9 @@ export const AccountTransferModal: React.FC<AccountTransferModalProps> = ({
       open
       className="native-dialog"
       onClick={(e) => e.target === e.currentTarget && onClose()}
-      style={{ display: 'block', zIndex: 1100 }}
+      style={{ display: 'block', zIndex: 1100, maxWidth: '500px', width: 'min(500px, 94vw)' }}
     >
-      <form onSubmit={handleSubmit} className="entry-form" style={{ maxWidth: '480px' }}>
+      <form onSubmit={handleSubmit} className="entry-form" style={{ maxWidth: '100%' }}>
         <div className="dialog-heading">
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <ArrowRightLeft size={18} color="var(--primary, #3b82f6)" />

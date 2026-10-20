@@ -90,8 +90,13 @@ export const StorageTransferModal: React.FC<StorageTransferModalProps> = ({
   };
 
   return (
-    <dialog open className="native-dialog" onClick={(e) => e.target === e.currentTarget && onClose()} style={{ display: 'block', zIndex: 1000 }}>
-      <form onSubmit={handleSubmit} className="entry-form" style={{ maxWidth: '480px' }}>
+    <dialog
+      open
+      className="native-dialog"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+      style={{ display: 'block', zIndex: 1000, maxWidth: '500px', width: 'min(500px, 94vw)' }}
+    >
+      <form onSubmit={handleSubmit} className="entry-form" style={{ maxWidth: '100%' }}>
         <div className="dialog-heading">
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <ArrowRightLeft size={18} color="var(--primary)" />

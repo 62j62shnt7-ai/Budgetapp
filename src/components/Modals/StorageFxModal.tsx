@@ -97,8 +97,13 @@ export const StorageFxModal: React.FC<StorageFxModalProps> = ({
   };
 
   return (
-    <dialog open className="native-dialog" onClick={(e) => e.target === e.currentTarget && onClose()} style={{ display: 'block', zIndex: 1000 }}>
-      <form onSubmit={handleSubmit} className="entry-form" style={{ maxWidth: '500px' }}>
+    <dialog
+      open
+      className="native-dialog"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+      style={{ display: 'block', zIndex: 1000, maxWidth: '520px', width: 'min(520px, 94vw)' }}
+    >
+      <form onSubmit={handleSubmit} className="entry-form" style={{ maxWidth: '100%' }}>
         <div className="dialog-heading">
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Coins size={18} color="var(--primary)" />

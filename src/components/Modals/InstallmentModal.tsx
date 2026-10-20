@@ -93,7 +93,12 @@ export const InstallmentModal: React.FC<InstallmentModalProps> = ({ isOpen, inst
   const accountKeys = Object.keys(accounts || {}).sort((a, b) => (a === 'hsbc' ? -1 : b === 'hsbc' ? 1 : 0));
 
   return (
-    <dialog open className="native-dialog" onClick={(e) => e.target === e.currentTarget && onClose()} style={{ display: 'block', zIndex: 1000 }}>
+    <dialog
+      open
+      className="native-dialog"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+      style={{ display: 'block', zIndex: 1000, maxWidth: '580px', width: 'min(580px, 94vw)' }}
+    >
       <form onSubmit={handleSubmit} className="entry-form" id="installmentForm">
         <div className="dialog-heading">
           <h3>{installmentToEdit ? 'Edit installment' : 'Add installment'}</h3>

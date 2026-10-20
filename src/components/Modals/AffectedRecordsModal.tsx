@@ -151,7 +151,7 @@ export const AffectedRecordsModal: React.FC<AffectedRecordsModalProps> = ({
       isOpen={isOpen}
       onClose={onClose}
       id="affectedRecordsDialog"
-      maxWidth="520px"
+      maxWidth="600px"
       title={
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div

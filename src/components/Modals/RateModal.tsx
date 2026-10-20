@@ -81,7 +81,12 @@ export const RateModal: React.FC<RateModalProps> = ({ isOpen, rateType = 'curren
   };
 
   return (
-    <dialog open className="native-dialog" onClick={(e) => e.target === e.currentTarget && onClose()} style={{ display: 'block', zIndex: 1000 }}>
+    <dialog
+      open
+      className="native-dialog"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+      style={{ display: 'block', zIndex: 1000, maxWidth: '500px', width: 'min(500px, 94vw)' }}
+    >
       <form onSubmit={handleSubmit} className="entry-form" id="rateForm">
         <div className="dialog-heading">
           <h3>Update {rateType === 'currency' ? 'Currency' : 'Gold'} Rate</h3>

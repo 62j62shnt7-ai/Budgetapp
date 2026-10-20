@@ -115,8 +115,13 @@ export const StorageModal: React.FC<StorageModalProps> = ({ isOpen, onClose }) =
   };
 
   return (
-    <dialog open className="native-dialog" onClick={(e) => e.target === e.currentTarget && onClose()} style={{ display: 'block', zIndex: 1000 }}>
-      <form onSubmit={handleSubmit} className="entry-form" id="storageForm" style={{ maxWidth: '520px' }}>
+    <dialog
+      open
+      className="native-dialog"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+      style={{ display: 'block', zIndex: 1000, maxWidth: '560px', width: 'min(560px, 94vw)' }}
+    >
+      <form onSubmit={handleSubmit} className="entry-form" id="storageForm" style={{ maxWidth: '100%' }}>
         <div className="dialog-heading">
           <h3>Add Storage Holding / Reserve</h3>
           <button className="icon-button" type="button" aria-label="Close" onClick={onClose}>

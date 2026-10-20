@@ -90,8 +90,13 @@ export const JobFormModal: React.FC<JobFormModalProps> = ({ isOpen, jobToEdit, o
   };
 
   return (
-    <dialog open className="native-dialog" onClick={(e) => e.target === e.currentTarget && onClose()} style={{ display: 'block', zIndex: 1000 }}>
-      <form onSubmit={handleSubmit} className="entry-form" id="jobForm">
+    <dialog
+      open
+      className="native-dialog"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+      style={{ display: 'block', zIndex: 1000, maxWidth: '580px', width: 'min(580px, 94vw)' }}
+    >
+      <form onSubmit={handleSubmit} className="entry-form" id="jobForm" style={{ maxWidth: '100%' }}>
         <div className="dialog-heading">
           <h3>{jobToEdit ? 'Edit Part-Time Job' : 'Add Part-Time Job'}</h3>
           <button className="icon-button" type="button" aria-label="Close" onClick={onClose}>
@@ -272,8 +277,13 @@ export const JobLogDayModal: React.FC<JobLogDayModalProps> = ({ isOpen, jobId, o
   };
 
   return (
-    <dialog open className="native-dialog" onClick={(e) => e.target === e.currentTarget && onClose()} style={{ display: 'block', zIndex: 1000 }}>
-      <form onSubmit={handleSubmit} className="entry-form" id="jobLogDayForm">
+    <dialog
+      open
+      className="native-dialog"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+      style={{ display: 'block', zIndex: 1000, maxWidth: '520px', width: 'min(520px, 94vw)' }}
+    >
+      <form onSubmit={handleSubmit} className="entry-form" id="jobLogDayForm" style={{ maxWidth: '100%' }}>
         <div className="dialog-heading">
           <h3>Log Day / Shift Worked</h3>
           <button className="icon-button" type="button" aria-label="Close" onClick={onClose}>
@@ -392,8 +402,13 @@ export const JobExpenseModal: React.FC<JobExpenseModalProps> = ({ isOpen, jobId,
   };
 
   return (
-    <dialog open className="native-dialog" onClick={(e) => e.target === e.currentTarget && onClose()} style={{ display: 'block', zIndex: 1000 }}>
-      <form onSubmit={handleSubmit} className="entry-form" id="jobExpenseForm">
+    <dialog
+      open
+      className="native-dialog"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+      style={{ display: 'block', zIndex: 1000, maxWidth: '520px', width: 'min(520px, 94vw)' }}
+    >
+      <form onSubmit={handleSubmit} className="entry-form" id="jobExpenseForm" style={{ maxWidth: '100%' }}>
         <div className="dialog-heading">
           <h3>Log Job Expense</h3>
           <button className="icon-button" type="button" aria-label="Close" onClick={onClose}>
@@ -774,9 +789,9 @@ export const JobPaymentModal: React.FC<JobPaymentModalProps> = ({ isOpen, jobId,
       open
       className="native-dialog"
       onClick={(e) => e.target === e.currentTarget && onClose()}
-      style={{ display: 'block', zIndex: 1000 }}
+      style={{ display: 'block', zIndex: 1000, maxWidth: '560px', width: 'min(560px, 94vw)' }}
     >
-      <form onSubmit={handleSubmit} className="entry-form" id="jobPaymentForm" style={{ maxWidth: '520px' }}>
+      <form onSubmit={handleSubmit} className="entry-form" id="jobPaymentForm" style={{ maxWidth: '100%' }}>
         <div className="dialog-heading">
           <h3>Record Job Payment</h3>
           <button className="icon-button" type="button" aria-label="Close" onClick={onClose}>
@@ -1149,8 +1164,13 @@ export const JobForecastModal: React.FC<JobForecastModalProps> = ({ isOpen, jobI
   const projectedEgp = Math.round((Number(forecastAmount) || 0) * fin.fxRate);
 
   return (
-    <dialog open className="native-dialog" onClick={(e) => e.target === e.currentTarget && onClose()} style={{ display: 'block', zIndex: 1000 }}>
-      <form onSubmit={handleSubmit} className="entry-form" id="jobForecastForm" style={{ maxWidth: '500px' }}>
+    <dialog
+      open
+      className="native-dialog"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+      style={{ display: 'block', zIndex: 1000, maxWidth: '520px', width: 'min(520px, 94vw)' }}
+    >
+      <form onSubmit={handleSubmit} className="entry-form" id="jobForecastForm" style={{ maxWidth: '100%' }}>
         <div className="dialog-heading">
           <h3>Schedule Invoiced Income in Forecast</h3>
           <button className="icon-button" type="button" aria-label="Close" onClick={onClose}>
