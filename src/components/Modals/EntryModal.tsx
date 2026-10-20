@@ -646,7 +646,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
         {activeEntry && Array.isArray(activeEntry.draws) && activeEntry.draws.length > 0 && (
           <div style={{ padding: '10px 12px', background: 'var(--surface-soft)', borderRadius: '8px', border: '1px solid var(--line)', marginTop: '8px' }}>
             <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '6px' }}>📋 Recorded Draws / Tranches ({activeEntry.draws.length})</div>
-            <div style={{ maxHeight: '120px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
               {activeEntry.draws.map((d, dIdx) => {
                 const entryIsForeign = (activeEntry.currency || 'EGP').toUpperCase() !== 'EGP';
                 const drawRate = activeEntry.fxRateAtEntry || getCurrencyRateOr(rates, activeEntry.currency || 'USD', 48.5);
