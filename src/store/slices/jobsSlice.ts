@@ -5,7 +5,7 @@ import {
   loadStorage,
   saveStorage,
   revertStorageOrAccountBalance,
-  scheduleAutoGistSync,
+  scheduleAutoDriveSync,
 } from './common';
 import { calculateJobFinancials } from '../../engine/jobs';
 import { normalizeCurrencyCode, getCurrencyRateOr } from '../../engine/currency';
@@ -27,7 +27,7 @@ export const createJobsSlice: SliceCreator<JobsSlice> = (set, get) => ({
       if (jobType === 'asf') set({ asfJobs: updated });
       else if (jobType === 'irq') set({ irqJobs: updated });
       else set({ partTimeJobs: updated });
-      scheduleAutoGistSync(get);
+      scheduleAutoDriveSync(get);
     });
   },
 
@@ -42,17 +42,49 @@ export const createJobsSlice: SliceCreator<JobsSlice> = (set, get) => ({
       const linkedEntryIds = new Set(
         (targetJob?.payments || []).map((p) => p.entryId).filter(Boolean) as string[]
       );
+      if (targetJob?.forecastEntryId) {
+        linkedEntryIds.add(targetJob.forecastEntryId);
+      }
       let updatedEntries = get().entries;
-      if (shouldDeleteCashEntries && linkedEntryIds.size > 0) {
-        updatedEntries = get().entries.filter((e) => !linkedEntryIds.has(e.id));
-        saveStorage(STORAGE_KEYS.entries, updatedEntries);
+      let updatedArchived = get().archivedEntries;
+      let actuals = { ...get().entryActuals };
+      let actualDates = { ...get().entryActualDates };
+      let storageUpdated = false;
+
+      if (shouldDeleteCashEntries) {
+        // Collect any entries explicitly tagged with this jobId as well
+        get().entries.forEach((e) => {
+          if (e.jobId === jobId) linkedEntryIds.add(e.id);
+        });
+        get().archivedEntries.forEach((e) => {
+          if (e.jobId === jobId) linkedEntryIds.add(e.id);
+        });
+
+        if (linkedEntryIds.size > 0) {
+          updatedEntries = get().entries.filter((e) => !linkedEntryIds.has(e.id));
+          updatedArchived = get().archivedEntries.filter((e) => !linkedEntryIds.has(e.id));
+          saveStorage(STORAGE_KEYS.entries, updatedEntries);
+          saveStorage(STORAGE_KEYS.archivedEntries, updatedArchived);
+
+          for (const id of linkedEntryIds) {
+            delete actuals[id];
+            delete actualDates[id];
+          }
+          saveStorage(STORAGE_KEYS.entryActuals, actuals);
+          saveStorage(STORAGE_KEYS.entryActualDates, actualDates);
+          storageUpdated = true;
+        }
       }
 
       saveStorage(key, updated);
-      if (jobType === 'asf') set({ asfJobs: updated, entries: updatedEntries });
-      else if (jobType === 'irq') set({ irqJobs: updated, entries: updatedEntries });
-      else set({ partTimeJobs: updated, entries: updatedEntries });
-      scheduleAutoGistSync(get);
+      const stateUpdates: Partial<ReturnType<typeof get>> = {
+        entries: updatedEntries,
+        ...(storageUpdated ? { archivedEntries: updatedArchived, entryActuals: actuals, entryActualDates: actualDates } : {}),
+      };
+      if (jobType === 'asf') set({ ...stateUpdates, asfJobs: updated });
+      else if (jobType === 'irq') set({ ...stateUpdates, irqJobs: updated });
+      else set({ ...stateUpdates, partTimeJobs: updated });
+      scheduleAutoDriveSync(get);
     });
   },
 
@@ -81,7 +113,8 @@ export const createJobsSlice: SliceCreator<JobsSlice> = (set, get) => ({
         if (shouldDeleteCashEntry) {
           get().deleteEntry(payment.entryId, undefined, { syncJob: false, revertStorage: false });
         } else {
-          const entry = get().entries.find((e) => e.id === payment.entryId);
+          const entry = get().entries.find((e) => e.id === payment.entryId) ||
+            get().archivedEntries.find((e) => e.id === payment.entryId);
           if (entry) {
             const remainingDraws = (entry.draws || []).filter((d) => d.id !== paymentId);
             const newActual = remainingDraws.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);

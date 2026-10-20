@@ -16,6 +16,7 @@ import {
   migrateFromLocalStorageIfNeeded,
   loadAllFromIndexedDB,
   restoreUndoHistoryFromStorage,
+  removeStorage,
 } from '../../utils/storageAdapter';
 import {
   getStoredDriveUser,
@@ -26,9 +27,9 @@ import {
 } from '../../services/googleDriveClient';
 import {
   STORAGE_KEYS,
+  loadStorage,
   saveStorage,
-  safeSetItem,
-  scheduleAutoGistSync,
+  scheduleAutoDriveSync,
   upgradeLoadedEntries,
   withoutCashAccount,
   defaultAccounts,
@@ -38,15 +39,10 @@ import {
   recordUndoableStep,
   lastLocalMutationTimestamp,
   setLastLocalMutationTimestamp,
-  lastGistUploadTimestamp,
-  setLastGistUploadTimestamp,
-  setSuppressAutoSync,
   initStoragePromise,
   setInitStoragePromise,
 } from './common';
 import type { SliceCreator, SyncSlice, BudgetStoreState } from './types';
-
-let gistSyncInFlight = false;
 
 export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => ({
   driveUser: getStoredDriveUser(),
@@ -72,180 +68,27 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => ({
   setDriveSyncStatus: (status: 'idle' | 'scheduled' | 'syncing' | 'synced' | 'error') =>
     set({ driveSyncStatus: status, gistSyncStatus: status }),
 
-  gistToken: typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.gistToken) || '' : '',
-  gistId: typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.gistId) || '' : '',
-  gistAutoSync: typeof localStorage !== 'undefined'
-    ? (localStorage.getItem(STORAGE_KEYS.gistAutoSync) === null ? true : localStorage.getItem(STORAGE_KEYS.gistAutoSync) === 'true')
-    : true,
+  // Deprecated Gist compatibility fields (maintained for test harness / zero-breakage)
+  gistToken: '',
+  gistId: '',
+  gistAutoSync: false,
   gistSyncStatus: 'idle',
   gistConflict: null,
 
-  setGistConfig: (token: string, gistId: string, autoSync: boolean) => {
-    safeSetItem(STORAGE_KEYS.gistToken, token);
-    safeSetItem(STORAGE_KEYS.gistId, gistId);
-    safeSetItem(STORAGE_KEYS.gistAutoSync, String(autoSync));
-    set({ gistToken: token, gistId, gistAutoSync: autoSync, gistSyncStatus: 'idle' });
+  setGistConfig: (_token: string, _gistId: string, _autoSync: boolean) => {
+    // Deprecated: Google Drive is now the exclusive cloud sync engine
   },
 
-  syncFromGist: async (tokenOverride?: string, gistIdOverride?: string) => {
-    const state = get();
-    const token = tokenOverride?.trim() || state.gistToken;
-    const gistId = gistIdOverride?.trim() || state.gistId;
-    if (!gistId) {
-      set({ gistSyncStatus: 'error' });
-      return false;
-    }
-
-    if (gistSyncInFlight) {
-      return false;
-    }
-    gistSyncInFlight = true;
-    try {
-      set({ gistSyncStatus: 'syncing' });
-      try {
-        const headers: Record<string, string> = {
-          Accept: 'application/vnd.github.v3+json',
-        };
-        if (token) headers.Authorization = `Bearer ${token}`;
-        const response = await fetch(`https://api.github.com/gists/${gistId}`, { headers });
-        if (!response.ok) {
-          throw new Error(`Gist download failed: ${response.status} ${response.statusText}`);
-        }
-        const data = (await response.json()) as {
-          files?: Record<string, { content?: string; truncated?: boolean; raw_url?: string }>;
-        };
-        const file =
-          data.files?.['budget-data.json'] ||
-          data.files?.['budget-control-backup.json'] ||
-          Object.values(data.files || {})[0];
-
-        if (!file) {
-          throw new Error('No budget JSON file found in this Gist');
-        }
-
-        let content = file.content;
-        if ((file.truncated || !content) && file.raw_url) {
-          const rawRes = await fetch(file.raw_url, { headers });
-          if (rawRes.ok) {
-            content = await rawRes.text();
-          }
-        }
-
-        if (!content) {
-          throw new Error('No valid budget JSON content could be restored from this Gist');
-        }
-
-        let parsedRemote: Record<string, unknown> | null = null;
-        try {
-          parsedRemote = JSON.parse(content) as Record<string, unknown>;
-        } catch {
-          // ignore
-        }
-
-        const remoteData =
-          parsedRemote?.data && typeof parsedRemote.data === 'object'
-            ? (parsedRemote.data as Record<string, unknown>)
-            : null;
-        const remoteExportedAt =
-          (typeof parsedRemote?.exportedAt === 'string' ? parsedRemote.exportedAt : undefined) ||
-          (typeof remoteData?.exportedAt === 'string' ? remoteData.exportedAt : undefined);
-        const remoteTime = remoteExportedAt ? new Date(remoteExportedAt).getTime() : 0;
-
-        const baselineTime = Math.max(lastGistUploadTimestamp, lastLocalMutationTimestamp);
-        const remoteIsNewerThanLocal = remoteTime > 0 && remoteTime > baselineTime + 1000;
-        const localHasUnuploadedChanges =
-          lastLocalMutationTimestamp > 0 && lastLocalMutationTimestamp > lastGistUploadTimestamp;
-
-        const currentLocalExport = get().exportJSON();
-        let isActuallyDifferent = true;
-        try {
-          const parsedLocal = JSON.parse(currentLocalExport);
-          isActuallyDifferent =
-            JSON.stringify(parsedRemote?.data || parsedRemote) !== JSON.stringify(parsedLocal?.data || parsedLocal);
-        } catch {
-          isActuallyDifferent = content.trim() !== currentLocalExport.trim();
-        }
-
-        if (!isActuallyDifferent && !localHasUnuploadedChanges) {
-          const newSyncTimestamp = remoteTime > 0 ? remoteTime : lastGistUploadTimestamp || Date.now();
-          setLastGistUploadTimestamp(newSyncTimestamp);
-          safeSetItem(STORAGE_KEYS.lastGistUpload, String(lastGistUploadTimestamp));
-          setLastLocalMutationTimestamp(0);
-          set({ gistSyncStatus: 'synced', gistConflict: null });
-          return true;
-        }
-
-        if (remoteIsNewerThanLocal && localHasUnuploadedChanges && isActuallyDifferent) {
-          set({
-            gistConflict: {
-              remoteTime: remoteExportedAt,
-              remoteData: content,
-            },
-            gistSyncStatus: 'idle',
-          });
-          return false;
-        }
-
-        if (localHasUnuploadedChanges && !remoteIsNewerThanLocal) {
-          scheduleAutoGistSync(get, true);
-          return true;
-        }
-
-        setSuppressAutoSync(true);
-        let importSuccess = false;
-        try {
-          importSuccess = get().importJSON(content, { isRemoteSync: true });
-        } finally {
-          setSuppressAutoSync(false);
-        }
-
-        if (!importSuccess) {
-          throw new Error('No valid budget JSON content could be restored from this Gist');
-        }
-        const newSyncTimestamp = remoteTime > 0 ? remoteTime : Date.now();
-        setLastGistUploadTimestamp(newSyncTimestamp);
-        safeSetItem(STORAGE_KEYS.lastGistUpload, String(lastGistUploadTimestamp));
-        safeSetItem(STORAGE_KEYS.lastGistSync, String(lastGistUploadTimestamp));
-        setLastLocalMutationTimestamp(0);
-        safeSetItem(STORAGE_KEYS.lastLocalModified, '0');
-        set({ gistSyncStatus: 'synced', gistConflict: null });
-        return true;
-      } catch (error) {
-        console.error('Gist download failed:', error);
-        set({ gistSyncStatus: 'error' });
-        return false;
-      }
-    } finally {
-      gistSyncInFlight = false;
-    }
+  syncFromGist: async (_tokenOverride?: string, _gistIdOverride?: string) => {
+    return true;
   },
 
   resolveGistConflict: async (resolution: 'local' | 'remote') => {
     const conflict = get().gistConflict;
-    if (resolution === 'local') {
-      set({ gistConflict: null });
-      scheduleAutoGistSync(get, true);
-    } else if (resolution === 'remote' && conflict?.remoteData) {
-      setSuppressAutoSync(true);
-      let importSuccess = false;
-      try {
-        importSuccess = get().importJSON(conflict.remoteData, { isRemoteSync: true });
-      } finally {
-        setSuppressAutoSync(false);
-      }
-      if (!importSuccess) {
-        set({ gistSyncStatus: 'error' });
-        return;
-      }
-      setLastGistUploadTimestamp(Date.now());
-      safeSetItem(STORAGE_KEYS.lastGistUpload, String(lastGistUploadTimestamp));
-      safeSetItem(STORAGE_KEYS.lastGistSync, String(lastGistUploadTimestamp));
-      safeSetItem(STORAGE_KEYS.lastLocalModified, '0');
-      setLastLocalMutationTimestamp(0);
-      set({ gistConflict: null, gistSyncStatus: 'synced' });
-    } else {
-      set({ gistConflict: null });
+    if (resolution === 'remote' && conflict?.remoteData) {
+      get().importJSON(conflict.remoteData, { isRemoteSync: true });
     }
+    set({ gistConflict: null });
   },
 
   exportJSON: () => {
@@ -340,7 +183,7 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => ({
       });
 
       if (!options?.isRemoteSync) {
-        scheduleAutoGistSync(get);
+        scheduleAutoDriveSync(get);
       }
       return true;
     } catch (e) {
@@ -400,40 +243,51 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => ({
       };
       persistFinancialSnapshot(resetSnapshot);
       set(resetSnapshot);
-      scheduleAutoGistSync(get);
+      scheduleAutoDriveSync(get);
     });
   },
 
   restoreResetBackup: () => {
-    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.resetBackup) : null;
-    if (!raw) return false;
+    // Check in-memory store / localStorage migration
+    let backup = loadStorage<Record<string, unknown> | null>(STORAGE_KEYS.resetBackup, null);
+    if (!backup && typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem(STORAGE_KEYS.resetBackup);
+      if (raw) {
+        try {
+          backup = JSON.parse(raw) as Record<string, unknown>;
+        } catch {}
+      }
+    }
+    if (!backup) return false;
     try {
-      const backup = JSON.parse(raw);
       const restored: BudgetFinancialSnapshot = {
-        salaryPattern: backup.salaryPattern || defaultSalaryPattern,
-        salaryAnchorMonth: backup.salaryAnchorMonth || DateUtils.currentYearMonth(),
-        entries: backup.cashEntries || [],
-        installments: backup.installments || [],
-        storageAssets: backup.storageAssets || [],
-        accounts: withoutCashAccount(backup.accountBalances || defaultAccounts),
-        asfJobs: backup.asfJobs || [],
-        irqJobs: backup.irqJobs || [],
-        partTimeJobs: backup.partTimeJobs || [],
-        rates: backup.ratesData || defaultRates,
-        creditDues: backup.creditDues || {},
-        creditDueMonths: backup.creditDueMonths || {},
-        entryActuals: backup.entryActuals || {},
-        entryActualDates: backup.entryActualDates || {},
-        deletedForecasts: backup.deletedForecasts || [],
-        creditSettlementOverrides: backup.creditSettlementOverrides || {},
-        archivedEntries: backup.archivedEntries || [],
+        salaryPattern: (backup.salaryPattern as SalaryPayment[]) || defaultSalaryPattern,
+        salaryAnchorMonth: (backup.salaryAnchorMonth as string) || DateUtils.currentYearMonth(),
+        entries: (backup.cashEntries as CashEntry[]) || [],
+        installments: (backup.installments as Installment[]) || [],
+        storageAssets: (backup.storageAssets as StorageAsset[]) || [],
+        accounts: withoutCashAccount((backup.accountBalances as Record<string, AccountBalance>) || defaultAccounts),
+        asfJobs: (backup.asfJobs as JobItem[]) || [],
+        irqJobs: (backup.irqJobs as JobItem[]) || [],
+        partTimeJobs: (backup.partTimeJobs as JobItem[]) || [],
+        rates: (backup.ratesData as RatesData) || defaultRates,
+        creditDues: (backup.creditDues as Record<string, Record<string, number>>) || {},
+        creditDueMonths: (backup.creditDueMonths as Record<string, string[]>) || {},
+        entryActuals: (backup.entryActuals as Record<string, number>) || {},
+        entryActualDates: (backup.entryActualDates as Record<string, string>) || {},
+        deletedForecasts: (backup.deletedForecasts as string[]) || [],
+        creditSettlementOverrides: (backup.creditSettlementOverrides as Record<string, CreditSettlementOverride>) || {},
+        archivedEntries: (backup.archivedEntries as CashEntry[]) || [],
       };
       persistFinancialSnapshot(restored);
+      void removeStorage(STORAGE_KEYS.resetBackup);
       if (typeof localStorage !== 'undefined') {
-        localStorage.removeItem(STORAGE_KEYS.resetBackup);
+        try {
+          localStorage.removeItem(STORAGE_KEYS.resetBackup);
+        } catch {}
       }
       set(restored);
-      scheduleAutoGistSync(get);
+      scheduleAutoDriveSync(get);
       return true;
     } catch (error) {
       console.error('Failed to restore reset backup:', error);
@@ -442,35 +296,45 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => ({
   },
 
   undoImport: () => {
-    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.importUndoBackup) : null;
-    if (!raw) return false;
+    let backup = loadStorage<Record<string, unknown> | null>(STORAGE_KEYS.importUndoBackup, null);
+    if (!backup && typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem(STORAGE_KEYS.importUndoBackup);
+      if (raw) {
+        try {
+          backup = JSON.parse(raw) as Record<string, unknown>;
+        } catch {}
+      }
+    }
+    if (!backup) return false;
     try {
-      const backup = JSON.parse(raw);
       const restored: BudgetFinancialSnapshot = {
-        salaryPattern: backup.salaryPattern || defaultSalaryPattern,
-        salaryAnchorMonth: backup.salaryAnchorMonth || DateUtils.currentYearMonth(),
-        entries: backup.entries || [],
-        installments: backup.installments || [],
-        storageAssets: backup.storageAssets || [],
-        accounts: withoutCashAccount(backup.accounts || defaultAccounts),
-        asfJobs: backup.asfJobs || [],
-        irqJobs: backup.irqJobs || [],
-        partTimeJobs: backup.partTimeJobs || [],
-        rates: backup.rates || defaultRates,
-        creditDues: backup.creditDues || {},
-        creditDueMonths: backup.creditDueMonths || {},
-        entryActuals: backup.entryActuals || {},
-        entryActualDates: backup.entryActualDates || {},
-        deletedForecasts: backup.deletedForecasts || [],
-        creditSettlementOverrides: backup.creditSettlementOverrides || {},
-        archivedEntries: backup.archivedEntries || [],
+        salaryPattern: (backup.salaryPattern as SalaryPayment[]) || defaultSalaryPattern,
+        salaryAnchorMonth: (backup.salaryAnchorMonth as string) || DateUtils.currentYearMonth(),
+        entries: (backup.entries as CashEntry[]) || [],
+        installments: (backup.installments as Installment[]) || [],
+        storageAssets: (backup.storageAssets as StorageAsset[]) || [],
+        accounts: withoutCashAccount((backup.accounts as Record<string, AccountBalance>) || defaultAccounts),
+        asfJobs: (backup.asfJobs as JobItem[]) || [],
+        irqJobs: (backup.irqJobs as JobItem[]) || [],
+        partTimeJobs: (backup.partTimeJobs as JobItem[]) || [],
+        rates: (backup.rates as RatesData) || defaultRates,
+        creditDues: (backup.creditDues as Record<string, Record<string, number>>) || {},
+        creditDueMonths: (backup.creditDueMonths as Record<string, string[]>) || {},
+        entryActuals: (backup.entryActuals as Record<string, number>) || {},
+        entryActualDates: (backup.entryActualDates as Record<string, string>) || {},
+        deletedForecasts: (backup.deletedForecasts as string[]) || [],
+        creditSettlementOverrides: (backup.creditSettlementOverrides as Record<string, CreditSettlementOverride>) || {},
+        archivedEntries: (backup.archivedEntries as CashEntry[]) || [],
       };
       persistFinancialSnapshot(restored);
+      void removeStorage(STORAGE_KEYS.importUndoBackup);
       if (typeof localStorage !== 'undefined') {
-        localStorage.removeItem(STORAGE_KEYS.importUndoBackup);
+        try {
+          localStorage.removeItem(STORAGE_KEYS.importUndoBackup);
+        } catch {}
       }
       set(restored);
-      scheduleAutoGistSync(get);
+      scheduleAutoDriveSync(get);
       return true;
     } catch (err) {
       console.error('Failed to undo import:', err);
@@ -554,10 +418,17 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => ({
           if (storedData[STORAGE_KEYS.deletedForecasts]) {
             updates.deletedForecasts = storedData[STORAGE_KEYS.deletedForecasts] as string[];
           }
+          if (storedData[STORAGE_KEYS.theme]) {
+            updates.theme = storedData[STORAGE_KEYS.theme] as 'dark' | 'light';
+          }
+          if (storedData[STORAGE_KEYS.sidebarCollapsed] !== undefined) {
+            updates.sidebarCollapsed = Boolean(storedData[STORAGE_KEYS.sidebarCollapsed]);
+          }
+          if (storedData[STORAGE_KEYS.historyAdminUnlocked] !== undefined) {
+            updates.historyAdminUnlocked = Boolean(storedData[STORAGE_KEYS.historyAdminUnlocked]);
+          }
           if (storedData[STORAGE_KEYS.lastDriveSync]) {
             updates.lastDriveSyncTime = storedData[STORAGE_KEYS.lastDriveSync] as string;
-          } else if (storedData[STORAGE_KEYS.lastGistSync]) {
-            updates.lastDriveSyncTime = storedData[STORAGE_KEYS.lastGistSync] as string;
           }
           if (storedData[STORAGE_KEYS.lastLocalModified]) {
             const mod = Number(storedData[STORAGE_KEYS.lastLocalModified]);

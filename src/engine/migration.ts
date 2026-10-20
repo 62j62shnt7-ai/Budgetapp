@@ -1,4 +1,5 @@
 import type {
+  CreditSettlementOverride,
   CashEntry,
   AccountBalance,
   SalaryPayment,
@@ -30,7 +31,7 @@ export interface MigratedBudgetDataset {
   entryActualDates: Record<string, string>;
   creditDues: Record<string, Record<string, number>>;
   creditDueMonths: Record<string, string[]>;
-  creditSettlementOverrides: Record<string, { amount?: number; date?: string; note?: string }>;
+  creditSettlementOverrides: Record<string, CreditSettlementOverride>;
   deletedForecasts: string[];
 }
 

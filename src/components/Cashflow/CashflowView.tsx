@@ -10,7 +10,6 @@ import {
   buildCreditDueEntries,
   calculateCreditSettlementDate,
   isCreditCardExpense,
-  isCreditSettlementRow,
   isCreditDueLumpSum,
 } from '../../engine/creditCards';
 import {
@@ -29,7 +28,9 @@ import {
 } from '../../engine/forecast';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { formatNativeCurrency, getCurrencyRateOr } from '../../engine/currency';
+import { getEntryTags } from '../../engine/tags';
 import { Plus } from 'lucide-react';
+import { loadStorageSync, saveStorage } from '../../utils/storageAdapter';
 
 import type { CashEntry, Installment } from '../../types';
 import { ExactAmountDecisionModal } from '../Modals/ExactAmountDecisionModal';
@@ -446,43 +447,43 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
 
   // Collapsible sections
   const [salaryOpen, setSalaryOpen] = useState<boolean>(() => {
-    const saved = localStorage.getItem('budget-control-salary-collapsed');
+    const saved = loadStorageSync<string | null>('budget-control-salary-collapsed', null);
     if (saved !== null) return saved !== 'true';
     return typeof window !== 'undefined' ? window.innerWidth > 768 : true;
   });
   const [installmentsOpen, setInstallmentsOpen] = useState<boolean>(() =>
-    localStorage.getItem('budget-control-installments-collapsed') !== 'true'
+    loadStorageSync<string>('budget-control-installments-collapsed', 'false') !== 'true'
   );
   const [expenseMixOpen, setExpenseMixOpen] = useState<boolean>(() =>
-    localStorage.getItem('budget-control-expense-mix-collapsed') !== 'true'
+    loadStorageSync<string>('budget-control-expense-mix-collapsed', 'false') !== 'true'
   );
 
   useEffect(() => {
-    localStorage.setItem('budget-control-salary-collapsed', String(!salaryOpen));
+    saveStorage('budget-control-salary-collapsed', String(!salaryOpen));
   }, [salaryOpen]);
   useEffect(() => {
-    localStorage.setItem('budget-control-installments-collapsed', String(!installmentsOpen));
+    saveStorage('budget-control-installments-collapsed', String(!installmentsOpen));
   }, [installmentsOpen]);
   useEffect(() => {
-    localStorage.setItem('budget-control-expense-mix-collapsed', String(!expenseMixOpen));
+    saveStorage('budget-control-expense-mix-collapsed', String(!expenseMixOpen));
   }, [expenseMixOpen]);
 
   // Salary matrix inputs
   const currentYm = DateUtils.currentYearMonth();
   const [startMonth, setStartMonth] = useState(() =>
-    localStorage.getItem('budget-control-forecast-start-month') || currentYm
+    loadStorageSync<string>('budget-control-forecast-start-month', '') || currentYm
   );
   const [quarters, setQuarters] = useState(() => {
-    const stored = Number(localStorage.getItem('budget-control-forecast-quarters'));
+    const stored = Number(loadStorageSync<string | number>('budget-control-forecast-quarters', 12));
     return Number.isFinite(stored) && stored > 0 ? Math.min(24, Math.max(1, stored)) : 12;
   });
 
   useEffect(() => {
-    localStorage.setItem('budget-control-forecast-start-month', startMonth || currentYm);
+    saveStorage('budget-control-forecast-start-month', startMonth || currentYm);
   }, [startMonth, currentYm]);
 
   useEffect(() => {
-    localStorage.setItem('budget-control-forecast-quarters', String(quarters));
+    saveStorage('budget-control-forecast-quarters', String(quarters));
   }, [quarters]);
 
   const {
@@ -589,46 +590,6 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     if (e.account) accountSet.add(e.account.toLowerCase());
   });
   const allAccounts = Array.from(accountSet).sort();
-
-  // Tags helper for entries (supports multi-tag and auto-tagging credit swipes & settlements)
-  const getEntryTags = (e: CashEntry): string[] => {
-    const tags: string[] = [];
-    const pushTag = (t: string) => {
-      const trimmed = t.trim();
-      if (!trimmed) return;
-      const lower = trimmed.toLowerCase();
-      const normalized = (lower === 'credit' || lower === 'credit card' || lower === 'card spend')
-        ? (isCreditSettlementRow(e) ? 'Credit Settlement' : isCreditCardExpense(e) ? 'Credit Swipes' : trimmed)
-        : trimmed;
-      if (!tags.some((existing) => existing.toLowerCase() === normalized.toLowerCase())) {
-        tags.push(normalized);
-      }
-    };
-
-    if (e.tag && e.tag.trim()) {
-      e.tag.split(',').forEach(pushTag);
-    }
-    if (e.subcategory && e.subcategory.trim()) {
-      e.subcategory.split(',').forEach(pushTag);
-    }
-    (e.draws || []).forEach((draw) => {
-      if (draw.tag && draw.tag.trim()) {
-        draw.tag.split(',').forEach(pushTag);
-      }
-    });
-
-    if (isCreditSettlementRow(e)) {
-      if (!tags.some((t) => t.toLowerCase() === 'credit settlement')) {
-        tags.push('Credit Settlement');
-      }
-    } else if (isCreditCardExpense(e)) {
-      if (!tags.some((t) => t.toLowerCase() === 'credit swipes')) {
-        tags.push('Credit Swipes');
-      }
-    }
-
-    return tags;
-  };
 
   // Tags list for dropdown
   const tagSet = new Set<string>();
@@ -1669,7 +1630,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                                 input.value = '';
                                 if (rawVal > 0) {
                                   const effectiveRate = e.fxRateAtEntry || getCurrencyRateOr(rates, e.currency, 1);
-                                  const egpVal = isForeign ? Math.round(rawVal * effectiveRate) : Math.round(rawVal);
+                                  const egpVal = isForeign ? Math.round(rawVal * effectiveRate * 100) / 100 : Math.round(rawVal * 100) / 100;
                                   handleActualSpend(e, egpVal, actualValue);
                                 }
                               }
@@ -1680,7 +1641,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                               input.value = '';
                               if (rawVal > 0) {
                                 const effectiveRate = e.fxRateAtEntry || getCurrencyRateOr(rates, e.currency, 1);
-                                const egpVal = isForeign ? Math.round(rawVal * effectiveRate) : Math.round(rawVal);
+                                const egpVal = isForeign ? Math.round(rawVal * effectiveRate * 100) / 100 : Math.round(rawVal * 100) / 100;
                                 handleActualSpend(e, egpVal, actualValue);
                               }
                             }}

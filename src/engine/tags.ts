@@ -57,3 +57,45 @@ export function inferTag(entry: Partial<CashEntry>): string {
   if (source === 'installment' || category.includes('installment')) return 'Installment';
   return '';
 }
+
+/**
+ * Extract all unique, normalized tags for an entry (combining tag, subcategory, draws, and inferred credit roles).
+ */
+export function getEntryTags(entry: CashEntry): string[] {
+  const tags: string[] = [];
+  const pushTag = (t: string) => {
+    const trimmed = t.trim();
+    if (!trimmed) return;
+    const lower = trimmed.toLowerCase();
+    const normalized = (lower === 'credit' || lower === 'credit card' || lower === 'card spend')
+      ? (isCreditSettlementRow(entry) ? 'Credit Settlement' : isCreditCardExpense(entry) ? 'Credit Swipes' : trimmed)
+      : trimmed;
+    if (!tags.some((existing) => existing.toLowerCase() === normalized.toLowerCase())) {
+      tags.push(normalized);
+    }
+  };
+
+  if (entry.tag && entry.tag.trim()) {
+    entry.tag.split(',').forEach(pushTag);
+  }
+  if (entry.subcategory && entry.subcategory.trim()) {
+    entry.subcategory.split(',').forEach(pushTag);
+  }
+  (entry.draws || []).forEach((draw) => {
+    if (draw.tag && draw.tag.trim()) {
+      draw.tag.split(',').forEach(pushTag);
+    }
+  });
+
+  if (isCreditSettlementRow(entry)) {
+    if (!tags.some((t) => t.toLowerCase() === 'credit settlement')) {
+      tags.push('Credit Settlement');
+    }
+  } else if (isCreditCardExpense(entry)) {
+    if (!tags.some((t) => t.toLowerCase() === 'credit swipes')) {
+      tags.push('Credit Swipes');
+    }
+  }
+
+  return tags;
+}

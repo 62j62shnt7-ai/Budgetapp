@@ -7,7 +7,6 @@ import {
   persistFinancialSnapshot,
   recordUndoableStep,
   scheduleAutoDriveSync,
-  scheduleAutoGistSync,
   setHasPendingUserEdit,
   setLastLocalMutationTimestamp,
   MAX_UNDO_DEPTH,
@@ -113,7 +112,7 @@ export const createUndoSlice: SliceCreator<UndoSlice> = (set, get) => ({
 
     void persistUndoHistoryToStorage(nextUndoStack, nextRedoStack);
     scheduleAutoDriveSync(get, false, { isUserEdit: true });
-    scheduleAutoGistSync(get);
+    scheduleAutoDriveSync(get);
     return true;
   },
 
@@ -156,7 +155,7 @@ export const createUndoSlice: SliceCreator<UndoSlice> = (set, get) => ({
 
     void persistUndoHistoryToStorage(nextUndoStack, nextRedoStack);
     scheduleAutoDriveSync(get, false, { isUserEdit: true });
-    scheduleAutoGistSync(get);
+    scheduleAutoDriveSync(get);
     return true;
   },
 

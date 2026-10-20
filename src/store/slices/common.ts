@@ -10,6 +10,7 @@ import { getCurrencyRateOr } from '../../engine/currency';
 import { inferTag } from '../../engine/tags';
 import {
   saveStorage as adapterSaveStorage,
+  loadStorageSync as adapterLoadStorageSync,
   persistUndoHistoryToStorage,
 } from '../../utils/storageAdapter';
 import {
@@ -55,52 +56,61 @@ export const STORAGE_KEYS = {
 
 export function loadStorage<T>(key: string, fallback: T): T {
   try {
-    if (typeof localStorage === 'undefined') return fallback;
-    const raw = localStorage.getItem(key);
-    if (!raw) return fallback;
-    const parsed: unknown = JSON.parse(raw);
-    if (parsed === null || parsed === undefined) return fallback;
-
-    if (Array.isArray(fallback)) {
-      if (!Array.isArray(parsed)) return fallback;
-      if (key === STORAGE_KEYS.deletedForecasts) {
-        return (parsed.filter((item): item is string => typeof item === 'string') as unknown) as T;
+    const val = adapterLoadStorageSync<unknown>(key, undefined);
+    if (val === undefined || val === null) {
+      if (typeof localStorage !== 'undefined') {
+        const raw = localStorage.getItem(key);
+        if (!raw) return fallback;
+        const parsed: unknown = JSON.parse(raw);
+        if (parsed === null || parsed === undefined) return fallback;
+        return validateFallbackShape(key, parsed, fallback);
       }
-      return (parsed.filter((item) => item !== null && item !== undefined && typeof item === 'object') as unknown) as T;
+      return fallback;
     }
-
-    if (typeof fallback === 'object' && fallback !== null) {
-      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return fallback;
-      if (key === STORAGE_KEYS.rates) {
-        const r = parsed as Partial<RatesData>;
-        if (!Array.isArray(r.currencies) || !Array.isArray(r.gold)) return fallback;
-      }
-      if (key === STORAGE_KEYS.accounts) {
-        const accs = parsed as Record<string, unknown>;
-        if (Object.keys(accs).length === 0) return fallback;
-      }
-      return parsed as T;
-    }
-
-    if (typeof fallback === 'string') {
-      if (typeof parsed !== 'string') return fallback;
-      if (key === STORAGE_KEYS.salaryAnchor && parsed.length < 7) return fallback;
-      return parsed as T;
-    }
-
-    if (typeof fallback === 'number') {
-      return (typeof parsed === 'number' && !isNaN(parsed)) ? (parsed as T) : fallback;
-    }
-
-    if (typeof fallback === 'boolean') {
-      return typeof parsed === 'boolean' ? (parsed as T) : fallback;
-    }
-
-    return parsed as T;
+    return validateFallbackShape(key, val, fallback);
   } catch (err) {
-    console.warn(`Error reading ${key} from localStorage:`, err);
+    console.warn(`Error reading ${key} from storage:`, err);
     return fallback;
   }
+}
+
+function validateFallbackShape<T>(key: string, parsed: unknown, fallback: T): T {
+  if (Array.isArray(fallback)) {
+    if (!Array.isArray(parsed)) return fallback;
+    if (key === STORAGE_KEYS.deletedForecasts) {
+      return (parsed.filter((item): item is string => typeof item === 'string') as unknown) as T;
+    }
+    return (parsed.filter((item) => item !== null && item !== undefined && typeof item === 'object') as unknown) as T;
+  }
+
+  if (typeof fallback === 'object' && fallback !== null) {
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return fallback;
+    if (key === STORAGE_KEYS.rates) {
+      const r = parsed as Partial<RatesData>;
+      if (!Array.isArray(r.currencies) || !Array.isArray(r.gold)) return fallback;
+    }
+    if (key === STORAGE_KEYS.accounts) {
+      const accs = parsed as Record<string, unknown>;
+      if (Object.keys(accs).length === 0) return fallback;
+    }
+    return parsed as T;
+  }
+
+  if (typeof fallback === 'string') {
+    if (typeof parsed !== 'string') return fallback;
+    if (key === STORAGE_KEYS.salaryAnchor && parsed.length < 7) return fallback;
+    return parsed as T;
+  }
+
+  if (typeof fallback === 'number') {
+    return (typeof parsed === 'number' && !isNaN(parsed)) ? (parsed as T) : fallback;
+  }
+
+  if (typeof fallback === 'boolean') {
+    return typeof parsed === 'boolean' ? (parsed as T) : fallback;
+  }
+
+  return parsed as T;
 }
 
 export function saveStorage<T>(key: string, value: T): void {
@@ -109,23 +119,33 @@ export function saveStorage<T>(key: string, value: T): void {
 
 export function safeSetItem(key: string, value: string): void {
   try {
-    if (typeof localStorage !== 'undefined') localStorage.setItem(key, value);
+    adapterSaveStorage(key, value);
   } catch {
     // Bookkeeping only — losing this write must not fail the user's action.
   }
 }
 
-export let lastLocalMutationTimestamp = typeof localStorage !== 'undefined'
-  ? Number(localStorage.getItem(STORAGE_KEYS.lastLocalModified) || 0) || 0
-  : 0;
+export let lastLocalMutationTimestamp = (() => {
+  const mem = adapterLoadStorageSync<number>(STORAGE_KEYS.lastLocalModified, 0);
+  if (mem) return mem;
+  if (typeof localStorage !== 'undefined') {
+    return Number(localStorage.getItem(STORAGE_KEYS.lastLocalModified) || 0) || 0;
+  }
+  return 0;
+})();
 
 export function setLastLocalMutationTimestamp(ts: number) {
   lastLocalMutationTimestamp = ts;
 }
 
-export let lastGistUploadTimestamp = typeof localStorage !== 'undefined'
-  ? Number(localStorage.getItem(STORAGE_KEYS.lastGistUpload) || 0) || 0
-  : 0;
+export let lastGistUploadTimestamp = (() => {
+  const mem = adapterLoadStorageSync<number>(STORAGE_KEYS.lastGistUpload, 0);
+  if (mem) return mem;
+  if (typeof localStorage !== 'undefined') {
+    return Number(localStorage.getItem(STORAGE_KEYS.lastGistUpload) || 0) || 0;
+  }
+  return 0;
+})();
 
 export function setLastGistUploadTimestamp(ts: number) {
   lastGistUploadTimestamp = ts;
@@ -156,14 +176,16 @@ export function setSuppressAutoSync(val: boolean) {
 export function scheduleAutoDriveSync(
   getState: () => BudgetStoreState,
   immediate = false,
-  options?: { isUserEdit?: boolean }
+  options?: { isUserEdit?: boolean; rateRefresh?: boolean }
 ): void {
   if (typeof window === 'undefined') return;
   const token = getStoredDriveToken();
   const autoSync = getStoredDriveAutoSync();
   if (!token || !autoSync) return;
 
-  if (options?.isUserEdit === true) {
+  const isRateRefresh = options?.rateRefresh === true;
+  const isUserEdit = options?.isUserEdit !== undefined ? options.isUserEdit : !isRateRefresh;
+  if (isUserEdit) {
     hasPendingUserEdit = true;
   }
 
@@ -203,7 +225,6 @@ export function scheduleAutoDriveSync(
           lastLocalMutationTimestamp = now;
           state.setDriveSyncStatus('synced');
           saveStorage(STORAGE_KEYS.lastDriveSync, syncTime);
-          saveStorage(STORAGE_KEYS.lastGistSync, syncTime);
           saveStorage(STORAGE_KEYS.lastLocalModified, String(now));
         }
       } else {
@@ -229,12 +250,7 @@ export function scheduleAutoGistSync(
   immediate = false,
   options: { rateRefresh?: boolean; isUserEdit?: boolean } = {}
 ): void {
-  const isRateRefresh = options.rateRefresh === true;
-  const isUserEdit = options.isUserEdit !== undefined ? options.isUserEdit : !isRateRefresh;
-  if (isUserEdit) {
-    hasPendingUserEdit = true;
-  }
-  scheduleAutoDriveSync(getState, immediate, { isUserEdit });
+  scheduleAutoDriveSync(getState, immediate, options);
 }
 
 export const defaultAccounts: Record<string, AccountBalance> = {
@@ -321,12 +337,12 @@ export function revertStorageOrAccountBalance(
     let egpDelta = amount;
     if (!isEgpAmount && isForeign) {
       const rate = fxRate || getCurrencyRateOr(get().rates, currUpper, 1);
-      egpDelta = Math.round(amount * rate);
+      egpDelta = Math.round(amount * rate * 100) / 100;
     }
     const currentBal = get().accounts[accountLower].balance || 0;
-    const nextBal = entryType === 'expense'
+    const nextBal = Math.round((entryType === 'expense'
       ? currentBal + egpDelta
-      : currentBal - egpDelta;
+      : currentBal - egpDelta) * 100) / 100;
     get().updateAccountBalance(accountLower, nextBal);
   }
 }

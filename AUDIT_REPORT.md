@@ -45,6 +45,11 @@ A deterministic, end-to-end verification and logic audit was performed across th
 | **DEF-16** | `test/testCreditSettlementModal.mjs:28` | Windows test execution | `spawn('npx', ...)` failed on Windows with `ENOENT` | Added `shell: process.platform === 'win32'` |
 | **DEF-17** | `test/ui-audit.mjs:43` | Windows UI test execution | `spawn('npx', ...)` failed on Windows with `ENOENT` | Added `shell: process.platform === 'win32'` |
 | **DEF-18** | `test/test-jobs-playwright.mjs:14` | Cross-platform browser audit | Hardcoded macOS Google Chrome path failed on Windows | Added fallback detection: launches Chrome if present, otherwise default Playwright Chromium |
+| **DEF-19** | Multiple components & stores | localStorage / IndexedDB coexistence | Split storage architecture caused desynchronization, QuotaExceeded risk, and incomplete backup exports in ErrorBoundary | Completely removed `localStorage` operational dependencies, upgraded to pure IndexedDB (`idb-keyval`) with synchronous in-memory store, added `BroadcastChannel` for multi-tab sync, and unified emergency backup dump/reset |
+| **DEF-20** | Sync architecture (`src/App.tsx`, `syncSlice.ts`) | Legacy GitHub Gist synchronization | Redundant secondary sync engine caused conflicting states, dual token management, and unneeded hash listeners | Retired GitHub Gist sync entirely; unified all cloud synchronization on Google Drive (Option B: `My Drive / Budget Control / budget-data.json`), renamed modal to `DriveSyncModal`, and streamlined background sync triggers |
+| **DEF-21** | `src/store/slices/entriesSlice.ts:710-735` | Multi-draw credit settlement refund on clear | `clearActual` previously refunded full settlement amount to single bank account ignoring multi-account draws | Correctly iterates over `settlementOverride.draws`, refunding each draw\x27s exact amount back to its originating bank account |
+| **DEF-22** | `src/store/slices/jobsSlice.ts:40-85` | Job and payment deletion cascade | Deleting a job or payment missed linked entries moved to `archivedEntries`, `forecastEntryId`, and `entryActuals` | Cleaned up linked entries from both active and archived lists, removed job forecast entries, and pruned actuals keys |
+| **DEF-23** | Multiple views and slices | Floating-point drift and duplicate rate/tag utilities | Whole-integer `Math.round()` sites in loan scaling, inline actuals, draw additions, and duplicated live rate fetch code | Upgraded all remaining monetary rounding to 2-decimal piastre precision and unified live rate fetch and tag extraction through engine modules |
 
 ---
 
@@ -58,7 +63,14 @@ Every monetary calculation, accumulation step, and currency conversion now stric
 - **Health Score:** Planned vs realized expenses, realized income, and runway in `src/engine/healthScore.ts`.
 - **Jobs:** Total invoiced, labor, reimbursable expenses, and balance dues in `src/engine/jobs.ts`.
 
-### B. 9-Point Persistence Parity (`STORAGE_KEYS`)
+### B. 9-Point Persistence Parity & IndexedDB Modernization (`STORAGE_KEYS`)
+All 17 financial storage keys and operational settings are managed through `src/utils/storageAdapter.ts` backed entirely by **IndexedDB** (`idb-keyval`):
+1. **Zero Quota Constraints:** IndexedDB eliminates the 5MB browser quota ceiling, preventing any `QuotaExceededError`.
+2. **Synchronous In-Memory Cache:** Slices and UI components enjoy instant synchronous reads with fallback defaults, hydrated from IndexedDB on startup via `initStorage()`.
+3. **Multi-Tab Synchronization:** `BroadcastChannel` (`budget-control-sync-channel`) replaces legacy `window.addEventListener('storage')` without touching `localStorage`.
+4. **Emergency Exports & Wipe:** `ErrorBoundary` exports full database snapshots via `exportAllFromStorage()` and clears IndexedDB via `clearAllStorage()`.
+5. **Auto-Migration:** Automatically migrates legacy `localStorage` keys into IndexedDB on first load and cleans up `localStorage`.
+
 All 17 financial storage keys are synchronized across all 9 persistence locations:
 1. Initial Store Initialization (`useBudgetStore.ts:512-585`)
 2. `captureFinancialSnapshot` (`useBudgetStore.ts:2490-2515`)

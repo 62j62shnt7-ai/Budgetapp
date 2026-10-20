@@ -25,7 +25,7 @@ interface MobileActionSheetProps {
   onOpenEntryModal: (type: 'expense' | 'income') => void;
   onOpenLoanModal: () => void;
   onOpenDataTools: () => void;
-  onOpenGistSync: () => void;
+  onOpenDriveSync: () => void;
   updateStatus: string;
 }
 
@@ -35,7 +35,7 @@ export const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
   onOpenEntryModal,
   onOpenLoanModal,
   onOpenDataTools,
-  onOpenGistSync,
+  onOpenDriveSync,
   updateStatus,
 }) => {
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -307,7 +307,7 @@ export const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
             className="action-sheet-btn"
             onClick={() => {
               onClose();
-              onOpenGistSync();
+              onOpenDriveSync();
             }}
           >
             <Cloud size={20} color="var(--blue)" />

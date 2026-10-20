@@ -1,9 +1,10 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { useBudgetStore } from '../../store/useBudgetStore';
+import { useBudgetStore, STORAGE_KEYS } from '../../store/useBudgetStore';
 import { executeAppRefresh } from '../../utils/appRefresh';
 import { detectRecurringCandidateGroups } from '../../utils/recurringDetector';
 import { DateUtils } from '../../engine/dateUtils';
+import { loadStorageSync, loadStorageAsync } from '../../utils/storageAdapter';
 
 interface DataToolsModalProps {
   isOpen: boolean;
@@ -79,9 +80,24 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
     );
   }, [recurringGroups, recurringFilterTerm]);
 
+  const [hasResetBackup, setHasResetBackup] = useState(() =>
+    Boolean(loadStorageSync(STORAGE_KEYS.resetBackup, null))
+  );
+  const [hasImportUndoBackup, setHasImportUndoBackup] = useState(() =>
+    Boolean(loadStorageSync(STORAGE_KEYS.importUndoBackup, null))
+  );
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    void loadStorageAsync(STORAGE_KEYS.resetBackup, null).then((val) => {
+      setHasResetBackup(Boolean(val));
+    });
+    void loadStorageAsync(STORAGE_KEYS.importUndoBackup, null).then((val) => {
+      setHasImportUndoBackup(Boolean(val));
+    });
+  }, [isOpen]);
+
   if (!isOpen) return null;
-  const hasResetBackup = Boolean(localStorage.getItem('budget-control-reset-backup'));
-  const hasImportUndoBackup = Boolean(localStorage.getItem('budget-control-import-undo-backup'));
 
   const formatDeletedForecast = (id: string) => {
     if (id.startsWith('credit-settlement-')) {

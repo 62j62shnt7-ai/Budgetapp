@@ -6,10 +6,7 @@ export const createUISlice: SliceCreator<UISlice> = (set, get) => ({
   activeTab: 'dashboard',
   pendingNavigation: null,
   sidebarCollapsed: loadStorage<boolean>(STORAGE_KEYS.sidebarCollapsed, false),
-  historyAdminUnlocked:
-    typeof localStorage !== 'undefined'
-      ? localStorage.getItem(STORAGE_KEYS.historyAdminUnlocked) === 'true'
-      : false,
+  historyAdminUnlocked: loadStorage<boolean>(STORAGE_KEYS.historyAdminUnlocked, false),
 
   setTheme: (theme) => {
     saveStorage(STORAGE_KEYS.theme, theme);

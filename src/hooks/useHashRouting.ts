@@ -45,7 +45,7 @@ export function useHashRouting(): void {
   // 1. Initial URL hash check on mount only
   useEffect(() => {
     if (isAuthHashOrQuery()) {
-      // Defer to Supabase auth to process tokens from URL
+      // Defer to OAuth redirect handlers to process tokens from URL
       return;
     }
 

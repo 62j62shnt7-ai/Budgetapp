@@ -13,7 +13,8 @@ if (typeof globalThis.localStorage === 'undefined') {
   };
 }
 
-import { useBudgetStore } from '../src/store/useBudgetStore.ts';
+import { useBudgetStore, STORAGE_KEYS } from '../src/store/useBudgetStore.ts';
+import { loadStorageSync } from '../src/utils/storageAdapter.ts';
 import { buildCreditDueEntries } from '../src/engine/creditCards.ts';
 
 console.log('--- Starting Undo/Redo System Tests ---');
@@ -342,7 +343,7 @@ console.log('Test 9: Salary forecast date editing & anchor month persistence...'
 useBudgetStore.getState().setSalaryAnchorMonth('2026-11');
 state = useBudgetStore.getState();
 assert.strictEqual(state.salaryAnchorMonth, '2026-11', 'salaryAnchorMonth should be updated in store');
-assert.strictEqual(globalThis.localStorage.getItem('budget-control-salary-anchor'), '"2026-11"', 'salaryAnchor should be saved in localStorage');
+assert.strictEqual(loadStorageSync(STORAGE_KEYS.salaryAnchor, ''), '2026-11', 'salaryAnchor should be saved in storageAdapter');
 
 // 9b: Updating virtual salary entry date materializes it and persists new date
 const virtualSalaryId = 'salary-2026-11-15-0';

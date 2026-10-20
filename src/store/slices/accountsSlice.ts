@@ -5,7 +5,7 @@ import {
   loadStorage,
   saveStorage,
   defaultAccounts,
-  scheduleAutoGistSync,
+  scheduleAutoDriveSync,
 } from './common';
 import {
   buildCreditDueEntries,
@@ -32,7 +32,7 @@ export const createAccountsSlice: SliceCreator<AccountsSlice> = (set, get) => ({
         accounts[accountKey] = { ...accounts[accountKey], balance: Math.round(newBalance * 100) / 100 };
         saveStorage(STORAGE_KEYS.accounts, accounts);
         set({ accounts });
-        scheduleAutoGistSync(get);
+        scheduleAutoDriveSync(get);
       }
     });
   },
@@ -55,7 +55,7 @@ export const createAccountsSlice: SliceCreator<AccountsSlice> = (set, get) => ({
       };
       saveStorage(STORAGE_KEYS.accounts, accounts);
       set({ accounts });
-      scheduleAutoGistSync(get);
+      scheduleAutoDriveSync(get);
     });
     return true;
   },
@@ -67,7 +67,7 @@ export const createAccountsSlice: SliceCreator<AccountsSlice> = (set, get) => ({
       else next[id] = { ...next[id], ...override };
       saveStorage(STORAGE_KEYS.creditSettlementOverrides, next);
       set({ creditSettlementOverrides: next });
-      scheduleAutoGistSync(get);
+      scheduleAutoDriveSync(get);
     });
   },
 

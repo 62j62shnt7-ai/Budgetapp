@@ -1,11 +1,11 @@
 /**
- * High-Capacity Storage Adapter (IndexedDB with LocalStorage Fallback)
+ * High-Capacity Storage Adapter (IndexedDB-First Architecture)
  *
- * Provides non-blocking, asynchronous persistence backed by IndexedDB in browsers
- * (500MB+ capacity, zero QuotaExceededError), with seamless fallback to localStorage
- * in Node.js test environments or restricted private browsing contexts.
+ * Provides persistent, non-blocking, asynchronous persistence backed directly
+ * by IndexedDB (idb-keyval) with an internal in-memory cache for synchronous reads.
+ * Completely replaces localStorage across the application.
  */
-import { get, set, del, getMany, setMany } from 'idb-keyval';
+import { get, set, del, getMany, setMany, clear, entries as idbEntries } from 'idb-keyval';
 import type { UndoableAction } from '../types';
 
 export const isIndexedDBAvailable =
@@ -16,44 +16,74 @@ export const isIndexedDBAvailable =
 const MIGRATED_FLAG_KEY = 'budget-control-migrated-to-idb';
 const UNDO_HISTORY_KEY = 'budget-control-undo-history-v2';
 
-/**
- * Synchronous read from localStorage (used during initial module evaluation / fallback).
- */
-export function loadStorageSync<T>(key: string, fallback: T): T {
-  try {
-    if (typeof localStorage === 'undefined') return fallback;
-    const raw = localStorage.getItem(key);
-    if (!raw) return fallback;
-    const parsed: unknown = JSON.parse(raw);
-    if (parsed === null || parsed === undefined) return fallback;
+// In-memory synchronous cache populated on startup & updated on every write
+const memoryStore = new Map<string, unknown>();
 
-    if (Array.isArray(fallback)) {
-      return Array.isArray(parsed) ? (parsed as T) : fallback;
-    }
-    if (typeof fallback === 'string') {
-      return typeof parsed === 'string' ? (parsed as T) : fallback;
-    }
-    if (typeof fallback === 'number') {
-      return typeof parsed === 'number' && !isNaN(parsed) ? (parsed as T) : fallback;
-    }
-    if (typeof fallback === 'boolean') {
-      return typeof parsed === 'boolean' ? (parsed as T) : fallback;
-    }
-    return parsed as T;
-  } catch (err) {
-    console.warn(`[storageAdapter] Error reading sync ${key}:`, err);
-    return fallback;
+/**
+ * BroadcastChannel for cross-tab conflict detection & synchronization
+ */
+export const SYNC_CHANNEL_NAME = 'budget-control-sync-channel';
+
+let syncChannel: BroadcastChannel | null = null;
+if (typeof window !== 'undefined' && typeof window.BroadcastChannel !== 'undefined') {
+  try {
+    syncChannel = new BroadcastChannel(SYNC_CHANNEL_NAME);
+  } catch {
+    syncChannel = null;
   }
 }
 
+export function notifyStorageChange(key: string): void {
+  if (syncChannel) {
+    try {
+      syncChannel.postMessage({ type: 'storage_change', key, timestamp: Date.now() });
+    } catch {
+      // Ignore broadcast errors
+    }
+  }
+}
+
+export function onStorageChange(callback: (key: string) => void): () => void {
+  if (!syncChannel) {
+    return () => {};
+  }
+  const handler = (event: MessageEvent) => {
+    if (event.data && typeof event.data === 'object' && event.data.type === 'storage_change') {
+      callback(String(event.data.key || ''));
+    }
+  };
+  syncChannel.addEventListener('message', handler);
+  return () => {
+    syncChannel?.removeEventListener('message', handler);
+  };
+}
+
 /**
- * Asynchronous read prioritizing IndexedDB, falling back to localStorage.
+ * Synchronous read from the in-memory cache with fallback.
+ */
+export function loadStorageSync<T>(key: string, fallback: T): T {
+  if (memoryStore.has(key)) {
+    const val = memoryStore.get(key);
+    if (val !== undefined && val !== null) {
+      if (Array.isArray(fallback) && !Array.isArray(val)) return fallback;
+      if (typeof fallback === 'string' && typeof val !== 'string') return fallback;
+      if (typeof fallback === 'number' && (typeof val !== 'number' || isNaN(val))) return fallback;
+      if (typeof fallback === 'boolean' && typeof val !== 'boolean') return fallback;
+      return val as T;
+    }
+  }
+  return fallback;
+}
+
+/**
+ * Asynchronous read prioritizing IndexedDB, falling back to memoryStore.
  */
 export async function loadStorageAsync<T>(key: string, fallback: T): Promise<T> {
   if (isIndexedDBAvailable) {
     try {
       const val = await get<T>(key);
       if (val !== undefined && val !== null) {
+        memoryStore.set(key, val);
         return val;
       }
     } catch (err) {
@@ -64,107 +94,108 @@ export async function loadStorageAsync<T>(key: string, fallback: T): Promise<T> 
 }
 
 /**
- * Asynchronous, non-blocking write to IndexedDB (and localStorage in test/fallback modes).
+ * Asynchronous, non-blocking write to IndexedDB & memoryStore.
  */
 export async function saveStorageAsync<T>(key: string, value: T): Promise<void> {
+  memoryStore.set(key, value);
+  notifyStorageChange(key);
+
   if (isIndexedDBAvailable) {
     try {
       await set(key, value);
-      return;
     } catch (err) {
       console.error(`[storageAdapter] IndexedDB set error for ${key}:`, err);
-      return;
     }
-  }
-
-  // Fallback for test/headless environments
-  try {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(key, JSON.stringify(value));
-    }
-  } catch (err) {
-    console.error(`[storageAdapter] Fallback storage write error for ${key}:`, err);
   }
 }
 
 /**
- * Direct non-blocking save to IndexedDB.
+ * Direct non-blocking save to IndexedDB & memoryStore.
  */
 export function saveStorage<T>(key: string, value: T): void {
+  memoryStore.set(key, value);
+  notifyStorageChange(key);
+
   if (isIndexedDBAvailable) {
     set(key, value).catch((err) => {
       console.error(`[storageAdapter] Async saveStorage failed for ${key}:`, err);
     });
-    return;
   }
-
-  // Fallback for test/headless environments
-  try {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(key, JSON.stringify(value));
-    }
-  } catch {}
 }
 
 /**
  * Delete a key from storage.
  */
 export async function removeStorage(key: string): Promise<void> {
+  memoryStore.delete(key);
+  notifyStorageChange(key);
+
   if (isIndexedDBAvailable) {
     try {
       await del(key);
     } catch (err) {
       console.error(`[storageAdapter] del error for ${key}:`, err);
     }
-    return;
   }
-
-  try {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.removeItem(key);
-    }
-  } catch {}
 }
 
 /**
- * Automatic one-time migration: copies existing localStorage keys into IndexedDB.
+ * Automatic one-time migration: copies existing localStorage keys into IndexedDB,
+ * caches them into memoryStore, then cleans up localStorage.
  */
 export async function migrateFromLocalStorageIfNeeded(
   allStorageKeys: Record<string, string>
 ): Promise<{ migrated: boolean; count: number }> {
-  if (!isIndexedDBAvailable) {
-    return { migrated: false, count: 0 };
-  }
-
   try {
-    const isMigrated = await get<boolean>(MIGRATED_FLAG_KEY);
+    let isMigrated = false;
+    if (isIndexedDBAvailable) {
+      isMigrated = Boolean(await get<boolean>(MIGRATED_FLAG_KEY));
+    } else {
+      isMigrated = Boolean(memoryStore.get(MIGRATED_FLAG_KEY));
+    }
+
     if (isMigrated) {
       return { migrated: false, count: 0 };
     }
 
-    if (typeof localStorage === 'undefined') {
-      await set(MIGRATED_FLAG_KEY, true);
-      return { migrated: false, count: 0 };
-    }
-
     const entriesToMigrate: [IDBValidKey, unknown][] = [];
-    for (const key of Object.values(allStorageKeys)) {
-      const raw = localStorage.getItem(key);
-      if (raw !== null) {
-        try {
-          entriesToMigrate.push([key, JSON.parse(raw)]);
-        } catch {
-          entriesToMigrate.push([key, raw]);
+    if (typeof localStorage !== 'undefined') {
+      for (const key of Object.values(allStorageKeys)) {
+        const raw = localStorage.getItem(key);
+        if (raw !== null) {
+          try {
+            const parsed = JSON.parse(raw);
+            entriesToMigrate.push([key, parsed]);
+            memoryStore.set(key, parsed);
+          } catch {
+            entriesToMigrate.push([key, raw]);
+            memoryStore.set(key, raw);
+          }
         }
       }
     }
 
-    if (entriesToMigrate.length > 0) {
+    if (isIndexedDBAvailable && entriesToMigrate.length > 0) {
       await setMany(entriesToMigrate);
     }
 
-    await set(MIGRATED_FLAG_KEY, true);
-    return { migrated: true, count: entriesToMigrate.length };
+    if (isIndexedDBAvailable) {
+      await set(MIGRATED_FLAG_KEY, true);
+    }
+    memoryStore.set(MIGRATED_FLAG_KEY, true);
+
+    // Clean up localStorage to free up legacy space and enforce IndexedDB single source of truth
+    if (typeof localStorage !== 'undefined') {
+      try {
+        for (const key of Object.values(allStorageKeys)) {
+          localStorage.removeItem(key);
+        }
+      } catch {
+        // Ignore localStorage cleanup errors in restricted environments
+      }
+    }
+
+    return { migrated: entriesToMigrate.length > 0, count: entriesToMigrate.length };
   } catch (err) {
     console.error('[storageAdapter] Migration from localStorage failed:', err);
     return { migrated: false, count: 0 };
@@ -172,25 +203,82 @@ export async function migrateFromLocalStorageIfNeeded(
 }
 
 /**
- * Load all stored keys at once from IndexedDB into an object.
+ * Load all stored keys at once from IndexedDB into memoryStore and return them.
  */
 export async function loadAllFromIndexedDB(
   keys: string[]
 ): Promise<Record<string, unknown>> {
-  if (!isIndexedDBAvailable) return {};
+  const result: Record<string, unknown> = {};
 
-  try {
-    const values = await getMany(keys);
-    const result: Record<string, unknown> = {};
-    keys.forEach((key, idx) => {
-      if (values[idx] !== undefined && values[idx] !== null) {
-        result[key] = values[idx];
+  if (isIndexedDBAvailable) {
+    try {
+      const values = await getMany(keys);
+      keys.forEach((key, idx) => {
+        if (values[idx] !== undefined && values[idx] !== null) {
+          result[key] = values[idx];
+          memoryStore.set(key, values[idx]);
+        }
+      });
+      return result;
+    } catch (err) {
+      console.warn('[storageAdapter] loadAllFromIndexedDB failed:', err);
+    }
+  }
+
+  // Fallback to memoryStore
+  for (const k of keys) {
+    if (memoryStore.has(k)) {
+      result[k] = memoryStore.get(k);
+    }
+  }
+  return result;
+}
+
+/**
+ * Dump all keys from IndexedDB (or memoryStore) for emergency backup export.
+ */
+export async function exportAllFromStorage(): Promise<Record<string, unknown>> {
+  const dump: Record<string, unknown> = {};
+
+  if (isIndexedDBAvailable) {
+    try {
+      const allEntries = await idbEntries();
+      for (const [k, v] of allEntries) {
+        dump[String(k)] = v;
       }
-    });
-    return result;
-  } catch (err) {
-    console.warn('[storageAdapter] loadAllFromIndexedDB failed:', err);
-    return {};
+      return dump;
+    } catch (err) {
+      console.warn('[storageAdapter] exportAllFromStorage IDB entries error:', err);
+    }
+  }
+
+  // Fallback to memoryStore
+  for (const [k, v] of memoryStore.entries()) {
+    dump[k] = v;
+  }
+  return dump;
+}
+
+/**
+ * Emergency wipe: clears IndexedDB, memoryStore, and any legacy localStorage.
+ */
+export async function clearAllStorage(): Promise<void> {
+  memoryStore.clear();
+
+  if (isIndexedDBAvailable) {
+    try {
+      await clear();
+    } catch (err) {
+      console.error('[storageAdapter] clear error:', err);
+    }
+  }
+
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.clear();
+    } catch {
+      // Ignore
+    }
   }
 }
 
@@ -209,10 +297,10 @@ export async function persistUndoHistoryToStorage(
       redoStack: redoStack.slice(0, 30),
       savedAt: Date.now(),
     };
+    memoryStore.set(UNDO_HISTORY_KEY, payload);
+
     if (isIndexedDBAvailable) {
       await set(UNDO_HISTORY_KEY, payload);
-    } else if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(UNDO_HISTORY_KEY, JSON.stringify(payload));
     }
   } catch (err) {
     console.warn('[storageAdapter] Failed to persist undo history:', err);
@@ -224,11 +312,9 @@ export async function persistUndoHistoryToStorage(
  */
 export async function clearStoredUndoHistory(): Promise<void> {
   try {
+    memoryStore.delete(UNDO_HISTORY_KEY);
     if (isIndexedDBAvailable) {
       await del(UNDO_HISTORY_KEY);
-    }
-    if (typeof localStorage !== 'undefined') {
-      localStorage.removeItem(UNDO_HISTORY_KEY);
     }
   } catch (err) {
     console.warn('[storageAdapter] Failed to clear stored undo history:', err);
@@ -251,13 +337,11 @@ export async function restoreUndoHistoryFromStorage(): Promise<{
 
     if (isIndexedDBAvailable) {
       data = await get(UNDO_HISTORY_KEY);
-    } else if (typeof localStorage !== 'undefined') {
-      const raw = localStorage.getItem(UNDO_HISTORY_KEY);
-      if (raw) data = JSON.parse(raw);
+    } else {
+      data = memoryStore.get(UNDO_HISTORY_KEY) as typeof data;
     }
 
     if (data && Array.isArray(data.undoStack)) {
-      // 24-hour TTL session expiry so stale counters never linger indefinitely
       if (data.savedAt && Date.now() - data.savedAt > UNDO_TTL_MS) {
         await clearStoredUndoHistory();
         return null;

@@ -27,7 +27,7 @@ import {
   STORAGE_KEYS,
   loadStorage,
   saveStorage,
-  scheduleAutoGistSync,
+  scheduleAutoDriveSync,
   upgradeLoadedEntries,
   defaultSalaryPattern,
   revertStorageOrAccountBalance,
@@ -56,7 +56,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
       const updated = [newEntry, ...get().entries];
       saveStorage(STORAGE_KEYS.entries, updated);
       set({ entries: updated });
-      scheduleAutoGistSync(get);
+      scheduleAutoDriveSync(get);
       return id;
     });
   },
@@ -89,7 +89,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
           saveStorage(STORAGE_KEYS.entryActualDates, dates);
           set({ entryActuals: actuals, entryActualDates: dates });
         }
-        scheduleAutoGistSync(get);
+        scheduleAutoDriveSync(get);
         return;
       }
 
@@ -134,7 +134,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
             saveStorage(STORAGE_KEYS.entryActualDates, dates);
             set({ entryActuals: actuals, entryActualDates: dates });
           }
-          scheduleAutoGistSync(get);
+          scheduleAutoDriveSync(get);
         }
         return;
       }
@@ -154,7 +154,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
           const currentActual = get().entryActuals[id] ?? updates.actualAmount ?? updates.amount ?? 0;
           get().settleJobForecastPayment(id, Number(currentActual) || 0, true);
         }
-        scheduleAutoGistSync(get);
+        scheduleAutoDriveSync(get);
         return;
       }
 
@@ -180,7 +180,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
         });
         saveStorage(STORAGE_KEYS.entries, updated);
         set({ entries: updated });
-        scheduleAutoGistSync(get);
+        scheduleAutoDriveSync(get);
         return;
       }
 
@@ -206,7 +206,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
             const baseRepayment = Number(entry.initialAmount || entry.amount);
             return {
               ...entry,
-              amount: Math.round(baseRepayment * ratio),
+              amount: Math.round(baseRepayment * ratio * 100) / 100,
               initialAmount: baseRepayment,
             };
           }
@@ -218,7 +218,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
             const baseRep = Number(inst.initialAmount || inst.amount);
             return {
               ...inst,
-              amount: Math.max(1, Math.round(baseRep * ratio)),
+              amount: Math.max(0.01, Math.round(baseRep * ratio * 100) / 100),
               initialAmount: baseRep,
             };
           }
@@ -242,7 +242,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
         const currentActual = get().entryActuals[id] ?? updates.actualAmount ?? updates.amount ?? 0;
         get().settleJobForecastPayment(id, Number(currentActual) || 0, true);
       }
-      scheduleAutoGistSync(get);
+      scheduleAutoDriveSync(get);
     });
   },
 
@@ -472,7 +472,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
         irqJobs: updatedIrq,
         partTimeJobs: updatedPartTime,
       });
-      scheduleAutoGistSync(get);
+      scheduleAutoDriveSync(get);
     });
   },
 
@@ -489,7 +489,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
         const existingOverride = get().creditSettlementOverrides[entryId] || {};
         const settlementAcc = entryId.split('-')[2] || 'hsbc';
         const prevActual = Number(get().entryActuals[entryId] ?? 0);
-        const tranche = amount > prevActual ? amount - prevActual : amount;
+        const tranche = amount > prevActual ? Math.round((amount - prevActual) * 100) / 100 : amount;
 
         let draws = Array.isArray(existingOverride.draws) ? [...existingOverride.draws] : [];
         if (draws.length === 0 && prevActual > 0) {
@@ -554,7 +554,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
       if (existingIndex !== -1) {
         const entry = get().entries[existingIndex];
         const prevActual = Number(get().entryActuals[entryId] ?? entry.actualAmount ?? 0);
-        const tranche = amount > prevActual ? amount - prevActual : amount;
+        const tranche = amount > prevActual ? Math.round((amount - prevActual) * 100) / 100 : amount;
 
         let draws = Array.isArray(entry.draws) ? [...entry.draws] : [];
         if (draws.length === 0 && prevActual > 0) {
@@ -614,7 +614,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
         if (archivedIndex !== -1) {
           const entry = get().archivedEntries[archivedIndex];
           const prevActual = Number(get().entryActuals[entryId] ?? entry.actualAmount ?? 0);
-          const tranche = amount > prevActual ? amount - prevActual : amount;
+          const tranche = amount > prevActual ? Math.round((amount - prevActual) * 100) / 100 : amount;
 
           let draws = Array.isArray(entry.draws) ? [...entry.draws] : [];
           if (draws.length === 0 && prevActual > 0) {
@@ -681,7 +681,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
         entryActualDates: dates,
       });
       get().settleJobForecastPayment(entryId, amount, false);
-      scheduleAutoGistSync(get);
+      scheduleAutoDriveSync(get);
     });
   },
 
@@ -714,24 +714,37 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
             const clean = acc.trim().toLowerCase();
             return clean === 'none' || clean === 'unassigned' || clean === 'cash' || clean === "don't deposit" || clean === 'dont deposit';
           };
-          const hasDeductedDraw = settlementOverride?.draws && settlementOverride.draws.length > 0
-            ? settlementOverride.draws.some((d) => !isNonDeductAcc(d.account))
-            : !isNonDeductAcc(settlementOverride?.account);
-          if (hasDeductedDraw) {
-            revertStorageOrAccountBalance(get, {
-              account: settlementOverride?.account || settlementAccountKey,
-              currency: 'EGP',
-              amount: prevActualAmt,
-              isEgpAmount: true,
-              entryType: 'expense',
+          if (settlementOverride?.draws && settlementOverride.draws.length > 0) {
+            settlementOverride.draws.forEach((d) => {
+              const drawAcc = d.account || settlementOverride?.account || settlementAccountKey;
+              if (!isNonDeductAcc(drawAcc)) {
+                revertStorageOrAccountBalance(get, {
+                  account: drawAcc,
+                  currency: 'EGP',
+                  amount: Number(d.amount) || 0,
+                  isEgpAmount: true,
+                  entryType: 'expense',
+                });
+              }
             });
+          } else {
+            const acc = settlementOverride?.account || settlementAccountKey;
+            if (!isNonDeductAcc(acc)) {
+              revertStorageOrAccountBalance(get, {
+                account: acc,
+                currency: 'EGP',
+                amount: prevActualAmt,
+                isEgpAmount: true,
+                entryType: 'expense',
+              });
+            }
           }
         }
 
         saveStorage(STORAGE_KEYS.entryActuals, actuals);
         saveStorage(STORAGE_KEYS.entryActualDates, dates);
         set({ entryActuals: actuals, entryActualDates: dates });
-        scheduleAutoGistSync(get);
+        scheduleAutoDriveSync(get);
         return;
       }
 
@@ -801,7 +814,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
       });
 
       if (keepDraws && existingDraws.length > 0) {
-        scheduleAutoGistSync(get);
+        scheduleAutoDriveSync(get);
         return;
       }
 
@@ -934,7 +947,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
         }
       }
 
-      scheduleAutoGistSync(get);
+      scheduleAutoDriveSync(get);
     });
   },
 
@@ -946,7 +959,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
           ...(existingOverride.draws || []),
           { ...draw, id: draw.id || `draw-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` },
         ];
-        const totalAmount = newDraws.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+        const totalAmount = Math.round(newDraws.reduce((sum, d) => sum + (Number(d.amount) || 0), 0) * 100) / 100;
         const validDates = newDraws.map((d) => d.date).filter(Boolean).sort();
         const lastDate = validDates.length > 0 ? validDates[validDates.length - 1] : draw.date || DateUtils.todayString();
         const settlementAcc = entryId.split('-')[2] || 'hsbc';
@@ -967,7 +980,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
           entryActuals: actuals,
           entryActualDates: dates,
         });
-        scheduleAutoGistSync(get);
+        scheduleAutoDriveSync(get);
         return;
       }
 
@@ -1008,7 +1021,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
       saveStorage(STORAGE_KEYS.entryActualDates, dates);
       set({ entryActuals: actuals, entryActualDates: dates });
       get().settleJobForecastPayment(entryId, totalAmount, false);
-      scheduleAutoGistSync(get);
+      scheduleAutoDriveSync(get);
     });
   },
 
@@ -1020,7 +1033,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
         if (drawIndex >= 0 && drawIndex < newDraws.length) {
           newDraws[drawIndex] = { ...newDraws[drawIndex], ...draw };
         }
-        const totalAmount = newDraws.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+        const totalAmount = Math.round(newDraws.reduce((sum, d) => sum + (Number(d.amount) || 0), 0) * 100) / 100;
         const validDates = newDraws.map((d) => d.date).filter(Boolean).sort();
         const lastDate = validDates.length > 0 ? validDates[validDates.length - 1] : DateUtils.todayString();
         const settlementAcc = entryId.split('-')[2] || 'hsbc';
@@ -1041,7 +1054,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
           entryActuals: actuals,
           entryActualDates: dates,
         });
-        scheduleAutoGistSync(get);
+        scheduleAutoDriveSync(get);
         return;
       }
 
@@ -1082,7 +1095,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
       saveStorage(STORAGE_KEYS.entryActualDates, dates);
       set({ entryActuals: actuals, entryActualDates: dates });
       get().settleJobForecastPayment(entryId, totalAmount, false);
-      scheduleAutoGistSync(get);
+      scheduleAutoDriveSync(get);
     });
   },
 
@@ -1095,7 +1108,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
         if (drawIndex >= 0 && drawIndex < newDraws.length) {
           deletedDraw = newDraws.splice(drawIndex, 1)[0];
         }
-        const totalAmount = newDraws.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+        const totalAmount = Math.round(newDraws.reduce((sum, d) => sum + (Number(d.amount) || 0), 0) * 100) / 100;
         const validDates = newDraws.map((d) => d.date).filter(Boolean).sort();
         const lastDate = validDates.length > 0 ? validDates[validDates.length - 1] : DateUtils.todayString();
         const updatedOverride = {
@@ -1133,7 +1146,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
           });
         }
 
-        scheduleAutoGistSync(get);
+        scheduleAutoDriveSync(get);
         return;
       }
 
@@ -1150,7 +1163,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
       }
 
       if (options?.updateCashflow !== false) {
-        const totalAmount = newDraws.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+        const totalAmount = Math.round(newDraws.reduce((sum, d) => sum + (Number(d.amount) || 0), 0) * 100) / 100;
         const validDates = newDraws.map((d) => d.date).filter(Boolean).sort();
         const lastDate = validDates.length > 0 ? validDates[validDates.length - 1] : entry.date;
         const updatedEntry: CashEntry = {
@@ -1201,7 +1214,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
         });
       }
 
-      scheduleAutoGistSync(get);
+      scheduleAutoDriveSync(get);
     });
   },
 
@@ -1209,7 +1222,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
     return get().runTransaction('Update Salary Pattern', () => {
       saveStorage(STORAGE_KEYS.salary, salaryPattern);
       set({ salaryPattern });
-      scheduleAutoGistSync(get);
+      scheduleAutoDriveSync(get);
     });
   },
 
@@ -1217,7 +1230,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
     return get().runTransaction('Set Salary Forecast Anchor', () => {
       saveStorage(STORAGE_KEYS.salaryAnchor, salaryAnchorMonth);
       set({ salaryAnchorMonth });
-      scheduleAutoGistSync(get);
+      scheduleAutoDriveSync(get);
     });
   },
 
@@ -1256,7 +1269,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
       });
       saveStorage(STORAGE_KEYS.entries, currentEntries);
       set({ entries: currentEntries });
-      scheduleAutoGistSync(get);
+      scheduleAutoDriveSync(get);
       return added;
     });
   },
@@ -1284,7 +1297,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
       const updated = get().entries.filter((entry) => !removedIds.has(entry.id));
       saveStorage(STORAGE_KEYS.entries, updated);
       set({ entries: updated });
-      scheduleAutoGistSync(get);
+      scheduleAutoDriveSync(get);
       return removedIds.size;
     });
   },
@@ -1298,7 +1311,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
       const updated = [...get().installments, newInst];
       saveStorage(STORAGE_KEYS.installments, updated);
       set({ installments: updated });
-      scheduleAutoGistSync(get);
+      scheduleAutoDriveSync(get);
     });
   },
 
@@ -1320,7 +1333,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
       });
       saveStorage(STORAGE_KEYS.installments, updated);
       set({ installments: updated });
-      scheduleAutoGistSync(get);
+      scheduleAutoDriveSync(get);
     });
   },
 
@@ -1359,7 +1372,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
         archivedEntries: updatedArchived,
         deletedForecasts: updatedDeletedForecasts,
       });
-      scheduleAutoGistSync(get);
+      scheduleAutoDriveSync(get);
     });
   },
 
@@ -1391,7 +1404,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
       saveStorage(STORAGE_KEYS.entries, remaining);
       saveStorage(STORAGE_KEYS.archivedEntries, updatedArchived);
       set({ entries: remaining, archivedEntries: updatedArchived });
-      scheduleAutoGistSync(get, true);
+      scheduleAutoDriveSync(get, true);
       return toArchive.length;
     });
   },
@@ -1407,7 +1420,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
       saveStorage(STORAGE_KEYS.entries, updatedEntries);
       saveStorage(STORAGE_KEYS.archivedEntries, updatedArchived);
       set({ entries: updatedEntries, archivedEntries: updatedArchived });
-      scheduleAutoGistSync(get, true);
+      scheduleAutoDriveSync(get, true);
     });
   },
 
@@ -1497,7 +1510,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
           installments: updatedInstallments,
           ...(overridesChanged ? { creditSettlementOverrides: updatedOverrides } : {}),
         });
-        scheduleAutoGistSync(get);
+        scheduleAutoDriveSync(get);
       }
       return count;
     });
@@ -1508,7 +1521,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
       const updated = get().deletedForecasts.filter((fId) => fId !== id);
       saveStorage(STORAGE_KEYS.deletedForecasts, updated);
       set({ deletedForecasts: updated });
-      scheduleAutoGistSync(get);
+      scheduleAutoDriveSync(get);
     });
   },
 
@@ -1516,7 +1529,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
     return get().runTransaction('Clear All Deleted Forecasts', () => {
       saveStorage(STORAGE_KEYS.deletedForecasts, []);
       set({ deletedForecasts: [] });
-      scheduleAutoGistSync(get);
+      scheduleAutoDriveSync(get);
     });
   },
 
@@ -1530,7 +1543,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
       if (modifiedCount > 0) {
         saveStorage(STORAGE_KEYS.entries, updatedEntries);
         set({ entries: updatedEntries });
-        scheduleAutoGistSync(get);
+        scheduleAutoDriveSync(get);
       }
       return { seriesId, modifiedCount };
     });
@@ -1542,7 +1555,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
       if (modifiedCount > 0) {
         saveStorage(STORAGE_KEYS.entries, updatedEntries);
         set({ entries: updatedEntries });
-        scheduleAutoGistSync(get);
+        scheduleAutoDriveSync(get);
       }
       return modifiedCount;
     });
@@ -1569,7 +1582,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
       if (modifiedEntriesCount > 0) {
         saveStorage(STORAGE_KEYS.entries, currentEntries);
         set({ entries: currentEntries });
-        scheduleAutoGistSync(get);
+        scheduleAutoDriveSync(get);
       }
 
       return { linkedGroupsCount, modifiedEntriesCount };

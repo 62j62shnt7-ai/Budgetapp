@@ -1,14 +1,7 @@
 import React, { useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
-import {
-  computeSpreadPct,
-  applySpread,
-  fetchLiveCurrencyRates,
-  fetchLiveGoldSpotUsd,
-  egpPerUnit,
-  TROY_OUNCE_GRAMS,
-} from '../../engine/currency';
+import { autoFetchLatestRates, computeSpreadPct } from '../../engine/currency';
 import { formatFullDateTime } from '../../engine/dateUtils';
 import type { RatesData } from '../../types';
 import { Edit2, Check, X, RefreshCw } from 'lucide-react';
@@ -55,77 +48,28 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
   const handleFetchAllLiveRates = async () => {
     setIsFetching(true);
     try {
-      const [liveRatesResult, goldSpotResult] = await Promise.allSettled([
-        fetchLiveCurrencyRates(),
-        fetchLiveGoldSpotUsd(),
-      ]);
-
-      if (liveRatesResult.status === 'rejected' && goldSpotResult.status === 'rejected') {
-        throw new Error('Both currency and gold rate services failed.');
-      }
-
       const currentRates = useBudgetStore.getState().rates;
+      const updated = await autoFetchLatestRates(currentRates, 0);
+
+      if (!updated) {
+        throw new Error('Rate service returned no updates or failed.');
+      }
+
       const changes: string[] = [];
-      const now = new Date().toISOString();
-      let updatedCurrencies = currentRates.currencies;
-      let currenciesFetched = false;
+      (updated.currencies || []).forEach((c) => {
+        const prev = (currentRates.currencies || []).find((old) => old.name === c.name);
+        if (prev && (prev.sell !== c.sell || prev.buy !== c.buy)) {
+          changes.push(`• ${c.name}: ${prev.sell.toFixed(2)}/${prev.buy.toFixed(2)} → ${c.sell.toFixed(2)}/${c.buy.toFixed(2)}`);
+        }
+      });
+      (updated.gold || []).forEach((g) => {
+        const prev = (currentRates.gold || []).find((old) => old.name === g.name);
+        if (prev && (prev.sell !== g.sell || prev.buy !== g.buy)) {
+          changes.push(`• ${g.name}: ${prev.sell}/${prev.buy} → ${g.sell}/${g.buy}`);
+        }
+      });
 
-      if (liveRatesResult.status === 'fulfilled') {
-        const liveRates = liveRatesResult.value;
-        updatedCurrencies = currentRates.currencies.map((currency) => {
-          const mid = egpPerUnit(liveRates, currency.name.toUpperCase());
-          if (mid === null) return currency;
-          const spreadPct = computeSpreadPct(currency.sell, currency.buy);
-          const next = applySpread(mid, spreadPct);
-          if (next.sell !== currency.sell || next.buy !== currency.buy) {
-            changes.push(`• ${currency.name}: ${currency.sell.toFixed(2)}/${currency.buy.toFixed(2)} → ${next.sell.toFixed(2)}/${next.buy.toFixed(2)}`);
-          }
-          return { ...currency, ...next };
-        });
-        currenciesFetched = true;
-      }
-
-      let updatedGold = currentRates.gold;
-      let goldFetched = false;
-
-      if (goldSpotResult.status === 'fulfilled' && liveRatesResult.status === 'fulfilled') {
-        const xauUsd = goldSpotResult.value;
-        const liveRates = liveRatesResult.value;
-        const egpPerOz = xauUsd * liveRates.EGP;
-        const egpPerGram24k = egpPerOz / TROY_OUNCE_GRAMS;
-
-        updatedGold = currentRates.gold.map((item) => {
-          let mid: number | null = null;
-          const match = item.name.match(/(\d+)/);
-          if (match) {
-            const karat = Number(match[1]);
-            mid = egpPerGram24k * (karat / 24);
-          } else if (item.name.toLowerCase().includes('coin') || item.name.toLowerCase().includes('pound')) {
-            mid = egpPerGram24k * (21 / 24) * 8;
-          }
-
-          if (mid === null) return item;
-
-          const spreadPct = computeSpreadPct(item.sell, item.buy);
-          const next = applySpread(mid, spreadPct);
-          next.sell = Math.round(next.sell * 100) / 100;
-          next.buy = Math.round(next.buy * 100) / 100;
-          if (next.sell !== item.sell || next.buy !== item.buy) {
-            changes.push(`• ${item.name}: ${item.sell}/${item.buy} → ${next.sell}/${next.buy}`);
-          }
-          return { ...item, ...next };
-        });
-        goldFetched = true;
-      }
-
-      updateRates({
-        ...currentRates,
-        currencies: updatedCurrencies,
-        gold: updatedGold,
-        currenciesLastFetched: currenciesFetched ? now : (currentRates.currenciesLastFetched || currentRates.lastFetched),
-        goldLastFetched: goldFetched ? now : (currentRates.goldLastFetched || currentRates.lastFetched),
-        lastFetched: now,
-      }, true);
+      updateRates(updated, true);
 
       if (changes.length > 0) {
         alert(`Updated Live Market Rates:\n\n${changes.join("\n")}`);

@@ -347,14 +347,7 @@ export interface BudgetFinancialSnapshot {
   entryActualDates: Record<string, string>;
   creditDues: Record<string, Record<string, number>>;
   creditDueMonths: Record<string, string[]>;
-  creditSettlementOverrides: Record<string, {
-    amount?: number;
-    date?: string;
-    note?: string;
-    tag?: string;
-    account?: string;
-    draws?: EntryDraw[];
-  }>;
+  creditSettlementOverrides: Record<string, CreditSettlementOverride>;
   salaryAnchorMonth: string;
 }
 

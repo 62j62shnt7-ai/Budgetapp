@@ -30,7 +30,7 @@ import {
   JobForecastModal,
 } from './components/Modals/JobModals';
 import { RateModal } from './components/Modals/RateModal';
-import { GistSyncModal } from './components/Modals/GistSyncModal';
+import { DriveSyncModal } from './components/Modals/DriveSyncModal';
 import { DataToolsModal } from './components/Modals/DataToolsModal';
 import { DeductAccountModal } from './components/Modals/DeductAccountModal';
 import { AccountTransferModal } from './components/Modals/AccountTransferModal';
@@ -43,7 +43,7 @@ import {
   getStoredDriveAutoSync,
   downloadBudgetFromDrive,
 } from './services/googleDriveClient';
-import { loadStorageAsync, saveStorage } from './utils/storageAdapter';
+import { loadStorageAsync, saveStorage, onStorageChange } from './utils/storageAdapter';
 import type { CashEntry, JobItem, Installment } from './types';
 
 export const App: React.FC = () => {
@@ -53,12 +53,7 @@ export const App: React.FC = () => {
     sidebarCollapsed, 
     toggleSidebar, 
     closeMobileSidebar, 
-    gistToken, 
-    gistAutoSync, 
-    setGistConfig, 
     updateRates,
-    gistConflict,
-    resolveGistConflict
   } = useBudgetStore(
     useShallow((state) => ({
       activeTab: state.activeTab,
@@ -66,12 +61,7 @@ export const App: React.FC = () => {
       sidebarCollapsed: state.sidebarCollapsed,
       toggleSidebar: state.toggleSidebar,
       closeMobileSidebar: state.closeMobileSidebar,
-      gistToken: state.gistToken,
-      gistAutoSync: state.gistAutoSync,
-      setGistConfig: state.setGistConfig,
       updateRates: state.updateRates,
-      gistConflict: state.gistConflict,
-      resolveGistConflict: state.resolveGistConflict,
     }))
   );
 
@@ -108,7 +98,7 @@ export const App: React.FC = () => {
   const [rateModalType, setRateModalType] = useState<'currency' | 'gold'>('currency');
 
   // Sync & Tools
-  const [gistSyncOpen, setGistSyncOpen] = useState(false);
+  const [driveSyncOpen, setDriveSyncOpen] = useState(false);
   const [dataToolsOpen, setDataToolsOpen] = useState(false);
 
   // Deduct prompt modal
@@ -141,8 +131,8 @@ export const App: React.FC = () => {
     void useBudgetStore.getState().initStorage();
   }, []);
 
-  // Multi-tab sync coordination. Only real user data counts as a conflict —
-  // timestamp/bookkeeping keys (rate fetches, sync stamps, UI prefs) are ignored.
+  // Multi-tab sync coordination using BroadcastChannel via storageAdapter.
+  // Only real user data counts as a conflict — timestamp/bookkeeping keys are ignored.
   useEffect(() => {
     const dataKeys = new Set<string>([
       STORAGE_KEYS.entries,
@@ -162,13 +152,12 @@ export const App: React.FC = () => {
       STORAGE_KEYS.salary,
       STORAGE_KEYS.salaryAnchor,
     ]);
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key && dataKeys.has(e.key)) {
+    const unsubscribe = onStorageChange((key: string) => {
+      if (key && dataKeys.has(key)) {
         setTabConflictDetected(true);
       }
-    };
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+    });
+    return unsubscribe;
   }, []);
 
 
@@ -181,19 +170,7 @@ export const App: React.FC = () => {
     });
   }, []);
 
-  useEffect(() => {
-    const gistId = new URLSearchParams(window.location.hash.slice(1)).get('gist')?.trim();
-    if (!gistId) return;
-    window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
-    const currentGistId = useBudgetStore.getState().gistId;
-    if (gistId === currentGistId) return;
-    const shouldSwitch = window.confirm(
-      `Switch GitHub Gist synchronization target to:\n\n${gistId}\n\nWARNING: Linking to a different Gist will replace your current local data on the next sync pull.\nYour current local data will be preserved in Undo history before any changes are applied.\n\nDo you want to proceed?`
-    );
-    if (shouldSwitch) {
-      setGistConfig(gistToken, gistId, gistAutoSync);
-    }
-  }, [gistAutoSync, gistToken, setGistConfig]);
+
 
   // Auto-fetch live currency & gold rates and continuous multi-device sync
   useEffect(() => {
@@ -252,7 +229,6 @@ export const App: React.FC = () => {
                 if (res.modifiedTime) {
                   useBudgetStore.setState({ lastDriveSyncTime: res.modifiedTime });
                   saveStorage(STORAGE_KEYS.lastDriveSync, res.modifiedTime);
-                  saveStorage(STORAGE_KEYS.lastGistSync, res.modifiedTime);
                 }
               }
               state.setDriveSyncStatus('synced');
@@ -521,66 +497,13 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {gistConflict && (
-        <div style={{
-          background: 'var(--red, #ef4444)',
-          color: '#fff',
-          padding: '10px 16px',
-          textAlign: 'center',
-          fontSize: '13px',
-          fontWeight: 600,
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '10px',
-          zIndex: 9999,
-          position: 'sticky',
-          top: tabConflictDetected ? '38px' : 0,
-        }}>
-          <span>⚠️ Cloud Conflict: Cloud backup has newer changes from another device ({gistConflict.remoteTime?.slice(0, 16).replace('T', ' ')}).</span>
-          <button
-            type="button"
-            style={{
-              background: '#fff',
-              color: '#000',
-              border: 'none',
-              borderRadius: '4px',
-              padding: '4px 10px',
-              fontSize: '12px',
-              cursor: 'pointer',
-              fontWeight: 600,
-            }}
-            onClick={() => void resolveGistConflict('local')}
-          >
-            Keep This Device (Overwrite Cloud)
-          </button>
-          <button
-            type="button"
-            style={{
-              background: '#000',
-              color: '#fff',
-              border: '1px solid rgba(255,255,255,0.4)',
-              borderRadius: '4px',
-              padding: '4px 10px',
-              fontSize: '12px',
-              cursor: 'pointer',
-              fontWeight: 600,
-            }}
-            onClick={() => void resolveGistConflict('remote')}
-          >
-            Restore Cloud Copy
-          </button>
-        </div>
-      )}
-
       <Sidebar />
       <main className="app-shell has-bottom-nav">
         <Topbar
           onOpenEntryModal={handleOpenEntryModal}
           onOpenLoanModal={() => setLoanModalOpen(true)}
           onOpenDataTools={() => setDataToolsOpen(true)}
-          onOpenGistSync={() => setGistSyncOpen(true)}
+          onOpenDriveSync={() => setDriveSyncOpen(true)}
         />
         {renderActiveView()}
       </main>
@@ -608,7 +531,7 @@ export const App: React.FC = () => {
         onOpenEntryModal={handleOpenEntryModal}
         onOpenLoanModal={() => setLoanModalOpen(true)}
         onOpenDataTools={() => setDataToolsOpen(true)}
-        onOpenGistSync={() => setGistSyncOpen(true)}
+        onOpenDriveSync={() => setDriveSyncOpen(true)}
         updateStatus={updateStatus}
       />
 
@@ -675,9 +598,9 @@ export const App: React.FC = () => {
         onClose={() => setRateModalOpen(false)}
       />
 
-      <GistSyncModal
-        isOpen={gistSyncOpen}
-        onClose={() => setGistSyncOpen(false)}
+      <DriveSyncModal
+        isOpen={driveSyncOpen}
+        onClose={() => setDriveSyncOpen(false)}
       />
 
       <DataToolsModal

@@ -10,7 +10,7 @@ import {
   STORAGE_KEYS,
   loadStorage,
   saveStorage,
-  scheduleAutoGistSync,
+  scheduleAutoDriveSync,
   setSuppressDirtyMarking,
 } from './common';
 import type { SliceCreator, RatesSlice } from './types';
@@ -75,7 +75,7 @@ export const createRatesSlice: SliceCreator<RatesSlice> = (set, get) => ({
       } else {
         set({ rates: ratesToSave });
       }
-      scheduleAutoGistSync(get, syncImmediately, { rateRefresh: isMachineRateRefresh });
+      scheduleAutoDriveSync(get, syncImmediately, { rateRefresh: isMachineRateRefresh });
     } finally {
       if (isMachineRateRefresh) setSuppressDirtyMarking(false);
     }
@@ -94,7 +94,7 @@ export const createRatesSlice: SliceCreator<RatesSlice> = (set, get) => ({
       const updated = [...get().storageAssets, newAsset];
       saveStorage(STORAGE_KEYS.storage, updated);
       set({ storageAssets: updated });
-      scheduleAutoGistSync(get);
+      scheduleAutoDriveSync(get);
     });
   },
 
@@ -114,7 +114,7 @@ export const createRatesSlice: SliceCreator<RatesSlice> = (set, get) => ({
       });
       saveStorage(STORAGE_KEYS.storage, updated);
       set({ storageAssets: updated });
-      scheduleAutoGistSync(get);
+      scheduleAutoDriveSync(get);
     });
   },
 
@@ -162,7 +162,7 @@ export const createRatesSlice: SliceCreator<RatesSlice> = (set, get) => ({
         ...(irqJobsUpdated ? { irqJobs: updatedIrq } : {}),
         ...(partTimeJobsUpdated ? { partTimeJobs: updatedPartTime } : {}),
       });
-      scheduleAutoGistSync(get);
+      scheduleAutoDriveSync(get);
     });
   },
 
@@ -199,7 +199,7 @@ export const createRatesSlice: SliceCreator<RatesSlice> = (set, get) => ({
 
       saveStorage(STORAGE_KEYS.storage, updated);
       set({ storageAssets: updated });
-      scheduleAutoGistSync(get);
+      scheduleAutoDriveSync(get);
       return true;
     });
   },
@@ -255,7 +255,7 @@ export const createRatesSlice: SliceCreator<RatesSlice> = (set, get) => ({
       });
 
       set({ storageAssets: updatedAssets, accounts });
-      scheduleAutoGistSync(get);
+      scheduleAutoDriveSync(get);
       return entryId;
     });
   },

@@ -11,6 +11,7 @@ import {
 } from '../../engine/creditCards';
 import { buildInstallmentEntries } from '../../engine/salaryAndInstallments';
 import { isLoanInflow } from '../../engine/forecast';
+import { getEntryTags } from '../../engine/tags';
 import type { CashEntry } from '../../types';
 import { Lock, Unlock, Trash2, RotateCcw } from 'lucide-react';
 import { HistorySummaryTab } from './HistorySummaryTab';
@@ -22,6 +23,7 @@ import {
   buildEntryClearOptions,
   hasEntryClearAffectedParties,
 } from '../../utils/affectedRecords';
+import { loadStorageSync, saveStorage } from '../../utils/storageAdapter';
 
 interface HistoryViewProps {
   onEditEntry?: (entry: CashEntry) => void;
@@ -86,7 +88,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
 
   const [activeHistoryTab, setActiveHistoryTab] = useState<'summary' | 'transactions'>(initialTab);
   const [isAdminUnlocked, setIsAdminUnlocked] = useState<boolean>(() =>
-    localStorage.getItem('budget-control-history-admin-unlocked') === 'true'
+    loadStorageSync<boolean>('budget-control-history-admin-unlocked', false)
   );
   const [addingTagEntryId, setAddingTagEntryId] = useState<string | null>(null);
   const [newTagInput, setNewTagInput] = useState<string>('');
@@ -183,27 +185,27 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
 
   // Analytics UI state
   const [analyticsCollapsed, setAnalyticsCollapsed] = useState<boolean>(() =>
-    localStorage.getItem('budget-control-history-analytics-collapsed') === 'true'
+    loadStorageSync<boolean>('budget-control-history-analytics-collapsed', false)
   );
   const [groupBy, setGroupBy] = useState<'category' | 'tag'>(() =>
-    localStorage.getItem('budget-control-history-analytics-grouping') === 'tag' ? 'tag' : 'category'
+    loadStorageSync<string>('budget-control-history-analytics-grouping', 'category') === 'tag' ? 'tag' : 'category'
   );
   const [viewMode, setViewMode] = useState<'chart' | 'table' | 'both'>(() => {
-    const saved = localStorage.getItem('budget-control-history-analytics-view');
+    const saved = loadStorageSync<string>('budget-control-history-analytics-view', 'chart');
     return saved === 'table' || saved === 'both' ? saved : 'chart';
   });
 
   useEffect(() => {
-    localStorage.setItem('budget-control-history-admin-unlocked', String(isAdminUnlocked));
+    saveStorage('budget-control-history-admin-unlocked', isAdminUnlocked);
   }, [isAdminUnlocked]);
   useEffect(() => {
-    localStorage.setItem('budget-control-history-analytics-collapsed', String(analyticsCollapsed));
+    saveStorage('budget-control-history-analytics-collapsed', analyticsCollapsed);
   }, [analyticsCollapsed]);
   useEffect(() => {
-    localStorage.setItem('budget-control-history-analytics-grouping', groupBy);
+    saveStorage('budget-control-history-analytics-grouping', groupBy);
   }, [groupBy]);
   useEffect(() => {
-    localStorage.setItem('budget-control-history-analytics-view', viewMode);
+    saveStorage('budget-control-history-analytics-view', viewMode);
   }, [viewMode]);
 
   const handleResetFilters = () => {
@@ -394,48 +396,6 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
   const totalLifetimeCredit = monthlySummaryRows.reduce((sum, r) => sum + (r.creditSettled || 0), 0);
   const lifetimeNet = totalLifetimeIncome - (totalLifetimeExpenses + totalLifetimeCredit);
   const lifetimeSavingsRate = totalLifetimeIncome > 0 ? Math.round((lifetimeNet / totalLifetimeIncome) * 100) : 0;
-
-  // Filter options for Individual Validations (supports multiple comma-separated tags)
-  const getEntryTags = (entry: CashEntry): string[] => {
-    const tags: string[] = [];
-    const pushTag = (t: string) => {
-      const trimmed = t.trim();
-      if (!trimmed) return;
-      const lower = trimmed.toLowerCase();
-      // Upgrade legacy generic credit tags
-      const normalized = (lower === 'credit' || lower === 'credit card' || lower === 'card spend')
-        ? (isCreditSettlementRow(entry) ? 'Credit Settlement' : isCreditCardExpense(entry) ? 'Credit Swipes' : trimmed)
-        : trimmed;
-      if (!tags.some((existing) => existing.toLowerCase() === normalized.toLowerCase())) {
-        tags.push(normalized);
-      }
-    };
-
-    if (entry.tag && entry.tag.trim()) {
-      entry.tag.split(',').forEach(pushTag);
-    }
-    if (entry.subcategory && entry.subcategory.trim()) {
-      entry.subcategory.split(',').forEach(pushTag);
-    }
-    (entry.draws || []).forEach((draw) => {
-      if (draw.tag && draw.tag.trim()) {
-        draw.tag.split(',').forEach(pushTag);
-      }
-    });
-
-    // Auto-tag credit swipes and settlements so they always have their dedicated tag
-    if (isCreditSettlementRow(entry)) {
-      if (!tags.some((t) => t.toLowerCase() === 'credit settlement')) {
-        tags.push('Credit Settlement');
-      }
-    } else if (isCreditCardExpense(entry)) {
-      if (!tags.some((t) => t.toLowerCase() === 'credit swipes')) {
-        tags.push('Credit Swipes');
-      }
-    }
-
-    return tags;
-  };
 
   const allAccounts = Array.from(new Set(actualEntries.map((e) => e.account || 'cash'))).sort();
   const allTags = Array.from(new Set(actualEntries.flatMap(getEntryTags))).sort((a, b) => a.localeCompare(b));
@@ -1138,10 +1098,10 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                       let varianceText = '—';
                       let varianceClass = 'neutral';
                       if (plannedVal > 0) {
-                        const roundedPlanned = Math.round(plannedVal);
-                        const roundedActual = Math.round(actual);
+                        const roundedPlanned = Math.round(plannedVal * 100) / 100;
+                        const roundedActual = Math.round(actual * 100) / 100;
                         if (entry.type === 'expense') {
-                          const diff = roundedPlanned - roundedActual;
+                          const diff = Math.round((roundedPlanned - roundedActual) * 100) / 100;
                           if (diff > 0) {
                             varianceText = `+${formatMoney(diff)} under`;
                             varianceClass = 'favorable';

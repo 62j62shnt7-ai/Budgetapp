@@ -20,7 +20,7 @@ interface TopbarProps {
   onOpenEntryModal: (type: 'expense' | 'income') => void;
   onOpenLoanModal: () => void;
   onOpenDataTools: () => void;
-  onOpenGistSync: () => void;
+  onOpenDriveSync: () => void;
 }
 
 const tabTitles: Record<ViewTab, string> = {
@@ -38,7 +38,7 @@ export const Topbar: React.FC<TopbarProps> = ({
   onOpenEntryModal,
   onOpenLoanModal,
   onOpenDataTools,
-  onOpenGistSync,
+  onOpenDriveSync,
 }) => {
   const {
     theme,
@@ -233,7 +233,7 @@ export const Topbar: React.FC<TopbarProps> = ({
               id="gistSyncBtn"
               type="button"
               title="Configure Cloud Sync"
-              onClick={onOpenGistSync}
+              onClick={onOpenDriveSync}
             >
               <Cloud size={15} />
               <span className="topbar-btn-label">Sync</span>

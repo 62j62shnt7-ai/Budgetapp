@@ -1,5 +1,6 @@
 import React, { Component, type ReactNode } from 'react';
 import { DateUtils } from '../../engine/dateUtils';
+import { exportAllFromStorage, clearAllStorage } from '../../utils/storageAdapter';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -30,23 +31,14 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     this.setState({ errorInfo });
   }
 
-  handleExportEmergencyBackup = () => {
+  handleExportEmergencyBackup = async () => {
     try {
-      // The app persists each slice under its own `budget-control-*` key, so dump
-      // everything this app owns instead of looking for a single state blob.
-      const rawLocalStorage: Record<string, string> = {};
-      for (let i = 0; i < localStorage.length; i += 1) {
-        const key = localStorage.key(i);
-        if (!key) continue;
-        if (key.startsWith('budget-control-') || key.includes('gist')) {
-          rawLocalStorage[key] = localStorage.getItem(key) ?? '';
-        }
-      }
+      const storageDump = await exportAllFromStorage();
       const backupData = {
         exportedAt: new Date().toISOString(),
-        version: '2.1-emergency',
+        version: '2.2-emergency-idb',
         error: this.state.error ? this.state.error.toString() : null,
-        rawLocalStorage,
+        storageDump,
       };
 
       const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
@@ -59,15 +51,15 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (e) {
-      alert(`Emergency export failed: ${(e as Error).message}. You can manually copy localStorage in DevTools.`);
+      alert(`Emergency export failed: ${(e as Error).message}.`);
     }
   };
 
-  handleResetStorage = () => {
+  handleResetStorage = async () => {
     if (window.confirm('Are you sure you want to reset local data? If you have not exported a backup yet, please click "Export Emergency Backup" first!')) {
       try {
-        localStorage.clear();
-        sessionStorage.clear();
+        await clearAllStorage();
+        if (typeof sessionStorage !== 'undefined') sessionStorage.clear();
         window.location.reload();
       } catch {
         window.location.reload();

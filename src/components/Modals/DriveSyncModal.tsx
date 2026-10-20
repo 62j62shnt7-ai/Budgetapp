@@ -33,7 +33,7 @@ import {
   type GoogleDriveStorageQuota,
 } from '../../services/googleDriveClient';
 
-interface GistSyncModalProps {
+interface DriveSyncModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
@@ -46,7 +46,7 @@ function formatBytes(bytes?: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
-export const GistSyncModal: React.FC<GistSyncModalProps> = ({ isOpen, onClose }) => {
+export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose }) => {
   const {
     exportJSON,
     importJSON,

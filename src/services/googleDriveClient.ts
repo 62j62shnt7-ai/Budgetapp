@@ -8,6 +8,12 @@
  * Restricts access strictly to files created by Budget Control.
  */
 
+import {
+  saveStorage,
+  loadStorageSync,
+  removeStorage,
+} from '../utils/storageAdapter';
+
 const GDRIVE_CLIENT_ID_KEY = 'budget-control-gdrive-client-id';
 const GDRIVE_TOKEN_KEY = 'budget-control-gdrive-token';
 const GDRIVE_TOKEN_EXPIRY_KEY = 'budget-control-gdrive-token-expiry';
@@ -33,26 +39,35 @@ export function getStoredDriveClientId(): string {
   const envId = typeof import.meta !== 'undefined' && import.meta.env?.VITE_GOOGLE_CLIENT_ID
     ? String(import.meta.env.VITE_GOOGLE_CLIENT_ID).trim()
     : '';
-  const storedId = typeof localStorage !== 'undefined'
-    ? localStorage.getItem(GDRIVE_CLIENT_ID_KEY) || ''
-    : '';
+  let storedId = loadStorageSync<string>(GDRIVE_CLIENT_ID_KEY, '');
+  if (!storedId && typeof localStorage !== 'undefined') {
+    storedId = localStorage.getItem(GDRIVE_CLIENT_ID_KEY) || '';
+  }
   return storedId || envId || DEFAULT_GOOGLE_CLIENT_ID;
 }
 
 export function saveStoredDriveClientId(clientId: string): void {
-  if (typeof localStorage === 'undefined') return;
   const trimmed = clientId.trim();
   if (trimmed) {
-    localStorage.setItem(GDRIVE_CLIENT_ID_KEY, trimmed);
+    saveStorage(GDRIVE_CLIENT_ID_KEY, trimmed);
+    if (typeof localStorage !== 'undefined') {
+      try { localStorage.setItem(GDRIVE_CLIENT_ID_KEY, trimmed); } catch {}
+    }
   } else {
-    localStorage.removeItem(GDRIVE_CLIENT_ID_KEY);
+    void removeStorage(GDRIVE_CLIENT_ID_KEY);
+    if (typeof localStorage !== 'undefined') {
+      try { localStorage.removeItem(GDRIVE_CLIENT_ID_KEY); } catch {}
+    }
   }
 }
 
 export function getStoredDriveToken(): string | null {
-  if (typeof localStorage === 'undefined') return null;
-  const token = localStorage.getItem(GDRIVE_TOKEN_KEY);
-  const expiry = Number(localStorage.getItem(GDRIVE_TOKEN_EXPIRY_KEY) || '0');
+  let token = loadStorageSync<string | null>(GDRIVE_TOKEN_KEY, null);
+  let expiry = Number(loadStorageSync<string | number>(GDRIVE_TOKEN_EXPIRY_KEY, 0));
+  if ((!token || !expiry) && typeof localStorage !== 'undefined') {
+    token = token || localStorage.getItem(GDRIVE_TOKEN_KEY);
+    expiry = expiry || Number(localStorage.getItem(GDRIVE_TOKEN_EXPIRY_KEY) || '0');
+  }
   if (!token || Date.now() >= expiry) {
     return null;
   }
@@ -60,74 +75,112 @@ export function getStoredDriveToken(): string | null {
 }
 
 export function saveStoredDriveToken(token: string, expiresInSeconds: number): void {
-  if (typeof localStorage === 'undefined') return;
-  localStorage.setItem(GDRIVE_TOKEN_KEY, token);
-  // Give 60 seconds buffer before expiration
   const expiry = Date.now() + Math.max(0, (expiresInSeconds - 60) * 1000);
-  localStorage.setItem(GDRIVE_TOKEN_EXPIRY_KEY, String(expiry));
-}
-
-export function clearStoredDriveToken(): void {
-  if (typeof localStorage === 'undefined') return;
-  localStorage.removeItem(GDRIVE_TOKEN_KEY);
-  localStorage.removeItem(GDRIVE_TOKEN_EXPIRY_KEY);
-  localStorage.removeItem(GDRIVE_USER_KEY);
-}
-
-export function getStoredDriveUser(): GoogleDriveUser | null {
-  if (typeof localStorage === 'undefined') return null;
-  const raw = localStorage.getItem(GDRIVE_USER_KEY);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as GoogleDriveUser;
-  } catch {
-    return null;
+  saveStorage(GDRIVE_TOKEN_KEY, token);
+  saveStorage(GDRIVE_TOKEN_EXPIRY_KEY, String(expiry));
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.setItem(GDRIVE_TOKEN_KEY, token);
+      localStorage.setItem(GDRIVE_TOKEN_EXPIRY_KEY, String(expiry));
+    } catch {}
   }
 }
 
+export function clearStoredDriveToken(): void {
+  void removeStorage(GDRIVE_TOKEN_KEY);
+  void removeStorage(GDRIVE_TOKEN_EXPIRY_KEY);
+  void removeStorage(GDRIVE_USER_KEY);
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.removeItem(GDRIVE_TOKEN_KEY);
+      localStorage.removeItem(GDRIVE_TOKEN_EXPIRY_KEY);
+      localStorage.removeItem(GDRIVE_USER_KEY);
+    } catch {}
+  }
+}
+
+export function getStoredDriveUser(): GoogleDriveUser | null {
+  const user = loadStorageSync<GoogleDriveUser | null>(GDRIVE_USER_KEY, null);
+  if (user) return user;
+  if (typeof localStorage !== 'undefined') {
+    const raw = localStorage.getItem(GDRIVE_USER_KEY);
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as GoogleDriveUser;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 export function saveStoredDriveUser(user: GoogleDriveUser | null): void {
-  if (typeof localStorage === 'undefined') return;
   if (!user) {
-    localStorage.removeItem(GDRIVE_USER_KEY);
+    void removeStorage(GDRIVE_USER_KEY);
+    if (typeof localStorage !== 'undefined') {
+      try { localStorage.removeItem(GDRIVE_USER_KEY); } catch {}
+    }
   } else {
-    localStorage.setItem(GDRIVE_USER_KEY, JSON.stringify(user));
+    saveStorage(GDRIVE_USER_KEY, user);
+    if (typeof localStorage !== 'undefined') {
+      try { localStorage.setItem(GDRIVE_USER_KEY, JSON.stringify(user)); } catch {}
+    }
   }
 }
 
 export function getStoredDriveAutoSync(): boolean {
-  if (typeof localStorage === 'undefined') return true;
-  const val = localStorage.getItem(GDRIVE_AUTO_SYNC_KEY);
-  return val === null ? true : val === 'true';
+  const val = loadStorageSync<boolean | null>(GDRIVE_AUTO_SYNC_KEY, null);
+  if (val !== null && val !== undefined) return val;
+  if (typeof localStorage !== 'undefined') {
+    const raw = localStorage.getItem(GDRIVE_AUTO_SYNC_KEY);
+    return raw === null ? true : raw === 'true';
+  }
+  return true;
 }
 
 export function saveStoredDriveAutoSync(enabled: boolean): void {
-  if (typeof localStorage === 'undefined') return;
-  localStorage.setItem(GDRIVE_AUTO_SYNC_KEY, String(enabled));
+  saveStorage(GDRIVE_AUTO_SYNC_KEY, enabled);
+  if (typeof localStorage !== 'undefined') {
+    try { localStorage.setItem(GDRIVE_AUTO_SYNC_KEY, String(enabled)); } catch {}
+  }
 }
 
 const GDRIVE_DAILY_SNAPSHOTS_KEY = 'budget-control-gdrive-daily-snapshots';
 const GDRIVE_BACKUP_RETENTION_KEY = 'budget-control-gdrive-backup-retention';
 
 export function getStoredDriveDailySnapshotsEnabled(): boolean {
-  if (typeof localStorage === 'undefined') return true;
-  const val = localStorage.getItem(GDRIVE_DAILY_SNAPSHOTS_KEY);
-  return val === null ? true : val === 'true';
+  const val = loadStorageSync<boolean | null>(GDRIVE_DAILY_SNAPSHOTS_KEY, null);
+  if (val !== null && val !== undefined) return val;
+  if (typeof localStorage !== 'undefined') {
+    const raw = localStorage.getItem(GDRIVE_DAILY_SNAPSHOTS_KEY);
+    return raw === null ? true : raw === 'true';
+  }
+  return true;
 }
 
 export function saveStoredDriveDailySnapshotsEnabled(enabled: boolean): void {
-  if (typeof localStorage === 'undefined') return;
-  localStorage.setItem(GDRIVE_DAILY_SNAPSHOTS_KEY, String(enabled));
+  saveStorage(GDRIVE_DAILY_SNAPSHOTS_KEY, enabled);
+  if (typeof localStorage !== 'undefined') {
+    try { localStorage.setItem(GDRIVE_DAILY_SNAPSHOTS_KEY, String(enabled)); } catch {}
+  }
 }
 
 export function getStoredDriveBackupRetentionLimit(): number {
-  if (typeof localStorage === 'undefined') return 7;
-  const val = Number(localStorage.getItem(GDRIVE_BACKUP_RETENTION_KEY));
-  return val > 0 ? val : 7;
+  const val = Number(loadStorageSync<number>(GDRIVE_BACKUP_RETENTION_KEY, 0));
+  if (val > 0) return val;
+  if (typeof localStorage !== 'undefined') {
+    const stored = Number(localStorage.getItem(GDRIVE_BACKUP_RETENTION_KEY));
+    return stored > 0 ? stored : 7;
+  }
+  return 7;
 }
 
 export function saveStoredDriveBackupRetentionLimit(limit: number): void {
-  if (typeof localStorage === 'undefined') return;
-  localStorage.setItem(GDRIVE_BACKUP_RETENTION_KEY, String(Math.max(1, limit)));
+  const val = Math.max(1, limit);
+  saveStorage(GDRIVE_BACKUP_RETENTION_KEY, val);
+  if (typeof localStorage !== 'undefined') {
+    try { localStorage.setItem(GDRIVE_BACKUP_RETENTION_KEY, String(val)); } catch {}
+  }
 }
 
 /**
@@ -657,9 +710,10 @@ const EDIT_SNAPSHOT_COOLDOWN_MS = 15 * 60 * 1000; // 15-minute session cooldown
  */
 export async function createEditSnapshotIfNeeded(payload: unknown, budgetFolderId: string): Promise<void> {
   try {
-    const lastTime = typeof localStorage !== 'undefined'
-      ? Number(localStorage.getItem(LAST_EDIT_SNAPSHOT_KEY) || '0')
-      : 0;
+    let lastTime = Number(loadStorageSync<number | string>(LAST_EDIT_SNAPSHOT_KEY, 0));
+    if (!lastTime && typeof localStorage !== 'undefined') {
+      lastTime = Number(localStorage.getItem(LAST_EDIT_SNAPSHOT_KEY) || '0');
+    }
     const now = Date.now();
     if (now - lastTime < EDIT_SNAPSHOT_COOLDOWN_MS) {
       return; // Within edit session cooldown window
@@ -670,8 +724,9 @@ export async function createEditSnapshotIfNeeded(payload: unknown, budgetFolderI
     const fileName = `edit-${dateStr}.json`;
 
     await uploadFileToFolder(editFolderId, fileName, payload, 'Timed edit session snapshot');
+    saveStorage(LAST_EDIT_SNAPSHOT_KEY, String(now));
     if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(LAST_EDIT_SNAPSHOT_KEY, String(now));
+      try { localStorage.setItem(LAST_EDIT_SNAPSHOT_KEY, String(now)); } catch {}
     }
 
     await pruneFolderFiles(editFolderId, MAX_EDIT_SNAPSHOTS_CAP);
