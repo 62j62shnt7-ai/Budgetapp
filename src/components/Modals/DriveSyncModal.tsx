@@ -40,10 +40,10 @@ interface DriveSyncModalProps {
 }
 
 function formatBytes(bytes?: number): string {
-  if (!bytes || bytes === 0) return '0 B';
+  if (!bytes || bytes <= 0 || isNaN(bytes)) return '0 B';
   const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1);
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
@@ -511,23 +511,27 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
               </div>
 
               {/* Google Drive Storage Quota Meter */}
-              {storageQuota?.limit ? (
+              {storageQuota ? (
                 <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--border-color, rgba(255,255,255,0.05))' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '4px' }}>
                     <span style={{ opacity: 0.7 }}>Google Drive Quota</span>
                     <span style={{ fontWeight: 600 }}>
-                      {formatBytes(storageQuota.usage)} / {formatBytes(storageQuota.limit)} ({Math.round(((storageQuota.usage || 0) / (storageQuota.limit || 1)) * 100)}%)
+                      {storageQuota.limit
+                        ? `${formatBytes(storageQuota.usage)} / ${formatBytes(storageQuota.limit)} (${Math.round(((storageQuota.usage || 0) / storageQuota.limit) * 100)}%)`
+                        : `${formatBytes(storageQuota.usage)} / Unlimited`}
                     </span>
                   </div>
-                  <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', overflow: 'hidden' }}>
-                    <div
-                      style={{
-                        width: `${Math.min(100, Math.round(((storageQuota.usage || 0) / (storageQuota.limit || 1)) * 100))}%`,
-                        height: '100%',
-                        background: 'var(--accent, #6366f1)',
-                      }}
-                    />
-                  </div>
+                  {storageQuota.limit ? (
+                    <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', overflow: 'hidden' }}>
+                      <div
+                        style={{
+                          width: `${Math.min(100, Math.round(((storageQuota.usage || 0) / storageQuota.limit) * 100))}%`,
+                          height: '100%',
+                          background: 'var(--accent, #6366f1)',
+                        }}
+                      />
+                    </div>
+                  ) : null}
                   <div style={{ fontSize: '10px', opacity: 0.65, marginTop: '4px', display: 'flex', justifyContent: 'space-between' }}>
                     <span>Total App Storage: ~{formatBytes(totalBudgetBytes)}</span>
                     <span style={{ color: 'var(--green, #22c55e)' }}>✓ Auto-pruned &lt; 1 MB</span>
