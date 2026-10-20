@@ -71,24 +71,30 @@ export const Topbar: React.FC<TopbarProps> = ({
   );
   const updateStatus = useAppUpdateStatus();
   const isConnected = Boolean(driveUser);
+  const isExpired = driveSyncStatus === 'expired';
   const syncLabel = !isConnected
     ? 'Setup'
-    : !driveAutoSync
-      ? 'Manual'
-      : {
-        idle: 'Synced',
-        scheduled: 'Queued',
-        syncing: 'Syncing',
-        synced: 'Synced',
-        error: 'Error',
-      }[driveSyncStatus];
+    : isExpired
+      ? 'Reconnect'
+      : !driveAutoSync
+        ? 'Manual'
+        : {
+          idle: 'Synced',
+          scheduled: 'Queued',
+          syncing: 'Syncing',
+          synced: 'Synced',
+          error: 'Error',
+          expired: 'Reconnect',
+        }[driveSyncStatus];
   const syncPillClass = !isConnected
     ? ''
-    : driveSyncStatus === 'error'
+    : isExpired
       ? 'error'
-      : driveSyncStatus === 'syncing' || driveSyncStatus === 'scheduled'
-        ? 'syncing'
-        : 'synced';
+      : driveSyncStatus === 'error'
+        ? 'error'
+        : driveSyncStatus === 'syncing' || driveSyncStatus === 'scheduled'
+          ? 'syncing'
+          : 'synced';
 
   return (
     <>

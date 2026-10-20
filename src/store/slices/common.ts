@@ -228,11 +228,14 @@ export function scheduleAutoDriveSync(
           saveStorage(STORAGE_KEYS.lastLocalModified, String(now));
         }
       } else {
-        getState().setDriveSyncStatus('error');
+        const isExpired = res.error?.includes('session expired') || res.error?.includes('re-authorize') || res.error?.includes('Not connected');
+        getState().setDriveSyncStatus(isExpired ? 'expired' : 'error');
       }
     } catch (err) {
       console.warn('[scheduleAutoDriveSync] background sync error:', err);
-      getState().setDriveSyncStatus('error');
+      const errMsg = err instanceof Error ? err.message : String(err);
+      const isExpired = errMsg.includes('session expired') || errMsg.includes('re-authorize') || errMsg.includes('Not connected');
+      getState().setDriveSyncStatus(isExpired ? 'expired' : 'error');
     } finally {
       driveSyncInFlight = false;
     }

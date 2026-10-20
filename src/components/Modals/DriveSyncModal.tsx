@@ -9,6 +9,7 @@ import {
   saveStoredDriveDailySnapshotsEnabled,
   getStoredDriveBackupRetentionLimit,
   saveStoredDriveBackupRetentionLimit,
+  isDriveTokenValid,
   pruneOldBackups,
   getOrCreateDailyBackupsFolder,
   signInWithGoogleDrive,
@@ -421,9 +422,22 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '12px', background: 'rgba(34, 197, 94, 0.15)', color: 'var(--green, #22c55e)', fontWeight: 600 }}>
-                    🟢 Connected
-                  </span>
+                  {isDriveTokenValid() ? (
+                    <span style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '12px', background: 'rgba(34, 197, 94, 0.15)', color: 'var(--green, #22c55e)', fontWeight: 600 }}>
+                      🟢 Connected
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      onClick={handleDriveSignIn}
+                      disabled={isLoading}
+                      style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '12px', background: 'rgba(234, 179, 8, 0.15)', color: '#eab308', borderColor: '#eab308', fontWeight: 600, cursor: 'pointer' }}
+                      title="Session expired. Click to re-authorize Google Drive"
+                    >
+                      🟡 Reconnect
+                    </button>
+                  )}
                   <button className="ghost-button" type="button" onClick={handleDriveSignOut} disabled={isLoading} style={{ fontSize: '11px', padding: '4px 8px', color: 'var(--red, #ef4444)' }}>
                     Sign Out
                   </button>

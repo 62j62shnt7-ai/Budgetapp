@@ -65,8 +65,11 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => ({
     set({ driveAutoSync: enabled, gistAutoSync: enabled });
   },
 
-  setDriveSyncStatus: (status: 'idle' | 'scheduled' | 'syncing' | 'synced' | 'error') =>
-    set({ driveSyncStatus: status, gistSyncStatus: status }),
+  setDriveSyncStatus: (status: 'idle' | 'scheduled' | 'syncing' | 'synced' | 'error' | 'expired') =>
+    set({
+      driveSyncStatus: status,
+      gistSyncStatus: status === 'expired' ? 'error' : status,
+    }),
 
   // Deprecated Gist compatibility fields (maintained for test harness / zero-breakage)
   gistToken: '',

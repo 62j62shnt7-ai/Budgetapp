@@ -110,25 +110,31 @@ export const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
   };
 
   const isConnected = Boolean(driveUser);
+  const isExpired = driveSyncStatus === 'expired';
   const syncLabel = !isConnected
     ? 'Setup'
-    : !driveAutoSync
-      ? 'Manual'
-      : {
-        idle: 'Synced',
-        scheduled: 'Queued',
-        syncing: 'Syncing',
-        synced: 'Synced',
-        error: 'Error',
-      }[driveSyncStatus];
+    : isExpired
+      ? 'Reconnect'
+      : !driveAutoSync
+        ? 'Manual'
+        : {
+          idle: 'Synced',
+          scheduled: 'Queued',
+          syncing: 'Syncing',
+          synced: 'Synced',
+          error: 'Error',
+          expired: 'Reconnect',
+        }[driveSyncStatus];
 
   const syncPillClass = !isConnected
     ? ''
-    : driveSyncStatus === 'error'
+    : isExpired
       ? 'error'
-      : driveSyncStatus === 'syncing' || driveSyncStatus === 'scheduled'
-        ? 'syncing'
-        : 'synced';
+      : driveSyncStatus === 'error'
+        ? 'error'
+        : driveSyncStatus === 'syncing' || driveSyncStatus === 'scheduled'
+          ? 'syncing'
+          : 'synced';
 
   const secondaryViews: Array<{ id: ViewTab; label: string; icon: React.ReactNode }> = [
     { id: 'accounts', label: 'Accounts', icon: <Landmark size={18} color="#38bdf8" /> },

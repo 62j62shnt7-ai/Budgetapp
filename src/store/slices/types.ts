@@ -167,13 +167,13 @@ export interface SyncSlice {
   // Google Drive Cloud Sync & Admin
   driveUser: GoogleDriveUser | null;
   driveAutoSync: boolean;
-  driveSyncStatus: 'idle' | 'scheduled' | 'syncing' | 'synced' | 'error';
+  driveSyncStatus: 'idle' | 'scheduled' | 'syncing' | 'synced' | 'error' | 'expired';
   lastDriveSyncTime: string | null;
   lastLocalModified: number;
 
   setDriveUser: (user: GoogleDriveUser | null) => void;
   setDriveAutoSync: (enabled: boolean) => void;
-  setDriveSyncStatus: (status: 'idle' | 'scheduled' | 'syncing' | 'synced' | 'error') => void;
+  setDriveSyncStatus: (status: 'idle' | 'scheduled' | 'syncing' | 'synced' | 'error' | 'expired') => void;
 
   // Legacy compatibility fields (deprecated)
   gistToken: string;

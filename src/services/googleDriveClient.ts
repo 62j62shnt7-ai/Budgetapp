@@ -61,6 +61,92 @@ export function saveStoredDriveClientId(clientId: string): void {
   }
 }
 
+export function isDriveTokenValid(): boolean {
+  return Boolean(getStoredDriveToken());
+}
+
+export function isDriveUserConnected(): boolean {
+  return Boolean(getStoredDriveUser());
+}
+
+export type DriveConnectionState = 'disconnected' | 'connected' | 'expired';
+
+export function getDriveConnectionState(): DriveConnectionState {
+  const user = getStoredDriveUser();
+  if (!user) return 'disconnected';
+  const token = getStoredDriveToken();
+  if (!token) return 'expired';
+  return 'connected';
+}
+
+let silentRefreshPromise: Promise<string | null> | null = null;
+
+/**
+ * Attempt to refresh the Google Drive OAuth token silently in the background
+ * without showing user account selection popups (prompt: '').
+ */
+export async function refreshDriveTokenSilently(): Promise<string | null> {
+  const user = getStoredDriveUser();
+  if (!user) return null;
+
+  const validToken = getStoredDriveToken();
+  if (validToken) return validToken;
+
+  if (silentRefreshPromise) return silentRefreshPromise;
+
+  const clientId = getStoredDriveClientId();
+  if (!clientId || typeof window === 'undefined') return null;
+
+  silentRefreshPromise = (async () => {
+    const loaded = await loadGisScript();
+    if (!loaded) return null;
+
+    return new Promise<string | null>((resolve) => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const google = (window as any).google;
+        if (!google?.accounts?.oauth2) {
+          resolve(null);
+          return;
+        }
+
+        const client = google.accounts.oauth2.initTokenClient({
+          client_id: clientId,
+          scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
+          hint: user.email,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          callback: (resp: any) => {
+            if (resp.error || !resp.access_token) {
+              console.warn('[googleDriveClient] Silent token refresh failed:', resp.error);
+              resolve(null);
+              return;
+            }
+            const token = resp.access_token as string;
+            const expiresIn = Number(resp.expires_in || 3600);
+            saveStoredDriveToken(token, expiresIn);
+            resolve(token);
+          },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          error_callback: (err: any) => {
+            console.warn('[googleDriveClient] Silent token refresh error callback:', err);
+            resolve(null);
+          },
+        });
+
+        // Request token silently without popup prompt
+        client.requestAccessToken({ prompt: '' });
+      } catch (err) {
+        console.warn('[googleDriveClient] Silent token refresh exception:', err);
+        resolve(null);
+      }
+    });
+  })().finally(() => {
+    silentRefreshPromise = null;
+  });
+
+  return silentRefreshPromise;
+}
+
 export function getStoredDriveToken(): string | null {
   let token = loadStorageSync<string | null>(GDRIVE_TOKEN_KEY, null);
   let expiry = Number(loadStorageSync<string | number>(GDRIVE_TOKEN_EXPIRY_KEY, 0));
@@ -318,15 +404,26 @@ const FOLDER_NAME = 'Budget Control';
 const FILE_NAME = 'budget-data.json';
 
 async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
-  const token = getStoredDriveToken();
+  let token = getStoredDriveToken();
+  if (!token) {
+    // Attempt silent background refresh before failing
+    token = await refreshDriveTokenSilently();
+  }
   if (!token) throw new Error('Not connected to Google Drive or session expired.');
 
   const headers = new Headers(options.headers || {});
   headers.set('Authorization', `Bearer ${token}`);
 
-  const res = await fetch(url, { ...options, headers });
+  let res = await fetch(url, { ...options, headers });
   if (res.status === 401) {
+    // Token may have just been invalidated or revoked remotely; try one silent refresh
     clearStoredDriveToken();
+    const freshToken = await refreshDriveTokenSilently();
+    if (freshToken) {
+      headers.set('Authorization', `Bearer ${freshToken}`);
+      res = await fetch(url, { ...options, headers });
+      if (res.ok) return res;
+    }
     throw new Error('Google Drive session expired. Please click "Sign in with Google" to re-authorize.');
   }
   return res;
