@@ -9,12 +9,19 @@ interface BottomNavProps {
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({ onOpenMobileMenu, onOpenQuickAdd }) => {
-  const { activeTab, setActiveTab } = useBudgetStore(
+  const { activeTab, setActiveTab, driveUser, driveSyncStatus } = useBudgetStore(
     useShallow((state) => ({
       activeTab: state.activeTab,
       setActiveTab: state.setActiveTab,
+      driveUser: state.driveUser,
+      driveSyncStatus: state.driveSyncStatus,
     }))
   );
+
+  const isConnected = Boolean(driveUser);
+  const isExpired = driveSyncStatus === 'expired';
+  const isError = driveSyncStatus === 'error';
+  const showDot = isConnected && (isExpired || isError);
 
   return (
     <nav className="mobile-bottom-nav" aria-label="Mobile primary navigation">
@@ -85,8 +92,22 @@ export const BottomNav: React.FC<BottomNavProps> = ({ onOpenMobileMenu, onOpenQu
         onClick={onOpenMobileMenu}
         aria-label="More views"
       >
-        <div className="bottom-nav-icon">
+        <div className="bottom-nav-icon" style={{ position: 'relative' }}>
           <MoreHorizontal size={19} />
+          {showDot && (
+            <span
+              style={{
+                position: 'absolute',
+                top: '-1px',
+                right: '-3px',
+                width: '7px',
+                height: '7px',
+                borderRadius: '50%',
+                background: '#ef4444',
+                border: '1.5px solid var(--surface, #1e293b)',
+              }}
+            />
+          )}
         </div>
         <span className="bottom-nav-label">More</span>
       </button>

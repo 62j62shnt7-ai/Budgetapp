@@ -122,6 +122,37 @@ export const Topbar: React.FC<TopbarProps> = ({
 
         {/* Mobile-only compact actions (single-row) */}
         <div className="top-actions-mobile">
+          {/* Mobile Cloud Sync Status Indicator */}
+          <button
+            className="ghost-button icon-button mobile-sync-btn"
+            id="mobileDriveSyncBtn"
+            type="button"
+            aria-label={`Google Drive Sync: ${syncLabel}`}
+            title={`Google Drive Sync: ${syncLabel}${driveUser ? ` (${driveUser.email})` : ''}`}
+            onClick={onOpenDriveSync}
+            style={{ position: 'relative' }}
+          >
+            <Cloud size={17} color={isExpired ? '#ef4444' : isConnected ? 'var(--blue, #3b82f6)' : 'var(--muted)'} />
+            <span
+              style={{
+                position: 'absolute',
+                bottom: '2px',
+                right: '2px',
+                width: '7px',
+                height: '7px',
+                borderRadius: '50%',
+                background: !isConnected
+                  ? 'var(--muted, #94a3b8)'
+                  : isExpired || driveSyncStatus === 'error'
+                    ? '#ef4444'
+                    : driveSyncStatus === 'syncing' || driveSyncStatus === 'scheduled'
+                      ? '#eab308'
+                      : '#22c55e',
+                border: '1.5px solid var(--surface, #1e293b)',
+              }}
+            />
+          </button>
+
           {undoStack.length > 0 && (
             <button
               className="ghost-button icon-button mobile-undo-btn"

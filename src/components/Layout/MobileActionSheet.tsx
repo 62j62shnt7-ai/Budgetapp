@@ -52,7 +52,8 @@ export const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
     undo,
     redo,
     undoStack,
-    redoStack
+    redoStack,
+    clearUndoHistory,
   } = useBudgetStore(
     useShallow((state) => ({
       theme: state.theme,
@@ -66,6 +67,7 @@ export const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
       redo: state.redo,
       undoStack: state.undoStack,
       redoStack: state.redoStack,
+      clearUndoHistory: state.clearUndoHistory,
     }))
   );
 
@@ -215,25 +217,58 @@ export const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
           </span>
           {/* Undo Action */}
           {undoStack.length > 0 && (
-            <button
-              type="button"
-              className="action-sheet-btn"
-              onClick={() => {
-                undo();
-                onClose();
-              }}
-            >
-              <RotateCcw size={20} color="var(--amber, #f59e0b)" />
-              <div className="action-sheet-btn-text">
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <strong>Undo: {undoStack[0].label}</strong>
-                  <span className="undo-counter-badge" style={{ fontSize: '11px', padding: '1px 7px' }}>
-                    {undoStack.length}
-                  </span>
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'stretch' }}>
+              <button
+                type="button"
+                className="action-sheet-btn"
+                style={{ flex: 1 }}
+                onClick={() => {
+                  undo();
+                  onClose();
+                }}
+              >
+                <RotateCcw size={20} color="var(--amber, #f59e0b)" />
+                <div className="action-sheet-btn-text">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <strong>Undo: {undoStack[0].label}</strong>
+                    <span className="undo-counter-badge" style={{ fontSize: '11px', padding: '1px 7px' }}>
+                      {undoStack.length}
+                    </span>
+                  </div>
+                  <span>Revert the last modification</span>
                 </div>
-                <span>Revert the last modification</span>
-              </div>
-            </button>
+              </button>
+              <button
+                type="button"
+                className="ghost-button"
+                title="Clear undo history"
+                aria-label="Clear undo history"
+                onClick={() => {
+                  if (window.confirm(`Clear all ${undoStack.length} undo history steps? (Current budget remains saved)`)) {
+                    clearUndoHistory();
+                  }
+                }}
+                style={{
+                  padding: '0 12px',
+                  borderRadius: '12px',
+                  border: '1px solid var(--border-color, rgba(255,255,255,0.08))',
+                  background: 'var(--surface-soft, rgba(255,255,255,0.03))',
+                  color: 'var(--muted)',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '2px',
+                  cursor: 'pointer',
+                  minWidth: '54px',
+                }}
+              >
+                <X size={15} color="var(--red, #ef4444)" />
+                <span style={{ fontSize: '10px' }}>Clear</span>
+              </button>
+            </div>
           )}
 
           {/* Redo Action */}

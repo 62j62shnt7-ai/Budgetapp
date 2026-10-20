@@ -37,6 +37,8 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
     restoreResetBackup,
     undoImport,
     archiveSettledEntries,
+    undoStack,
+    clearUndoHistory,
   } = useBudgetStore(
     useShallow((state) => ({
       exportJSON: state.exportJSON,
@@ -56,6 +58,8 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
       restoreResetBackup: state.restoreResetBackup,
       undoImport: state.undoImport,
       archiveSettledEntries: state.archiveSettledEntries,
+      undoStack: state.undoStack,
+      clearUndoHistory: state.clearUndoHistory,
     }))
   );
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -397,6 +401,22 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
                   }}
                 >
                   Undo last reset
+                </button>
+              )}
+              {undoStack.length > 0 && (
+                <button
+                  className="ghost-button"
+                  type="button"
+                  style={{ color: 'var(--amber, #f59e0b)' }}
+                  onClick={() => {
+                    if (window.confirm(`Clear all ${undoStack.length} undo history steps? (Current budget remains saved)`)) {
+                      clearUndoHistory();
+                      setFeedbackMsg(`✓ Cleared ${undoStack.length} undo history step(s).`);
+                      setTimeout(() => setFeedbackMsg(''), 4000);
+                    }
+                  }}
+                >
+                  🧹 Clear Undo History ({undoStack.length})
                 </button>
               )}
             </div>

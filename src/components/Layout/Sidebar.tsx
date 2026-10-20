@@ -12,18 +12,43 @@ import {
   ArrowLeftRight,
   ChevronLeft,
   ChevronRight,
+  Cloud,
 } from 'lucide-react';
 
-export const Sidebar: React.FC = () => {
-  const { activeTab, setActiveTab, sidebarCollapsed, toggleSidebar, closeMobileSidebar } = useBudgetStore(
+interface SidebarProps {
+  onOpenDriveSync?: () => void;
+}
+
+export const Sidebar: React.FC<SidebarProps> = ({ onOpenDriveSync }) => {
+  const { activeTab, setActiveTab, sidebarCollapsed, toggleSidebar, closeMobileSidebar, driveUser, driveSyncStatus, driveAutoSync } = useBudgetStore(
     useShallow((state) => ({
       activeTab: state.activeTab,
       setActiveTab: state.setActiveTab,
       sidebarCollapsed: state.sidebarCollapsed,
       toggleSidebar: state.toggleSidebar,
       closeMobileSidebar: state.closeMobileSidebar,
+      driveUser: state.driveUser,
+      driveSyncStatus: state.driveSyncStatus,
+      driveAutoSync: state.driveAutoSync,
     }))
   );
+
+  const isConnected = Boolean(driveUser);
+  const isExpired = driveSyncStatus === 'expired';
+  const syncLabel = !isConnected
+    ? 'Setup'
+    : isExpired
+      ? 'Reconnect'
+      : !driveAutoSync
+        ? 'Manual'
+        : {
+          idle: 'Synced',
+          scheduled: 'Queued',
+          syncing: 'Syncing',
+          synced: 'Synced',
+          error: 'Error',
+          expired: 'Reconnect',
+        }[driveSyncStatus];
 
   const tabs: Array<{ id: ViewTab; label: string; icon: React.ReactNode }> = [
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={18} /> },
@@ -101,6 +126,62 @@ export const Sidebar: React.FC = () => {
             </button>
           ))}
         </nav>
+
+        {onOpenDriveSync && (
+          <div style={{ marginTop: 'auto', padding: '10px 12px', borderTop: '1px solid var(--border-color, rgba(255,255,255,0.08))' }}>
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={onOpenDriveSync}
+              title={`Google Drive: ${syncLabel}${driveUser ? ` (${driveUser.email})` : ''}`}
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                gap: sidebarCollapsed ? '0' : '10px',
+                justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
+                padding: sidebarCollapsed ? '8px 0' : '8px 10px',
+                borderRadius: '8px',
+                border: '1px solid var(--border-color, rgba(255,255,255,0.08))',
+                background: 'var(--surface-soft, rgba(255,255,255,0.03))',
+                cursor: 'pointer',
+                fontSize: '12px',
+              }}
+            >
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Cloud size={17} color={isExpired ? '#ef4444' : isConnected ? 'var(--blue, #3b82f6)' : 'var(--muted)'} />
+                <span
+                  style={{
+                    position: 'absolute',
+                    bottom: '-1px',
+                    right: '-2px',
+                    width: '6px',
+                    height: '6px',
+                    borderRadius: '50%',
+                    background: !isConnected
+                      ? 'var(--muted, #94a3b8)'
+                      : isExpired || driveSyncStatus === 'error'
+                        ? '#ef4444'
+                        : driveSyncStatus === 'syncing' || driveSyncStatus === 'scheduled'
+                          ? '#eab308'
+                          : '#22c55e',
+                    border: '1px solid var(--surface, #1e293b)',
+                  }}
+                />
+              </div>
+              {!sidebarCollapsed && (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', overflow: 'hidden', textAlign: 'left' }}>
+                  <span style={{ fontWeight: 600, fontSize: '11.5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px' }}>
+                    {isConnected ? (driveUser?.name || 'Google Drive') : 'Connect Drive'}
+                  </span>
+                  <span style={{ fontSize: '10px', opacity: 0.7, color: isExpired ? '#ef4444' : 'inherit' }}>
+                    {syncLabel}
+                  </span>
+                </div>
+              )}
+            </button>
+          </div>
+        )}
       </aside>
       <div
         className="sidebar-backdrop"

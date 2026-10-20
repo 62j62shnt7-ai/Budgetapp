@@ -497,7 +497,7 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      <Sidebar />
+      <Sidebar onOpenDriveSync={() => setDriveSyncOpen(true)} />
       <main className="app-shell has-bottom-nav">
         <Topbar
           onOpenEntryModal={handleOpenEntryModal}
