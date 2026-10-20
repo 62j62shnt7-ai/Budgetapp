@@ -4183,7 +4183,8 @@ input[type="date"]::-webkit-date-and-time-value {
     position: fixed !important;
     inset: 0 !important;
     margin: auto !important;
-    width: min(100%, calc(100vw - 48px)) !important;
+    width: min(100%, calc(100vw - 48px));
+    max-width: 580px;
     max-height: min(88vh, 850px) !important;
     padding: 24px !important;
     border-radius: 18px !important;
@@ -4191,6 +4192,15 @@ input[type="date"]::-webkit-date-and-time-value {
     overflow-y: auto !important;
     overscroll-behavior: contain !important;
     box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--border-subtle) !important;
+  }
+
+  /* Specific desktop widths for wider tool & sync dialogs */
+  dialog.gist-sync-dialog,
+  dialog.native-dialog.gist-sync-dialog,
+  dialog#dataToolsDialog,
+  dialog.native-dialog[id="dataToolsDialog"] {
+    max-width: 720px !important;
+    width: min(720px, calc(100vw - 48px)) !important;
   }
 
   dialog.native-dialog form,

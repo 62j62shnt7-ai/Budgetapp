@@ -222,6 +222,7 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
     <>
       <dialog
         open
+        id="dataToolsDialog"
         className="native-dialog"
         onClick={(e) => e.target === e.currentTarget && onClose()}
         style={{ display: 'block', zIndex: 1000, maxWidth: '720px', width: 'min(720px, 94vw)' }}
