@@ -92,6 +92,12 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     setActiveTab,
     pendingNavigation,
     clearPendingNavigation,
+    salaryCollapsed,
+    installmentsCollapsed,
+    expenseMixCollapsed,
+    setSalaryCollapsed,
+    setInstallmentsCollapsed,
+    setExpenseMixCollapsed,
   } = useBudgetStore(
     useShallow((state) => ({
       accounts: state.accounts,
@@ -123,6 +129,12 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
       setActiveTab: state.setActiveTab,
       pendingNavigation: state.pendingNavigation,
       clearPendingNavigation: state.clearPendingNavigation,
+      salaryCollapsed: state.salaryCollapsed,
+      installmentsCollapsed: state.installmentsCollapsed,
+      expenseMixCollapsed: state.expenseMixCollapsed,
+      setSalaryCollapsed: state.setSalaryCollapsed,
+      setInstallmentsCollapsed: state.setInstallmentsCollapsed,
+      setExpenseMixCollapsed: state.setExpenseMixCollapsed,
     }))
   );
 
@@ -445,28 +457,24 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     flushPendingDeduct();
   };
 
-  // Collapsible sections
-  const [salaryOpen, setSalaryOpen] = useState<boolean>(() => {
-    const saved = loadStorageSync<string | null>('budget-control-salary-collapsed', null);
-    if (saved !== null) return saved !== 'true';
-    return typeof window !== 'undefined' ? window.innerWidth > 768 : true;
-  });
-  const [installmentsOpen, setInstallmentsOpen] = useState<boolean>(() =>
-    loadStorageSync<string>('budget-control-installments-collapsed', 'false') !== 'true'
-  );
-  const [expenseMixOpen, setExpenseMixOpen] = useState<boolean>(() =>
-    loadStorageSync<string>('budget-control-expense-mix-collapsed', 'false') !== 'true'
-  );
+  // Collapsible sections connected to Zustand UI slice
+  const salaryOpen = !salaryCollapsed;
+  const setSalaryOpen = (open: boolean | ((prev: boolean) => boolean)) => {
+    const next = typeof open === 'function' ? open(salaryOpen) : open;
+    setSalaryCollapsed(!next);
+  };
 
-  useEffect(() => {
-    saveStorage('budget-control-salary-collapsed', String(!salaryOpen));
-  }, [salaryOpen]);
-  useEffect(() => {
-    saveStorage('budget-control-installments-collapsed', String(!installmentsOpen));
-  }, [installmentsOpen]);
-  useEffect(() => {
-    saveStorage('budget-control-expense-mix-collapsed', String(!expenseMixOpen));
-  }, [expenseMixOpen]);
+  const installmentsOpen = !installmentsCollapsed;
+  const setInstallmentsOpen = (open: boolean | ((prev: boolean) => boolean)) => {
+    const next = typeof open === 'function' ? open(installmentsOpen) : open;
+    setInstallmentsCollapsed(!next);
+  };
+
+  const expenseMixOpen = !expenseMixCollapsed;
+  const setExpenseMixOpen = (open: boolean | ((prev: boolean) => boolean)) => {
+    const next = typeof open === 'function' ? open(expenseMixOpen) : open;
+    setExpenseMixCollapsed(!next);
+  };
 
   // Salary matrix inputs
   const currentYm = DateUtils.currentYearMonth();

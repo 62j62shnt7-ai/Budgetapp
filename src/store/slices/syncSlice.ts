@@ -427,6 +427,18 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => ({
           if (storedData[STORAGE_KEYS.sidebarCollapsed] !== undefined) {
             updates.sidebarCollapsed = Boolean(storedData[STORAGE_KEYS.sidebarCollapsed]);
           }
+          if (storedData[STORAGE_KEYS.salaryCollapsed] !== undefined) {
+            updates.salaryCollapsed = Boolean(storedData[STORAGE_KEYS.salaryCollapsed]);
+          }
+          if (storedData[STORAGE_KEYS.installmentsCollapsed] !== undefined) {
+            updates.installmentsCollapsed = Boolean(storedData[STORAGE_KEYS.installmentsCollapsed]);
+          }
+          if (storedData[STORAGE_KEYS.expenseMixCollapsed] !== undefined) {
+            updates.expenseMixCollapsed = Boolean(storedData[STORAGE_KEYS.expenseMixCollapsed]);
+          }
+          if (storedData[STORAGE_KEYS.historyAnalyticsCollapsed] !== undefined) {
+            updates.historyAnalyticsCollapsed = Boolean(storedData[STORAGE_KEYS.historyAnalyticsCollapsed]);
+          }
           if (storedData[STORAGE_KEYS.historyAdminUnlocked] !== undefined) {
             updates.historyAdminUnlocked = Boolean(storedData[STORAGE_KEYS.historyAdminUnlocked]);
           }

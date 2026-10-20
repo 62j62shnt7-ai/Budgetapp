@@ -21,6 +21,10 @@ export interface UISlice {
   pendingNavigation: NavigationIntent | null;
   sidebarCollapsed: boolean;
   historyAdminUnlocked: boolean;
+  salaryCollapsed: boolean;
+  installmentsCollapsed: boolean;
+  expenseMixCollapsed: boolean;
+  historyAnalyticsCollapsed: boolean;
 
   setTheme: (theme: 'dark' | 'light') => void;
   setActiveTab: (tab: ViewTab) => void;
@@ -28,6 +32,10 @@ export interface UISlice {
   clearPendingNavigation: () => void;
   toggleSidebar: () => void;
   closeMobileSidebar: () => void;
+  setSalaryCollapsed: (collapsed: boolean) => void;
+  setInstallmentsCollapsed: (collapsed: boolean) => void;
+  setExpenseMixCollapsed: (collapsed: boolean) => void;
+  setHistoryAnalyticsCollapsed: (collapsed: boolean) => void;
 }
 
 export interface UndoSlice {

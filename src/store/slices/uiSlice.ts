@@ -7,6 +7,10 @@ export const createUISlice: SliceCreator<UISlice> = (set, get) => ({
   pendingNavigation: null,
   sidebarCollapsed: loadStorage<boolean>(STORAGE_KEYS.sidebarCollapsed, false),
   historyAdminUnlocked: loadStorage<boolean>(STORAGE_KEYS.historyAdminUnlocked, false),
+  salaryCollapsed: loadStorage<boolean>(STORAGE_KEYS.salaryCollapsed, false),
+  installmentsCollapsed: loadStorage<boolean>(STORAGE_KEYS.installmentsCollapsed, false),
+  expenseMixCollapsed: loadStorage<boolean>(STORAGE_KEYS.expenseMixCollapsed, false),
+  historyAnalyticsCollapsed: loadStorage<boolean>(STORAGE_KEYS.historyAnalyticsCollapsed, false),
 
   setTheme: (theme) => {
     saveStorage(STORAGE_KEYS.theme, theme);
@@ -44,5 +48,25 @@ export const createUISlice: SliceCreator<UISlice> = (set, get) => ({
     if (typeof document !== 'undefined') {
       document.body.classList.remove('mobile-sidebar-open');
     }
+  },
+
+  setSalaryCollapsed: (collapsed: boolean) => {
+    saveStorage(STORAGE_KEYS.salaryCollapsed, collapsed);
+    set({ salaryCollapsed: collapsed });
+  },
+
+  setInstallmentsCollapsed: (collapsed: boolean) => {
+    saveStorage(STORAGE_KEYS.installmentsCollapsed, collapsed);
+    set({ installmentsCollapsed: collapsed });
+  },
+
+  setExpenseMixCollapsed: (collapsed: boolean) => {
+    saveStorage(STORAGE_KEYS.expenseMixCollapsed, collapsed);
+    set({ expenseMixCollapsed: collapsed });
+  },
+
+  setHistoryAnalyticsCollapsed: (collapsed: boolean) => {
+    saveStorage(STORAGE_KEYS.historyAnalyticsCollapsed, collapsed);
+    set({ historyAnalyticsCollapsed: collapsed });
   },
 });

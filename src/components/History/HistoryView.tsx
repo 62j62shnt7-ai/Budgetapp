@@ -51,6 +51,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
     irqJobs,
     pendingNavigation,
     clearPendingNavigation,
+    analyticsCollapsed,
+    setAnalyticsCollapsed,
   } = useBudgetStore(
     useShallow((state) => ({
       entries: state.entries,
@@ -73,6 +75,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
       irqJobs: state.irqJobs,
       pendingNavigation: state.pendingNavigation,
       clearPendingNavigation: state.clearPendingNavigation,
+      analyticsCollapsed: state.historyAnalyticsCollapsed,
+      setAnalyticsCollapsed: state.setHistoryAnalyticsCollapsed,
     }))
   );
 
@@ -184,9 +188,6 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
   }, [highlightedEntryId, highlightTrigger]);
 
   // Analytics UI state
-  const [analyticsCollapsed, setAnalyticsCollapsed] = useState<boolean>(() =>
-    loadStorageSync<boolean>('budget-control-history-analytics-collapsed', false)
-  );
   const [groupBy, setGroupBy] = useState<'category' | 'tag'>(() =>
     loadStorageSync<string>('budget-control-history-analytics-grouping', 'category') === 'tag' ? 'tag' : 'category'
   );
@@ -198,9 +199,6 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
   useEffect(() => {
     saveStorage('budget-control-history-admin-unlocked', isAdminUnlocked);
   }, [isAdminUnlocked]);
-  useEffect(() => {
-    saveStorage('budget-control-history-analytics-collapsed', analyticsCollapsed);
-  }, [analyticsCollapsed]);
   useEffect(() => {
     saveStorage('budget-control-history-analytics-grouping', groupBy);
   }, [groupBy]);
@@ -1011,7 +1009,10 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
             viewMode={viewMode}
             setViewMode={setViewMode}
             analyticsCollapsed={analyticsCollapsed}
-            setAnalyticsCollapsed={setAnalyticsCollapsed}
+            setAnalyticsCollapsed={(action) => {
+              const next = typeof action === 'function' ? action(analyticsCollapsed) : action;
+              setAnalyticsCollapsed(next);
+            }}
             sortedGroups={sortedGroups}
             totalAnalyticsAmount={totalAnalyticsAmount}
             onSelectGroup={(groupName, currentGroupBy) => {
