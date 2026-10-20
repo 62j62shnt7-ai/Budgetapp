@@ -44,9 +44,9 @@ export const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
   const { 
     theme, 
     setTheme, 
-    gistId, 
-    gistAutoSync, 
-    gistSyncStatus, 
+    driveUser, 
+    driveAutoSync, 
+    driveSyncStatus, 
     activeTab, 
     setActiveTab,
     undo,
@@ -57,9 +57,9 @@ export const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
     useShallow((state) => ({
       theme: state.theme,
       setTheme: state.setTheme,
-      gistId: state.gistId,
-      gistAutoSync: state.gistAutoSync,
-      gistSyncStatus: state.gistSyncStatus,
+      driveUser: state.driveUser,
+      driveAutoSync: state.driveAutoSync,
+      driveSyncStatus: state.driveSyncStatus,
       activeTab: state.activeTab,
       setActiveTab: state.setActiveTab,
       undo: state.undo,
@@ -109,25 +109,26 @@ export const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
     }
   };
 
-  const syncLabel = !gistId
+  const isConnected = Boolean(driveUser);
+  const syncLabel = !isConnected
     ? 'Setup'
-    : !gistAutoSync
+    : !driveAutoSync
       ? 'Manual'
       : {
-        idle: 'Ready',
+        idle: 'Synced',
         scheduled: 'Queued',
         syncing: 'Syncing',
         synced: 'Synced',
         error: 'Error',
-      }[gistSyncStatus];
+      }[driveSyncStatus];
 
-  const syncPillClass = gistSyncStatus === 'error'
-    ? 'error'
-    : gistSyncStatus === 'syncing' || gistSyncStatus === 'scheduled'
-      ? 'syncing'
-      : gistSyncStatus === 'synced'
-        ? 'synced'
-        : '';
+  const syncPillClass = !isConnected
+    ? ''
+    : driveSyncStatus === 'error'
+      ? 'error'
+      : driveSyncStatus === 'syncing' || driveSyncStatus === 'scheduled'
+        ? 'syncing'
+        : 'synced';
 
   const secondaryViews: Array<{ id: ViewTab; label: string; icon: React.ReactNode }> = [
     { id: 'accounts', label: 'Accounts', icon: <Landmark size={18} color="#38bdf8" /> },
@@ -312,7 +313,7 @@ export const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
             <Cloud size={20} color="var(--blue)" />
             <div className="action-sheet-btn-text">
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <strong>GitHub Gist Sync</strong>
+                <strong>Google Drive Sync</strong>
                 <span className={`sync-pill ${syncPillClass}`} style={{ fontSize: '10px', padding: '1px 6px' }}>
                   {syncLabel}
                 </span>

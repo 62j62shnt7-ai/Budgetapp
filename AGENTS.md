@@ -50,9 +50,22 @@ src/
 │   └── tags.ts               # Tag inference
 ├── hooks/
 │   ├── useAppUpdateStatus.ts
-│   └── useForecastCandidates.ts  # Shared salary/installment/credit → forecast candidate pipeline
+│   ├── useForecastCandidates.ts  # Shared salary/installment/credit → forecast candidate pipeline
+│   └── useHashRouting.ts         # Hash-based routing (#/cashflow) for back/forward navigation
+├── services/
+│   └── googleDriveClient.ts  # Autonomous Google Drive sync bridge (Option B visible folder)
 ├── store/
-│   └── useBudgetStore.ts     # Central Zustand store (~3050 lines) with manual per-key localStorage persistence
+│   ├── slices/               # Domain-specific Zustand slices
+│   │   ├── accountsSlice.ts  # Bank balances, credit cards, dues, settlements, transfers
+│   │   ├── common.ts         # Shared storage helpers, flags, defaults, snapshot/revert logic
+│   │   ├── entriesSlice.ts   # Entries CRUD, draws, actuals, recurring series, salary, installments
+│   │   ├── jobsSlice.ts      # ASF, IRQ, part-time jobs, invoicing, payments, settlement
+│   │   ├── ratesSlice.ts     # Currencies, gold rates, live fetching, storage valuation
+│   │   ├── syncSlice.ts      # Google Drive cloud sync, legacy Gist compatibility, JSON import/export, initStorage
+│   │   ├── types.ts          # Slice interface definitions & BudgetStoreState composition
+│   │   ├── uiSlice.ts        # Theme, active tab, navigation intents, sidebar state
+│   │   └── undoSlice.ts      # Undo/redo stack, runTransaction, snapshot management
+│   └── useBudgetStore.ts     # Unified store composition re-exporting slices & auto-sync subscriber
 ├── types/
 │   └── index.ts              # Central type definitions, interfaces, union types
 ├── styles/
@@ -63,12 +76,13 @@ src/
 └── utils/
     ├── affectedRecords.ts    # Linked-record discovery & cascading delete/clear option builders
     ├── appRefresh.ts         # Service-worker cache purge / update refresh
-    └── recurringDetector.ts  # Recurring-series detection, link/unlink
+    ├── recurringDetector.ts  # Recurring-series detection, link/unlink
+    └── storageAdapter.ts     # High-capacity IndexedDB bridge (idb-keyval), auto-migration & persistent undo/redo
 public/                       # PWA assets: manifest.webmanifest, sw.js, 404.html, icons
-test/                         # See section 4 — 9 files, wired individually into npm scripts
+test/                         # See section 4 — wired individually into npm scripts
 ```
 
-**Persistence keys** are all `budget-control-*`, declared once in `STORAGE_KEYS` (`useBudgetStore.ts`). The financial key set is duplicated across roughly 8 places (initial load, `captureFinancialSnapshot`, `persistFinancialSnapshot`, `exportJSON`, `importJSON`, `resetData`, `restoreResetBackup`, `undoImport`, `syncedDataKeys`) — adding a financial field means touching all of them.
+**Persistence keys** are all `budget-control-*`, declared once in `STORAGE_KEYS` (`src/store/slices/common.ts`, re-exported by `useBudgetStore.ts`). The financial key set is duplicated across roughly 8 places (initial load, `captureFinancialSnapshot`, `persistFinancialSnapshot`, `exportJSON`, `importJSON`, `resetData`, `restoreResetBackup`, `undoImport`, `syncedDataKeys`) — adding a financial field means touching all of them.
 
 ---
 

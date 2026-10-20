@@ -14,7 +14,7 @@ if (typeof globalThis.localStorage === 'undefined') {
 }
 
 import { buildInstallmentEntries } from '../src/engine/salaryAndInstallments.ts';
-import { calculateForecast, simulateSpend, getDeficitPeriods, getActiveForecastEntries } from '../src/engine/forecast.ts';
+import { calculateForecast, simulateSpend, getDeficitPeriods, getActiveForecastEntries, getEntryActualAmount } from '../src/engine/forecast.ts';
 import { buildCreditDueEntries, computeSettlementUncovered } from '../src/engine/creditCards.ts';
 import { getCreditDueFundingAlerts } from '../src/engine/creditDueAlerts.ts';
 import { computeTotalStorageValue, storageValue } from '../src/engine/currency.ts';

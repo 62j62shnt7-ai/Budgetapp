@@ -49,9 +49,11 @@ Budget Control v2 is a local-first, privacy-focused financial management web app
 - **Validated Entry Analytics:** Filter historical transactions by month, type, account, and subcategory tags, with automatic variance analysis (favorable vs. unfavorable).
 - **Admin Edit Mode:** Unlockable administrative table controls to quickly edit historical records, adjust actuals, or remove erroneous entries.
 
-### 🔒 8. Privacy-First Storage & GitHub Gist Sync
-- **Local-First Architecture:** All data stays directly in your browser's `localStorage` by default — zero mandatory backend accounts or third-party trackers.
-- **GitHub Gist Cloud Sync:** Seamless sync to a secret GitHub Gist with auto-sync debouncing, manual pull/push, and `#gist=` URL deep-linking using a personal access token (PAT).
+### 🔒 8. High-Capacity IndexedDB Storage, Autonomous Google Drive Sync & Undo History
+- **High-Capacity IndexedDB Architecture:** Unlimited local-first persistence via `storageAdapter` (IndexedDB / `idb-keyval`), automatically migrating legacy data and overcoming browser `localStorage` quota restrictions.
+- **Persistent Undo / Redo Engine:** 30-depth undo/redo history persisted across page refreshes and browser restarts, with an automatic 24-hour TTL and transaction rollbacks.
+- **Autonomous Google Drive Cloud Sync:** Seamless background sync to a visible user-controlled folder (`Budget Control Backups`) on Google Drive with customizable backup retention (capped at 5/10/20 files) and OAuth 2.0 token management.
+- **GitHub Gist Cloud Sync (Legacy):** Maintained support for secret GitHub Gist sync with auto-sync debouncing and `#gist=` URL deep-linking.
 - **Full Data Portability:** Instant JSON backup export/import (fully backward-compatible with legacy formats) and Excel CSV export.
 - **PWA Ready with Instant Cache Purge:** Progressive Web App support with service worker cache purging and one-click app updating.
 
@@ -74,7 +76,9 @@ Budget Control v2 is a local-first, privacy-focused financial management web app
 
 - **Framework:** [React 19](https://react.dev/) + [Vite 8](https://vite.dev/)
 - **Language:** [TypeScript 5](https://www.typescriptlang.org/) (Strict typing across domain models and calculations)
-- **State Management:** [Zustand](https://zustand-demo.pmnd.rs/) with reactive local persistence
+- **State Management:** [Zustand 5](https://zustand-demo.pmnd.rs/) partitioned into domain slices (`src/store/slices/`)
+- **Storage Adapter:** [idb-keyval](https://github.com/jakearchibald/idb-keyval) (IndexedDB bridge with automatic migration and persistent 24h undo/redo)
+- **Cloud Sync:** Autonomous Google Drive REST API v3 + GitHub Gist API
 - **Icons:** [Lucide React](https://lucide.dev/)
 - **Testing & Tooling:** [TSX](https://github.com/privatenumber/tsx) (Fast TypeScript test runner) & [Oxlint](https://oxc.rs/)
 
@@ -179,9 +183,11 @@ Budgetapp/
 │   │   ├── jobs.ts
 │   │   ├── migration.ts
 │   │   └── salaryAndInstallments.ts
-│   ├── hooks/              # Shared React hooks (forecast candidates, update status)
+│   ├── hooks/              # Shared React hooks (forecast candidates, update status, hash routing)
+│   ├── services/           # External service clients (Google Drive REST API bridge)
 │   ├── store/
-│   │   └── useBudgetStore.ts # Central Zustand store with localStorage sync
+│   │   ├── slices/         # Domain-specific Zustand slices (ui, undo, entries, accounts, jobs, rates, sync)
+│   │   └── useBudgetStore.ts # Unified store composition & auto-sync subscriber
 │   ├── types/
 │   │   └── index.ts         # TypeScript domain models & interfaces
 │   ├── styles/             # Modular base stylesheets (base.css)
@@ -189,12 +195,14 @@ Budgetapp/
 │   └── utils/
 │       ├── affectedRecords.ts # Linked entity discovery & cascading options
 │       ├── appRefresh.ts    # Service Worker cache purge & update utilities
-│       └── recurringDetector.ts # Recurring candidate grouping & series linking
+│       ├── recurringDetector.ts # Recurring candidate grouping & series linking
+│       └── storageAdapter.ts # High-capacity IndexedDB bridge with persistent undo/redo
 ├── public/                 # Static PWA assets (manifest, service worker, 404)
 ├── test/
 │   ├── audit_user_data.json # Full real-world backup test payload
 │   ├── universalAuditRunner.mjs # Universal domain test runner
 │   ├── verifyMath.mjs       # Comprehensive financial math test suite
+│   ├── testStorageAdapter.mjs # IndexedDB storage adapter & cloud sync test suite
 │   ├── testCreditSettlementModal.mjs # Credit settlement modal test suite
 │   ├── test-jobs-playwright.mjs # Jobs flows visual Playwright tests
 │   └── ui-audit.mjs         # Playwright visual audit test suite

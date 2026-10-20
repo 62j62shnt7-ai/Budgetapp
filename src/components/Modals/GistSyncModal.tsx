@@ -1,414 +1,794 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
+import {
+  getStoredDriveUser,
+  getStoredDriveAutoSync,
+  saveStoredDriveAutoSync,
+  getStoredDriveDailySnapshotsEnabled,
+  saveStoredDriveDailySnapshotsEnabled,
+  getStoredDriveBackupRetentionLimit,
+  saveStoredDriveBackupRetentionLimit,
+  pruneOldBackups,
+  getOrCreateDailyBackupsFolder,
+  signInWithGoogleDrive,
+  signOutFromGoogleDrive,
+  uploadBudgetToDrive,
+  downloadBudgetFromDrive,
+  createUserSnapshot,
+  listDailyBackups,
+  listEditSnapshots,
+  listUserSnapshots,
+  clearDailyBackups,
+  clearEditSnapshots,
+  clearUserSnapshots,
+  downloadBackupFile,
+  deleteDriveBackupFile,
+  getLiveDriveMetadata,
+  getGoogleDriveStorageQuota,
+  MAX_EDIT_SNAPSHOTS_CAP,
+  type GoogleDriveUser,
+  type DriveBackupItem,
+  type DriveLiveMetadata,
+  type GoogleDriveStorageQuota,
+} from '../../services/googleDriveClient';
 
 interface GistSyncModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
+function formatBytes(bytes?: number): string {
+  if (!bytes || bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+}
+
 export const GistSyncModal: React.FC<GistSyncModalProps> = ({ isOpen, onClose }) => {
   const {
-    gistToken,
-    gistId,
-    gistAutoSync,
-    setGistConfig,
-    syncFromGist,
     exportJSON,
     importJSON,
+    runTransaction,
+    entriesCount,
+    accountsCount,
   } = useBudgetStore(
     useShallow((state) => ({
-      gistToken: state.gistToken,
-      gistId: state.gistId,
-      gistAutoSync: state.gistAutoSync,
-      setGistConfig: state.setGistConfig,
-      syncFromGist: state.syncFromGist,
       exportJSON: state.exportJSON,
       importJSON: state.importJSON,
+      runTransaction: state.runTransaction,
+      entriesCount: state.entries.length + state.archivedEntries.length,
+      accountsCount: Object.keys(state.accounts).length,
     }))
   );
 
-  const [tokenInput, setTokenInput] = useState('');
-  const [idInput, setIdInput] = useState('');
-  const [autoSync, setAutoSync] = useState(true);
   const [statusMessage, setStatusMessage] = useState<{ text: string; isError?: boolean } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [gistDetails, setGistDetails] = useState<{
-    tone: 'muted' | 'success' | 'error';
-    message?: string;
-    fileName?: string;
-    fileSizeKb?: string;
-    exportDate?: string;
-    cashEntries?: number;
-    installments?: number;
-    storageAssets?: number;
-  } | null>(null);
+  const [isRefreshingBackups, setIsRefreshingBackups] = useState(false);
 
-  const [prevOpen, setPrevOpen] = useState(false);
-  if (isOpen !== prevOpen) {
-    setPrevOpen(isOpen);
-    if (isOpen) {
-      setTokenInput(gistToken);
-      setIdInput(gistId);
-      setAutoSync(gistAutoSync);
-    }
-  }
+  // Google Drive states
+  const [driveUser, setDriveUser] = useState<GoogleDriveUser | null>(getStoredDriveUser);
+  const [driveAutoSync, setDriveAutoSync] = useState(getStoredDriveAutoSync);
+  const [dailySnapshotsEnabled, setDailySnapshotsEnabled] = useState(getStoredDriveDailySnapshotsEnabled);
+  const [retentionLimit, setRetentionLimit] = useState(getStoredDriveBackupRetentionLimit);
+  const [liveMetadata, setLiveMetadata] = useState<DriveLiveMetadata | null>(null);
+  const [storageQuota, setStorageQuota] = useState<GoogleDriveStorageQuota | null>(null);
 
-  if (!isOpen) return null;
+  // 3 Separated Snapshot Tiers
+  const [dailyBackups, setDailyBackups] = useState<DriveBackupItem[]>([]);
+  const [editSnapshots, setEditSnapshots] = useState<DriveBackupItem[]>([]);
+  const [userSnapshots, setUserSnapshots] = useState<DriveBackupItem[]>([]);
+  const [activeSnapshotTab, setActiveSnapshotTab] = useState<'daily' | 'edits' | 'user'>('daily');
+  const [showSnapshotsSection, setShowSnapshotsSection] = useState(true);
 
   const showMsg = (text: string, isError = false) => {
     setStatusMessage({ text, isError });
   };
 
-  const handleAutoSyncChange = (enabled: boolean) => {
-    setAutoSync(enabled);
-    setGistConfig(tokenInput.trim() || gistToken, idInput.trim() || gistId, enabled);
-  };
-
-  // Find user's existing budget gist
-  const handleFindGist = async () => {
-    const token = tokenInput.trim();
-    if (!token) return showMsg('Please enter a GitHub Token first', true);
-
-    setIsLoading(true);
+  const fetchCloudDetails = useCallback(async () => {
+    if (!getStoredDriveUser()) return;
+    setIsRefreshingBackups(true);
     try {
-      const res = await fetch('https://api.github.com/gists', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/vnd.github.v3+json',
-        },
-      });
-      if (!res.ok) throw new Error(`GitHub error: ${res.statusText}`);
-      const gists = (await res.json()) as Array<{
-        id: string;
-        description?: string;
-        files?: Record<string, unknown>;
-      }>;
-      const match = gists.find((g) => g.files && (
-        g.files['budget-data.json'] ||
-        g.files['budget-control-backup.json'] ||
-        g.description?.includes('Budget Control')
-      ));
-      if (match) {
-        setIdInput(match.id);
-        setGistConfig(token, match.id, autoSync);
-        showMsg(`Found Gist: ${match.id}. Downloading latest data...`);
-        const restored = await syncFromGist(token, match.id);
-        if (restored) {
-          showMsg(`Found Gist: ${match.id}. Latest data restored.`);
+      const [meta, daily, edits, user, quota] = await Promise.all([
+        getLiveDriveMetadata(),
+        listDailyBackups(),
+        listEditSnapshots(),
+        listUserSnapshots(),
+        getGoogleDriveStorageQuota(),
+      ]);
+      setLiveMetadata(meta);
+      setDailyBackups(daily);
+      setEditSnapshots(edits);
+      setUserSnapshots(user);
+      setStorageQuota(quota);
+    } catch (err) {
+      console.warn('Failed to fetch cloud details:', err);
+    } finally {
+      setIsRefreshingBackups(false);
+    }
+  }, []);
+
+  const [prevOpen, setPrevOpen] = useState(false);
+  if (isOpen !== prevOpen) {
+    setPrevOpen(isOpen);
+    if (isOpen) {
+      setDriveUser(getStoredDriveUser());
+      setDriveAutoSync(getStoredDriveAutoSync());
+      setDailySnapshotsEnabled(getStoredDriveDailySnapshotsEnabled());
+      setRetentionLimit(getStoredDriveBackupRetentionLimit());
+      setStatusMessage(null);
+    }
+  }
+
+  // Fetch remote details when modal opens
+  useEffect(() => {
+    if (!isOpen) return;
+    const timer = setTimeout(() => {
+      void fetchCloudDetails();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [isOpen, fetchCloudDetails]);
+
+  if (!isOpen) return null;
+
+  // Google Drive Handlers
+  const handleDriveSignIn = async () => {
+    setIsLoading(true);
+    setStatusMessage(null);
+    const { user, error } = await signInWithGoogleDrive();
+    if (error) {
+      setIsLoading(false);
+      showMsg(error.message, true);
+    } else if (user) {
+      setDriveUser(user);
+      useBudgetStore.getState().setDriveUser(user);
+      useBudgetStore.getState().setDriveSyncStatus('synced');
+      // Auto-pull existing budget on first sign-in
+      try {
+        const pullRes = await downloadBudgetFromDrive();
+        if (pullRes.success && pullRes.payload) {
+          importJSON(JSON.stringify(pullRes.payload));
+          showMsg(`✓ Connected as ${user.name}! Restored latest budget from Google Drive.`);
         } else {
-          showMsg('Gist found, but the latest data could not be restored.', true);
+          showMsg(`✓ Connected as ${user.name} (${user.email})! Ready to sync.`);
         }
-      } else {
-        showMsg('No existing budget gist found. You can click "Auto-Create Gist" below.', true);
+      } catch {
+        showMsg(`✓ Connected as ${user.name} (${user.email})!`);
+      } finally {
+        setIsLoading(false);
+        void fetchCloudDetails();
       }
-    } catch (err: unknown) {
-      showMsg(`Failed to search: ${err instanceof Error ? err.message : 'Unknown error'}`, true);
-    } finally {
-      setIsLoading(false);
     }
   };
 
-  // Create new Gist
-  const handleCreateGist = async () => {
-    const token = tokenInput.trim();
-    if (!token) return showMsg('Please enter a GitHub Token first', true);
+  const handleDriveSignOut = () => {
+    signOutFromGoogleDrive();
+    setDriveUser(null);
+    useBudgetStore.getState().setDriveUser(null);
+    useBudgetStore.getState().setDriveSyncStatus('idle');
+    setLiveMetadata(null);
+    setDailyBackups([]);
+    setEditSnapshots([]);
+    setUserSnapshots([]);
+    setStorageQuota(null);
+    showMsg('✓ Disconnected from Google Drive.');
+  };
 
+  const handleDrivePush = async () => {
     setIsLoading(true);
     try {
-      const payload = exportJSON();
-      const res = await fetch('https://api.github.com/gists', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/vnd.github.v3+json',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          description: 'Budget Control Backup',
-          public: false,
-          files: {
-            'budget-data.json': {
-              content: payload,
-            },
-          },
-        }),
-      });
-      if (!res.ok) throw new Error(`Create failed: ${res.statusText}`);
-      const data = (await res.json()) as { id: string };
-      setIdInput(data.id);
-      setGistConfig(token, data.id, autoSync);
-      showMsg(`Successfully created secret Gist: ${data.id}`);
-    } catch (err: unknown) {
-      showMsg(`Error creating gist: ${err instanceof Error ? err.message : 'Unknown error'}`, true);
+      const payload = JSON.parse(exportJSON());
+      const res = await uploadBudgetToDrive(payload, { isUserEdit: true });
+      if (res.success) {
+        showMsg(`✓ Saved live budget to Google Drive! (${res.modifiedTime ? new Date(res.modifiedTime).toLocaleTimeString() : 'now'})`);
+        void fetchCloudDetails();
+      } else {
+        showMsg(`Upload failed: ${res.error || 'Unknown error'}`, true);
+      }
+    } catch (err) {
+      showMsg(`Upload error: ${(err as Error).message}`, true);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Upload local data to Gist
-  const handleUpload = async () => {
-    const token = tokenInput.trim() || gistToken;
-    const gId = idInput.trim() || gistId;
-    if (!token || !gId) return showMsg('Token and Gist ID are required to upload', true);
-    if (!window.confirm('This will replace the budget data stored in the GitHub Gist with this browser\'s current data. Continue?')) {
+  const handleDrivePull = async () => {
+    setIsLoading(true);
+    try {
+      const res = await downloadBudgetFromDrive();
+      if (!res.success) {
+        showMsg(`Download failed: ${res.error || 'Unknown error'}`, true);
+        return;
+      }
+      if (!res.payload) {
+        showMsg("No budget file found in your Google Drive 'Budget Control' folder. Try 'Push Live' first.", true);
+        return;
+      }
+      const success = runTransaction('Pull from Google Drive', () => {
+        return importJSON(JSON.stringify(res.payload));
+      });
+      if (success) {
+        showMsg(`✓ Restored latest budget ledger from your Google Drive! (${res.modifiedTime ? new Date(res.modifiedTime).toLocaleString() : 'recently'})`);
+      } else {
+        showMsg('Failed to parse downloaded cloud budget payload.', true);
+      }
+    } catch (err) {
+      showMsg(`Restore error: ${(err as Error).message}`, true);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCreateUserSnapshot = async () => {
+    setIsLoading(true);
+    try {
+      const payload = JSON.parse(exportJSON());
+      const res = await createUserSnapshot(payload);
+      if (res.success) {
+        showMsg(`✓ Created manual snapshot in 'User Snapshots': ${res.name || 'snapshot'}!`);
+        setActiveSnapshotTab('user');
+        void fetchCloudDetails();
+      } else {
+        showMsg(`Snapshot failed: ${res.error || 'Unknown error'}`, true);
+      }
+    } catch (err) {
+      showMsg(`Snapshot error: ${(err as Error).message}`, true);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRestoreBackup = async (item: DriveBackupItem) => {
+    if (!window.confirm(`Restore cloud backup '${item.name}' from ${new Date(item.modifiedTime).toLocaleString()}?\n\nYour current data will be safely backed up to undo history.`)) {
       return;
     }
-
     setIsLoading(true);
     try {
-      const current = await fetch(`https://api.github.com/gists/${gId}`, {
-        headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.v3+json' },
-      });
-      if (!current.ok) throw new Error(`Unable to verify Gist: ${current.statusText}`);
-      const payload = exportJSON();
-      const res = await fetch(`https://api.github.com/gists/${gId}`, {
-        method: 'PATCH',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/vnd.github.v3+json',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          description: 'Budget Control Backup',
-          files: {
-            'budget-data.json': {
-              content: payload,
-            },
-          },
-        }),
-      });
-      if (!res.ok) throw new Error(`Upload failed: ${res.statusText}`);
-      setGistConfig(token, gId, autoSync);
-      showMsg('✓ Successfully uploaded local data to Cloud Gist!');
-    } catch (err: unknown) {
-      showMsg(`Upload error: ${err instanceof Error ? err.message : 'Unknown error'}`, true);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleInspect = async () => {
-    const token = tokenInput.trim() || gistToken;
-    const gId = idInput.trim() || gistId;
-    if (!token || !gId) {
-      setGistDetails({ tone: 'error', message: 'Please enter both a Personal Access Token and Gist ID above first.' });
-      return showMsg('Token and Gist ID are required to inspect', true);
-    }
-
-    setIsLoading(true);
-    setGistDetails({ tone: 'muted', message: 'Fetching Gist status from GitHub...' });
-    try {
-      const res = await fetch(`https://api.github.com/gists/${gId}`, {
-        headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.v3+json' },
-      });
-      if (!res.ok) throw new Error(`Inspection failed: ${res.statusText}`);
-      const data = await res.json();
-      const file = data.files?.['budget-data.json'] || data.files?.['budget-control-backup.json'] || Object.values(data.files || {})[0];
-      if (!file?.content) {
-        setGistDetails({ tone: 'error', message: 'Gist found, but contains no valid budget JSON file.' });
+      const res = await downloadBackupFile(item.id);
+      if (!res.success || !res.payload) {
+        showMsg(`Failed to download backup: ${res.error || 'Unknown error'}`, true);
         return;
       }
-      const payload = JSON.parse(file.content);
-      const source = payload?.data || payload;
-      if (!source || typeof source !== 'object') {
-        setGistDetails({ tone: 'error', message: 'Gist JSON structure does not match Budget Control format.' });
-        return;
-      }
-      const cashEntries = source.cashEntries || source.entries;
-      setGistDetails({
-        tone: 'success',
-        fileName: file.filename || 'budget-data.json',
-        fileSizeKb: `${(Number(file.size || file.content.length) / 1024).toFixed(1)} KB`,
-        exportDate: payload.exportedAt ? new Date(payload.exportedAt).toLocaleString() : 'Unknown date',
-        cashEntries: Array.isArray(cashEntries) ? cashEntries.length : 0,
-        installments: Array.isArray(source.installments) ? source.installments.length : 0,
-        storageAssets: Array.isArray(source.storageAssets) ? source.storageAssets.length : 0,
+      const success = runTransaction(`Restore backup: ${item.name}`, () => {
+        return importJSON(JSON.stringify(res.payload));
       });
-      showMsg('Gist inspected successfully.');
-    } catch (err) {
-      setGistDetails({
-        tone: 'error',
-        message: `Error connecting to Gist: ${err instanceof Error ? err.message : 'Unknown error'}`,
-      });
-      showMsg(`Inspection error: ${err instanceof Error ? err.message : 'Unknown error'}`, true);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Download data from Gist
-  const handleDownload = async () => {
-    const token = tokenInput.trim() || gistToken;
-    const gId = idInput.trim() || gistId;
-    if (!gId) return showMsg('Gist ID is required to download', true);
-
-    setIsLoading(true);
-    try {
-      const headers: Record<string, string> = { Accept: 'application/vnd.github.v3+json' };
-      if (token) headers.Authorization = `Bearer ${token}`;
-
-      const res = await fetch(`https://api.github.com/gists/${gId}`, { headers });
-      if (!res.ok) throw new Error(`Download failed: ${res.statusText}`);
-      const data = await res.json();
-      const file = data.files && (
-        data.files['budget-data.json'] ||
-        data.files['budget-control-backup.json'] ||
-        Object.values(data.files)[0]
-      );
-      if (!file || !file.content) throw new Error('No valid budget file content found in this Gist');
-
-      const success = importJSON(file.content);
       if (success) {
-        setGistConfig(token, gId, autoSync);
-        showMsg('✓ Successfully downloaded and restored cloud budget data!');
+        showMsg(`✓ Successfully restored backup from ${new Date(item.modifiedTime).toLocaleDateString()}!`);
       } else {
-        showMsg('Failed to parse cloud data payload', true);
+        showMsg('Failed to apply backup payload.', true);
       }
-    } catch (err: unknown) {
-      showMsg(`Download error: ${err instanceof Error ? err.message : 'Unknown error'}`, true);
+    } catch (err) {
+      showMsg(`Restore error: ${(err as Error).message}`, true);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleDisconnect = () => {
-    setGistConfig('', '', false);
-    setTokenInput('');
-    setIdInput('');
-    setAutoSync(false);
-    showMsg('Disconnected from Gist cloud sync.');
+  const handleDeleteIndividualBackup = async (item: DriveBackupItem) => {
+    if (!window.confirm(`Permanently delete backup '${item.name}' from Google Drive?`)) {
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const ok = await deleteDriveBackupFile(item.id);
+      if (ok) {
+        showMsg(`✓ Deleted file '${item.name}'.`);
+        void fetchCloudDetails();
+      } else {
+        showMsg('Failed to delete file.', true);
+      }
+    } catch (err) {
+      showMsg(`Delete error: ${(err as Error).message}`, true);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleCopySyncLink = () => {
-    // App.tsx reads the gist id from the URL hash, so build a hash link (not a query string).
-    const url = new URL(window.location.href);
-    url.searchParams.delete('gist');
-    url.hash = idInput ? `gist=${encodeURIComponent(idInput)}` : '';
-    navigator.clipboard.writeText(url.toString());
-    showMsg('Copied sync link to clipboard!');
+  const handleClearDaily = async () => {
+    if (!window.confirm(`Permanently delete all ${dailyBackups.length} daily backup files from 'Daily Backups/'?\n\nYour active ledger and other snapshots will remain intact.`)) {
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const count = await clearDailyBackups();
+      showMsg(`✓ Cleared ${count} daily backups.`);
+      void fetchCloudDetails();
+    } catch (err) {
+      showMsg(`Clear error: ${(err as Error).message}`, true);
+    } finally {
+      setIsLoading(false);
+    }
   };
+
+  const handleClearEdits = async () => {
+    if (!window.confirm(`Permanently delete all ${editSnapshots.length} rolling edit snapshots from 'Edit Snapshots/'?\n\nYour active ledger will remain intact.`)) {
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const count = await clearEditSnapshots();
+      showMsg(`✓ Cleared ${count} edit snapshots.`);
+      void fetchCloudDetails();
+    } catch (err) {
+      showMsg(`Clear error: ${(err as Error).message}`, true);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleClearUser = async () => {
+    if (!window.confirm(`Permanently delete all ${userSnapshots.length} user milestones from 'User Snapshots/'?`)) {
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const count = await clearUserSnapshots();
+      showMsg(`✓ Cleared ${count} user milestones.`);
+      void fetchCloudDetails();
+    } catch (err) {
+      showMsg(`Clear error: ${(err as Error).message}`, true);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDriveAutoSyncChange = (enabled: boolean) => {
+    setDriveAutoSync(enabled);
+    saveStoredDriveAutoSync(enabled);
+    useBudgetStore.getState().setDriveAutoSync(enabled);
+    showMsg(`Autonomous Google Drive auto-sync is now ${enabled ? 'enabled' : 'disabled'}.`);
+  };
+
+  const handleDailySnapshotsToggle = (enabled: boolean) => {
+    setDailySnapshotsEnabled(enabled);
+    saveStoredDriveDailySnapshotsEnabled(enabled);
+    showMsg(`Daily cloud backups are now ${enabled ? `enabled (capped at ${retentionLimit} days)` : 'disabled'}.`);
+  };
+
+  const handleRetentionLimitChange = async (newLimit: number) => {
+    saveStoredDriveBackupRetentionLimit(newLimit);
+    setRetentionLimit(newLimit);
+    showMsg(`✓ Daily retention limit set to ${newLimit} days.`);
+    if (liveMetadata?.folderId) {
+      try {
+        const dailyFolderId = await getOrCreateDailyBackupsFolder(liveMetadata.folderId);
+        const pruned = await pruneOldBackups(dailyFolderId, newLimit);
+        if (pruned > 0) {
+          showMsg(`✓ Pruned ${pruned} older backup(s) to match ${newLimit}-day limit.`);
+        }
+        void fetchCloudDetails();
+      } catch (err) {
+        console.warn('Prune on retention change error:', err);
+      }
+    }
+  };
+
+  // Aggregated storage calculation
+  const dailyTotalBytes = dailyBackups.reduce((sum, b) => sum + (b.size || 0), 0);
+  const editTotalBytes = editSnapshots.reduce((sum, b) => sum + (b.size || 0), 0);
+  const userTotalBytes = userSnapshots.reduce((sum, b) => sum + (b.size || 0), 0);
+  const totalBudgetBytes = (liveMetadata?.size || 0) + dailyTotalBytes + editTotalBytes + userTotalBytes;
+
+  const currentTabList =
+    activeSnapshotTab === 'daily'
+      ? dailyBackups
+      : activeSnapshotTab === 'edits'
+      ? editSnapshots
+      : userSnapshots;
 
   return (
-    <dialog open className="native-dialog gist-sync-dialog" onClick={(e) => e.target === e.currentTarget && onClose()} style={{ display: 'block', zIndex: 1000 }}>
+    <dialog
+      open
+      className="native-dialog gist-sync-dialog"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+      style={{ display: 'block', zIndex: 1000, maxWidth: '620px', width: '92vw' }}
+    >
       <div className="dialog-heading">
-        <h3>☁️ GitHub Gist Cloud Sync</h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '18px' }}>📁</span>
+          <h3 style={{ margin: 0, fontSize: '16px' }}>Google Drive Cloud Sync</h3>
+        </div>
         <button className="icon-button close-dialog-btn" type="button" aria-label="Close dialog" onClick={onClose}>
           ✕
         </button>
       </div>
 
-      <p className="gist-sync-intro">
-        Sync your budget across devices with a private GitHub Gist.
-        <strong>💡 New device?</strong> Enter your Token and Gist ID once to connect.
-      </p>
+      {statusMessage && (
+        <div className={`gist-sync-message ${statusMessage.isError ? 'is-error' : ''}`} role="status" aria-live="polite" style={{ margin: '12px 0' }}>
+          <span>{statusMessage.text}</span>
+          <button type="button" aria-label="Dismiss message" onClick={() => setStatusMessage(null)}>×</button>
+        </div>
+      )}
 
-      <div className="gist-sync-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-        <section className="gist-sync-section" aria-labelledby="gist-connection-heading">
-          <div className="gist-sync-section-heading">
-            <h4 id="gist-connection-heading">Connection</h4>
-            <span>{gistId ? 'Connected' : 'Not connected'}</span>
-          </div>
-          <label>
-            GitHub Personal Access Token (PAT)
-          <div className="gist-token-row" style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-            <input
-              type="password"
-              placeholder="ghp_xxxxxxxxxxxx or github_pat_xxxx"
-              value={tokenInput}
-              onChange={(e) => setTokenInput(e.target.value)}
-              style={{ flex: 1 }}
-            />
-            <button
-              className="ghost-button"
-              type="button"
-              onClick={handleFindGist}
-              disabled={isLoading}
-              style={{ whiteSpace: 'nowrap' }}
-            >
-              🔍 Find My Gist
-            </button>
-          </div>
-          <small style={{ color: 'var(--muted)', display: 'block', marginTop: '4px' }}>
-            Need a token? Go to GitHub Settings &rarr; Developer Settings &rarr; Personal access tokens (check 'gist' scope).
-          </small>
-          </label>
+      <div className="gist-sync-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginTop: '10px' }}>
+        {driveUser ? (
+          <>
+            {/* User Account & Status Card */}
+            <div style={{ padding: '12px 14px', background: 'var(--card-bg, rgba(255,255,255,0.03))', borderRadius: '10px', border: '1px solid var(--border-color, rgba(255,255,255,0.08))' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  {driveUser.picture ? (
+                    <img src={driveUser.picture} alt="Avatar" style={{ width: '36px', height: '36px', borderRadius: '50%' }} />
+                  ) : (
+                    <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'var(--accent, #6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
+                      {(driveUser.name || driveUser.email || 'G')[0].toUpperCase()}
+                    </div>
+                  )}
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: '13px' }}>{driveUser.name || 'Google User'}</div>
+                    <div style={{ fontSize: '11px', opacity: 0.7 }}>{driveUser.email}</div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '12px', background: 'rgba(34, 197, 94, 0.15)', color: 'var(--green, #22c55e)', fontWeight: 600 }}>
+                    🟢 Connected
+                  </span>
+                  <button className="ghost-button" type="button" onClick={handleDriveSignOut} disabled={isLoading} style={{ fontSize: '11px', padding: '4px 8px', color: 'var(--red, #ef4444)' }}>
+                    Sign Out
+                  </button>
+                </div>
+              </div>
 
-          <label>
-            Gist ID
-            <input
-              type="text"
-              placeholder="Auto-filled when clicking 'Find My Gist'..."
-              value={idInput}
-              onChange={(e) => setIdInput(e.target.value)}
-            />
-          </label>
-        </section>
-
-        <section className="gist-sync-section gist-sync-preferences" aria-labelledby="gist-preferences-heading">
-          <div className="gist-sync-section-heading">
-            <h4 id="gist-preferences-heading">Automatic sync</h4>
-            <span>{autoSync ? 'Enabled' : 'Manual only'}</span>
-          </div>
-          <label className="gist-sync-checkbox">
-            <input type="checkbox" checked={autoSync} onChange={(e) => handleAutoSyncChange(e.target.checked)} />
-            <span>Sync changes to the cloud automatically in the background.</span>
-          </label>
-        </section>
-
-        {statusMessage && (
-          <div className={`gist-sync-message ${statusMessage.isError ? 'is-error' : ''}`} role="status" aria-live="polite">
-            <span>{statusMessage.text}</span>
-            <button type="button" aria-label="Dismiss sync message" onClick={() => setStatusMessage(null)}>×</button>
-          </div>
-        )}
-
-        {gistDetails && (
-          <div className={`gist-cloud-status gist-cloud-status-${gistDetails.tone}`} role="status" aria-live="polite">
-            <div className="gist-sync-section-heading">
-              <h4>Last cloud data</h4>
-              {gistDetails.tone === 'success' && <span>Available</span>}
+              {/* Privacy Shield */}
+              <div style={{ marginTop: '10px', padding: '8px 10px', background: 'rgba(59, 130, 246, 0.08)', borderRadius: '6px', fontSize: '11px', lineHeight: 1.4, color: 'var(--text-muted, #94a3b8)', display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+                <span>🔒</span>
+                <span>
+                  <strong>Privacy Sandboxed:</strong> Budget Control uses the strict <code>drive.file</code> scope. It can only access files it created inside this folder. It has zero access to your photos, personal docs, or other Drive folders.
+                </span>
+              </div>
             </div>
-            {gistDetails.message ? (
-              <p>{gistDetails.message}</p>
-            ) : (
-              <ul>
-                <li><strong>File:</strong> {gistDetails.fileName} ({gistDetails.fileSizeKb})</li>
-                <li><strong>Exported:</strong> {gistDetails.exportDate}</li>
-                <li><strong>Contents:</strong> {gistDetails.cashEntries} entries · {gistDetails.installments} installments · {gistDetails.storageAssets} assets</li>
-              </ul>
-            )}
+
+            {/* Folder Location & Telemetry Breakdown Card */}
+            <div style={{ padding: '12px 14px', background: 'var(--card-bg, rgba(255,255,255,0.03))', borderRadius: '10px', border: '1px solid var(--border-color, rgba(255,255,255,0.08))' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <div style={{ fontSize: '12px', fontWeight: 600 }}>📂 Google Drive Location</div>
+                {liveMetadata?.folderUrl && (
+                  <a
+                    href={liveMetadata.folderUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ fontSize: '11px', color: 'var(--accent, #6366f1)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 500 }}
+                  >
+                    Open in Google Drive ↗
+                  </a>
+                )}
+              </div>
+
+              <div style={{ fontSize: '12px', fontFamily: 'monospace', opacity: 0.85, padding: '6px 10px', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', marginBottom: '10px', wordBreak: 'break-all' }}>
+                My Drive / Budget Control / budget-data.json
+              </div>
+
+              {/* Storage Telemetry Stats */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '8px' }}>
+                <div style={{ padding: '6px 8px', background: 'rgba(255,255,255,0.02)', borderRadius: '6px', border: '1px solid var(--border-color, rgba(255,255,255,0.05))' }}>
+                  <div style={{ fontSize: '10px', opacity: 0.6 }}>Live File Size</div>
+                  <div style={{ fontSize: '12px', fontWeight: 600, marginTop: '2px' }}>
+                    {formatBytes(liveMetadata?.size)}
+                  </div>
+                </div>
+                <div style={{ padding: '6px 8px', background: 'rgba(255,255,255,0.02)', borderRadius: '6px', border: '1px solid var(--border-color, rgba(255,255,255,0.05))' }}>
+                  <div style={{ fontSize: '10px', opacity: 0.6 }}>Last Synced</div>
+                  <div style={{ fontSize: '11px', fontWeight: 600, marginTop: '2px' }}>
+                    {liveMetadata?.modifiedTime ? new Date(liveMetadata.modifiedTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Never'}
+                  </div>
+                </div>
+                <div style={{ padding: '6px 8px', background: 'rgba(255,255,255,0.02)', borderRadius: '6px', border: '1px solid var(--border-color, rgba(255,255,255,0.05))' }}>
+                  <div style={{ fontSize: '10px', opacity: 0.6 }}>Local Ledger</div>
+                  <div style={{ fontSize: '11px', fontWeight: 600, marginTop: '2px' }}>
+                    {entriesCount} entries · {accountsCount} accs
+                  </div>
+                </div>
+              </div>
+
+              {/* 3-Tier Storage Usage Breakdown */}
+              <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--border-color, rgba(255,255,255,0.05))' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', fontSize: '11px' }}>
+                  <div style={{ opacity: 0.8 }}>
+                    📅 Daily: <strong>{dailyBackups.length}</strong> ({formatBytes(dailyTotalBytes)})
+                  </div>
+                  <div style={{ opacity: 0.8 }}>
+                    ⏱️ Edits: <strong>{editSnapshots.length}</strong> ({formatBytes(editTotalBytes)})
+                  </div>
+                  <div style={{ opacity: 0.8 }}>
+                    💾 User: <strong>{userSnapshots.length}</strong> ({formatBytes(userTotalBytes)})
+                  </div>
+                </div>
+              </div>
+
+              {/* Google Drive Storage Quota Meter */}
+              {storageQuota?.limit ? (
+                <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--border-color, rgba(255,255,255,0.05))' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '4px' }}>
+                    <span style={{ opacity: 0.7 }}>Google Drive Quota</span>
+                    <span style={{ fontWeight: 600 }}>
+                      {formatBytes(storageQuota.usage)} / {formatBytes(storageQuota.limit)} ({Math.round(((storageQuota.usage || 0) / (storageQuota.limit || 1)) * 100)}%)
+                    </span>
+                  </div>
+                  <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', overflow: 'hidden' }}>
+                    <div
+                      style={{
+                        width: `${Math.min(100, Math.round(((storageQuota.usage || 0) / (storageQuota.limit || 1)) * 100))}%`,
+                        height: '100%',
+                        background: 'var(--accent, #6366f1)',
+                      }}
+                    />
+                  </div>
+                  <div style={{ fontSize: '10px', opacity: 0.65, marginTop: '4px', display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Total App Storage: ~{formatBytes(totalBudgetBytes)}</span>
+                    <span style={{ color: 'var(--green, #22c55e)' }}>✓ Auto-pruned &lt; 1 MB</span>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            {/* Sync Actions & Configuration */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                <button className="primary-button" type="button" onClick={handleDrivePush} disabled={isLoading} style={{ padding: '8px', fontSize: '12px' }}>
+                  ⬆️ Push Live
+                </button>
+                <button className="ghost-button" type="button" onClick={handleDrivePull} disabled={isLoading} style={{ padding: '8px', fontSize: '12px' }}>
+                  ⬇️ Pull Live
+                </button>
+                <button className="ghost-button" type="button" onClick={handleCreateUserSnapshot} disabled={isLoading} style={{ padding: '8px', fontSize: '12px' }}>
+                  💾 Save Snapshot
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'rgba(255,255,255,0.02)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border-color, rgba(255,255,255,0.05))' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={driveAutoSync}
+                    onChange={(e) => handleDriveAutoSyncChange(e.target.checked)}
+                  />
+                  <span>Autonomous Auto-Sync (silently syncs edits in background to live file)</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={dailySnapshotsEnabled}
+                    onChange={(e) => handleDailySnapshotsToggle(e.target.checked)}
+                  />
+                  <span>Retain automated daily backups (max 1 file per day)</span>
+                </label>
+                {dailySnapshotsEnabled && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingLeft: '22px', marginTop: '2px' }}>
+                    <span style={{ fontSize: '11px', opacity: 0.75 }}>Daily backup retention limit:</span>
+                    <select
+                      value={retentionLimit}
+                      onChange={(e) => void handleRetentionLimitChange(Number(e.target.value))}
+                      style={{
+                        fontSize: '11px',
+                        padding: '3px 8px',
+                        borderRadius: '4px',
+                        background: 'var(--surface-soft, rgba(255,255,255,0.06))',
+                        color: 'inherit',
+                        border: '1px solid var(--border-color, rgba(255,255,255,0.1))',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <option value={3}>3 days (Max 3 files · ~150 KB)</option>
+                      <option value={7}>7 days (Max 7 files · ~350 KB)</option>
+                      <option value={14}>14 days (Max 14 files · ~700 KB)</option>
+                      <option value={30}>30 days (Max 30 files · ~1.5 MB)</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Separated Snapshot Tiers Display */}
+            <div style={{ marginTop: '2px', borderTop: '1px solid var(--border-color, rgba(255,255,255,0.08))', paddingTop: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={() => setShowSnapshotsSection(!showSnapshotsSection)}
+                  style={{ fontSize: '12px', fontWeight: 600, padding: 0, border: 'none', background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <span>{showSnapshotsSection ? '▼' : '►'}</span>
+                  <span>📦 Backup &amp; Snapshot History</span>
+                </button>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={fetchCloudDetails}
+                    disabled={isRefreshingBackups}
+                    style={{ fontSize: '11px', padding: '2px 6px', opacity: 0.8 }}
+                  >
+                    {isRefreshingBackups ? '↻ Refreshing...' : '↻ Refresh'}
+                  </button>
+                </div>
+              </div>
+
+              {showSnapshotsSection && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {/* Folder Tabs */}
+                  <div style={{ display: 'flex', gap: '6px', borderBottom: '1px solid var(--border-color, rgba(255,255,255,0.08))', paddingBottom: '8px' }}>
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      onClick={() => setActiveSnapshotTab('daily')}
+                      style={{
+                        fontSize: '11px',
+                        padding: '5px 10px',
+                        borderRadius: '6px',
+                        fontWeight: activeSnapshotTab === 'daily' ? 600 : 400,
+                        background: activeSnapshotTab === 'daily' ? 'rgba(99, 102, 241, 0.18)' : 'transparent',
+                        color: activeSnapshotTab === 'daily' ? 'var(--accent, #6366f1)' : 'inherit',
+                      }}
+                    >
+                      📅 Daily Backups ({dailyBackups.length}/{retentionLimit})
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      onClick={() => setActiveSnapshotTab('edits')}
+                      style={{
+                        fontSize: '11px',
+                        padding: '5px 10px',
+                        borderRadius: '6px',
+                        fontWeight: activeSnapshotTab === 'edits' ? 600 : 400,
+                        background: activeSnapshotTab === 'edits' ? 'rgba(99, 102, 241, 0.18)' : 'transparent',
+                        color: activeSnapshotTab === 'edits' ? 'var(--accent, #6366f1)' : 'inherit',
+                      }}
+                    >
+                      ⏱️ Edit Snapshots ({editSnapshots.length}/{MAX_EDIT_SNAPSHOTS_CAP})
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      onClick={() => setActiveSnapshotTab('user')}
+                      style={{
+                        fontSize: '11px',
+                        padding: '5px 10px',
+                        borderRadius: '6px',
+                        fontWeight: activeSnapshotTab === 'user' ? 600 : 400,
+                        background: activeSnapshotTab === 'user' ? 'rgba(99, 102, 241, 0.18)' : 'transparent',
+                        color: activeSnapshotTab === 'user' ? 'var(--accent, #6366f1)' : 'inherit',
+                      }}
+                    >
+                      💾 User Snapshots ({userSnapshots.length})
+                    </button>
+                  </div>
+
+                  {/* Tab Header & Quick Action */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 2px' }}>
+                    <div style={{ fontSize: '11px', opacity: 0.75 }}>
+                      {activeSnapshotTab === 'daily' && (
+                        <span>Folder: <code>Budget Control / Daily Backups /</code> (Exact 1 per day on edit days)</span>
+                      )}
+                      {activeSnapshotTab === 'edits' && (
+                        <span>Folder: <code>Budget Control / Edit Snapshots /</code> (15-min cooldown · Capped at 5)</span>
+                      )}
+                      {activeSnapshotTab === 'user' && (
+                        <span>Folder: <code>Budget Control / User Snapshots /</code> (Manual milestones · Permanent)</span>
+                      )}
+                    </div>
+                    {currentTabList.length > 0 && (
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        onClick={() => {
+                          if (activeSnapshotTab === 'daily') void handleClearDaily();
+                          else if (activeSnapshotTab === 'edits') void handleClearEdits();
+                          else void handleClearUser();
+                        }}
+                        disabled={isLoading}
+                        style={{ fontSize: '11px', padding: '2px 6px', color: 'var(--red, #ef4444)' }}
+                      >
+                        🧹 Clear Folder
+                      </button>
+                    )}
+                  </div>
+
+                  {/* List Container */}
+                  <div style={{ maxHeight: '180px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px', paddingRight: '2px' }}>
+                    {currentTabList.length === 0 ? (
+                      <div style={{ fontSize: '11px', opacity: 0.6, fontStyle: 'italic', padding: '12px', textAlign: 'center' }}>
+                        {activeSnapshotTab === 'daily' && 'No daily backups created yet. Created once per day whenever you make ledger changes.'}
+                        {activeSnapshotTab === 'edits' && 'No edit snapshots yet. Created during active edit sessions (15-min cooldown, max 5 rolling files).'}
+                        {activeSnapshotTab === 'user' && 'No user milestones saved yet. Click "💾 Save Snapshot" above to save one anytime.'}
+                      </div>
+                    ) : (
+                      currentTabList.map((item) => (
+                        <div
+                          key={item.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '6px 10px',
+                            background: 'rgba(255,255,255,0.02)',
+                            borderRadius: '6px',
+                            border: '1px solid var(--border-color, rgba(255,255,255,0.05))',
+                            fontSize: '11px',
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontWeight: 600 }}>{item.name}</div>
+                            <div style={{ fontSize: '10px', opacity: 0.6 }}>
+                              {new Date(item.modifiedTime).toLocaleString()} • {formatBytes(item.size)}
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            <button
+                              type="button"
+                              className="ghost-button"
+                              onClick={() => handleRestoreBackup(item)}
+                              disabled={isLoading}
+                              style={{ fontSize: '11px', padding: '3px 8px', color: 'var(--accent, #6366f1)' }}
+                            >
+                              ↺ Restore
+                            </button>
+                            <button
+                              type="button"
+                              className="ghost-button"
+                              onClick={() => handleDeleteIndividualBackup(item)}
+                              disabled={isLoading}
+                              title="Delete this backup"
+                              style={{ fontSize: '11px', padding: '3px 6px', color: 'var(--red, #ef4444)' }}
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          /* Disconnected state */
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '10px 0' }}>
+            <p className="gist-sync-intro" style={{ margin: 0, fontSize: '13px', lineHeight: 1.5 }}>
+              Save and autonomously sync your budget directly inside your own private Google Drive folder:
+              <br />
+              <code>My Drive / Budget Control / budget-data.json</code>
+            </p>
+
+            <button
+              type="button"
+              className="primary-button"
+              onClick={handleDriveSignIn}
+              disabled={isLoading}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '10px',
+                padding: '12px',
+                fontSize: '14px',
+                fontWeight: 600,
+                background: '#4285F4',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+              }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24">
+                <path fill="#fff" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                <path fill="#fff" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                <path fill="#fff" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                <path fill="#fff" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+              </svg>
+              Sign in with Google to Sync Drive
+            </button>
+
+            <div style={{ padding: '10px 12px', background: 'rgba(59, 130, 246, 0.08)', borderRadius: '6px', fontSize: '11px', lineHeight: 1.4, color: 'var(--text-muted, #94a3b8)', display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+              <span>🔒</span>
+              <span>
+                <strong>Zero-Setup &amp; Private:</strong> Budget Control uses the strict <code>drive.file</code> scope. It only has permission to create and edit its own <code>Budget Control</code> folder. It cannot see or access any other files in your Google Drive.
+              </span>
+            </div>
           </div>
         )}
-
-        <section className="gist-sync-section gist-sync-transfer" aria-labelledby="gist-transfer-heading">
-          <div className="gist-sync-section-heading">
-            <h4 id="gist-transfer-heading">Cloud data</h4>
-            <span>Manual actions</span>
-          </div>
-          <div className="gist-sync-actions-grid">
-            <button className="ghost-button" type="button" onClick={handleCreateGist} disabled={isLoading}>
-              ✨ Auto-Create Gist
-            </button>
-            <button className="ghost-button" type="button" onClick={handleCopySyncLink}>
-              🔗 Copy Sync Link
-            </button>
-            <button className="ghost-button" type="button" onClick={handleInspect} disabled={isLoading}>
-              🔍 Check Cloud Data
-            </button>
-            {gistId && (
-              <button className="ghost-button" type="button" onClick={handleDisconnect} style={{ color: 'var(--red)' }}>
-                Disconnect
-              </button>
-            )}
-            <button className="ghost-button" type="button" onClick={handleDownload} disabled={isLoading}>
-              ⬇️ Download Cloud
-            </button>
-            <button className="primary-button" type="button" onClick={handleUpload} disabled={isLoading}>
-              ⬆️ Upload Local Data
-            </button>
-          </div>
-        </section>
       </div>
     </dialog>
   );

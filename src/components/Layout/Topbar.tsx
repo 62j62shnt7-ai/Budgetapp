@@ -45,47 +45,50 @@ export const Topbar: React.FC<TopbarProps> = ({
     setTheme,
     activeTab,
     toggleSidebar,
-    gistId,
-    gistAutoSync,
-    gistSyncStatus,
+    driveUser,
+    driveAutoSync,
+    driveSyncStatus,
     undoStack,
     redoStack,
     undo,
     redo,
+    clearUndoHistory,
   } = useBudgetStore(
     useShallow((state) => ({
       theme: state.theme,
       setTheme: state.setTheme,
       activeTab: state.activeTab,
       toggleSidebar: state.toggleSidebar,
-      gistId: state.gistId,
-      gistAutoSync: state.gistAutoSync,
-      gistSyncStatus: state.gistSyncStatus,
+      driveUser: state.driveUser,
+      driveAutoSync: state.driveAutoSync,
+      driveSyncStatus: state.driveSyncStatus,
       undoStack: state.undoStack,
       redoStack: state.redoStack,
       undo: state.undo,
       redo: state.redo,
+      clearUndoHistory: state.clearUndoHistory,
     }))
   );
   const updateStatus = useAppUpdateStatus();
-  const syncLabel = !gistId
+  const isConnected = Boolean(driveUser);
+  const syncLabel = !isConnected
     ? 'Setup'
-    : !gistAutoSync
+    : !driveAutoSync
       ? 'Manual'
       : {
-        idle: 'Ready',
+        idle: 'Synced',
         scheduled: 'Queued',
         syncing: 'Syncing',
         synced: 'Synced',
         error: 'Error',
-      }[gistSyncStatus];
-  const syncPillClass = gistSyncStatus === 'error'
-    ? 'error'
-    : gistSyncStatus === 'syncing' || gistSyncStatus === 'scheduled'
-      ? 'syncing'
-      : gistSyncStatus === 'synced'
-        ? 'synced'
-        : '';
+      }[driveSyncStatus];
+  const syncPillClass = !isConnected
+    ? ''
+    : driveSyncStatus === 'error'
+      ? 'error'
+      : driveSyncStatus === 'syncing' || driveSyncStatus === 'scheduled'
+        ? 'syncing'
+        : 'synced';
 
   return (
     <>
@@ -119,8 +122,16 @@ export const Topbar: React.FC<TopbarProps> = ({
               id="mobileUndoBtn"
               type="button"
               aria-label={`Undo last action (${undoStack.length})`}
-              title={`Undo: ${undoStack[0]?.label}`}
+              title={`Undo: ${undoStack[0]?.label}. Right-click to clear history.`}
               onClick={() => undo()}
+              onContextMenu={(e) => {
+                if (undoStack.length > 0) {
+                  e.preventDefault();
+                  if (window.confirm(`Clear all ${undoStack.length} undo history steps?`)) {
+                    clearUndoHistory();
+                  }
+                }
+              }}
             >
               <RotateCcw size={16} />
               <span className="undo-counter-badge">{undoStack.length}</span>
@@ -156,8 +167,16 @@ export const Topbar: React.FC<TopbarProps> = ({
               type="button"
               disabled={undoStack.length === 0}
               aria-label={undoStack[0] ? `Undo: ${undoStack[0].label} (${undoStack.length} steps available)` : 'Nothing to undo'}
-              title={undoStack[0] ? `Undo: ${undoStack[0].label} (${undoStack.length} steps available, max 30)` : 'Nothing to undo'}
+              title={undoStack[0] ? `Undo: ${undoStack[0].label} (${undoStack.length} steps available, max 30). Right-click to clear.` : 'Nothing to undo'}
               onClick={() => undo()}
+              onContextMenu={(e) => {
+                if (undoStack.length > 0) {
+                  e.preventDefault();
+                  if (window.confirm(`Clear all ${undoStack.length} undo history steps? (Your current budget data remains saved)`)) {
+                    clearUndoHistory();
+                  }
+                }
+              }}
             >
               <RotateCcw size={15} />
               <span className="topbar-btn-label">Undo</span>
@@ -223,7 +242,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                 id="gistSyncStatus"
                 role="status"
                 aria-live="polite"
-                title={gistSyncStatus === 'idle' && gistAutoSync ? 'Automatic sync is enabled and waiting for a data change.' : undefined}
+                title={isConnected ? (driveAutoSync ? 'Google Drive auto-sync is active.' : 'Google Drive sync is in manual mode.') : 'Google Drive is not connected.'}
               >
                 {syncLabel}
               </span>

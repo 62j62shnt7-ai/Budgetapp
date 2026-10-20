@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { STORAGE_KEYS, useBudgetStore } from './store/useBudgetStore';
 import { useAppUpdateStatus } from './hooks/useAppUpdateStatus';
+import { useHashRouting } from './hooks/useHashRouting';
 import { Topbar } from './components/Layout/Topbar';
 import { Sidebar } from './components/Layout/Sidebar';
 import { BottomNav } from './components/Layout/BottomNav';
@@ -37,6 +38,12 @@ import { QuickAddModal } from './components/Modals/QuickAddModal';
 import { MobileActionSheet } from './components/Layout/MobileActionSheet';
 import { UndoToast } from './components/Common/UndoToast';
 import { autoFetchLatestRates } from './engine/currency';
+import {
+  getStoredDriveToken,
+  getStoredDriveAutoSync,
+  downloadBudgetFromDrive,
+} from './services/googleDriveClient';
+import { loadStorageAsync, saveStorage } from './utils/storageAdapter';
 import type { CashEntry, JobItem, Installment } from './types';
 
 export const App: React.FC = () => {
@@ -69,6 +76,7 @@ export const App: React.FC = () => {
   );
 
   const [tabConflictDetected, setTabConflictDetected] = useState(false);
+  useHashRouting();
 
   // Modals state
   const [actionSheetOpen, setActionSheetOpen] = useState(false);
@@ -128,6 +136,11 @@ export const App: React.FC = () => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
+  // Initialize high-capacity IndexedDB storage and persistent undo history
+  useEffect(() => {
+    void useBudgetStore.getState().initStorage();
+  }, []);
+
   // Multi-tab sync coordination. Only real user data counts as a conflict —
   // timestamp/bookkeeping keys (rate fetches, sync stamps, UI prefs) are ignored.
   useEffect(() => {
@@ -185,12 +198,19 @@ export const App: React.FC = () => {
   // Auto-fetch live currency & gold rates and continuous multi-device sync
   useEffect(() => {
     let isMounted = true;
-    const fetchRates = async () => {
+    const SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+    const RATES_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
+    let lastBackgroundCheckTime = 0;
+    let lastRatesFetchTime = 0;
+
+    const fetchRates = async (force = false) => {
       if (!navigator.onLine) return;
+      if (!force && Date.now() - lastRatesFetchTime < RATES_INTERVAL_MS) return;
       try {
         const currentRates = useBudgetStore.getState().rates;
         const updated = await autoFetchLatestRates(currentRates);
         if (updated && isMounted) {
+          lastRatesFetchTime = Date.now();
           updateRates(updated);
         }
       } catch (err) {
@@ -198,34 +218,85 @@ export const App: React.FC = () => {
       }
     };
 
-    const handleSyncAndRates = async () => {
+    const handleSyncAndRates = async (options?: { isBackgroundPoll?: boolean; forceRates?: boolean }) => {
       if (document.visibilityState === 'visible' && navigator.onLine) {
+        lastBackgroundCheckTime = Date.now();
         const state = useBudgetStore.getState();
-        if (state.gistAutoSync && state.gistToken && state.gistId) {
-          if (state.gistSyncStatus !== 'scheduled' && state.gistSyncStatus !== 'syncing') {
-            await state.syncFromGist(state.gistToken, state.gistId);
+        if (!state.isStorageReady) {
+          await state.initStorage();
+        }
+        // Autonomous Google Drive Sync (Option B: My Drive / Budget Control / budget-data.json)
+        const driveToken = getStoredDriveToken();
+        const driveAutoSync = getStoredDriveAutoSync();
+        if (driveToken && driveAutoSync) {
+          try {
+            // Keep idle background checks silent — do not flash 'syncing' unless actually downloading newer changes
+            if (!options?.isBackgroundPoll && state.driveSyncStatus !== 'synced') {
+              state.setDriveSyncStatus('syncing');
+            }
+            const res = await downloadBudgetFromDrive();
+            if (res.success && res.payload) {
+              const lastSyncTime = state.lastDriveSyncTime;
+              // If remote modifiedTime matches what this device already uploaded, local state is 100% identical
+              if (res.modifiedTime && lastSyncTime && res.modifiedTime === lastSyncTime) {
+                state.setDriveSyncStatus('synced');
+                await fetchRates(options?.forceRates);
+                return;
+              }
+
+              const remoteTime = res.modifiedTime ? new Date(res.modifiedTime).getTime() : 0;
+              const lastLocal = state.lastLocalModified || Number(await loadStorageAsync(STORAGE_KEYS.lastLocalModified, '0')) || 0;
+              if (remoteTime > 0 && remoteTime > lastLocal + 2000) {
+                state.setDriveSyncStatus('syncing');
+                state.importJSON(res.payload as string, { isRemoteSync: true });
+                if (res.modifiedTime) {
+                  useBudgetStore.setState({ lastDriveSyncTime: res.modifiedTime });
+                  saveStorage(STORAGE_KEYS.lastDriveSync, res.modifiedTime);
+                  saveStorage(STORAGE_KEYS.lastGistSync, res.modifiedTime);
+                }
+              }
+              state.setDriveSyncStatus('synced');
+            } else if (!res.success && res.error && !res.error.includes("No 'budget-data.json' found")) {
+              state.setDriveSyncStatus('error');
+            } else {
+              state.setDriveSyncStatus('synced');
+            }
+          } catch (err) {
+            console.warn('[Google Drive auto-sync pull]:', err);
+            state.setDriveSyncStatus('error');
           }
         }
-        await fetchRates();
+        await fetchRates(options?.forceRates);
       }
     };
 
-    void handleSyncAndRates();
+    void handleSyncAndRates({ isBackgroundPoll: false, forceRates: true });
 
     const pollInterval = setInterval(() => {
-      void handleSyncAndRates();
-    }, 60000);
+      void handleSyncAndRates({ isBackgroundPoll: true });
+    }, SYNC_INTERVAL_MS);
 
-    window.addEventListener('online', handleSyncAndRates);
-    window.addEventListener('focus', handleSyncAndRates);
-    document.addEventListener('visibilitychange', handleSyncAndRates);
+    const onTabReactivated = () => {
+      // Throttle: only check on tab return if at least 5 minutes have elapsed since the last check
+      if (Date.now() - lastBackgroundCheckTime >= SYNC_INTERVAL_MS) {
+        void handleSyncAndRates({ isBackgroundPoll: true });
+      }
+    };
+
+    const onOnline = () => {
+      void handleSyncAndRates({ isBackgroundPoll: true });
+    };
+
+    window.addEventListener('online', onOnline);
+    window.addEventListener('focus', onTabReactivated);
+    document.addEventListener('visibilitychange', onTabReactivated);
 
     return () => {
       isMounted = false;
       clearInterval(pollInterval);
-      window.removeEventListener('online', handleSyncAndRates);
-      window.removeEventListener('focus', handleSyncAndRates);
-      document.removeEventListener('visibilitychange', handleSyncAndRates);
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('focus', onTabReactivated);
+      document.removeEventListener('visibilitychange', onTabReactivated);
     };
   }, [updateRates]);
 

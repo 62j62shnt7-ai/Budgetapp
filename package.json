@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test": "tsx test/verifyMath.mjs && tsx test/testMigrationSafety.mjs && tsx test/testUserJson.mjs && tsx test/testAffectedModalOnly.mjs && tsx test/testUndoRedo.mjs && tsx test/testLoanScaling.mjs",
+    "test": "tsx test/verifyMath.mjs && tsx test/testMigrationSafety.mjs && tsx test/testUserJson.mjs && tsx test/testAffectedModalOnly.mjs && tsx test/testUndoRedo.mjs && tsx test/testLoanScaling.mjs && tsx test/testStorageAdapter.mjs",
     "test:ui": "node test/ui-audit.mjs",
     "typecheck": "tsc -b",
     "score": "tsx test/healthReport.mjs",
@@ -14,6 +14,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "idb-keyval": "^6.3.0",
     "lucide-react": "^1.48.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
