@@ -700,7 +700,7 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
                   </div>
 
                   {/* List Container */}
-                  <div style={{ maxHeight: '240px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px', paddingRight: '2px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     {currentTabList.length === 0 ? (
                       <div style={{ fontSize: '11px', opacity: 0.6, fontStyle: 'italic', padding: '12px', textAlign: 'center' }}>
                         {activeSnapshotTab === 'daily' && 'No daily backups created yet. Created once per day whenever you make ledger changes.'}

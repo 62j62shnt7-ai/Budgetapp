@@ -2169,8 +2169,12 @@ dialog::backdrop {
 .gist-sync-dialog {
   width: min(720px, calc(100vw - 32px));
   max-width: 720px;
-  max-height: min(840px, calc(100vh - 40px));
-  overflow: hidden;
+  max-height: min(88vh, 860px);
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .gist-sync-dialog > p {
@@ -2191,8 +2195,8 @@ dialog::backdrop {
 
 .gist-sync-body {
   min-width: 0;
-  max-height: calc(min(840px, 100vh - 40px) - 66px);
-  overflow-y: auto;
+  max-height: none;
+  overflow: visible;
   padding: 8px 18px 18px;
 }
 
@@ -2342,10 +2346,12 @@ dialog::backdrop {
     width: calc(100vw - 20px);
     max-height: calc(100vh - 20px);
     border-radius: 14px;
+    overflow-y: auto !important;
   }
 
   .gist-sync-body {
-    max-height: calc(100vh - 86px);
+    max-height: none;
+    overflow: visible;
     padding: 8px 14px max(14px, env(safe-area-inset-bottom));
   }
 
