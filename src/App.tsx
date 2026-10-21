@@ -37,8 +37,10 @@ import { AccountTransferModal } from './components/Modals/AccountTransferModal';
 import { QuickAddModal } from './components/Modals/QuickAddModal';
 import { MobileActionSheet } from './components/Layout/MobileActionSheet';
 import { UndoToast } from './components/Common/UndoToast';
+import { DriveReconnectBanner } from './components/Common/DriveReconnectBanner';
 import { autoFetchLatestRates } from './engine/currency';
 import {
+  getStoredDriveUser,
   getStoredDriveToken,
   getStoredDriveAutoSync,
   downloadBudgetFromDrive,
@@ -203,9 +205,14 @@ export const App: React.FC = () => {
           await state.initStorage();
         }
         // Autonomous Google Drive Sync (Option B: My Drive / Budget Control / budget-data.json)
+        const driveUser = getStoredDriveUser();
         const driveToken = getStoredDriveToken();
         const driveAutoSync = getStoredDriveAutoSync();
-        if (driveToken && driveAutoSync) {
+
+        // If user is connected to Google Drive but token is expired/missing, immediately signal 'expired' status
+        if (driveUser && !driveToken) {
+          state.setDriveSyncStatus('expired');
+        } else if (driveToken && driveAutoSync) {
           try {
             // Keep idle background checks silent — do not flash 'syncing' unless actually downloading newer changes
             if (!options?.isBackgroundPoll && state.driveSyncStatus !== 'synced') {
@@ -505,6 +512,7 @@ export const App: React.FC = () => {
           onOpenDataTools={() => setDataToolsOpen(true)}
           onOpenDriveSync={() => setDriveSyncOpen(true)}
         />
+        <DriveReconnectBanner onOpenDriveSync={() => setDriveSyncOpen(true)} />
         {renderActiveView()}
       </main>
 

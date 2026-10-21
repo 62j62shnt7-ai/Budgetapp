@@ -23,6 +23,7 @@ import {
   saveStoredDriveUser,
   getStoredDriveAutoSync,
   saveStoredDriveAutoSync,
+  isDriveTokenValid,
   type GoogleDriveUser,
 } from '../../services/googleDriveClient';
 import {
@@ -44,21 +45,25 @@ import {
 } from './common';
 import type { SliceCreator, SyncSlice, BudgetStoreState } from './types';
 
-export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => ({
-  driveUser: getStoredDriveUser(),
-  driveAutoSync: getStoredDriveAutoSync(),
-  driveSyncStatus: 'idle',
-  lastDriveSyncTime: null,
-  lastLocalModified: lastLocalMutationTimestamp,
+export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => {
+  const initialUser = getStoredDriveUser();
+  const initialTokenValid = isDriveTokenValid();
 
-  setDriveUser: (user: GoogleDriveUser | null) => {
-    saveStoredDriveUser(user);
-    set({
-      driveUser: user,
-      driveSyncStatus: user ? 'synced' : 'idle',
-      gistSyncStatus: user ? 'synced' : 'idle',
-    });
-  },
+  return {
+    driveUser: initialUser,
+    driveAutoSync: getStoredDriveAutoSync(),
+    driveSyncStatus: initialUser ? (initialTokenValid ? 'idle' : 'expired') : 'idle',
+    lastDriveSyncTime: null,
+    lastLocalModified: lastLocalMutationTimestamp,
+
+    setDriveUser: (user: GoogleDriveUser | null) => {
+      saveStoredDriveUser(user);
+      set({
+        driveUser: user,
+        driveSyncStatus: user ? 'synced' : 'idle',
+        gistSyncStatus: user ? 'synced' : 'idle',
+      });
+    },
 
   setDriveAutoSync: (enabled: boolean) => {
     saveStoredDriveAutoSync(enabled);
@@ -459,6 +464,15 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => ({
           updates.redoStack = undoData.redoStack;
         }
 
+        // Verify Google Drive connection health on storage load
+        const storedUser = getStoredDriveUser();
+        if (storedUser) {
+          updates.driveUser = storedUser;
+          if (!isDriveTokenValid()) {
+            updates.driveSyncStatus = 'expired';
+          }
+        }
+
         set(updates);
       } catch (err) {
         console.warn('initStorage failed:', err);
@@ -471,4 +485,5 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => ({
     setInitStoragePromise(promise);
     return promise;
   },
-});
+};
+};

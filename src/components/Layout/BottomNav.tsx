@@ -2,6 +2,7 @@ import React from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { LayoutDashboard, TrendingUp, AlertTriangle, History, MoreHorizontal, Plus } from 'lucide-react';
+import { isDriveTokenValid } from '../../services/googleDriveClient';
 
 interface BottomNavProps {
   onOpenMobileMenu: () => void;
@@ -19,7 +20,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ onOpenMobileMenu, onOpenQu
   );
 
   const isConnected = Boolean(driveUser);
-  const isExpired = driveSyncStatus === 'expired';
+  const isExpired = driveSyncStatus === 'expired' || (isConnected && !isDriveTokenValid());
   const isError = driveSyncStatus === 'error';
   const showDot = isConnected && (isExpired || isError);
 
