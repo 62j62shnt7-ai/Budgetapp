@@ -737,7 +737,8 @@ const testEntryWithJobAndStorage = {
   originalAmount: 1000,
   account: 'hsbc_usd',
   draws: [
-    { id: 'd-1', date: '2026-10-15', amount: 50000, account: 'hsbc_usd' },
+    { id: 'd-1', date: '2026-10-10', amount: 25000, account: 'hsbc_usd' },
+    { id: 'd-2', date: '2026-10-15', amount: 25000, account: 'hsbc_usd' },
   ],
 };
 
@@ -1157,6 +1158,107 @@ const skippedClearOpts = buildEntryClearOptions(skippedDeductEntry, {
 assert.strictEqual(skippedClearOpts.options.find((o) => o.id === 'storage'), undefined, 'Entry with draw.account === "none" must not offer Bank Account Refund');
 
 console.log('  ✓ Paid credit settlement deletion refunds operating bank & "Don\'t deduct" draws are never falsely refunded\n');
+
+// -------------------------------------------------------------
+// Test Scenario 24: Single Records in History Suppress Recorded Tranches (1)
+// -------------------------------------------------------------
+console.log('▶ Test Scenario 24: Single Records in History Suppress Recorded Tranches (1)');
+
+const singleRecordExpense = {
+  id: 'single-expense-1',
+  date: '2026-10-20',
+  category: 'Groceries',
+  amount: 1500,
+  actualAmount: 1500,
+  type: 'expense',
+  account: 'hsbc',
+  draws: [{ id: 'd-single-1', date: '2026-10-20', amount: 1500, account: 'hsbc' }],
+};
+
+const singleRecordIncome = {
+  id: 'single-income-1',
+  date: '2026-10-20',
+  category: 'Consulting',
+  amount: 8000,
+  actualAmount: 8000,
+  type: 'income',
+  account: 'cib',
+  draws: [{ id: 'd-single-2', date: '2026-10-20', amount: 8000, account: 'cib' }],
+};
+
+const multiDrawExpense = {
+  id: 'multi-expense-1',
+  date: '2026-10-20',
+  category: 'Home Renovation',
+  amount: 10000,
+  actualAmount: 6000,
+  type: 'expense',
+  account: 'hsbc',
+  draws: [
+    { id: 'd-multi-1', date: '2026-10-15', amount: 3000, account: 'hsbc' },
+    { id: 'd-multi-2', date: '2026-10-20', amount: 3000, account: 'hsbc' },
+  ],
+};
+
+const loanFacilityEntry = {
+  id: 'loan-draw-1',
+  date: '2026-10-20',
+  category: 'Bank Loan Inflow',
+  amount: 100000,
+  type: 'income',
+  loanId: 'facility-1',
+  draws: [{ id: 'd-loan-1', date: '2026-10-20', amount: 100000 }],
+};
+
+const clearSingleExpOpts = buildEntryClearOptions(singleRecordExpense, {
+  accounts: { hsbc: { name: 'HSBC', balance: 50000 } },
+  entryActuals: { 'single-expense-1': 1500 },
+});
+assert.strictEqual(clearSingleExpOpts.options.some((o) => o.id === 'draws'), false, 'Single expense record must NOT show Recorded Tranches (1) when clearing actual');
+
+const deleteSingleExpOpts = buildEntryDeleteOptions(singleRecordExpense, {
+  installments: [],
+  storageAssets: [],
+  partTimeJobs: [],
+  asfJobs: [],
+  irqJobs: [],
+});
+assert.strictEqual(deleteSingleExpOpts.options.some((o) => o.id === 'draws'), false, 'Single expense record must NOT show Recorded Tranches (1) when deleting');
+
+const deleteSingleIncOpts = buildEntryDeleteOptions(singleRecordIncome, {
+  installments: [],
+  storageAssets: [],
+  partTimeJobs: [],
+  asfJobs: [],
+  irqJobs: [],
+});
+assert.strictEqual(deleteSingleIncOpts.options.some((o) => o.id === 'draws'), false, 'Single income record must NOT show Recorded Tranches (1) when deleting');
+
+const clearMultiExpOpts = buildEntryClearOptions(multiDrawExpense, {
+  accounts: { hsbc: { name: 'HSBC', balance: 50000 } },
+  entryActuals: { 'multi-expense-1': 6000 },
+});
+assert.strictEqual(clearMultiExpOpts.options.some((o) => o.id === 'draws'), true, 'Genuine multi-draw expense MUST show Recorded Tranches option when clearing actual');
+
+const deleteMultiExpOpts = buildEntryDeleteOptions(multiDrawExpense, {
+  installments: [],
+  storageAssets: [],
+  partTimeJobs: [],
+  asfJobs: [],
+  irqJobs: [],
+});
+assert.strictEqual(deleteMultiExpOpts.options.some((o) => o.id === 'draws'), true, 'Genuine multi-draw expense MUST show Recorded Tranches option when deleting');
+
+const deleteLoanOpts = buildEntryDeleteOptions(loanFacilityEntry, {
+  installments: [],
+  storageAssets: [],
+  partTimeJobs: [],
+  asfJobs: [],
+  irqJobs: [],
+});
+assert.strictEqual(deleteLoanOpts.options.some((o) => o.id === 'draws'), true, 'Loan inflow facility entry with 1 draw retains Recorded Tranches option');
+
+console.log('  ✓ Single records suppress Recorded Tranches (1) while multi-draw entries and loan facilities retain it\n');
 
 console.log('===============================================================');
 console.log('🌟 100% OF ALL AFFECTED RECORDS MODAL TESTS PASSED! 🌟');

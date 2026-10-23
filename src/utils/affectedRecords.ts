@@ -10,7 +10,7 @@ import type {
 import type { AffectedRecordOption } from '../components/Modals/AffectedRecordsModal';
 import { formatMoney, DateUtils } from '../engine/dateUtils';
 import { formatNativeCurrency } from '../engine/currency';
-import { findLinkedLoanRepayment } from '../engine/forecast';
+import { findLinkedLoanRepayment, isLoanInflow } from '../engine/forecast';
 import {
   isCreditCardExpense,
   getCreditSettlementMonth,
@@ -287,9 +287,11 @@ export function buildEntryDeleteOptions(
   }
 
   const isCardSwipe = isCreditCardExpense(entry);
+  const isLoanFacility = isLoanInflow(entry);
 
-  // Suppress Recorded Tranches (1) on 1-click credit card swipes; only show for credit swipes when there are > 1 draws
-  if (entry.draws && (isCardSwipe ? entry.draws.length > 1 : entry.draws.length > 0)) {
+  // Suppress Recorded Tranches (1) on ordinary 1-click single records;
+  // only show when there are multiple draws (> 1) or if it's a loan inflow facility tranche
+  if (entry.draws && (entry.draws.length > 1 || (isLoanFacility && entry.draws.length > 0))) {
     options.push({
       id: 'draws',
       label: `Recorded Tranches (${entry.draws.length})`,
@@ -793,10 +795,9 @@ export function buildEntryClearOptions(
     entry.id.startsWith('credit-settlement-') ||
     (entry.source || '').toLowerCase().includes('recurring credit');
 
-  const showDrawsOption = Boolean(
-    entry.draws &&
-      (isCardSwipe || isSettlementEntry ? entry.draws.length > 1 : entry.draws.length > 0)
-  );
+  // Only show Recorded Tranches option when an entry genuinely has multiple draws (> 1).
+  // Single 1-time payments simply revert to planned forecast without exposing a tranches checkbox.
+  const showDrawsOption = Boolean(entry.draws && entry.draws.length > 1);
 
   const options: AffectedRecordOption[] = [
     {

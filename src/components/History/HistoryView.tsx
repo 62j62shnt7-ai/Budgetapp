@@ -1730,7 +1730,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
               // ongoing open budget, keeping its tranches and recorded actual intact.
               const keepDraws = !isSettlement
                 && hasDrawsOption
-                && Boolean(clearEntryTarget.draws && clearEntryTarget.draws.length > 0)
+                && Boolean(clearEntryTarget.draws && clearEntryTarget.draws.length > 1)
                 && !selectedIds.includes('draws');
               clearActual(clearEntryTarget.id, {
                 keepDraws,
