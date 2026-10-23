@@ -8,6 +8,7 @@ import type {
 } from '../../types';
 import { getCurrencyRateOr } from '../../engine/currency';
 import { inferTag } from '../../engine/tags';
+import { isCreditCardExpense } from '../../engine/creditCards';
 import {
   saveStorage as adapterSaveStorage,
   loadStorageSync as adapterLoadStorageSync,
@@ -15,6 +16,7 @@ import {
 } from '../../utils/storageAdapter';
 import {
   getStoredDriveToken,
+  getStoredDriveUser,
   getStoredDriveAutoSync,
   uploadBudgetToDrive,
 } from '../../services/googleDriveClient';
@@ -56,6 +58,11 @@ export const STORAGE_KEYS = {
   lastDriveSync: 'budget-control-last-drive-sync',
   lastGistUpload: 'budget-control-last-gist-upload',
   lastGistSync: 'budget-control-last-gist-sync',
+  gdriveClientId: 'budget-control-gdrive-client-id',
+  gdriveToken: 'budget-control-gdrive-token',
+  gdriveTokenExpiry: 'budget-control-gdrive-token-expiry',
+  gdriveUser: 'budget-control-gdrive-user',
+  gdriveAutoSync: 'budget-control-gdrive-auto-sync',
 };
 
 export function loadStorage<T>(key: string, fallback: T): T {
@@ -184,8 +191,9 @@ export function scheduleAutoDriveSync(
 ): void {
   if (typeof window === 'undefined') return;
   const token = getStoredDriveToken();
+  const user = getStoredDriveUser();
   const autoSync = getStoredDriveAutoSync();
-  if (!token || !autoSync) return;
+  if ((!token && !user) || !autoSync) return;
 
   const isRateRefresh = options?.rateRefresh === true;
   const isUserEdit = options?.isUserEdit !== undefined ? options.isUserEdit : !isRateRefresh;
@@ -266,8 +274,16 @@ export const defaultAccounts: Record<string, AccountBalance> = {
 };
 
 export function withoutCashAccount(accounts: Record<string, AccountBalance>): Record<string, AccountBalance> {
-  const { cash: _cash, ...remaining } = accounts;
-  return remaining;
+  const cleaned: Record<string, AccountBalance> = {};
+  for (const [k, v] of Object.entries(accounts || {})) {
+    const kLower = k.toLowerCase().trim();
+    const nameLower = (v?.name || '').toLowerCase().trim();
+    if (kLower === 'cash' || kLower.includes('credit') || nameLower.includes('credit')) {
+      continue;
+    }
+    cleaned[k] = v;
+  }
+  return Object.keys(cleaned).length > 0 ? cleaned : structuredClone(defaultAccounts);
 }
 
 export const defaultSalaryPattern: SalaryPayment[] = [
@@ -298,6 +314,17 @@ export function revertStorageOrAccountBalance(
   const currUpper = (currency || 'EGP').toUpperCase();
   const isForeign = currUpper !== 'EGP';
   const accountLower = (account || '').toLowerCase().trim();
+
+  // Credit card swipes and non-deposited ('none') entries do not deduct from operating accounts or storage
+  if (
+    !assetId &&
+    (accountLower === 'none' ||
+      accountLower === 'unassigned' ||
+      accountLower.includes('credit') ||
+      accountLower.includes('card'))
+  ) {
+    return;
+  }
 
   let targetAsset = assetId ? storageAssets.find((a) => a.id === assetId) : undefined;
 
@@ -449,6 +476,30 @@ export function upgradeLoadedEntries(rawEntries: CashEntry[]): CashEntry[] {
       const inferred = inferTag(entry);
       if (inferred) tag = inferred;
     }
-    return tag !== entry.tag ? { ...entry, tag } : entry;
+
+    const isCardSwipe = isCreditCardExpense(entry);
+    let nextAccount = entry.account;
+    let nextDraws = entry.draws;
+    if (isCardSwipe) {
+      const accLower = (entry.account || '').toLowerCase().trim();
+      if (!accLower.includes('credit')) {
+        const isCib = entry.creditType === 'cib_card' || accLower.includes('cib');
+        nextAccount = isCib ? 'CIB Credit' : 'HSBC Credit';
+      }
+      // Strip single auto-generated 1-click draw on credit card swipes
+      if (Array.isArray(entry.draws) && entry.draws.length === 1) {
+        nextDraws = undefined;
+      }
+    }
+
+    if (tag !== entry.tag || nextAccount !== entry.account || nextDraws !== entry.draws) {
+      return {
+        ...entry,
+        tag,
+        account: nextAccount,
+        draws: nextDraws,
+      };
+    }
+    return entry;
   });
 }

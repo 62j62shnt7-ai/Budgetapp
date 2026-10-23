@@ -4,7 +4,6 @@ import { useBudgetStore } from '../../store/useBudgetStore';
 import {
   signInWithGoogleDrive,
   downloadBudgetFromDrive,
-  isDriveTokenValid,
 } from '../../services/googleDriveClient';
 import { AlertCircle, RefreshCw, X, ExternalLink } from 'lucide-react';
 
@@ -27,8 +26,8 @@ export const DriveReconnectBanner: React.FC<DriveReconnectBannerProps> = ({ onOp
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState(false);
 
-  // Render if a user has linked Google Drive and either sync status is expired or token is invalid
-  const isRequired = Boolean(driveUser) && (driveSyncStatus === 'expired' || !isDriveTokenValid());
+  // Render only if a user has linked Google Drive and silent token refresh has failed ('expired')
+  const isRequired = Boolean(driveUser) && driveSyncStatus === 'expired';
 
   if (!isRequired || dismissed) {
     return null;

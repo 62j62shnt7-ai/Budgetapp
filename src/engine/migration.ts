@@ -206,7 +206,8 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
   if (rawAccounts && typeof rawAccounts === 'object') {
     const accMap: Record<string, AccountBalance> = {};
     for (const [k, v] of Object.entries(rawAccounts)) {
-      if (k === 'cash') continue; // omit legacy cash pool
+      const kLower = k.toLowerCase().trim();
+      if (kLower === 'cash' || kLower.includes('credit')) continue; // omit legacy cash pool & credit card pseudo-accounts
       const accRecord = v && typeof v === 'object' ? (v as Record<string, unknown>) : null;
       if (accRecord && 'balance' in accRecord) {
         accMap[k] = {

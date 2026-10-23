@@ -38,7 +38,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
   onOpenPaymentModal,
   onOpenForecastModal,
 }) => {
-  const { partTimeJobs, rates, entries, deletedForecasts, deleteJob, saveJob, deleteJobPayment, storageAssets } = useBudgetStore(
+  const { partTimeJobs, rates, entries, deletedForecasts, deleteJob, saveJob, deleteJobPayment, storageAssets, accounts } = useBudgetStore(
     useShallow((state) => ({
       partTimeJobs: state.partTimeJobs,
       rates: state.rates,
@@ -48,6 +48,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
       saveJob: state.saveJob,
       deleteJobPayment: state.deleteJobPayment,
       storageAssets: state.storageAssets,
+      accounts: state.accounts,
     }))
   );
 
@@ -651,7 +652,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
                               </thead>
                               <tbody>
                                 {payments.map((p) => {
-                                  const hasAffectedPay = hasJobPaymentAffectedParties(p, storageAssets);
+                                  const hasAffectedPay = hasJobPaymentAffectedParties(p, storageAssets, accounts);
                                   return (
                                     <tr key={p.id}>
                                       <td className="jobs-table-date" data-label="Date">
@@ -752,37 +753,47 @@ export const JobsView: React.FC<JobsViewProps> = ({
                   },
                 ]
               : []),
-            ...(storageAssets.length > 0
-              ? (() => {
-                  const targetAccount = (deletePaymentTarget.payment.settlementAccount || deletePaymentTarget.payment.account || '').trim().toLowerCase();
-                  const paymentCurr = (deletePaymentTarget.payment.currency || deletePaymentTarget.job.currency || 'USD').toUpperCase();
-                  const isForeign = paymentCurr !== 'EGP';
-                  const matchingStorage = storageAssets.find(
-                    (a) =>
-                      a.name.trim().toLowerCase() === targetAccount ||
-                      (isForeign &&
-                        ((a.unit || '').toUpperCase() === paymentCurr || (a.currency || '').toUpperCase() === paymentCurr))
-                  );
-                  const assetName = matchingStorage ? matchingStorage.name : 'Storage / Bank Balance';
-                  const currentQtyDesc = matchingStorage ? ` (Current: ${matchingStorage.quantity} ${matchingStorage.unit || ''})` : '';
-                  return [
-                    {
-                      id: 'storage',
-                      label: `Storage: ${assetName}`,
-                      sublabel: `Revert / deduct ${formatJobCurrency(deletePaymentTarget.payment.amount, deletePaymentTarget.payment.currency || deletePaymentTarget.job.currency)} from ${assetName}${currentQtyDesc}.`,
-                      icon: '🏦',
-                      defaultChecked: Boolean(
-                        matchingStorage &&
-                          (targetAccount.includes('storage') ||
-                            targetAccount.includes('usd') ||
-                            targetAccount.includes('hsbc') ||
-                            targetAccount.includes('cash') ||
-                            isForeign)
-                      ),
-                    },
-                  ];
-                })()
-              : []),
+            ...(() => {
+              const targetAccount = (deletePaymentTarget.payment.settlementAccount || deletePaymentTarget.payment.account || '').trim().toLowerCase();
+              const cleanAcc = targetAccount.replace('account:', '').replace('storage:existing-', '').replace('storage:', '');
+              if (!cleanAcc || cleanAcc === 'none' || cleanAcc === 'unassigned') return [];
+              const paymentCurr = (deletePaymentTarget.payment.currency || deletePaymentTarget.job.currency || 'USD').toUpperCase();
+              const isForeign = paymentCurr !== 'EGP';
+              const matchingStorage = storageAssets.find(
+                (a) =>
+                  a.id === cleanAcc ||
+                  a.name.trim().toLowerCase() === cleanAcc ||
+                  a.name.trim().toLowerCase() === targetAccount ||
+                  (isForeign &&
+                    !accounts[cleanAcc] &&
+                    ((a.unit || '').toUpperCase() === paymentCurr || (a.currency || '').toUpperCase() === paymentCurr))
+              );
+              const matchingBankKey = Object.keys(accounts).find(
+                (k) =>
+                  !k.toLowerCase().includes('credit') &&
+                  (k.toLowerCase() === cleanAcc || (accounts[k]?.name || '').toLowerCase().trim() === cleanAcc)
+              );
+              const matchingBank = matchingBankKey ? accounts[matchingBankKey] : undefined;
+              if (!matchingStorage && !matchingBank) return [];
+
+              const assetName = matchingStorage
+                ? matchingStorage.name
+                : matchingBank?.name || matchingBankKey!.toUpperCase();
+              const currentQtyDesc = matchingStorage
+                ? ` (Current: ${matchingStorage.quantity} ${matchingStorage.unit || ''})`
+                : matchingBank
+                ? ` (Current: ${formatMoney(matchingBank.balance || 0)})`
+                : '';
+              return [
+                {
+                  id: 'storage',
+                  label: matchingStorage ? `Storage: ${assetName}` : `Bank Account: ${assetName}`,
+                  sublabel: `Revert / deduct ${formatJobCurrency(deletePaymentTarget.payment.amount, deletePaymentTarget.payment.currency || deletePaymentTarget.job.currency)} from ${assetName}${currentQtyDesc}.`,
+                  icon: '🏦',
+                  defaultChecked: true,
+                },
+              ];
+            })(),
           ]}
           onConfirm={(selectedOptionIds) => {
             const targetAccount = (deletePaymentTarget.payment.settlementAccount || deletePaymentTarget.payment.account || '').trim().toLowerCase();

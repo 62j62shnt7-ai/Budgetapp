@@ -6,6 +6,7 @@ import {
   inferAssetLocation,
 } from '../../engine/currency';
 import { DateUtils } from '../../engine/dateUtils';
+import { isJobLinkedToStorageAsset } from '../../utils/affectedRecords';
 import {
   STORAGE_KEYS,
   loadStorage,
@@ -131,9 +132,9 @@ export const createRatesSlice: SliceCreator<RatesSlice> = (set, get) => ({
       let updatedIrq = get().irqJobs;
       let updatedPartTime = get().partTimeJobs;
 
-      if (options?.resetJobDestinations) {
+      if (options?.resetJobDestinations && asset) {
         const resetJob = (j: JobItem): JobItem =>
-          j.forecastDestination === `storage:existing-${id}` ? { ...j, forecastDestination: undefined } : j;
+          isJobLinkedToStorageAsset(j, asset) ? { ...j, forecastDestination: undefined } : j;
 
         const nextAsf = get().asfJobs.map(resetJob);
         if (nextAsf.some((j, i) => j !== get().asfJobs[i])) {

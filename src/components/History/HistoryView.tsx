@@ -1653,6 +1653,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
           accounts,
           entryActuals,
           entries,
+          creditSettlementOverrides,
         });
 
         return (
@@ -1672,6 +1673,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                 syncJob: selectedIds.includes('job'),
                 revertStorage: selectedIds.includes('storage'),
                 restoreForeignAsset: selectedIds.includes('restore_fx_asset'),
+                adjustCreditOverride: selectedIds.includes('credit_statement'),
               });
               setDeleteEntryTarget(null);
             }}
@@ -1691,18 +1693,22 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
           accounts,
           entryActuals,
           entryActualDates,
+          creditSettlementOverrides,
         });
 
+        const isCardSwipe = isCreditCardExpense(clearEntryTarget);
         const targetAccount = (clearEntryTarget.account || '').trim().toLowerCase();
         const currUpper = (clearEntryTarget.currency || 'EGP').toUpperCase();
         const isForeign = currUpper !== 'EGP';
-        const matchingStorage = (storageAssets || []).find((a) => {
-          if (clearEntryTarget.storageAssetId && a.id === clearEntryTarget.storageAssetId) return true;
-          if (a.name.trim().toLowerCase() === targetAccount) return true;
-          if (isForeign && ((a.unit || '').toUpperCase() === currUpper || (a.currency || '').toUpperCase() === currUpper)) return true;
-          if (clearEntryTarget.draws && clearEntryTarget.draws.some((d) => d.storageAssetId === a.id || (d.account && d.account.trim().toLowerCase() === a.name.trim().toLowerCase()))) return true;
-          return false;
-        });
+        const matchingStorage = !isCardSwipe
+          ? (storageAssets || []).find((a) => {
+              if (clearEntryTarget.storageAssetId && a.id === clearEntryTarget.storageAssetId) return true;
+              if (a.name.trim().toLowerCase() === targetAccount) return true;
+              if (isForeign && ((a.unit || '').toUpperCase() === currUpper || (a.currency || '').toUpperCase() === currUpper)) return true;
+              if (clearEntryTarget.draws && clearEntryTarget.draws.some((d) => d.storageAssetId === a.id || (d.account && d.account.trim().toLowerCase() === a.name.trim().toLowerCase()))) return true;
+              return false;
+            })
+          : undefined;
 
         return (
           <AffectedRecordsModal
@@ -1719,14 +1725,16 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
               // Credit settlements are synthetic due rows: clearing must always revert
               // them to a single planned (overdue) due date, never an ongoing budget.
               const isSettlement = clearEntryTarget.id.startsWith('credit-settlement-');
+              const hasDrawsOption = affectedData.options.some((o) => o.id === 'draws');
               // Unchecked "Recorded Tranches" = restore the entry to Cash Flow as an
               // ongoing open budget, keeping its tranches and recorded actual intact.
               const keepDraws = !isSettlement
+                && hasDrawsOption
                 && Boolean(clearEntryTarget.draws && clearEntryTarget.draws.length > 0)
                 && !selectedIds.includes('draws');
               clearActual(clearEntryTarget.id, {
                 keepDraws,
-                revertStorage: isSettlement || selectedIds.includes('storage'),
+                revertStorage: selectedIds.includes('storage'),
                 storageAssetId: matchingStorage?.id,
                 syncJob: keepDraws ? false : selectedIds.includes('job'),
               });

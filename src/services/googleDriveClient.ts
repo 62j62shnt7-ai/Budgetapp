@@ -80,17 +80,36 @@ export function getDriveConnectionState(): DriveConnectionState {
 }
 
 let silentRefreshPromise: Promise<string | null> | null = null;
+let proactiveRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleProactiveTokenRefresh(expiresInSeconds: number): void {
+  if (typeof window === 'undefined') return;
+  if (proactiveRefreshTimer) {
+    clearTimeout(proactiveRefreshTimer);
+    proactiveRefreshTimer = null;
+  }
+  // Renew 5 minutes before token expiry (minimum 60s delay)
+  const delayMs = Math.max(60_000, (expiresInSeconds - 300) * 1000);
+  proactiveRefreshTimer = setTimeout(() => {
+    proactiveRefreshTimer = null;
+    if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+      void refreshDriveTokenSilently({ force: true });
+    }
+  }, delayMs);
+}
 
 /**
  * Attempt to refresh the Google Drive OAuth token silently in the background
  * without showing user account selection popups (prompt: '').
  */
-export async function refreshDriveTokenSilently(): Promise<string | null> {
+export async function refreshDriveTokenSilently(options?: { force?: boolean }): Promise<string | null> {
   const user = getStoredDriveUser();
   if (!user) return null;
 
-  const validToken = getStoredDriveToken();
-  if (validToken) return validToken;
+  if (!options?.force) {
+    const validToken = getStoredDriveToken();
+    if (validToken) return validToken;
+  }
 
   if (silentRefreshPromise) return silentRefreshPromise;
 
@@ -102,11 +121,23 @@ export async function refreshDriveTokenSilently(): Promise<string | null> {
     if (!loaded) return null;
 
     return new Promise<string | null>((resolve) => {
+      let settled = false;
+      const finish = (val: string | null) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+        resolve(val);
+      };
+      const timeoutId = setTimeout(() => {
+        console.warn('[googleDriveClient] Silent token refresh timed out after 10s');
+        finish(null);
+      }, 10_000);
+
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const google = (window as any).google;
         if (!google?.accounts?.oauth2) {
-          resolve(null);
+          finish(null);
           return;
         }
 
@@ -118,18 +149,18 @@ export async function refreshDriveTokenSilently(): Promise<string | null> {
           callback: (resp: any) => {
             if (resp.error || !resp.access_token) {
               console.warn('[googleDriveClient] Silent token refresh failed:', resp.error);
-              resolve(null);
+              finish(null);
               return;
             }
             const token = resp.access_token as string;
             const expiresIn = Number(resp.expires_in || 3600);
             saveStoredDriveToken(token, expiresIn);
-            resolve(token);
+            finish(token);
           },
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           error_callback: (err: any) => {
             console.warn('[googleDriveClient] Silent token refresh error callback:', err);
-            resolve(null);
+            finish(null);
           },
         });
 
@@ -137,7 +168,7 @@ export async function refreshDriveTokenSilently(): Promise<string | null> {
         client.requestAccessToken({ prompt: '' });
       } catch (err) {
         console.warn('[googleDriveClient] Silent token refresh exception:', err);
-        resolve(null);
+        finish(null);
       }
     });
   })().finally(() => {
@@ -157,6 +188,10 @@ export function getStoredDriveToken(): string | null {
   if (!token || Date.now() >= expiry) {
     return null;
   }
+  // If token is valid but expiring within 5 minutes, trigger a proactive silent refresh
+  if (expiry - Date.now() < 5 * 60 * 1000 && !silentRefreshPromise) {
+    void refreshDriveTokenSilently({ force: true });
+  }
   return token;
 }
 
@@ -170,9 +205,14 @@ export function saveStoredDriveToken(token: string, expiresInSeconds: number): v
       localStorage.setItem(GDRIVE_TOKEN_EXPIRY_KEY, String(expiry));
     } catch {}
   }
+  scheduleProactiveTokenRefresh(expiresInSeconds);
 }
 
 export function clearStoredDriveToken(): void {
+  if (proactiveRefreshTimer) {
+    clearTimeout(proactiveRefreshTimer);
+    proactiveRefreshTimer = null;
+  }
   void removeStorage(GDRIVE_TOKEN_KEY);
   void removeStorage(GDRIVE_TOKEN_EXPIRY_KEY);
   void removeStorage(GDRIVE_USER_KEY);
@@ -282,10 +322,19 @@ export function loadGisScript(): Promise<boolean> {
   if (gisLoadingPromise) return gisLoadingPromise;
 
   gisLoadingPromise = new Promise((resolve) => {
+    const finish = (ok: boolean) => {
+      if (!ok) gisLoadingPromise = null;
+      resolve(ok);
+    };
     const existing = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
     if (existing) {
-      existing.addEventListener('load', () => resolve(true));
-      existing.addEventListener('error', () => resolve(false));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((window as any).google?.accounts?.oauth2) {
+        finish(true);
+        return;
+      }
+      existing.addEventListener('load', () => finish(true), { once: true });
+      existing.addEventListener('error', () => finish(false), { once: true });
       return;
     }
 
@@ -293,10 +342,10 @@ export function loadGisScript(): Promise<boolean> {
     script.src = 'https://accounts.google.com/gsi/client';
     script.async = true;
     script.defer = true;
-    script.onload = () => resolve(true);
+    script.onload = () => finish(true);
     script.onerror = () => {
       console.warn('[googleDriveClient] Failed to load Google Identity Services SDK');
-      resolve(false);
+      finish(false);
     };
     document.head.appendChild(script);
   });

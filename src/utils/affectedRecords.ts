@@ -1,8 +1,20 @@
-import type { CashEntry, Installment, StorageAsset, JobItem, JobPayment, AccountBalance } from '../types';
+import type {
+  CashEntry,
+  Installment,
+  StorageAsset,
+  JobItem,
+  JobPayment,
+  AccountBalance,
+  CreditSettlementOverride,
+} from '../types';
 import type { AffectedRecordOption } from '../components/Modals/AffectedRecordsModal';
 import { formatMoney, DateUtils } from '../engine/dateUtils';
 import { formatNativeCurrency } from '../engine/currency';
 import { findLinkedLoanRepayment } from '../engine/forecast';
+import {
+  isCreditCardExpense,
+  getCreditSettlementMonth,
+} from '../engine/creditCards';
 
 export interface EntryDeleteAffectedData {
   itemDescription: string;
@@ -133,7 +145,9 @@ export function buildEntryDeleteOptions(
     irqJobs: JobItem[];
     accounts?: Record<string, AccountBalance>;
     entryActuals?: Record<string, number>;
+    entryActualDates?: Record<string, string>;
     entries?: CashEntry[];
+    creditSettlementOverrides?: Record<string, CreditSettlementOverride>;
   }
 ): EntryDeleteAffectedData {
   const isForeign = (entry.currency || 'EGP').toUpperCase() !== 'EGP';
@@ -272,7 +286,10 @@ export function buildEntryDeleteOptions(
     });
   }
 
-  if (entry.draws && entry.draws.length > 0) {
+  const isCardSwipe = isCreditCardExpense(entry);
+
+  // Suppress Recorded Tranches (1) on 1-click credit card swipes; only show for credit swipes when there are > 1 draws
+  if (entry.draws && (isCardSwipe ? entry.draws.length > 1 : entry.draws.length > 0)) {
     options.push({
       id: 'draws',
       label: `Recorded Tranches (${entry.draws.length})`,
@@ -284,6 +301,40 @@ export function buildEntryDeleteOptions(
     });
   }
 
+  if (isCardSwipe) {
+    const accKey =
+      entry.creditType === 'cib_card' || (entry.account || '').toLowerCase().includes('cib')
+        ? 'cib'
+        : 'hsbc';
+    const bankLabel = accKey === 'cib' ? 'CIB' : 'HSBC';
+    const sMonth = getCreditSettlementMonth(
+      entry,
+      context.creditSettlementOverrides,
+      context.entryActualDates
+    );
+    const settlementId = sMonth ? `credit-settlement-${accKey}-${sMonth}` : '';
+    const existingOverride = settlementId
+      ? context.creditSettlementOverrides?.[settlementId]
+      : undefined;
+    const hasManualOverride = existingOverride?.amount !== undefined;
+
+    if (sMonth) {
+      options.push({
+        id: 'credit_statement',
+        label: hasManualOverride
+          ? `Adjust ${bankLabel} Credit Due (${sMonth}) Statement Override`
+          : `Credit Statement Cycle: ${bankLabel} Credit Due (${sMonth})`,
+        sublabel: hasManualOverride
+          ? `Reduce the manual statement override on ${bankLabel} Credit Due (${sMonth}) by ${amountFormatted}. (No bank account balance is refunded for a credit card swipe.)`
+          : `Automatically reduces the calculated ${bankLabel} Credit Due (${sMonth}) statement by ${amountFormatted}. No bank account balance is refunded for a credit card swipe.`,
+        icon: '💳',
+        badge: 'Statement Cycle',
+        required: !hasManualOverride,
+        defaultChecked: true,
+      });
+    }
+  }
+
   // FX-conversion entries: the entry's own account/currency reflect only the EGP side of
   // the transaction. The foreign asset that was drawn down is tracked separately via
   // storageAssetId/originalAmount and must NOT be treated as "this entry's own storage
@@ -293,39 +344,80 @@ export function buildEntryDeleteOptions(
 
   const hasActualMoneyTransacted = actualAmount > 0 || Boolean(entry.draws && entry.draws.length > 0);
 
-  const targetAccount = (entry.account || '').trim().toLowerCase();
-  const currUpper = (entry.currency || 'EGP').toUpperCase();
-
   // If entry or its recorded draws were not deposited/deducted from any account
   // (e.g. user selected "Don't deposit", or account is 'none', 'unassigned', or unbanked 'cash'),
   // don't offer bank account or storage refund/revert options.
   const isNonDepositAccount = (acc?: string) => {
     if (!acc) return true;
     const clean = acc.trim().toLowerCase();
-    return clean === '' || clean === 'none' || clean === 'unassigned' || clean === 'cash' || clean === 'don\'t deposit' || clean === 'dont deposit';
+    return (
+      clean === '' ||
+      clean === 'none' ||
+      clean === 'unassigned' ||
+      clean === 'cash' ||
+      clean === "don't deposit" ||
+      clean === 'dont deposit' ||
+      clean.includes('credit')
+    );
   };
 
-  const hasTransactedDrawAccount = entry.draws && entry.draws.length > 0
-    ? entry.draws.some((d) => !isNonDepositAccount(d.account) || Boolean(d.storageAssetId))
-    : !isNonDepositAccount(entry.account) || Boolean(entry.storageAssetId);
+  const effectiveAccountRaw = (() => {
+    if (entry.draws && entry.draws.length > 0) {
+      const drawWithAcc = [...entry.draws].reverse().find((d) => !isNonDepositAccount(d.account));
+      if (drawWithAcc?.account) return drawWithAcc.account;
+      if (entry.draws.every((d) => isNonDepositAccount(d.account) && !d.storageAssetId)) {
+        return 'none';
+      }
+    }
+    return entry.account || '';
+  })();
+
+  const targetAccount = effectiveAccountRaw.trim().toLowerCase();
+  const currUpper = (entry.currency || 'EGP').toUpperCase();
+
+  const hasTransactedDrawAccount =
+    !isCardSwipe &&
+    (entry.draws && entry.draws.length > 0
+      ? entry.draws.some((d) => !isNonDepositAccount(d.account) || Boolean(d.storageAssetId))
+      : !isNonDepositAccount(entry.account) || Boolean(entry.storageAssetId));
 
   const isDirectOperatingBank = Boolean(
-    !entry.storageAssetId &&
+    !isCardSwipe &&
+      !entry.storageAssetId &&
+      !targetAccount.includes('credit') &&
       context.accounts &&
       Object.keys(context.accounts).some(
-        (k) => k.toLowerCase() === targetAccount || (context.accounts![k]?.name || '').toLowerCase().trim() === targetAccount
+        (k) =>
+          !k.toLowerCase().includes('credit') &&
+          (k.toLowerCase() === targetAccount ||
+            (context.accounts![k]?.name || '').toLowerCase().trim() === targetAccount)
       )
   );
 
-  const matchingStorage = (context.storageAssets || []).find((a) => {
-    if (!isFxConversion && entry.storageAssetId && a.id === entry.storageAssetId) return true;
-    if (a.name.trim().toLowerCase() === targetAccount) return true;
-    if (!isDirectOperatingBank && isForeign && ((a.unit || '').toUpperCase() === currUpper || (a.currency || '').toUpperCase() === currUpper)) return true;
-    if (entry.draws && entry.draws.some((d) => d.storageAssetId === a.id || (d.account && d.account.trim().toLowerCase() === a.name.trim().toLowerCase()))) return true;
-    return false;
-  });
+  const matchingStorage = !isCardSwipe
+    ? (context.storageAssets || []).find((a) => {
+        if (!isFxConversion && entry.storageAssetId && a.id === entry.storageAssetId) return true;
+        if (a.name.trim().toLowerCase() === targetAccount || `storage:${a.id}` === targetAccount) return true;
+        if (
+          !isDirectOperatingBank &&
+          isForeign &&
+          ((a.unit || '').toUpperCase() === currUpper || (a.currency || '').toUpperCase() === currUpper)
+        )
+          return true;
+        if (
+          entry.draws &&
+          entry.draws.some(
+            (d) =>
+              d.storageAssetId === a.id ||
+              (d.account && d.account.trim().toLowerCase() === a.name.trim().toLowerCase())
+          )
+        )
+          return true;
+        return false;
+      })
+    : undefined;
 
-  if (hasActualMoneyTransacted && hasTransactedDrawAccount) {
+  if (!isCardSwipe && hasActualMoneyTransacted && hasTransactedDrawAccount) {
     const actualFormatted = isForeign && !isDirectOperatingBank
       ? `${formatNativeCurrency(entry.fxRateAtEntry ? Math.round((actualAmount / entry.fxRateAtEntry) * 100) / 100 : (entry.originalAmount || actualAmount), entry.currency)} (≈ ${formatMoney(actualAmount)})`
       : formatMoney(actualAmount);
@@ -345,7 +437,10 @@ export function buildEntryDeleteOptions(
       });
     } else if ((!isForeign || isDirectOperatingBank) && context.accounts) {
       const matchingAccountKey = Object.keys(context.accounts).find(
-        (k) => k.toLowerCase() === targetAccount || (context.accounts![k]?.name || '').toLowerCase().trim() === targetAccount
+        (k) =>
+          !k.toLowerCase().includes('credit') &&
+          (k.toLowerCase() === targetAccount ||
+            (context.accounts![k]?.name || '').toLowerCase().trim() === targetAccount)
       );
       const matchingAccount = matchingAccountKey ? context.accounts[matchingAccountKey] : undefined;
 
@@ -392,9 +487,21 @@ export function buildEntryDeleteOptions(
   };
 }
 
+export function isEntryLinkedToInstallment(e: CashEntry, installment: Installment): boolean {
+  if (e.type !== 'expense') return false;
+  const matchKey = (installment.name || '').toLowerCase().trim();
+  const matchLoanId = installment.loanId || installment.id;
+  return Boolean(
+    (e.loanId && (e.loanId === matchLoanId || e.loanId === installment.id)) ||
+      (matchKey && e.category && e.category.toLowerCase().trim() === matchKey) ||
+      (matchKey && e.subcategory && e.subcategory.toLowerCase().trim() === matchKey) ||
+      (e.id && e.id.includes(installment.id))
+  );
+}
+
 export function buildInstallmentDeleteOptions(
   installment: Installment,
-  context: { entries: CashEntry[] }
+  context: { entries: CashEntry[]; archivedEntries?: CashEntry[] }
 ): {
   itemDescription: string;
   amountFormatted: string;
@@ -404,16 +511,8 @@ export function buildInstallmentDeleteOptions(
   const remainingTotal = (installment.amount || 0) * (installment.remainingMonths || 0);
   const amountFormatted = `${formatMoney(installment.amount)} / mo (${installment.remainingMonths || 0} mos remaining — ≈ ${formatMoney(remainingTotal)})`;
 
-  const matchKey = (installment.name || '').toLowerCase().trim();
-  const matchLoanId = installment.loanId || installment.id;
-
-  const hasLinkedEntries = context.entries.some(
-    (e) =>
-      (e.loanId && (e.loanId === matchLoanId || e.loanId === installment.id)) ||
-      (e.category && e.category.toLowerCase().trim() === matchKey) ||
-      (e.subcategory && e.subcategory.toLowerCase().trim() === matchKey) ||
-      (e.id && e.id.includes(installment.id))
-  );
+  const allEntries = [...(context.entries || []), ...(context.archivedEntries || [])];
+  const hasLinkedEntries = allEntries.some((e) => isEntryLinkedToInstallment(e, installment));
 
   const options: AffectedRecordOption[] = [
     {
@@ -441,6 +540,17 @@ export function buildInstallmentDeleteOptions(
   return { itemDescription, amountFormatted, options };
 }
 
+export function isJobLinkedToStorageAsset(j: JobItem, asset: StorageAsset): boolean {
+  if (!j.forecastDestination) return false;
+  const destLower = j.forecastDestination.toLowerCase().trim();
+  const assetNameLower = (asset.name || '').toLowerCase().trim();
+  return (
+    j.forecastDestination === `storage:existing-${asset.id}` ||
+    j.forecastDestination === `storage:${asset.id}` ||
+    (Boolean(assetNameLower) && destLower.includes(assetNameLower))
+  );
+}
+
 export function buildStorageDeleteOptions(
   asset: StorageAsset,
   context: {
@@ -461,12 +571,7 @@ export function buildStorageDeleteOptions(
     ...context.asfJobs,
     ...context.irqJobs,
   ];
-  const linkedJobs = allJobs.filter(
-    (j) =>
-      j.forecastDestination === `storage:existing-${asset.id}` ||
-      (j.forecastDestination &&
-        j.forecastDestination.toLowerCase().includes(asset.name.toLowerCase()))
-  );
+  const linkedJobs = allJobs.filter((j) => isJobLinkedToStorageAsset(j, asset));
 
   const options: AffectedRecordOption[] = [
     {
@@ -504,17 +609,22 @@ export function hasEntryAffectedParties(
     irqJobs: JobItem[];
     accounts?: Record<string, AccountBalance>;
     entryActuals?: Record<string, number>;
+    entryActualDates?: Record<string, string>;
     entries?: CashEntry[];
+    creditSettlementOverrides?: Record<string, CreditSettlementOverride>;
   }
 ): boolean {
   if (!entry) return false;
   const res = buildEntryDeleteOptions(entry, context);
-  return res.options.length > 1;
+  const meaningfulOptions = res.options.filter(
+    (o) => !(o.id === 'credit_statement' && o.required)
+  );
+  return meaningfulOptions.length > 1;
 }
 
 export function hasInstallmentAffectedParties(
   installment: Installment,
-  context: { entries: CashEntry[] }
+  context: { entries: CashEntry[]; archivedEntries?: CashEntry[] }
 ): boolean {
   if (!installment) return false;
   return buildInstallmentDeleteOptions(installment, context).options.length > 1;
@@ -542,19 +652,28 @@ export function hasJobAffectedParties(job: JobItem): boolean {
 
 export function hasJobPaymentAffectedParties(
   payment: JobPayment,
-  storageAssets?: StorageAsset[]
+  storageAssets?: StorageAsset[],
+  accounts?: Record<string, AccountBalance>
 ): boolean {
   if (!payment) return false;
   if (payment.entryId) return true;
+  const targetAccount = (payment.settlementAccount || payment.account || '').trim().toLowerCase();
   if (storageAssets && storageAssets.length > 0) {
-    const targetAccount = (payment.settlementAccount || payment.account || '').trim().toLowerCase();
     const curr = (payment.currency || 'USD').toUpperCase();
     const matching = storageAssets.find(
       (a) =>
         a.name.trim().toLowerCase() === targetAccount ||
+        `storage:${a.id}` === targetAccount ||
         (curr !== 'EGP' && ((a.unit || '').toUpperCase() === curr || (a.currency || '').toUpperCase() === curr))
     );
     if (matching) return true;
+  }
+  if (accounts && targetAccount && !targetAccount.includes('credit')) {
+    const cleanAcc = targetAccount.replace('account:', '');
+    const matchingBank = Object.keys(accounts).find(
+      (k) => k.toLowerCase() === cleanAcc || (accounts[k]?.name || '').toLowerCase().trim() === cleanAcc
+    );
+    if (matchingBank) return true;
   }
   return false;
 }
@@ -576,6 +695,7 @@ export function buildEntryClearOptions(
     accounts?: Record<string, AccountBalance>;
     entryActuals?: Record<string, number>;
     entryActualDates?: Record<string, string>;
+    creditSettlementOverrides?: Record<string, CreditSettlementOverride>;
   }
 ): EntryClearAffectedData {
   const isForeign = (entry.currency || 'EGP').toUpperCase() !== 'EGP';
@@ -668,11 +788,21 @@ export function buildEntryClearOptions(
     return false;
   });
 
+  const isCardSwipe = isCreditCardExpense(entry);
+  const isSettlementEntry =
+    entry.id.startsWith('credit-settlement-') ||
+    (entry.source || '').toLowerCase().includes('recurring credit');
+
+  const showDrawsOption = Boolean(
+    entry.draws &&
+      (isCardSwipe || isSettlementEntry ? entry.draws.length > 1 : entry.draws.length > 0)
+  );
+
   const options: AffectedRecordOption[] = [
     {
       id: 'revert_actual',
       label: 'Revert Actual to Planned Forecast',
-      sublabel: entry.draws && entry.draws.length > 0
+      sublabel: showDrawsOption
         ? `Reopen the fulfilled entry and restore its planned forecast (${formatMoney(entry.amount)}). Pair with the Recorded Tranches option below to choose whether paid tranches are wiped or kept.`
         : isInstallmentOccurrence
         ? `Reset recorded payment (${amountFormatted}) and restore planned installment forecast (${formatMoney(entry.amount)}).`
@@ -695,49 +825,102 @@ export function buildEntryClearOptions(
     });
   }
 
-  const isFxConversion = entry.conversionType === 'fx-sale';
+  if (isCardSwipe) {
+    const accKey =
+      entry.creditType === 'cib_card' || (entry.account || '').toLowerCase().includes('cib')
+        ? 'cib'
+        : 'hsbc';
+    const bankLabel = accKey === 'cib' ? 'CIB' : 'HSBC';
+    const sMonth = getCreditSettlementMonth(
+      entry,
+      context.creditSettlementOverrides,
+      context.entryActualDates
+    );
+    if (sMonth) {
+      options.push({
+        id: 'credit_statement',
+        label: `Credit Statement Cycle: ${bankLabel} Credit Due (${sMonth})`,
+        sublabel: `Swipe remains part of ${bankLabel} Credit Due (${sMonth}) as a planned card spend (${amountFormatted}). No bank account balance is refunded for a credit card swipe.`,
+        icon: '💳',
+        badge: 'Statement Cycle',
+        required: true,
+        defaultChecked: true,
+      });
+    }
+  }
 
-  const targetAccount = (entry.account || '').trim().toLowerCase();
-  const currUpper = (entry.currency || 'EGP').toUpperCase();
-  const isDirectOperatingBank = Boolean(
-    !entry.storageAssetId &&
-      context.accounts &&
-      Object.keys(context.accounts).some(
-        (k) => k.toLowerCase() === targetAccount || (context.accounts![k]?.name || '').toLowerCase().trim() === targetAccount
-      )
-  );
-  const matchingStorage = (context.storageAssets || []).find((a) => {
-    if (!isFxConversion && entry.storageAssetId && a.id === entry.storageAssetId) return true;
-    if (a.name.trim().toLowerCase() === targetAccount) return true;
-    if (
-      !isDirectOperatingBank &&
-      isForeign &&
-      ((a.unit || '').toUpperCase() === currUpper || (a.currency || '').toUpperCase() === currUpper)
-    )
-      return true;
-    if (
-      entry.draws &&
-      entry.draws.some(
-        (d) =>
-          d.storageAssetId === a.id ||
-          (d.account && d.account.trim().toLowerCase() === a.name.trim().toLowerCase())
-      )
-    )
-      return true;
-    return false;
-  });
+  const isFxConversion = entry.conversionType === 'fx-sale';
 
   const isNonDepositAccount = (acc?: string) => {
     if (!acc) return true;
     const clean = acc.trim().toLowerCase();
-    return clean === '' || clean === 'none' || clean === 'unassigned' || clean === 'cash' || clean === 'don\'t deposit' || clean === 'dont deposit';
+    return (
+      clean === '' ||
+      clean === 'none' ||
+      clean === 'unassigned' ||
+      clean === 'cash' ||
+      clean === "don't deposit" ||
+      clean === 'dont deposit' ||
+      clean.includes('credit')
+    );
   };
 
-  const hasTransactedDrawAccount = entry.draws && entry.draws.length > 0
-    ? entry.draws.some((d) => !isNonDepositAccount(d.account) || Boolean(d.storageAssetId))
-    : !isNonDepositAccount(entry.account) || Boolean(entry.storageAssetId);
+  const effectiveAccountRaw = (() => {
+    if (entry.draws && entry.draws.length > 0) {
+      const drawWithAcc = [...entry.draws].reverse().find((d) => !isNonDepositAccount(d.account));
+      if (drawWithAcc?.account) return drawWithAcc.account;
+      if (entry.draws.every((d) => isNonDepositAccount(d.account) && !d.storageAssetId)) {
+        return 'none';
+      }
+    }
+    return entry.account || '';
+  })();
+
+  const targetAccount = effectiveAccountRaw.trim().toLowerCase();
+  const currUpper = (entry.currency || 'EGP').toUpperCase();
+  const isDirectOperatingBank = Boolean(
+    !isCardSwipe &&
+      !entry.storageAssetId &&
+      !targetAccount.includes('credit') &&
+      context.accounts &&
+      Object.keys(context.accounts).some(
+        (k) =>
+          !k.toLowerCase().includes('credit') &&
+          (k.toLowerCase() === targetAccount ||
+            (context.accounts![k]?.name || '').toLowerCase().trim() === targetAccount)
+      )
+  );
+  const matchingStorage = !isCardSwipe
+    ? (context.storageAssets || []).find((a) => {
+        if (!isFxConversion && entry.storageAssetId && a.id === entry.storageAssetId) return true;
+        if (a.name.trim().toLowerCase() === targetAccount || `storage:${a.id}` === targetAccount) return true;
+        if (
+          !isDirectOperatingBank &&
+          isForeign &&
+          ((a.unit || '').toUpperCase() === currUpper || (a.currency || '').toUpperCase() === currUpper)
+        )
+          return true;
+        if (
+          entry.draws &&
+          entry.draws.some(
+            (d) =>
+              d.storageAssetId === a.id ||
+              (d.account && d.account.trim().toLowerCase() === a.name.trim().toLowerCase())
+          )
+        )
+          return true;
+        return false;
+      })
+    : undefined;
+
+  const hasTransactedDrawAccount =
+    !isCardSwipe &&
+    (entry.draws && entry.draws.length > 0
+      ? entry.draws.some((d) => !isNonDepositAccount(d.account) || Boolean(d.storageAssetId))
+      : !isNonDepositAccount(entry.account) || Boolean(entry.storageAssetId));
 
   if (
+    !isCardSwipe &&
     hasTransactedDrawAccount &&
     matchingStorage &&
     !isDirectOperatingBank &&
@@ -767,9 +950,12 @@ export function buildEntryClearOptions(
       badge: entry.type === 'expense' ? 'Storage Refund' : 'Storage',
       defaultChecked: true,
     });
-  } else if (hasTransactedDrawAccount && (!isForeign || isDirectOperatingBank) && context.accounts) {
+  } else if (!isCardSwipe && hasTransactedDrawAccount && (!isForeign || isDirectOperatingBank) && context.accounts) {
     const matchingAccountKey = Object.keys(context.accounts).find(
-      (k) => k.toLowerCase() === targetAccount || (context.accounts![k]?.name || '').toLowerCase().trim() === targetAccount
+      (k) =>
+        !k.toLowerCase().includes('credit') &&
+        (k.toLowerCase() === targetAccount ||
+          (context.accounts![k]?.name || '').toLowerCase().trim() === targetAccount)
     );
     const matchingAccount = matchingAccountKey ? context.accounts[matchingAccountKey] : undefined;
 
@@ -790,8 +976,7 @@ export function buildEntryClearOptions(
     }
   }
 
-  if (entry.draws && entry.draws.length > 0) {
-    const isSettlementEntry = entry.id.startsWith('credit-settlement-') || (entry.source || '').toLowerCase().includes('recurring credit');
+  if (showDrawsOption && entry.draws) {
     options.push({
       id: 'draws',
       label: `Recorded Tranches (${entry.draws.length})`,
@@ -823,9 +1008,13 @@ export function hasEntryClearAffectedParties(
     accounts?: Record<string, AccountBalance>;
     entryActuals?: Record<string, number>;
     entryActualDates?: Record<string, string>;
+    creditSettlementOverrides?: Record<string, CreditSettlementOverride>;
   }
 ): boolean {
   if (!entry) return false;
   const res = buildEntryClearOptions(entry, context);
-  return res.options.length > 1;
+  const meaningfulOptions = res.options.filter(
+    (o) => !(o.id === 'credit_statement' && o.required)
+  );
+  return meaningfulOptions.length > 1;
 }

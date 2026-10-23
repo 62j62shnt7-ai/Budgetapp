@@ -29,6 +29,7 @@ export const InstallmentsSection: React.FC<InstallmentsSectionProps> = ({
   onDeleteInstallment,
 }) => {
   const entries = useBudgetStore((state) => state.entries);
+  const archivedEntries = useBudgetStore((state) => state.archivedEntries);
   return (
     <section className="panel collapsible-panel cashflow-collapsible-panel">
       <div
@@ -140,7 +141,7 @@ export const InstallmentsSection: React.FC<InstallmentsSectionProps> = ({
                       <Edit2 size={14} />
                     </button>
                     {(() => {
-                      const hasAffected = hasInstallmentAffectedParties(inst, { entries });
+                      const hasAffected = hasInstallmentAffectedParties(inst, { entries, archivedEntries });
                       return (
                         <button
                           className="ghost-button icon-button"

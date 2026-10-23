@@ -219,10 +219,18 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
       ];
     }
 
+    const allDrawsNoAccount =
+      updatedDraws.length > 0 &&
+      updatedDraws.every((d) => !d.account || d.account === 'none');
+
     updateEntry(entry.id, {
       tag: trimmedTag,
       draws: updatedDraws,
-      ...(isSettlement ? { isClosed: entry.isClosed ?? true, account: 'none' } : {}),
+      ...(isSettlement
+        ? { isClosed: entry.isClosed ?? true, account: 'none' }
+        : allDrawsNoAccount
+        ? { account: 'none' }
+        : {}),
     });
 
     onClose();

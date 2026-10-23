@@ -23,7 +23,6 @@ import {
   saveStoredDriveUser,
   getStoredDriveAutoSync,
   saveStoredDriveAutoSync,
-  isDriveTokenValid,
   type GoogleDriveUser,
 } from '../../services/googleDriveClient';
 import {
@@ -47,12 +46,11 @@ import type { SliceCreator, SyncSlice, BudgetStoreState } from './types';
 
 export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => {
   const initialUser = getStoredDriveUser();
-  const initialTokenValid = isDriveTokenValid();
 
   return {
     driveUser: initialUser,
     driveAutoSync: getStoredDriveAutoSync(),
-    driveSyncStatus: initialUser ? (initialTokenValid ? 'idle' : 'expired') : 'idle',
+    driveSyncStatus: 'idle',
     lastDriveSyncTime: null,
     lastLocalModified: lastLocalMutationTimestamp,
 
@@ -465,12 +463,13 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => {
         }
 
         // Verify Google Drive connection health on storage load
+        // Do not mark 'expired' immediately; App.tsx will attempt silent token refresh first
         const storedUser = getStoredDriveUser();
         if (storedUser) {
           updates.driveUser = storedUser;
-          if (!isDriveTokenValid()) {
-            updates.driveSyncStatus = 'expired';
-          }
+        }
+        if (storedData[STORAGE_KEYS.gdriveAutoSync] !== undefined) {
+          updates.driveAutoSync = Boolean(storedData[STORAGE_KEYS.gdriveAutoSync]);
         }
 
         set(updates);

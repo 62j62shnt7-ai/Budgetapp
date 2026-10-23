@@ -1014,9 +1014,9 @@ assert.strictEqual(remainingStoreEntries.length, 0, 'Both loan inflow and single
 console.log('  ✓ Deleting loan inflow resolves single repayment entry and cascades deletion when confirmed\n');
 
 // -------------------------------------------------------------
-// Test Scenario 22: Regular Card Swipe / Expense Does NOT False-Match Other Expenses As Linked Loans
+// Test Scenario 22: Credit Card Swipes Never Offer Bank/Storage Refund or 1-Click Tranches, and Link to Statement Cycle
 // -------------------------------------------------------------
-console.log('▶ Test Scenario 22: Regular Card Swipe Does NOT False-Match Other Expenses as Linked Loan');
+console.log('▶ Test Scenario 22: Credit Card Swipe Affected Records & 1-Click Tranche Suppression');
 
 const cardSwipeEntry = {
   id: 'card-swipe-smule-1',
@@ -1027,8 +1027,25 @@ const cardSwipeEntry = {
   account: 'HSBC Credit',
   creditType: 'hsbc_card',
   source: 'credit card',
+  actualAmount: 550,
   actualDate: '2026-10-12',
   draws: [{ id: 'draw-1', date: '2026-10-12', amount: 550, account: 'HSBC Credit' }],
+};
+
+const usdCardSwipeEntry = {
+  id: 'card-swipe-usd-1',
+  date: '2026-10-14',
+  category: 'AWS Cloud',
+  amount: 2500,
+  originalAmount: 50,
+  currency: 'USD',
+  fxRateAtEntry: 50,
+  type: 'expense',
+  account: 'HSBC Credit',
+  creditType: 'hsbc_card',
+  source: 'credit card',
+  actualAmount: 2500,
+  actualDate: '2026-10-14',
 };
 
 const gasExpenseEntry = {
@@ -1042,21 +1059,104 @@ const gasExpenseEntry = {
 
 const swipeDeleteOptions = buildEntryDeleteOptions(cardSwipeEntry, {
   installments: [],
-  storageAssets: [],
+  storageAssets: [{ id: 's-usd', name: 'HSBC USD', unit: 'USD', quantity: 1000, category: 'Currency', buyPrice: 50, currency: 'EGP' }],
   partTimeJobs: [],
   asfJobs: [],
   irqJobs: [],
-  accounts: accountsCtx,
+  accounts: {
+    ...accountsCtx,
+    hsbc: { name: 'HSBC', balance: 40000, maturityDay: 30 },
+  },
   entries: [gasExpenseEntry, cardSwipeEntry],
+  entryActuals: { 'card-swipe-smule-1': 550 },
 });
 
 const falseLoanOpt = swipeDeleteOptions.options.find((o) => o.id === 'loan');
 assert.strictEqual(falseLoanOpt, undefined, 'Must NOT generate a linked loan option matching unrelated expenses like Gas');
 const swipeDrawsOpt = swipeDeleteOptions.options.find((o) => o.id === 'draws');
-assert.ok(swipeDrawsOpt, 'Draws option should be present for recorded swipe tranches');
-assert.strictEqual(swipeDrawsOpt.label, 'Recorded Tranches (1)', 'Draws count matches swiped tranches');
+assert.strictEqual(swipeDrawsOpt, undefined, '1-click credit card swipe must NOT show Recorded Tranches (1)');
+const swipeStorageOpt = swipeDeleteOptions.options.find((o) => o.id === 'storage');
+assert.strictEqual(swipeStorageOpt, undefined, 'Credit card swipe must NEVER offer a Bank Balance or Storage refund option');
+const swipeStatementOpt = swipeDeleteOptions.options.find((o) => o.id === 'credit_statement');
+assert.ok(swipeStatementOpt, 'Credit card swipe shows linked Credit Statement Cycle option');
 
-console.log('  ✓ Card swipe deletion cleanly isolates swipe and does not false-match unlinked expenses\n');
+// Foreign currency (USD) credit card swipe must ALSO never match USD storage asset for refund
+const usdSwipeDeleteOptions = buildEntryDeleteOptions(usdCardSwipeEntry, {
+  installments: [],
+  storageAssets: [{ id: 's-usd', name: 'HSBC USD', unit: 'USD', quantity: 1000, category: 'Currency', buyPrice: 50, currency: 'EGP' }],
+  partTimeJobs: [],
+  asfJobs: [],
+  irqJobs: [],
+  accounts: { hsbc: { name: 'HSBC', balance: 40000, maturityDay: 30 } },
+  entryActuals: { 'card-swipe-usd-1': 2500 },
+});
+assert.strictEqual(usdSwipeDeleteOptions.options.find((o) => o.id === 'storage'), undefined, 'USD credit card swipe must NOT offer USD Storage Holding refund');
+
+const usdSwipeClearOptions = buildEntryClearOptions(usdCardSwipeEntry, {
+  installments: [],
+  storageAssets: [{ id: 's-usd', name: 'HSBC USD', unit: 'USD', quantity: 1000, category: 'Currency', buyPrice: 50, currency: 'EGP' }],
+  accounts: { hsbc: { name: 'HSBC', balance: 40000, maturityDay: 30 } },
+  entryActuals: { 'card-swipe-usd-1': 2500 },
+});
+assert.strictEqual(usdSwipeClearOptions.options.find((o) => o.id === 'storage'), undefined, 'Clearing USD credit card swipe must NOT offer USD Storage Holding refund');
+assert.strictEqual(usdSwipeClearOptions.options.find((o) => o.id === 'draws'), undefined, 'Clearing 1-click credit card swipe must NOT show Recorded Tranches (1)');
+
+// Verify recordActual on a credit card swipe does not generate a synthetic 1-click draw
+useBudgetStore.setState({
+  entries: [{ ...usdCardSwipeEntry, draws: undefined }],
+  entryActuals: {},
+  entryActualDates: {},
+});
+useBudgetStore.getState().recordActual(usdCardSwipeEntry.id, 2500, '2026-10-14');
+const recordedSwipe = useBudgetStore.getState().entries.find((e) => e.id === usdCardSwipeEntry.id);
+assert.strictEqual(recordedSwipe.draws, undefined, 'recordActual on credit card swipe keeps draws undefined (no synthetic 1-click tranche)');
+
+console.log('  ✓ Credit card swipes never offer bank/storage refund, suppress 1-click tranches, and link to statement cycle\n');
+
+// -------------------------------------------------------------
+// Test Scenario 23: Deleting Paid Credit Settlement Refunds Operating Bank & Respects "Don't Deduct"
+// -------------------------------------------------------------
+console.log('▶ Test Scenario 23: Credit Settlement Delete Refund & "Don\'t Deduct" Draw Handling');
+
+useBudgetStore.setState({
+  accounts: {
+    hsbc: { name: 'HSBC', balance: 30000, maturityDay: 30 },
+  },
+  entries: [],
+  archivedEntries: [],
+  creditSettlementOverrides: {
+    'credit-settlement-hsbc-2026-10': {
+      amount: 12000,
+      actualPaid: 12000,
+      account: 'hsbc',
+      isClosed: true,
+      draws: [{ id: 'd-sett-1', date: '2026-10-25', amount: 12000, account: 'hsbc' }],
+    },
+  },
+  entryActuals: { 'credit-settlement-hsbc-2026-10': 12000 },
+});
+
+useBudgetStore.getState().deleteEntry('credit-settlement-hsbc-2026-10', 'single', { revertStorage: true });
+assert.strictEqual(useBudgetStore.getState().accounts.hsbc.balance, 42000, 'Deleting paid credit settlement with revertStorage: true refunds +12,000 EGP to HSBC');
+
+// Entry where user clicked "Don't deduct" (draw.account === 'none' even though entry.account === 'hsbc')
+const skippedDeductEntry = {
+  id: 'e-skipped-deduct',
+  date: '2026-10-18',
+  category: 'Electronics',
+  amount: 4000,
+  actualAmount: 4000,
+  type: 'expense',
+  account: 'hsbc',
+  draws: [{ id: 'd-skip-1', date: '2026-10-18', amount: 4000, account: 'none' }],
+};
+const skippedClearOpts = buildEntryClearOptions(skippedDeductEntry, {
+  accounts: { hsbc: { name: 'HSBC', balance: 42000, maturityDay: 30 } },
+  entryActuals: { 'e-skipped-deduct': 4000 },
+});
+assert.strictEqual(skippedClearOpts.options.find((o) => o.id === 'storage'), undefined, 'Entry with draw.account === "none" must not offer Bank Account Refund');
+
+console.log('  ✓ Paid credit settlement deletion refunds operating bank & "Don\'t deduct" draws are never falsely refunded\n');
 
 console.log('===============================================================');
 console.log('🌟 100% OF ALL AFFECTED RECORDS MODAL TESTS PASSED! 🌟');

@@ -14,6 +14,7 @@ import {
   isLumpCreditDueForAccount,
   isCreditSettlementRow,
   isCreditCardExpense,
+  getCreditSettlementMonth,
 } from '../../engine/creditCards';
 import { buildSalaryEntries } from '../../engine/salaryAndInstallments';
 import { getCurrencyRateOr } from '../../engine/currency';
@@ -22,7 +23,7 @@ import {
   unlinkEntriesFromSeries,
   detectRecurringCandidateGroups,
 } from '../../utils/recurringDetector';
-import { resolveLinkedLoan } from '../../utils/affectedRecords';
+import { resolveLinkedLoan, isEntryLinkedToInstallment } from '../../utils/affectedRecords';
 import {
   STORAGE_KEYS,
   loadStorage,
@@ -312,6 +313,9 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
       }
 
       // 3. If credit settlement entry, clean up manual lump payment and overrides
+      const existingSettlementOverride = id.startsWith('credit-settlement-')
+        ? get().creditSettlementOverrides[id]
+        : undefined;
       const updatedOverrides = { ...get().creditSettlementOverrides };
       if (id.startsWith('credit-settlement-')) {
         const parts = id.split('-');
@@ -322,6 +326,24 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
         delete updatedOverrides[id];
       } else if (updatedOverrides[id]) {
         delete updatedOverrides[id];
+      } else if (target && isCreditCardExpense(target) && options?.adjustCreditOverride) {
+        const accKey =
+          target.creditType === 'cib_card' || (target.account || '').toLowerCase().includes('cib')
+            ? 'cib'
+            : 'hsbc';
+        const sMonth = getCreditSettlementMonth(
+          target,
+          get().creditSettlementOverrides,
+          get().entryActualDates
+        );
+        const settlementId = sMonth ? `credit-settlement-${accKey}-${sMonth}` : '';
+        if (settlementId && updatedOverrides[settlementId]?.amount !== undefined) {
+          const swipeAmt = Number(get().entryActuals[id] ?? target.actualAmount ?? target.amount ?? 0);
+          updatedOverrides[settlementId] = {
+            ...updatedOverrides[settlementId],
+            amount: Math.max(0, (Number(updatedOverrides[settlementId].amount) || 0) - swipeAmt),
+          };
+        }
       }
 
       // 4. Clean up entryActuals and entryActualDates
@@ -410,38 +432,81 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
       }
 
       // 8. Revert storage holding if selected
-      if (options?.revertStorage && target) {
+      if (options?.revertStorage) {
         const isNonDeductAcc = (acc?: string) => {
           if (!acc) return false;
           const clean = acc.trim().toLowerCase();
-          return clean === 'none' || clean === 'unassigned' || clean === 'cash' || clean === "don't deposit" || clean === 'dont deposit';
+          return (
+            clean === 'none' ||
+            clean === 'unassigned' ||
+            clean === 'cash' ||
+            clean === "don't deposit" ||
+            clean === 'dont deposit' ||
+            clean.includes('credit')
+          );
         };
-        if (Array.isArray(target.draws) && target.draws.length > 0) {
-          target.draws.forEach((d) => {
-            if (!isNonDeductAcc(d.account)) {
+
+        if (id.startsWith('credit-settlement-')) {
+          const settlementAccountKey = id.split('-')[2] || 'hsbc';
+          const drawsSum = existingSettlementOverride?.draws
+            ? existingSettlementOverride.draws.reduce((s, d) => s + (Number(d.amount) || 0), 0)
+            : 0;
+          const paidAmt = Number(
+            get().entryActuals[id] ?? existingSettlementOverride?.actualPaid ?? drawsSum ?? 0
+          );
+          if (existingSettlementOverride?.draws && existingSettlementOverride.draws.length > 0) {
+            existingSettlementOverride.draws.forEach((d) => {
+              const drawAcc = d.account || existingSettlementOverride.account || settlementAccountKey;
+              if (!isNonDeductAcc(drawAcc)) {
+                revertStorageOrAccountBalance(get, {
+                  account: drawAcc,
+                  currency: 'EGP',
+                  amount: Number(d.amount) || 0,
+                  isEgpAmount: true,
+                  entryType: 'expense',
+                });
+              }
+            });
+          } else if (paidAmt > 0) {
+            const acc = existingSettlementOverride?.account || settlementAccountKey;
+            if (!isNonDeductAcc(acc)) {
               revertStorageOrAccountBalance(get, {
-                assetId: d.storageAssetId || options.storageAssetId,
-                account: d.account || target.account,
+                account: acc,
+                currency: 'EGP',
+                amount: paidAmt,
+                isEgpAmount: true,
+                entryType: 'expense',
+              });
+            }
+          }
+        } else if (target && !isCreditCardExpense(target)) {
+          if (Array.isArray(target.draws) && target.draws.length > 0) {
+            target.draws.forEach((d) => {
+              if (!isNonDeductAcc(d.account)) {
+                revertStorageOrAccountBalance(get, {
+                  assetId: d.storageAssetId || options.storageAssetId,
+                  account: d.account || target.account,
+                  currency: target.currency,
+                  amount: Number(d.amount) || 0,
+                  isEgpAmount: true,
+                  fxRate: target.fxRateAtEntry,
+                  entryType: target.type,
+                });
+              }
+            });
+          } else {
+            const actualAmt = Number(get().entryActuals[id] ?? target.actualAmount ?? target.amount ?? 0);
+            if (!isNonDeductAcc(target.account)) {
+              revertStorageOrAccountBalance(get, {
+                assetId: options.storageAssetId,
+                account: target.account,
                 currency: target.currency,
-                amount: Number(d.amount) || 0,
+                amount: actualAmt,
                 isEgpAmount: true,
                 fxRate: target.fxRateAtEntry,
                 entryType: target.type,
               });
             }
-          });
-        } else {
-          const actualAmt = Number(get().entryActuals[id] ?? target.actualAmount ?? target.amount ?? 0);
-          if (!isNonDeductAcc(target.account)) {
-            revertStorageOrAccountBalance(get, {
-              assetId: options.storageAssetId,
-              account: target.account,
-              currency: target.currency,
-              amount: actualAmt,
-              isEgpAmount: true,
-              fxRate: target.fxRateAtEntry,
-              entryType: target.type,
-            });
           }
         }
       }
@@ -553,73 +618,18 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
 
       if (existingIndex !== -1) {
         const entry = get().entries[existingIndex];
+        const isCardSwipe = isCreditCardExpense(entry);
         const prevActual = Number(get().entryActuals[entryId] ?? entry.actualAmount ?? 0);
         const tranche = amount > prevActual ? Math.round((amount - prevActual) * 100) / 100 : amount;
 
         let draws = Array.isArray(entry.draws) ? [...entry.draws] : [];
-        if (draws.length === 0 && prevActual > 0) {
-          draws.push({
-            id: `draw-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-            date: entry.actualDate || entry.date || actDate,
-            amount: prevActual,
-            tag: entry.tag || '',
-            account: entry.account || 'hsbc',
-          });
-        }
-
-        if (amount > prevActual) {
-          if (tranche > 0) {
-            draws.push({
-              id: `draw-${Date.now()}-${draws.length}`,
-              date: actDate,
-              amount: tranche,
-              tag: drawMeta?.tag || entry.tag || '',
-              account: drawMeta?.account || entry.account || 'hsbc',
-              note: drawMeta?.note,
-            });
-          }
-        } else if (amount < prevActual) {
-          if (amount === 0) {
-            draws = [];
-          } else if (draws.length > 0) {
-            let needed = amount;
-            const adjustedDraws: EntryDraw[] = [];
-            for (const d of draws) {
-              const dAmt = Number(d.amount) || 0;
-              if (needed <= 0) break;
-              if (dAmt <= needed) {
-                adjustedDraws.push(d);
-                needed -= dAmt;
-              } else {
-                adjustedDraws.push({ ...d, amount: Math.round(needed * 100) / 100 });
-                needed = 0;
-                break;
-              }
-            }
-            draws = adjustedDraws;
-          }
-        }
-
-        const updatedEntry: CashEntry = {
-          ...entry,
-          actualAmount: amount,
-          actualDate: actDate,
-          draws,
-        };
-        updatedEntries = [...get().entries];
-        updatedEntries[existingIndex] = updatedEntry;
-        saveStorage(STORAGE_KEYS.entries, updatedEntries);
-      } else {
-        const archivedIndex = get().archivedEntries.findIndex((e) => e.id === entryId);
-        if (archivedIndex !== -1) {
-          const entry = get().archivedEntries[archivedIndex];
-          const prevActual = Number(get().entryActuals[entryId] ?? entry.actualAmount ?? 0);
-          const tranche = amount > prevActual ? Math.round((amount - prevActual) * 100) / 100 : amount;
-
-          let draws = Array.isArray(entry.draws) ? [...entry.draws] : [];
+        if (isCardSwipe) {
+          // Credit card swipes are immediate 1-click transactions; do not generate synthetic partial draw tranches
+          draws = draws.length > 1 ? draws : [];
+        } else {
           if (draws.length === 0 && prevActual > 0) {
             draws.push({
-              id: `draw-${Date.now()}-0`,
+              id: `draw-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
               date: entry.actualDate || entry.date || actDate,
               amount: prevActual,
               tag: entry.tag || '',
@@ -659,12 +669,78 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
               draws = adjustedDraws;
             }
           }
+        }
+
+        const updatedEntry: CashEntry = {
+          ...entry,
+          actualAmount: amount,
+          actualDate: actDate,
+          draws: isCardSwipe && draws.length === 0 ? undefined : draws,
+        };
+        updatedEntries = [...get().entries];
+        updatedEntries[existingIndex] = updatedEntry;
+        saveStorage(STORAGE_KEYS.entries, updatedEntries);
+      } else {
+        const archivedIndex = get().archivedEntries.findIndex((e) => e.id === entryId);
+        if (archivedIndex !== -1) {
+          const entry = get().archivedEntries[archivedIndex];
+          const isCardSwipe = isCreditCardExpense(entry);
+          const prevActual = Number(get().entryActuals[entryId] ?? entry.actualAmount ?? 0);
+          const tranche = amount > prevActual ? Math.round((amount - prevActual) * 100) / 100 : amount;
+
+          let draws = Array.isArray(entry.draws) ? [...entry.draws] : [];
+          if (isCardSwipe) {
+            draws = draws.length > 1 ? draws : [];
+          } else {
+            if (draws.length === 0 && prevActual > 0) {
+              draws.push({
+                id: `draw-${Date.now()}-0`,
+                date: entry.actualDate || entry.date || actDate,
+                amount: prevActual,
+                tag: entry.tag || '',
+                account: entry.account || 'hsbc',
+              });
+            }
+
+            if (amount > prevActual) {
+              if (tranche > 0) {
+                draws.push({
+                  id: `draw-${Date.now()}-${draws.length}`,
+                  date: actDate,
+                  amount: tranche,
+                  tag: drawMeta?.tag || entry.tag || '',
+                  account: drawMeta?.account || entry.account || 'hsbc',
+                  note: drawMeta?.note,
+                });
+              }
+            } else if (amount < prevActual) {
+              if (amount === 0) {
+                draws = [];
+              } else if (draws.length > 0) {
+                let needed = amount;
+                const adjustedDraws: EntryDraw[] = [];
+                for (const d of draws) {
+                  const dAmt = Number(d.amount) || 0;
+                  if (needed <= 0) break;
+                  if (dAmt <= needed) {
+                    adjustedDraws.push(d);
+                    needed -= dAmt;
+                  } else {
+                    adjustedDraws.push({ ...d, amount: Math.round(needed * 100) / 100 });
+                    needed = 0;
+                    break;
+                  }
+                }
+                draws = adjustedDraws;
+              }
+            }
+          }
 
           const updatedEntry: CashEntry = {
             ...entry,
             actualAmount: amount,
             actualDate: actDate,
-            draws,
+            draws: isCardSwipe && draws.length === 0 ? undefined : draws,
           };
           updatedArchived = [...get().archivedEntries];
           updatedArchived[archivedIndex] = updatedEntry;
@@ -698,16 +774,29 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
 
       if (entryId.startsWith('credit-settlement-')) {
         const settlementOverride = get().creditSettlementOverrides[entryId];
-        if (settlementOverride && ((Array.isArray(settlementOverride.draws) && settlementOverride.draws.length > 0) || settlementOverride.isClosed)) {
+        const drawsSum = settlementOverride?.draws
+          ? settlementOverride.draws.reduce((s, d) => s + (Number(d.amount) || 0), 0)
+          : 0;
+        const effectivePaidAmt =
+          prevActualAmt > 0
+            ? prevActualAmt
+            : Number(settlementOverride?.actualPaid ?? drawsSum ?? 0);
+
+        if (
+          settlementOverride &&
+          ((Array.isArray(settlementOverride.draws) && settlementOverride.draws.length > 0) ||
+            settlementOverride.actualPaid ||
+            settlementOverride.isClosed)
+        ) {
           const nextOverrides: Record<string, CreditSettlementOverride> = {
             ...get().creditSettlementOverrides,
-            [entryId]: { ...settlementOverride, draws: [], isClosed: false },
+            [entryId]: { ...settlementOverride, draws: [], actualPaid: 0, isClosed: false },
           };
           saveStorage(STORAGE_KEYS.creditSettlementOverrides, nextOverrides);
           set({ creditSettlementOverrides: nextOverrides });
         }
 
-        if (options?.revertStorage && prevActualAmt > 0) {
+        if (options?.revertStorage && effectivePaidAmt > 0) {
           const settlementAccountKey = entryId.split('-')[2] || 'hsbc';
           const isNonDeductAcc = (acc?: string) => {
             if (!acc) return false;
@@ -733,7 +822,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
               revertStorageOrAccountBalance(get, {
                 account: acc,
                 currency: 'EGP',
-                amount: prevActualAmt,
+                amount: effectivePaidAmt,
                 isEgpAmount: true,
                 entryType: 'expense',
               });
@@ -912,11 +1001,18 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
         }
       }
 
-      if (!targetJob && options?.revertStorage && target) {
+      if (!targetJob && options?.revertStorage && target && !isCreditCardExpense(target)) {
         const isNonDeductAcc = (acc?: string) => {
           if (!acc) return false;
           const clean = acc.trim().toLowerCase();
-          return clean === 'none' || clean === 'unassigned' || clean === 'cash' || clean === "don't deposit" || clean === 'dont deposit';
+          return (
+            clean === 'none' ||
+            clean === 'unassigned' ||
+            clean === 'cash' ||
+            clean === "don't deposit" ||
+            clean === 'dont deposit' ||
+            clean.includes('credit')
+          );
         };
         if (Array.isArray(target.draws) && target.draws.length > 0) {
           target.draws.forEach((d) => {
@@ -1348,18 +1444,8 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
       );
 
       if (options?.deleteCashEntries && inst) {
-        const matchKey = (inst.name || '').toLowerCase().trim();
-        const matchLoanId = inst.loanId || inst.id;
-        updatedEntries = updatedEntries.filter((e) => {
-          if (e.loanId && (e.loanId === matchLoanId || e.loanId === inst.id)) return false;
-          if (e.category && e.category.toLowerCase().trim() === matchKey) return false;
-          return true;
-        });
-        updatedArchived = updatedArchived.filter((e) => {
-          if (e.loanId && (e.loanId === matchLoanId || e.loanId === inst.id)) return false;
-          if (e.category && e.category.toLowerCase().trim() === matchKey) return false;
-          return true;
-        });
+        updatedEntries = updatedEntries.filter((e) => !isEntryLinkedToInstallment(e, inst));
+        updatedArchived = updatedArchived.filter((e) => !isEntryLinkedToInstallment(e, inst));
       }
 
       saveStorage(STORAGE_KEYS.installments, updated);

@@ -77,6 +77,7 @@ export interface EntriesSlice {
       storageAssetId?: string;
       syncJob?: boolean;
       restoreForeignAsset?: boolean;
+      adjustCreditOverride?: boolean;
     }
   ) => void;
   recordActual: (

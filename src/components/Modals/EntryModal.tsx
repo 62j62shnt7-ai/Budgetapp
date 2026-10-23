@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { inferTag, useBudgetStore } from '../../store/useBudgetStore';
-import { calculateCreditSettlementDate, getCreditCycleHint } from '../../engine/creditCards';
+import { calculateCreditSettlementDate, getCreditCycleHint, isCreditCardExpense } from '../../engine/creditCards';
 import { getCurrencyRateOr, formatNativeCurrency, getAccountNativeCurrency, convertAmountBetweenCurrencies } from '../../engine/currency';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { getEntryActualAmount, isLoanInflow, findLinkedLoanRepayment, calculateLoanRepaymentScale } from '../../engine/forecast';
@@ -30,6 +30,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
   const dialogRef = useRef<HTMLDialogElement>(null);
   const {
     entries,
+    archivedEntries,
     installments,
     addEntry,
     updateEntry,
@@ -51,6 +52,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
   } = useBudgetStore(
     useShallow((state) => ({
       entries: state.entries,
+      archivedEntries: state.archivedEntries,
       installments: state.installments,
       addEntry: state.addEntry,
       updateEntry: state.updateEntry,
@@ -72,7 +74,11 @@ export const EntryModal: React.FC<EntryModalProps> = ({
     }))
   );
 
-  const activeEntry = (entryToEdit ? entries.find((e) => e.id === entryToEdit.id) : null) || entryToEdit;
+  const activeEntry =
+    (entryToEdit
+      ? entries.find((e) => e.id === entryToEdit.id) ||
+        archivedEntries.find((e) => e.id === entryToEdit.id)
+      : null) || entryToEdit;
   const [deleteDrawTarget, setDeleteDrawTarget] = useState<{ drawIndex: number; draw: EntryDraw } | null>(null);
 
   const [creditType, setCreditType] = useState<string>('');
@@ -642,8 +648,12 @@ export const EntryModal: React.FC<EntryModalProps> = ({
           </div>
         )}
 
-        {/* Existing Draws List if Editing */}
-        {activeEntry && Array.isArray(activeEntry.draws) && activeEntry.draws.length > 0 && (
+        {/* Existing Draws List if Editing (hidden for 1-click credit card swipes) */}
+        {activeEntry &&
+          Array.isArray(activeEntry.draws) &&
+          (isCardExpense || isCreditCardExpense(activeEntry)
+            ? activeEntry.draws.length > 1
+            : activeEntry.draws.length > 0) && (
           <div style={{ padding: '10px 12px', background: 'var(--surface-soft)', borderRadius: '8px', border: '1px solid var(--line)', marginTop: '8px' }}>
             <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '6px' }}>📋 Recorded Draws / Tranches ({activeEntry.draws.length})</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -1152,48 +1162,60 @@ export const EntryModal: React.FC<EntryModalProps> = ({
                 },
               ]
             : []),
-          (() => {
+          ...(() => {
+            if (isCreditCardExpense(activeEntry)) return [];
             const targetAccount = (deleteDrawTarget.draw.account || activeEntry.account || '').trim().toLowerCase();
+            if (
+              !targetAccount ||
+              targetAccount === 'none' ||
+              targetAccount === 'unassigned' ||
+              targetAccount === 'cash' ||
+              targetAccount.includes('credit')
+            ) {
+              return [];
+            }
+            const cleanTarget = targetAccount.replace('storage:existing-', '').replace('storage:', '');
             const currUpper = (activeEntry.currency || 'USD').toUpperCase();
             const matchingStorage = storageAssets.find(
               (a) =>
                 a.id === deleteDrawTarget.draw.storageAssetId ||
+                a.id === cleanTarget ||
+                a.name.trim().toLowerCase() === cleanTarget ||
                 a.name.trim().toLowerCase() === targetAccount ||
                 (entryIsForeign &&
+                  !accounts[targetAccount] &&
                   ((a.unit || '').toUpperCase() === currUpper || (a.currency || '').toUpperCase() === currUpper))
             );
-            const matchedAccount = accounts[targetAccount];
+            const matchedAccountKey = Object.keys(accounts).find(
+              (k) =>
+                !k.toLowerCase().includes('credit') &&
+                (k.toLowerCase() === targetAccount || (accounts[k]?.name || '').toLowerCase().trim() === targetAccount)
+            );
+            const matchedAccount = matchedAccountKey ? accounts[matchedAccountKey] : undefined;
+            if (!matchingStorage && !matchedAccount) return [];
+
             const isExpense = activeEntry.type === 'expense';
             const assetName = matchingStorage
               ? matchingStorage.name
-              : matchedAccount
-              ? matchedAccount.name || targetAccount.toUpperCase()
-              : targetAccount.toUpperCase();
+              : matchedAccount?.name || matchedAccountKey!.toUpperCase();
             const currentQtyDesc = matchingStorage
               ? ` (Current: ${matchingStorage.quantity} ${matchingStorage.unit || ''})`
               : matchedAccount
               ? ` (Current: ${formatMoney(matchedAccount.balance || 0)})`
               : '';
             const actionText = isExpense
-              ? `Refund / restore +${entryIsForeign ? formatNativeCurrency(nativeDrawQty, activeEntry.currency) : formatMoney(deleteDrawTarget.draw.amount)} to`
-              : `Revert / deduct -${entryIsForeign ? formatNativeCurrency(nativeDrawQty, activeEntry.currency) : formatMoney(deleteDrawTarget.draw.amount)} from`;
+              ? `Refund / restore +${matchingStorage && entryIsForeign ? formatNativeCurrency(nativeDrawQty, activeEntry.currency) : formatMoney(deleteDrawTarget.draw.amount)} to`
+              : `Revert / deduct -${matchingStorage && entryIsForeign ? formatNativeCurrency(nativeDrawQty, activeEntry.currency) : formatMoney(deleteDrawTarget.draw.amount)} from`;
 
-            return {
-              id: 'storage',
-              label: matchingStorage ? `Storage Asset: ${assetName}` : `Bank Balance: ${assetName}`,
-              sublabel: `${actionText} ${assetName}${currentQtyDesc}.`,
-              icon: matchingStorage ? '🏦' : '💳',
-              defaultChecked: Boolean(
-                matchingStorage ||
-                matchedAccount ||
-                targetAccount.includes('storage') ||
-                targetAccount.includes('usd') ||
-                targetAccount.includes('hsbc') ||
-                targetAccount.includes('cib') ||
-                targetAccount.includes('cash') ||
-                entryIsForeign
-              ),
-            };
+            return [
+              {
+                id: 'storage',
+                label: matchingStorage ? `Storage Asset: ${assetName}` : `Bank Balance: ${assetName}`,
+                sublabel: `${actionText} ${assetName}${currentQtyDesc}.`,
+                icon: matchingStorage ? '🏦' : '💳',
+                defaultChecked: true,
+              },
+            ];
           })(),
         ];
 
@@ -1210,6 +1232,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
                 updateCashflow: selectedOptionIds.includes('cashflow'),
                 syncJob: selectedOptionIds.includes('job'),
                 revertStorage: selectedOptionIds.includes('storage'),
+                storageAssetId: deleteDrawTarget.draw.storageAssetId,
               });
               setDeleteDrawTarget(null);
             }}

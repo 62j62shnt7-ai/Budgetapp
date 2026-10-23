@@ -134,9 +134,10 @@ export const createJobsSlice: SliceCreator<JobsSlice> = (set, get) => ({
       }
 
       if (options?.revertStorage && payment) {
+        const rawAcc = (payment.settlementAccount || payment.account || '').replace('account:', '').trim();
         revertStorageOrAccountBalance(get, {
           assetId: options.storageAssetId,
-          account: payment.settlementAccount || payment.account,
+          account: rawAcc,
           currency: payment.currency || targetJob.currency || 'USD',
           amount: Number(payment.amount) || 0,
           isEgpAmount: false,

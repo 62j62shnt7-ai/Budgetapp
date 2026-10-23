@@ -1777,6 +1777,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
           accounts,
           entryActuals,
           entries,
+          creditSettlementOverrides,
         });
 
         return (
@@ -1802,6 +1803,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                 syncJob: selectedIds.includes('job'),
                 revertStorage: selectedIds.includes('storage'),
                 restoreForeignAsset: selectedIds.includes('restore_fx_asset'),
+                adjustCreditOverride: selectedIds.includes('credit_statement'),
               });
               setDeleteEntryTarget(null);
             }}
@@ -1814,6 +1816,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
       {deleteInstallmentTarget && (() => {
         const affectedData = buildInstallmentDeleteOptions(deleteInstallmentTarget, {
           entries,
+          archivedEntries,
         });
 
         return (

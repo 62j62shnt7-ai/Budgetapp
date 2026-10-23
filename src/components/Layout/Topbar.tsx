@@ -15,7 +15,6 @@ import {
 } from 'lucide-react';
 
 import { executeAppRefresh } from '../../utils/appRefresh';
-import { isDriveTokenValid } from '../../services/googleDriveClient';
 
 interface TopbarProps {
   onOpenEntryModal: (type: 'expense' | 'income') => void;
@@ -72,7 +71,7 @@ export const Topbar: React.FC<TopbarProps> = ({
   );
   const updateStatus = useAppUpdateStatus();
   const isConnected = Boolean(driveUser);
-  const isExpired = driveSyncStatus === 'expired' || (isConnected && !isDriveTokenValid());
+  const isExpired = driveSyncStatus === 'expired';
   const syncLabel = !isConnected
     ? 'Setup'
     : isExpired

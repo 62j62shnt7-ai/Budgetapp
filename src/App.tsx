@@ -43,6 +43,7 @@ import {
   getStoredDriveUser,
   getStoredDriveToken,
   getStoredDriveAutoSync,
+  refreshDriveTokenSilently,
   downloadBudgetFromDrive,
 } from './services/googleDriveClient';
 import { loadStorageAsync, saveStorage, onStorageChange } from './utils/storageAdapter';
@@ -206,10 +207,14 @@ export const App: React.FC = () => {
         }
         // Autonomous Google Drive Sync (Option B: My Drive / Budget Control / budget-data.json)
         const driveUser = getStoredDriveUser();
-        const driveToken = getStoredDriveToken();
+        let driveToken = getStoredDriveToken();
         const driveAutoSync = getStoredDriveAutoSync();
 
-        // If user is connected to Google Drive but token is expired/missing, immediately signal 'expired' status
+        // If user is connected to Google Drive and token has lapsed, silently refresh it before marking expired
+        if (driveUser && !driveToken) {
+          driveToken = await refreshDriveTokenSilently();
+        }
+
         if (driveUser && !driveToken) {
           state.setDriveSyncStatus('expired');
         } else if (driveToken && driveAutoSync) {
