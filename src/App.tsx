@@ -44,6 +44,8 @@ import {
   getStoredDriveToken,
   getStoredDriveAutoSync,
   refreshDriveTokenSilently,
+  preWarmGisTokenClient,
+  requestSilentTokenOnUserGesture,
   downloadBudgetFromDrive,
 } from './services/googleDriveClient';
 import { loadStorageAsync, saveStorage, onStorageChange } from './utils/storageAdapter';
@@ -210,13 +212,28 @@ export const App: React.FC = () => {
         let driveToken = getStoredDriveToken();
         const driveAutoSync = getStoredDriveAutoSync();
 
-        // If user is connected to Google Drive and token has lapsed, silently refresh it before marking expired
+        // If user is connected to Google Drive and token has lapsed, silently refresh it
         if (driveUser && !driveToken) {
           driveToken = await refreshDriveTokenSilently();
         }
 
         if (driveUser && !driveToken) {
-          state.setDriveSyncStatus('expired');
+          // Pre-warm GIS client and arm a one-time user interaction listener so token refreshes silently on first user click
+          void preWarmGisTokenClient();
+          const onFirstInteraction = () => {
+            window.removeEventListener('pointerdown', onFirstInteraction, true);
+            window.removeEventListener('keydown', onFirstInteraction, true);
+            if (!getStoredDriveToken()) {
+              requestSilentTokenOnUserGesture();
+            }
+          };
+          window.addEventListener('pointerdown', onFirstInteraction, { capture: true, once: true });
+          window.addEventListener('keydown', onFirstInteraction, { capture: true, once: true });
+
+          // Keep in idle state rather than flashing 'expired' reconnect banner immediately
+          if (state.driveSyncStatus !== 'expired') {
+            state.setDriveSyncStatus('idle');
+          }
         } else if (driveToken && driveAutoSync) {
           try {
             // Keep idle background checks silent — do not flash 'syncing' unless actually downloading newer changes
@@ -275,6 +292,11 @@ export const App: React.FC = () => {
       void handleSyncAndRates({ isBackgroundPoll: true });
     };
 
+    const onTokenRefreshed = () => {
+      void handleSyncAndRates({ isBackgroundPoll: true });
+    };
+
+    window.addEventListener('budget-drive-token-refreshed', onTokenRefreshed);
     window.addEventListener('online', onOnline);
     window.addEventListener('focus', onTabReactivated);
     document.addEventListener('visibilitychange', onTabReactivated);
@@ -282,6 +304,7 @@ export const App: React.FC = () => {
     return () => {
       isMounted = false;
       clearInterval(pollInterval);
+      window.removeEventListener('budget-drive-token-refreshed', onTokenRefreshed);
       window.removeEventListener('online', onOnline);
       window.removeEventListener('focus', onTabReactivated);
       document.removeEventListener('visibilitychange', onTabReactivated);

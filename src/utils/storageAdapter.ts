@@ -67,7 +67,14 @@ export function loadStorageSync<T>(key: string, fallback: T): T {
     if (val !== undefined && val !== null) {
       if (Array.isArray(fallback) && !Array.isArray(val)) return fallback;
       if (typeof fallback === 'string' && typeof val !== 'string') return fallback;
-      if (typeof fallback === 'number' && (typeof val !== 'number' || isNaN(val))) return fallback;
+      if (typeof fallback === 'number') {
+        if (typeof val === 'number' && !isNaN(val)) return val as T;
+        if (typeof val === 'string' && val.trim() !== '') {
+          const parsed = Number(val);
+          if (!isNaN(parsed)) return parsed as T;
+        }
+        return fallback;
+      }
       if (typeof fallback === 'boolean' && typeof val !== 'boolean') return fallback;
       return val as T;
     }

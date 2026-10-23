@@ -28,6 +28,10 @@ import {
   getLiveDriveMetadata,
   getGoogleDriveStorageQuota,
   MAX_EDIT_SNAPSHOTS_CAP,
+  getStoredDriveRefreshToken,
+  saveStoredDriveRefreshToken,
+  getStoredDriveClientSecret,
+  saveStoredDriveClientSecret,
   type GoogleDriveUser,
   type DriveBackupItem,
   type DriveLiveMetadata,
@@ -75,6 +79,9 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
   const [retentionLimit, setRetentionLimit] = useState(getStoredDriveBackupRetentionLimit);
   const [liveMetadata, setLiveMetadata] = useState<DriveLiveMetadata | null>(null);
   const [storageQuota, setStorageQuota] = useState<GoogleDriveStorageQuota | null>(null);
+  const [clientSecretInput, setClientSecretInput] = useState(getStoredDriveClientSecret);
+  const [refreshTokenInput, setRefreshTokenInput] = useState(getStoredDriveRefreshToken() || '');
+  const [showAdvancedAuth, setShowAdvancedAuth] = useState(false);
 
   // 3 Separated Snapshot Tiers
   const [dailyBackups, setDailyBackups] = useState<DriveBackupItem[]>([]);
@@ -594,6 +601,69 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
                     </select>
                   </div>
                 )}
+
+                {/* Advanced OAuth / Refresh Token (Optional for 100% zero-popup background renewal) */}
+                <div style={{ marginTop: '4px', borderTop: '1px dashed var(--border-color, rgba(255,255,255,0.08))', paddingTop: '6px' }}>
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={() => setShowAdvancedAuth(!showAdvancedAuth)}
+                    style={{ fontSize: '11px', opacity: 0.8, padding: 0, border: 'none', background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                  >
+                    <span>{showAdvancedAuth ? '▼' : '►'}</span>
+                    <span>Advanced: Permanent OAuth Refresh Token (Optional)</span>
+                  </button>
+
+                  {showAdvancedAuth && (
+                    <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '11px' }}>
+                      <div style={{ opacity: 0.75, lineHeight: 1.4 }}>
+                        By default, your session refreshes silently on your first tap/click via Google Identity Services. To enable 100% invisible background renewal on page startup via <code>fetch()</code> without any browser popups, enter your Google OAuth Client Secret:
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <label style={{ opacity: 0.8, fontWeight: 500 }}>Google OAuth Client Secret</label>
+                        <input
+                          type="password"
+                          value={clientSecretInput}
+                          placeholder="Paste client_secret from Google Cloud Console"
+                          onChange={(e) => {
+                            setClientSecretInput(e.target.value);
+                            saveStoredDriveClientSecret(e.target.value);
+                          }}
+                          style={{
+                            padding: '6px 8px',
+                            borderRadius: '4px',
+                            background: 'var(--surface-soft, rgba(255,255,255,0.06))',
+                            color: 'inherit',
+                            border: '1px solid var(--border-color, rgba(255,255,255,0.1))',
+                            fontSize: '11px',
+                            fontFamily: 'monospace',
+                          }}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <label style={{ opacity: 0.8, fontWeight: 500 }}>Permanent Refresh Token</label>
+                        <input
+                          type="password"
+                          value={refreshTokenInput}
+                          placeholder="Paste refresh_token if generated offline"
+                          onChange={(e) => {
+                            setRefreshTokenInput(e.target.value);
+                            saveStoredDriveRefreshToken(e.target.value);
+                          }}
+                          style={{
+                            padding: '6px 8px',
+                            borderRadius: '4px',
+                            background: 'var(--surface-soft, rgba(255,255,255,0.06))',
+                            color: 'inherit',
+                            border: '1px solid var(--border-color, rgba(255,255,255,0.1))',
+                            fontSize: '11px',
+                            fontFamily: 'monospace',
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 

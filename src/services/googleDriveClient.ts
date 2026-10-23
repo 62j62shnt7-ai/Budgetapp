@@ -15,8 +15,10 @@ import {
 } from '../utils/storageAdapter';
 
 const GDRIVE_CLIENT_ID_KEY = 'budget-control-gdrive-client-id';
+const GDRIVE_CLIENT_SECRET_KEY = 'budget-control-gdrive-client-secret';
 const GDRIVE_TOKEN_KEY = 'budget-control-gdrive-token';
 const GDRIVE_TOKEN_EXPIRY_KEY = 'budget-control-gdrive-token-expiry';
+const GDRIVE_REFRESH_TOKEN_KEY = 'budget-control-gdrive-refresh-token';
 const GDRIVE_USER_KEY = 'budget-control-gdrive-user';
 const GDRIVE_AUTO_SYNC_KEY = 'budget-control-gdrive-auto-sync';
 
@@ -34,6 +36,118 @@ export interface GoogleDriveSyncResult {
 }
 
 const DEFAULT_GOOGLE_CLIENT_ID = '191333657161-aqptqa80usrujqbuqckp15ddf9ib8g7t.apps.googleusercontent.com';
+
+export function getStoredDriveClientSecret(): string {
+  const envSecret = typeof import.meta !== 'undefined' && import.meta.env?.VITE_GOOGLE_CLIENT_SECRET
+    ? String(import.meta.env.VITE_GOOGLE_CLIENT_SECRET).trim()
+    : '';
+  let storedSecret = loadStorageSync<string>(GDRIVE_CLIENT_SECRET_KEY, '');
+  if (!storedSecret && typeof localStorage !== 'undefined') {
+    storedSecret = localStorage.getItem(GDRIVE_CLIENT_SECRET_KEY) || '';
+  }
+  return storedSecret || envSecret;
+}
+
+export function saveStoredDriveClientSecret(clientSecret: string): void {
+  const trimmed = clientSecret.trim();
+  if (trimmed) {
+    saveStorage(GDRIVE_CLIENT_SECRET_KEY, trimmed);
+    if (typeof localStorage !== 'undefined') {
+      try { localStorage.setItem(GDRIVE_CLIENT_SECRET_KEY, trimmed); } catch {}
+    }
+  } else {
+    void removeStorage(GDRIVE_CLIENT_SECRET_KEY);
+    if (typeof localStorage !== 'undefined') {
+      try { localStorage.removeItem(GDRIVE_CLIENT_SECRET_KEY); } catch {}
+    }
+  }
+}
+
+export function getStoredDriveRefreshToken(): string | null {
+  let token = loadStorageSync<string | null>(GDRIVE_REFRESH_TOKEN_KEY, null);
+  if (!token && typeof localStorage !== 'undefined') {
+    token = localStorage.getItem(GDRIVE_REFRESH_TOKEN_KEY);
+  }
+  return token || null;
+}
+
+export function saveStoredDriveRefreshToken(refreshToken: string): void {
+  const trimmed = refreshToken.trim();
+  if (trimmed) {
+    saveStorage(GDRIVE_REFRESH_TOKEN_KEY, trimmed);
+    if (typeof localStorage !== 'undefined') {
+      try { localStorage.setItem(GDRIVE_REFRESH_TOKEN_KEY, trimmed); } catch {}
+    }
+  } else {
+    void removeStorage(GDRIVE_REFRESH_TOKEN_KEY);
+    if (typeof localStorage !== 'undefined') {
+      try { localStorage.removeItem(GDRIVE_REFRESH_TOKEN_KEY); } catch {}
+    }
+  }
+}
+
+/**
+ * Pre-initialize GIS Token Client and cache in memory for synchronous execution during user gestures
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let preInitializedTokenClient: any = null;
+
+export async function preWarmGisTokenClient(): Promise<boolean> {
+  const user = getStoredDriveUser();
+  const clientId = getStoredDriveClientId();
+  if (!user || !clientId || typeof window === 'undefined') return false;
+
+  const loaded = await loadGisScript();
+  if (!loaded) return false;
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const google = (window as any).google;
+    if (!google?.accounts?.oauth2) return false;
+
+    preInitializedTokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
+      hint: user.email,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      callback: (resp: any) => {
+        if (resp.error || !resp.access_token) {
+          console.warn('[googleDriveClient] Pre-warmed token refresh failed:', resp.error);
+          return;
+        }
+        const token = resp.access_token as string;
+        const expiresIn = Number(resp.expires_in || 3600);
+        saveStoredDriveToken(token, expiresIn);
+        // Trigger auto-sync in store if ready
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('budget-drive-token-refreshed', { detail: { token } }));
+        }
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      error_callback: (err: any) => {
+        console.warn('[googleDriveClient] Pre-warmed token refresh error:', err);
+      },
+    });
+    return true;
+  } catch (err) {
+    console.warn('[googleDriveClient] Failed to pre-warm token client:', err);
+    return false;
+  }
+}
+
+/**
+ * Trigger immediate silent token request if pre-warmed token client is ready during user interaction
+ */
+export function requestSilentTokenOnUserGesture(): boolean {
+  if (!preInitializedTokenClient) return false;
+  try {
+    preInitializedTokenClient.requestAccessToken({ prompt: '' });
+    return true;
+  } catch (err) {
+    console.warn('[googleDriveClient] Failed to execute silent token on user gesture:', err);
+    return false;
+  }
+}
 
 export function getStoredDriveClientId(): string {
   const envId = typeof import.meta !== 'undefined' && import.meta.env?.VITE_GOOGLE_CLIENT_ID
@@ -99,8 +213,9 @@ function scheduleProactiveTokenRefresh(expiresInSeconds: number): void {
 }
 
 /**
- * Attempt to refresh the Google Drive OAuth token silently in the background
- * without showing user account selection popups (prompt: '').
+ * Attempt to refresh the Google Drive OAuth token silently in the background.
+ * 1. If an OAuth refresh_token and client_secret are present, use background fetch() (zero popups, zero user gesture needed).
+ * 2. Otherwise, use Google Identity Services silent token client request (prompt: '').
  */
 export async function refreshDriveTokenSilently(options?: { force?: boolean }): Promise<string | null> {
   const user = getStoredDriveUser();
@@ -117,6 +232,36 @@ export async function refreshDriveTokenSilently(options?: { force?: boolean }): 
   if (!clientId || typeof window === 'undefined') return null;
 
   silentRefreshPromise = (async () => {
+    // Strategy 1: Background fetch() with refresh_token if available
+    const refreshToken = getStoredDriveRefreshToken();
+    const clientSecret = getStoredDriveClientSecret();
+    if (refreshToken && clientSecret) {
+      try {
+        const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            client_id: clientId,
+            client_secret: clientSecret,
+            refresh_token: refreshToken,
+            grant_type: 'refresh_token',
+          }),
+        });
+        if (tokenRes.ok) {
+          const tokenData = await tokenRes.json();
+          if (tokenData.access_token) {
+            const token = tokenData.access_token as string;
+            const expiresIn = Number(tokenData.expires_in || 3600);
+            saveStoredDriveToken(token, expiresIn);
+            return token;
+          }
+        }
+      } catch (refreshErr) {
+        console.warn('[googleDriveClient] Refresh token exchange failed, falling back to GIS:', refreshErr);
+      }
+    }
+
+    // Strategy 2: Google Identity Services GIS token client
     const loaded = await loadGisScript();
     if (!loaded) return null;
 
@@ -180,7 +325,7 @@ export async function refreshDriveTokenSilently(options?: { force?: boolean }): 
 
 export function getStoredDriveToken(): string | null {
   let token = loadStorageSync<string | null>(GDRIVE_TOKEN_KEY, null);
-  let expiry = Number(loadStorageSync<string | number>(GDRIVE_TOKEN_EXPIRY_KEY, 0));
+  let expiry = Number(loadStorageSync<number>(GDRIVE_TOKEN_EXPIRY_KEY, 0));
   if ((!token || !expiry) && typeof localStorage !== 'undefined') {
     token = token || localStorage.getItem(GDRIVE_TOKEN_KEY);
     expiry = expiry || Number(localStorage.getItem(GDRIVE_TOKEN_EXPIRY_KEY) || '0');
@@ -198,7 +343,7 @@ export function getStoredDriveToken(): string | null {
 export function saveStoredDriveToken(token: string, expiresInSeconds: number): void {
   const expiry = Date.now() + Math.max(0, (expiresInSeconds - 60) * 1000);
   saveStorage(GDRIVE_TOKEN_KEY, token);
-  saveStorage(GDRIVE_TOKEN_EXPIRY_KEY, String(expiry));
+  saveStorage(GDRIVE_TOKEN_EXPIRY_KEY, expiry);
   if (typeof localStorage !== 'undefined') {
     try {
       localStorage.setItem(GDRIVE_TOKEN_KEY, token);
@@ -213,13 +358,16 @@ export function clearStoredDriveToken(): void {
     clearTimeout(proactiveRefreshTimer);
     proactiveRefreshTimer = null;
   }
+  preInitializedTokenClient = null;
   void removeStorage(GDRIVE_TOKEN_KEY);
   void removeStorage(GDRIVE_TOKEN_EXPIRY_KEY);
+  void removeStorage(GDRIVE_REFRESH_TOKEN_KEY);
   void removeStorage(GDRIVE_USER_KEY);
   if (typeof localStorage !== 'undefined') {
     try {
       localStorage.removeItem(GDRIVE_TOKEN_KEY);
       localStorage.removeItem(GDRIVE_TOKEN_EXPIRY_KEY);
+      localStorage.removeItem(GDRIVE_REFRESH_TOKEN_KEY);
       localStorage.removeItem(GDRIVE_USER_KEY);
     } catch {}
   }

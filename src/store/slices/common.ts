@@ -61,8 +61,12 @@ export const STORAGE_KEYS = {
   gdriveClientId: 'budget-control-gdrive-client-id',
   gdriveToken: 'budget-control-gdrive-token',
   gdriveTokenExpiry: 'budget-control-gdrive-token-expiry',
+  gdriveRefreshToken: 'budget-control-gdrive-refresh-token',
+  gdriveClientSecret: 'budget-control-gdrive-client-secret',
   gdriveUser: 'budget-control-gdrive-user',
   gdriveAutoSync: 'budget-control-gdrive-auto-sync',
+  gdriveDailySnapshots: 'budget-control-gdrive-daily-snapshots',
+  gdriveBackupRetention: 'budget-control-gdrive-backup-retention',
 };
 
 export function loadStorage<T>(key: string, fallback: T): T {

@@ -252,4 +252,25 @@ assert.ok(afterRedoTimestamp >= afterUndoTimestamp, 'redo should advance lastLoc
 assert.ok(STORAGE_KEYS.lastDriveSync, 'STORAGE_KEYS.lastDriveSync must be defined');
 console.log('✓ Test 12 passed!');
 
+// Test 13: Drive Token & Numeric Expiry IndexedDB persistence & type coercion
+console.log('Test 13: Drive Token & Numeric Expiry IndexedDB persistence & type coercion...');
+const gdriveClient = await import('../src/services/googleDriveClient.ts');
+
+gdriveClient.saveStoredDriveToken('mock-gdrive-access-token', 3600);
+// Verify immediate retrieval works
+const initialToken = gdriveClient.getStoredDriveToken();
+assert.strictEqual(initialToken, 'mock-gdrive-access-token');
+
+// Simulate localStorage wipe (as done during IndexedDB single-source migration)
+globalThis.localStorage.removeItem('budget-control-gdrive-token');
+globalThis.localStorage.removeItem('budget-control-gdrive-token-expiry');
+
+// Must still retrieve valid token from IndexedDB memoryStore with numeric string coercion
+const idbToken = gdriveClient.getStoredDriveToken();
+assert.strictEqual(idbToken, 'mock-gdrive-access-token', 'Must retrieve token even when localStorage is wiped');
+
+gdriveClient.clearStoredDriveToken();
+assert.strictEqual(gdriveClient.getStoredDriveToken(), null);
+console.log('✓ Test 13 passed!');
+
 console.log('🌟 ALL STORAGE & CLOUD ADAPTER TESTS PASSED! 🌟');
