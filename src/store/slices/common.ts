@@ -9,6 +9,7 @@ import type {
 import { getCurrencyRateOr } from '../../engine/currency';
 import { inferTag } from '../../engine/tags';
 import { isCreditCardExpense } from '../../engine/creditCards';
+import { isLoanInflow } from '../../engine/forecast';
 import {
   saveStorage as adapterSaveStorage,
   loadStorageSync as adapterLoadStorageSync,
@@ -482,18 +483,23 @@ export function upgradeLoadedEntries(rawEntries: CashEntry[]): CashEntry[] {
     }
 
     const isCardSwipe = isCreditCardExpense(entry);
+    const isLoan = isLoanInflow(entry);
     let nextAccount = entry.account;
     let nextDraws = entry.draws;
+
     if (isCardSwipe) {
       const accLower = (entry.account || '').toLowerCase().trim();
       if (!accLower.includes('credit')) {
         const isCib = entry.creditType === 'cib_card' || accLower.includes('cib');
         nextAccount = isCib ? 'CIB Credit' : 'HSBC Credit';
       }
-      // Strip single auto-generated 1-click draw on credit card swipes
-      if (Array.isArray(entry.draws) && entry.draws.length === 1) {
-        nextDraws = undefined;
-      }
+    }
+
+    // Strip single auto-generated 1-click draw on any regular entry;
+    // single 1-time payments should not have a draws array.
+    // Loan inflow facilities are preserved as they represent facility drawdown tranches.
+    if (Array.isArray(entry.draws) && entry.draws.length === 1 && !isLoan) {
+      nextDraws = undefined;
     }
 
     if (tag !== entry.tag || nextAccount !== entry.account || nextDraws !== entry.draws) {

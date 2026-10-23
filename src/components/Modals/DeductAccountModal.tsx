@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
-import { formatMoney, DateUtils } from '../../engine/dateUtils';
+import { formatMoney } from '../../engine/dateUtils';
 import { getCurrencyRateOr, formatNativeCurrency, getAccountNativeCurrency, convertAmountBetweenCurrencies, normalizeCurrencyCode } from '../../engine/currency';
 import type { CashEntry } from '../../types';
 
@@ -207,29 +207,14 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
         tag: trimmedTag,
         account: 'none',
       };
-    } else if (actualAmount > 0) {
-      updatedDraws = [
-        {
-          id: `draw-${Date.now()}-0`,
-          date: entry.actualDate || entry.date || DateUtils.todayString(),
-          amount: actualAmount,
-          tag: trimmedTag,
-          account: 'none',
-        },
-      ];
     }
-
-    const allDrawsNoAccount =
-      updatedDraws.length > 0 &&
-      updatedDraws.every((d) => !d.account || d.account === 'none');
 
     updateEntry(entry.id, {
       tag: trimmedTag,
-      draws: updatedDraws,
+      account: 'none',
+      ...(updatedDraws.length > 1 ? { draws: updatedDraws } : { draws: undefined }),
       ...(isSettlement
-        ? { isClosed: entry.isClosed ?? true, account: 'none' }
-        : allDrawsNoAccount
-        ? { account: 'none' }
+        ? { isClosed: entry.isClosed ?? true }
         : {}),
     });
 
@@ -303,24 +288,14 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
         tag: trimmedTag,
         ...(accountName ? { account: accountName } : {}),
       };
-    } else if (actualAmount > 0) {
-      updatedDraws = [
-        {
-          id: `draw-${Date.now()}-0`,
-          date: entry.actualDate || entry.date || DateUtils.todayString(),
-          amount: actualAmount,
-          tag: trimmedTag,
-          account: accountName || entry.account || (isSettlement ? (entry.id.split('-')[2] || 'hsbc') : 'hsbc'),
-        },
-      ];
     }
 
-      updateEntry(entry.id, {
-        tag: trimmedTag,
-        ...(accountName ? { account: accountName } : {}),
-        draws: updatedDraws,
-        ...(isSettlement ? { isClosed: entry.isClosed ?? true } : {}),
-      });
+    updateEntry(entry.id, {
+      tag: trimmedTag,
+      ...(accountName ? { account: accountName } : {}),
+      ...(updatedDraws.length > 1 ? { draws: updatedDraws } : { draws: undefined }),
+      ...(isSettlement ? { isClosed: entry.isClosed ?? true } : {}),
+    });
     });
 
     onClose();

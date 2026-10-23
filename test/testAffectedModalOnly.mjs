@@ -29,6 +29,7 @@ import {
   calculateInstallmentProgress,
   buildInstallmentEntries,
 } from '../src/engine/salaryAndInstallments.ts';
+import { upgradeLoadedEntries } from '../src/store/slices/common.ts';
 import { detectRecurringCandidateGroups } from '../src/utils/recurringDetector.ts';
 
 console.log('===============================================================');
@@ -1257,6 +1258,28 @@ const deleteLoanOpts = buildEntryDeleteOptions(loanFacilityEntry, {
   irqJobs: [],
 });
 assert.strictEqual(deleteLoanOpts.options.some((o) => o.id === 'draws'), true, 'Loan inflow facility entry with 1 draw retains Recorded Tranches option');
+
+// Verify upgradeLoadedEntries purges single-draw array on regular entries
+const rawLoadedEntries = [
+  { id: 'raw-1', category: 'Groceries', amount: 500, type: 'expense', draws: [{ id: 'd1', amount: 500, date: '2026-10-01' }] },
+  { id: 'raw-2', category: 'Car Loan Inflow', amount: 50000, type: 'income', loanId: 'loan-1', draws: [{ id: 'd2', amount: 50000, date: '2026-10-01' }] },
+  { id: 'raw-3', category: 'Home Renovation', amount: 10000, type: 'expense', draws: [{ id: 'd3', amount: 5000, date: '2026-10-01' }, { id: 'd4', amount: 5000, date: '2026-10-05' }] },
+];
+const upgraded = upgradeLoadedEntries(rawLoadedEntries);
+assert.strictEqual(upgraded[0].draws, undefined, 'Single-draw array on regular groceries entry is purged to undefined');
+assert.strictEqual(upgraded[1].draws.length, 1, 'Loan facility single draw is preserved');
+assert.strictEqual(upgraded[2].draws.length, 2, 'Multi-draw entries are preserved');
+
+// Verify recordActual does not create draws array for 1-click single payments
+useBudgetStore.setState({
+  entries: [{ id: 'test-single-paid', category: 'Pharmacy', amount: 250, type: 'expense', account: 'hsbc' }],
+  archivedEntries: [],
+  entryActuals: {},
+});
+useBudgetStore.getState().recordActual('test-single-paid', 250, '2026-10-23');
+const savedSingle = useBudgetStore.getState().entries.find((e) => e.id === 'test-single-paid');
+assert.strictEqual(savedSingle.actualAmount, 250, 'Actual amount recorded');
+assert.strictEqual(savedSingle.draws, undefined, 'Single 1-click payment does NOT create a draws array');
 
 console.log('  ✓ Single records suppress Recorded Tranches (1) while multi-draw entries and loan facilities retain it\n');
 

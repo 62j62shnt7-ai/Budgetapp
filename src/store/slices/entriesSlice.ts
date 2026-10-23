@@ -8,7 +8,7 @@ import type {
 } from '../../types';
 import { DateUtils } from '../../engine/dateUtils';
 import { inferTag } from '../../engine/tags';
-import { isOngoingEntry } from '../../engine/forecast';
+import { isOngoingEntry, isLoanInflow } from '../../engine/forecast';
 import { calculateJobFinancials } from '../../engine/jobs';
 import {
   isLumpCreditDueForAccount,
@@ -619,6 +619,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
       if (existingIndex !== -1) {
         const entry = get().entries[existingIndex];
         const isCardSwipe = isCreditCardExpense(entry);
+        const isLoan = isLoanInflow(entry);
         const prevActual = Number(get().entryActuals[entryId] ?? entry.actualAmount ?? 0);
         const tranche = amount > prevActual ? Math.round((amount - prevActual) * 100) / 100 : amount;
 
@@ -626,6 +627,9 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
         if (isCardSwipe) {
           // Credit card swipes are immediate 1-click transactions; do not generate synthetic partial draw tranches
           draws = draws.length > 1 ? draws : [];
+        } else if (!isLoan && draws.length === 0 && !entry.keepOngoing) {
+          // Standard 1-click expense/income payment: record actual directly without fabricating a 1-item draws array.
+          draws = [];
         } else {
           if (draws.length === 0 && prevActual > 0) {
             draws.push({
@@ -671,11 +675,16 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
           }
         }
 
+        // If draws has <= 1 item and is not a loan facility, strip the redundant draws array
+        if (draws.length <= 1 && !isLoan) {
+          draws = [];
+        }
+
         const updatedEntry: CashEntry = {
           ...entry,
           actualAmount: amount,
           actualDate: actDate,
-          draws: isCardSwipe && draws.length === 0 ? undefined : draws,
+          draws: draws.length > 0 ? draws : undefined,
         };
         updatedEntries = [...get().entries];
         updatedEntries[existingIndex] = updatedEntry;
@@ -685,12 +694,15 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
         if (archivedIndex !== -1) {
           const entry = get().archivedEntries[archivedIndex];
           const isCardSwipe = isCreditCardExpense(entry);
+          const isLoan = isLoanInflow(entry);
           const prevActual = Number(get().entryActuals[entryId] ?? entry.actualAmount ?? 0);
           const tranche = amount > prevActual ? Math.round((amount - prevActual) * 100) / 100 : amount;
 
           let draws = Array.isArray(entry.draws) ? [...entry.draws] : [];
           if (isCardSwipe) {
             draws = draws.length > 1 ? draws : [];
+          } else if (!isLoan && draws.length === 0 && !entry.keepOngoing) {
+            draws = [];
           } else {
             if (draws.length === 0 && prevActual > 0) {
               draws.push({
@@ -736,11 +748,15 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
             }
           }
 
+          if (draws.length <= 1 && !isLoan) {
+            draws = [];
+          }
+
           const updatedEntry: CashEntry = {
             ...entry,
             actualAmount: amount,
             actualDate: actDate,
-            draws: isCardSwipe && draws.length === 0 ? undefined : draws,
+            draws: draws.length > 0 ? draws : undefined,
           };
           updatedArchived = [...get().archivedEntries];
           updatedArchived[archivedIndex] = updatedEntry;
