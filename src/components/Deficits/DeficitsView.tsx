@@ -31,6 +31,7 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({
     recordActual,
     updateEntry,
     runTransaction,
+    settleJobForecastPayment,
     navigateTo,
   } = useBudgetStore(useShallow((state) => ({
     accounts: state.accounts,
@@ -39,6 +40,7 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({
     recordActual: state.recordActual,
     updateEntry: state.updateEntry,
     runTransaction: state.runTransaction,
+    settleJobForecastPayment: state.settleJobForecastPayment,
     navigateTo: state.navigateTo,
   })));
 
@@ -140,7 +142,7 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({
           <strong id="deficitOverdueCount" style={{ color: overdueEntries.length > 0 ? 'var(--amber, #f59e0b)' : 'var(--green, #10b981)', fontWeight: 800 }}>
             {overdueEntries.length}
           </strong>
-          <small id="deficitOverdueNote">{overdueEntries.length > 0 ? `${overdueEntries.length} past due obligations` : 'All scheduled entries up to date'}</small>
+          <small id="deficitOverdueNote">{overdueEntries.length > 0 ? `${overdueEntries.length} past due item${overdueEntries.length === 1 ? '' : 's'}` : 'All scheduled entries up to date'}</small>
         </article>
         <article
           className="metric history-summary-clickable-row"
@@ -323,7 +325,7 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({
             <div>
               <h3 style={{ margin: 0 }}>Overdue &amp; unpaid</h3>
               <span style={{ fontSize: '13px', color: 'var(--muted)' }}>
-                Past their scheduled date without recorded payment
+                Past their scheduled date without recorded payment or receipt
               </span>
             </div>
           </div>
@@ -333,7 +335,7 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({
               <div style={{ padding: '28px 20px', textAlign: 'center', color: 'var(--muted)', background: 'var(--surface-soft)', borderRadius: '12px', border: '1px solid var(--line)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                 <Clock size={30} color="var(--muted)" style={{ marginBottom: '8px' }} />
                 <strong style={{ fontSize: '14px', color: 'var(--ink, #f8fafc)', marginBottom: '3px' }}>No overdue entries found</strong>
-                <p style={{ margin: 0, fontSize: '12.5px', color: 'var(--muted)' }}>All scheduled expenses and obligations are up to date.</p>
+                <p style={{ margin: 0, fontSize: '12.5px', color: 'var(--muted)' }}>All scheduled expenses, incomes, and obligations are up to date.</p>
               </div>
             ) : (
               overdueEntries.slice(0, 10).map(({ entry, remaining, daysOverdue }) => (
@@ -363,13 +365,21 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({
                     }}
                     title={`Click to view ${entry.category} in Cash Flow`}
                   >
-                    <strong className="overdue-entry-title">{entry.category}</strong>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <strong className="overdue-entry-title">{entry.category}</strong>
+                      {entry.type === 'income' && (
+                        <span className="source-pill" style={{ background: 'rgba(16, 185, 129, 0.15)', color: 'var(--green, #10b981)', fontWeight: 700, fontSize: '10px', padding: '1px 5px' }}>
+                          INCOME
+                        </span>
+                      )}
+                    </div>
                     <span className="overdue-entry-meta">
-                      Due: {DateUtils.formatDisplayDate(entry.date)} · {daysOverdue}d overdue · Account: {entry.account.toUpperCase()}
+                      {entry.type === 'income' ? 'Expected:' : 'Due:'} {DateUtils.formatDisplayDate(entry.date)} · {daysOverdue}d overdue · Account: {(entry.account || 'cash').toUpperCase()}
                     </span>
                   </div>
                   <div className="overdue-entry-actions">
-                    <strong className="overdue-entry-amount">
+                    <strong className="overdue-entry-amount" style={{ color: entry.type === 'income' ? 'var(--green, #10b981)' : undefined }}>
+                      {entry.type === 'income' ? '+' : ''}
                       {entry.id.startsWith('credit-settlement-') ? (
                         <span title="Remaining settlement due for this cycle">{formatMoney(remaining)}</span>
                       ) : (
@@ -379,9 +389,11 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({
                     <button
                       className="ghost-button overdue-mark-paid-btn"
                       type="button"
+                      style={entry.type === 'income' ? { borderColor: 'rgba(16, 185, 129, 0.35)', color: 'var(--green, #10b981)' } : undefined}
                       onClick={() => {
                         const plannedAmt = Number(entry.amount || 0);
                         const isSettlement = entry.id.startsWith('credit-settlement-');
+                        const isIncome = entry.type === 'income';
 
                         if (isSettlement) {
                           const settlementAccountKey = entry.id.split('-')[2] || entry.account || 'cib';
@@ -406,6 +418,27 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({
                             },
                             plannedAmt
                           );
+                        } else if (isIncome) {
+                          runTransaction(`Mark Received Income: ${entry.category}`, () => {
+                            recordActual(entry.id, plannedAmt, today, {
+                              tag: entry.tag || '',
+                              account: entry.account || 'hsbc',
+                            });
+                            updateEntry(entry.id, {
+                              isClosed: true,
+                              keepOngoing: false,
+                              amount: plannedAmt,
+                              account: entry.account || 'hsbc',
+                            });
+                            settleJobForecastPayment(entry.id, plannedAmt, true);
+                          });
+                          onDeductPrompt?.(
+                            {
+                              ...entry,
+                              isClosed: true,
+                            },
+                            plannedAmt
+                          );
                         } else {
                           recordActual(entry.id, plannedAmt, today, {
                             tag: entry.tag || '',
@@ -417,7 +450,7 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({
                         }
                       }}
                     >
-                      Mark Paid
+                      {entry.type === 'income' ? 'Mark Received' : 'Mark Paid'}
                     </button>
                   </div>
                 </div>

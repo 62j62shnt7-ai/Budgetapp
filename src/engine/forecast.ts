@@ -327,6 +327,10 @@ export function getActiveForecastEntries(
       if (isPartialTracked(entry) && !entry.isClosed && getRemainingForecastAmount(entry, entryActuals) > 0) {
         return true;
       }
+      // Uncollected non-partial income (e.g. salary, freelance, refunds): keep when unclosed and remaining > 0 regardless of date
+      if (entry.type === 'income' && !entry.isClosed && getEntryActualAmount(entry, entryActuals) <= 0) {
+        return true;
+      }
       return !entry.date || entry.date >= today;
     })
     .filter((entry) => {
@@ -351,8 +355,12 @@ export function getActiveForecastEntries(
         entry.subcategory === 'Loan Repayment' ||
         Boolean(entry.loanId && entry.type === 'expense');
 
+      // Uncollected overdue income: scheduled due date must be preserved when uncollected/unpaid
+      // so it surfaces as OVERDUE in deficits, dashboard, and cashflow views instead of sliding to today.
+      const isOverdueIncome = entry.type === 'income' && !isOngoingEntry(entry, entryActuals);
+
       // Regular ongoing flexible expenses: undrawn/unspent carry forward to today
-      if (!isStrictObligation && isPartialTracked(entry) && effDate && effDate < today && getRemainingForecastAmount(entry, entryActuals) > 0) {
+      if (!isStrictObligation && !isOverdueIncome && isPartialTracked(entry) && effDate && effDate < today && getRemainingForecastAmount(entry, entryActuals) > 0) {
         effDate = today;
       }
       if (isPartialTracked(entry) && getEntryActualAmount(entry, entryActuals) > 0) {

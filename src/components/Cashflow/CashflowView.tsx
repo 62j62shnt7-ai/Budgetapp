@@ -1294,7 +1294,9 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                 // Credit settlements are single-dated due rows (overdue or upcoming):
                 // they never represent an ongoing budget, so never badge them ongoing
                 // even when the due date has passed or a payment was recorded.
+                const isOverdueIncome = e.type === 'income' && !isOngoingEntry(e, entryActuals);
                 const ongoing = !(isCreditSettlement || isCreditDueLumpSum(e))
+                  && !isOverdueIncome
                   && (isOngoingEntry(e, entryActuals) || (isPartial && !e.isClosed && remainingAmt > 0 && (actualValue > 0 || isPastDate)));
                 const canFinish = !e.isClosed && !isOpening && (actualValue > 0 || isPastDate || isLoan || ongoing || (isPartial && remainingAmt > 0));
                 const actualDate = actualValue > 0 ? getEntryActualDate(e, entryActualDates) : '';

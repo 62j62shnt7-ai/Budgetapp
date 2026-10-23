@@ -1932,6 +1932,108 @@ console.log('✓ Settlement clear: reverts to single planned due (overdue) and r
   console.log('✓ Master Audit regression suite (piastre precision, zero-division, clock injection, corrupt storage fallback) verified');
 }
 
+// =========================================================================
+// Overdue Income Capture in Forecast & Deficits Pipeline
+// =========================================================================
+{
+  const { getActiveForecastEntries, getDeficitSummary, calculateForecast } = await import('../src/engine/forecast.ts');
+
+  const testToday = '2026-10-23';
+
+  // 1. Regular uncollected income past due date (Salary, Bonus, Freelance)
+  const regularOverdueIncome = {
+    id: 'inc-overdue-regular',
+    date: '2026-10-15', // Past due
+    amount: 15000,
+    type: 'income',
+    category: 'Consulting Retainer',
+    account: 'hsbc',
+  };
+
+  // 2. Job / Part-Time income past due date
+  const jobOverdueIncome = {
+    id: 'inc-overdue-job',
+    date: '2026-10-18', // Past due
+    amount: 25000,
+    type: 'income',
+    category: 'Job Income',
+    tag: 'Part-Time',
+    account: 'cib',
+  };
+
+  // 3. Already collected income past due date (must be filtered out of active forecast)
+  const settledIncome = {
+    id: 'inc-settled',
+    date: '2026-10-10',
+    amount: 10000,
+    type: 'income',
+    category: 'Salary',
+    account: 'hsbc',
+    actualAmount: 10000,
+  };
+
+  // 4. Ongoing loan facility inflow past due date (should remain ongoing/slide or stay excluded from overdue)
+  const ongoingLoanInflow = {
+    id: 'loan-inflow-facility',
+    date: '2026-10-05',
+    amount: 50000,
+    type: 'income',
+    category: 'Bridge Loan Inflow',
+    source: 'loan',
+    account: 'cib',
+  };
+
+  const cashList = [regularOverdueIncome, jobOverdueIncome, settledIncome, ongoingLoanInflow];
+  const activeEntries = getActiveForecastEntries(
+    cashList,
+    [],
+    [],
+    [],
+    { 'inc-settled': 10000 },
+    testToday
+  );
+
+  // Verification 1: Both uncollected incomes are retained in active forecast entries
+  const foundRegular = activeEntries.find((e) => e.id === regularOverdueIncome.id);
+  const foundJob = activeEntries.find((e) => e.id === jobOverdueIncome.id);
+  const foundSettled = activeEntries.find((e) => e.id === settledIncome.id);
+
+  assert.ok(foundRegular, 'Regular overdue income must NOT be dropped from getActiveForecastEntries');
+  assert.ok(foundJob, 'Job overdue income must NOT be dropped from getActiveForecastEntries');
+  assert.strictEqual(foundSettled, undefined, 'Settled income must be excluded from active forecast');
+
+  // Verification 2: Original due dates are preserved (not slid to today)
+  assert.strictEqual(foundRegular.date, '2026-10-15', 'Regular overdue income date preserved');
+  assert.strictEqual(foundJob.date, '2026-10-18', 'Job overdue income date preserved');
+
+  // Verification 3: Captured in getDeficitSummary overdueItems
+  const summary = getDeficitSummary(activeEntries, activeEntries, 5000, { 'inc-settled': 10000 }, testToday);
+  const overdueIds = summary.overdueItems.map((item) => item.entry.id);
+
+  assert.ok(overdueIds.includes(regularOverdueIncome.id), 'Regular overdue income appears in getDeficitSummary overdueItems');
+  assert.ok(overdueIds.includes(jobOverdueIncome.id), 'Job overdue income appears in getDeficitSummary overdueItems');
+  assert.strictEqual(overdueIds.includes(ongoingLoanInflow.id), false, 'Ongoing loan facility excluded from overdue list');
+
+  const regularItem = summary.overdueItems.find((i) => i.entry.id === regularOverdueIncome.id);
+  assert.strictEqual(regularItem.daysOverdue, 8, 'Overdue days calculated accurately (2026-10-15 to 2026-10-23 = 8d)');
+
+  // Verification 4: Prior-month overdue income rolls into calculateForecast first month
+  const priorMonthIncome = {
+    id: 'inc-prior-month',
+    date: '2026-09-25', // Month prior to 2026-10
+    amount: 12000,
+    type: 'income',
+    category: 'Bonus',
+    account: 'hsbc',
+  };
+  const activeWithPrior = getActiveForecastEntries([priorMonthIncome], [], [], [], {}, testToday);
+  const forecastWithPrior = calculateForecast(activeWithPrior, 0, 3, '2026-10');
+  assert.strictEqual(forecastWithPrior[0].income, 12000, 'Prior-month uncollected income rolled into first forecast month income');
+  assert.strictEqual(forecastWithPrior[0].balance, 12000, 'Prior-month uncollected income rolled into first forecast month balance');
+
+  console.log('✓ Overdue income capture in active forecast, deficit summary, and rolling forecast verified');
+}
+
 console.log('\n=================================================================');
 console.log('🌟 100% OF ENGINE, STORE, AND BUSINESS LOGIC TESTS PASSED! 🌟');
 console.log('=================================================================');
