@@ -516,20 +516,23 @@ export async function signInWithGoogleDrive(): Promise<{ user: GoogleDriveUser |
 }
 
 async function signInWithGis(clientId: string): Promise<{ user: GoogleDriveUser | null; error: Error | null }> {
-
-  const loaded = await loadGisScript();
-  if (!loaded) {
-    return {
-      user: null,
-      error: new Error('Failed to load Google Identity Services. Check your internet connection.'),
-    };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const google = typeof window !== 'undefined' ? (window as any).google : null;
+  if (!google?.accounts?.oauth2) {
+    const loaded = await loadGisScript();
+    if (!loaded) {
+      return {
+        user: null,
+        error: new Error('Failed to load Google Identity Services. Check your internet connection.'),
+      };
+    }
   }
 
   return new Promise((resolve) => {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const google = (window as any).google;
-      const client = google.accounts.oauth2.initTokenClient({
+      const g = (window as any).google;
+      const client = g.accounts.oauth2.initTokenClient({
         client_id: clientId,
         scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -573,7 +576,9 @@ async function signInWithGis(clientId: string): Promise<{ user: GoogleDriveUser 
         },
       });
 
-      client.requestAccessToken({ prompt: 'select_account' });
+      // Synchronously trigger request without selecting account if user is already known
+      const currentUser = getStoredDriveUser();
+      client.requestAccessToken({ prompt: currentUser?.email ? '' : 'select_account', hint: currentUser?.email || undefined });
     } catch (err) {
       resolve({ user: null, error: err as Error });
     }

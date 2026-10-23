@@ -14,7 +14,6 @@ import {
   ChevronRight,
   Cloud,
 } from 'lucide-react';
-import { isDriveTokenValid } from '../../services/googleDriveClient';
 
 interface SidebarProps {
   onOpenDriveSync?: () => void;
@@ -35,7 +34,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenDriveSync }) => {
   );
 
   const isConnected = Boolean(driveUser);
-  const isExpired = driveSyncStatus === 'expired' || (isConnected && !isDriveTokenValid());
+  const isExpired = driveSyncStatus === 'expired';
   const syncLabel = !isConnected
     ? 'Setup'
     : isExpired

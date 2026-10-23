@@ -18,7 +18,6 @@ import {
   X 
 } from 'lucide-react';
 import { executeAppRefresh } from '../../utils/appRefresh';
-import { isDriveTokenValid } from '../../services/googleDriveClient';
 
 interface MobileActionSheetProps {
   isOpen: boolean;
@@ -113,7 +112,7 @@ export const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
   };
 
   const isConnected = Boolean(driveUser);
-  const isExpired = driveSyncStatus === 'expired' || (isConnected && !isDriveTokenValid());
+  const isExpired = driveSyncStatus === 'expired';
   const syncLabel = !isConnected
     ? 'Setup'
     : isExpired
