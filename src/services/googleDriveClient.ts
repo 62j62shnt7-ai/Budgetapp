@@ -113,6 +113,9 @@ export async function preWarmGisTokenClient(): Promise<boolean> {
       callback: (resp: any) => {
         if (resp.error || !resp.access_token) {
           console.warn('[googleDriveClient] Pre-warmed token refresh failed:', resp.error);
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('budget-drive-token-failed', { detail: { error: resp.error } }));
+          }
           return;
         }
         const token = resp.access_token as string;
@@ -126,6 +129,9 @@ export async function preWarmGisTokenClient(): Promise<boolean> {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       error_callback: (err: any) => {
         console.warn('[googleDriveClient] Pre-warmed token refresh error:', err);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('budget-drive-token-failed', { detail: { error: err } }));
+        }
       },
     });
     return true;

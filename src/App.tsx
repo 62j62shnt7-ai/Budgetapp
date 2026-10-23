@@ -296,7 +296,12 @@ export const App: React.FC = () => {
       void handleSyncAndRates({ isBackgroundPoll: true });
     };
 
+    const onTokenFailed = () => {
+      useBudgetStore.getState().setDriveSyncStatus('expired');
+    };
+
     window.addEventListener('budget-drive-token-refreshed', onTokenRefreshed);
+    window.addEventListener('budget-drive-token-failed', onTokenFailed);
     window.addEventListener('online', onOnline);
     window.addEventListener('focus', onTabReactivated);
     document.addEventListener('visibilitychange', onTabReactivated);
@@ -305,6 +310,7 @@ export const App: React.FC = () => {
       isMounted = false;
       clearInterval(pollInterval);
       window.removeEventListener('budget-drive-token-refreshed', onTokenRefreshed);
+      window.removeEventListener('budget-drive-token-failed', onTokenFailed);
       window.removeEventListener('online', onOnline);
       window.removeEventListener('focus', onTabReactivated);
       document.removeEventListener('visibilitychange', onTabReactivated);
