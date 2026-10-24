@@ -102,17 +102,18 @@ export const createUndoSlice: SliceCreator<UndoSlice> = (set, get) => ({
     const restored = toRevert.snapshot;
     persistFinancialSnapshot(restored);
 
+    saveStorage(STORAGE_KEYS.hasUnsyncedChanges, true);
     set({
       ...restored,
       undoStack: nextUndoStack,
       redoStack: nextRedoStack,
       undoToast: null,
       lastLocalModified: now,
+      hasUnsyncedChanges: true,
     });
 
     void persistUndoHistoryToStorage(nextUndoStack, nextRedoStack);
     scheduleAutoDriveSync(get, false, { isUserEdit: true });
-    scheduleAutoDriveSync(get);
     return true;
   },
 
@@ -145,17 +146,18 @@ export const createUndoSlice: SliceCreator<UndoSlice> = (set, get) => ({
     const restored = toApply.snapshot;
     persistFinancialSnapshot(restored);
 
+    saveStorage(STORAGE_KEYS.hasUnsyncedChanges, true);
     set({
       ...restored,
       undoStack: nextUndoStack,
       redoStack: nextRedoStack,
       undoToast: null,
       lastLocalModified: now,
+      hasUnsyncedChanges: true,
     });
 
     void persistUndoHistoryToStorage(nextUndoStack, nextRedoStack);
     scheduleAutoDriveSync(get, false, { isUserEdit: true });
-    scheduleAutoDriveSync(get);
     return true;
   },
 

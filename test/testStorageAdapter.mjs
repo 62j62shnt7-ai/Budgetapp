@@ -273,4 +273,128 @@ gdriveClient.clearStoredDriveToken();
 assert.strictEqual(gdriveClient.getStoredDriveToken(), null);
 console.log('✓ Test 13 passed!');
 
+// Test 14: saveStorageBatch & saveStorageBatchAsync
+console.log('Test 14: saveStorageBatch & saveStorageBatchAsync atomic batching...');
+const { saveStorageBatch, saveStorageBatchAsync, exportAllFromStorage } = await import('../src/utils/storageAdapter.ts');
+
+saveStorageBatch([
+  ['batch-test-1', { val: 100 }],
+  ['batch-test-2', ['a', 'b', 'c']],
+]);
+
+assert.deepStrictEqual(loadStorageSync('batch-test-1', null), { val: 100 });
+assert.deepStrictEqual(loadStorageSync('batch-test-2', null), ['a', 'b', 'c']);
+
+await saveStorageBatchAsync([
+  ['batch-async-1', 42],
+  ['batch-async-2', 'hello batch'],
+]);
+
+assert.strictEqual(await loadStorageAsync('batch-async-1', 0), 42);
+assert.strictEqual(await loadStorageAsync('batch-async-2', ''), 'hello batch');
+console.log('✓ Test 14 passed!');
+
+// Test 15: Sensitive OAuth credential redaction in exportAllFromStorage
+console.log('Test 15: Sensitive OAuth credential redaction in exportAllFromStorage...');
+saveStorage('budget-control-gdrive-token', 'secret-access-token');
+saveStorage('budget-control-gdrive-refresh-token', 'secret-refresh-token');
+saveStorage('budget-control-gdrive-client-secret', 'secret-client-secret');
+saveStorage('gist_token', 'secret-gist-token');
+saveStorage('budget-control-public-data', { entries: [] });
+
+const exportedData = await exportAllFromStorage();
+assert.strictEqual(exportedData['budget-control-gdrive-token'], undefined, 'Must redact gdrive token');
+assert.strictEqual(exportedData['budget-control-gdrive-refresh-token'], undefined, 'Must redact refresh token');
+assert.strictEqual(exportedData['budget-control-gdrive-client-secret'], undefined, 'Must redact client secret');
+assert.strictEqual(exportedData['gist_token'], undefined, 'Must redact gist token');
+assert.ok(exportedData['budget-control-public-data'], 'Must preserve public data');
+console.log('✓ Test 15 passed!');
+
+// Test 16: Centralized getSyncStatusPresentation presentation logic
+console.log('Test 16: Centralized getSyncStatusPresentation presentation logic...');
+const { getSyncStatusPresentation } = await import('../src/utils/syncPresentation.ts');
+
+// Disconnected
+const pDisconnected = getSyncStatusPresentation({
+  driveUser: null,
+  driveAutoSync: true,
+  driveSyncStatus: 'idle',
+  hasUnsyncedChanges: false,
+});
+assert.strictEqual(pDisconnected.isConnected, false);
+assert.strictEqual(pDisconnected.label, 'Setup');
+assert.strictEqual(pDisconnected.pillClass, '');
+
+// Expired
+const pExpired = getSyncStatusPresentation({
+  driveUser: { email: 'a@b.com', name: 'User' },
+  driveAutoSync: true,
+  driveSyncStatus: 'expired',
+  hasUnsyncedChanges: false,
+});
+assert.strictEqual(pExpired.isExpired, true);
+assert.strictEqual(pExpired.label, 'Reconnect');
+assert.strictEqual(pExpired.pillClass, 'error');
+
+// In-flight syncing
+const pSyncing = getSyncStatusPresentation({
+  driveUser: { email: 'a@b.com', name: 'User' },
+  driveAutoSync: true,
+  driveSyncStatus: 'syncing',
+  hasUnsyncedChanges: true,
+});
+assert.strictEqual(pSyncing.label, 'Syncing');
+assert.strictEqual(pSyncing.pillClass, 'syncing');
+
+// In-flight scheduled
+const pScheduled = getSyncStatusPresentation({
+  driveUser: { email: 'a@b.com', name: 'User' },
+  driveAutoSync: true,
+  driveSyncStatus: 'scheduled',
+  hasUnsyncedChanges: true,
+});
+assert.strictEqual(pScheduled.label, 'Queued');
+assert.strictEqual(pScheduled.pillClass, 'syncing');
+
+// Manual mode with unsynced changes
+const pManualUnsynced = getSyncStatusPresentation({
+  driveUser: { email: 'a@b.com', name: 'User' },
+  driveAutoSync: false,
+  driveSyncStatus: 'synced',
+  hasUnsyncedChanges: true,
+});
+assert.strictEqual(pManualUnsynced.label, 'Unsynced');
+assert.strictEqual(pManualUnsynced.pillClass, 'unsaved');
+
+// Auto mode with unsynced changes (dirty offline edit)
+const pAutoUnsynced = getSyncStatusPresentation({
+  driveUser: { email: 'a@b.com', name: 'User' },
+  driveAutoSync: true,
+  driveSyncStatus: 'synced',
+  hasUnsyncedChanges: true,
+});
+assert.strictEqual(pAutoUnsynced.label, 'Unsaved');
+assert.strictEqual(pAutoUnsynced.pillClass, 'unsaved');
+
+// Fully synced
+const pSynced = getSyncStatusPresentation({
+  driveUser: { email: 'a@b.com', name: 'User' },
+  driveAutoSync: true,
+  driveSyncStatus: 'synced',
+  hasUnsyncedChanges: false,
+});
+assert.strictEqual(pSynced.label, 'Synced');
+assert.strictEqual(pSynced.pillClass, 'synced');
+assert.strictEqual(pSynced.dotColor, '#22c55e');
+console.log('✓ Test 16 passed!');
+
+// Test 17: hasUnsyncedChanges tracking in useBudgetStore
+console.log('Test 17: hasUnsyncedChanges tracking in useBudgetStore...');
+assert.strictEqual(typeof useBudgetStore.getState().setHasUnsyncedChanges, 'function');
+useBudgetStore.getState().setHasUnsyncedChanges(true);
+assert.strictEqual(useBudgetStore.getState().hasUnsyncedChanges, true);
+useBudgetStore.getState().setHasUnsyncedChanges(false);
+assert.strictEqual(useBudgetStore.getState().hasUnsyncedChanges, false);
+console.log('✓ Test 17 passed!');
+
 console.log('🌟 ALL STORAGE & CLOUD ADAPTER TESTS PASSED! 🌟');

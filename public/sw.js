@@ -36,9 +36,11 @@ self.addEventListener('fetch', (event) => {
   // Cache Google Fonts (fonts.googleapis.com & fonts.gstatic.com) with stale-while-revalidate / cache-first
   const isGoogleFont = url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com';
 
-  // Do not cache external data APIs (GitHub Gist sync, live currency/gold rates) or non-http protocols
+  // Do not cache external data APIs (Google Drive, GIS, GitHub, live currency/gold rates) or non-http protocols
   if (
     (!isGoogleFont && url.origin !== self.location.origin) ||
+    url.hostname.includes('googleapis.com') ||
+    url.hostname.includes('google.com') ||
     url.hostname.includes('github.com') ||
     url.hostname.includes('githubusercontent.com') ||
     url.hostname.includes('open.er-api.com') ||
@@ -86,7 +88,14 @@ self.addEventListener('fetch', (event) => {
           }
           return networkResponse;
         })
-        .catch(() => cachedResponse);
+        .catch(() => {
+          if (cachedResponse) return cachedResponse;
+          return new Response('Offline - asset unavailable', {
+            status: 503,
+            statusText: 'Service Unavailable',
+            headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+          });
+        });
 
       return cachedResponse || fetchPromise;
     })

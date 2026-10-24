@@ -33,23 +33,23 @@ if (typeof window !== 'undefined' && typeof window.BroadcastChannel !== 'undefin
   }
 }
 
-export function notifyStorageChange(key: string): void {
+export function notifyStorageChange(key: string, data?: unknown): void {
   if (syncChannel) {
     try {
-      syncChannel.postMessage({ type: 'storage_change', key, timestamp: Date.now() });
+      syncChannel.postMessage({ type: 'storage_change', key, data, timestamp: Date.now() });
     } catch {
       // Ignore broadcast errors
     }
   }
 }
 
-export function onStorageChange(callback: (key: string) => void): () => void {
+export function onStorageChange(callback: (key: string, data?: unknown) => void): () => void {
   if (!syncChannel) {
     return () => {};
   }
   const handler = (event: MessageEvent) => {
     if (event.data && typeof event.data === 'object' && event.data.type === 'storage_change') {
-      callback(String(event.data.key || ''));
+      callback(String(event.data.key || ''), event.data.data);
     }
   };
   syncChannel.addEventListener('message', handler);
@@ -121,12 +121,48 @@ export async function saveStorageAsync<T>(key: string, value: T): Promise<void> 
  */
 export function saveStorage<T>(key: string, value: T): void {
   memoryStore.set(key, value);
-  notifyStorageChange(key);
+  notifyStorageChange(key, value);
 
   if (isIndexedDBAvailable) {
     set(key, value).catch((err) => {
       console.error(`[storageAdapter] Async saveStorage failed for ${key}:`, err);
     });
+  }
+}
+
+/**
+ * Atomic batch save to IndexedDB & memoryStore in a single readwrite transaction.
+ */
+export function saveStorageBatch(entries: Array<[string, unknown]>): void {
+  if (!entries || entries.length === 0) return;
+  for (const [key, value] of entries) {
+    memoryStore.set(key, value);
+  }
+  notifyStorageChange('__batch__', entries.map(([k]) => k));
+
+  if (isIndexedDBAvailable) {
+    setMany(entries).catch((err) => {
+      console.error('[storageAdapter] Async saveStorageBatch failed:', err);
+    });
+  }
+}
+
+/**
+ * Async atomic batch save to IndexedDB & memoryStore.
+ */
+export async function saveStorageBatchAsync(entries: Array<[string, unknown]>): Promise<void> {
+  if (!entries || entries.length === 0) return;
+  for (const [key, value] of entries) {
+    memoryStore.set(key, value);
+  }
+  notifyStorageChange('__batch__', entries.map(([k]) => k));
+
+  if (isIndexedDBAvailable) {
+    try {
+      await setMany(entries);
+    } catch (err) {
+      console.error('[storageAdapter] Async saveStorageBatchAsync failed:', err);
+    }
   }
 }
 
@@ -241,8 +277,18 @@ export async function loadAllFromIndexedDB(
   return result;
 }
 
+const SENSITIVE_STORAGE_KEYS = new Set([
+  'budget-control-gdrive-token',
+  'budget-control-gdrive-token-expiry',
+  'budget-control-gdrive-refresh-token',
+  'budget-control-gdrive-client-secret',
+  'budget-control-gist-token',
+  'gist_token',
+]);
+
 /**
  * Dump all keys from IndexedDB (or memoryStore) for emergency backup export.
+ * Excludes sensitive credentials (tokens, secrets).
  */
 export async function exportAllFromStorage(): Promise<Record<string, unknown>> {
   const dump: Record<string, unknown> = {};
@@ -251,7 +297,10 @@ export async function exportAllFromStorage(): Promise<Record<string, unknown>> {
     try {
       const allEntries = await idbEntries();
       for (const [k, v] of allEntries) {
-        dump[String(k)] = v;
+        const keyStr = String(k);
+        if (!SENSITIVE_STORAGE_KEYS.has(keyStr)) {
+          dump[keyStr] = v;
+        }
       }
       return dump;
     } catch (err) {
@@ -261,7 +310,9 @@ export async function exportAllFromStorage(): Promise<Record<string, unknown>> {
 
   // Fallback to memoryStore
   for (const [k, v] of memoryStore.entries()) {
-    dump[k] = v;
+    if (!SENSITIVE_STORAGE_KEYS.has(k)) {
+      dump[k] = v;
+    }
   }
   return dump;
 }

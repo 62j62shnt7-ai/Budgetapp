@@ -1,6 +1,7 @@
 import React from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
+import { getSyncStatusPresentation } from '../../utils/syncPresentation';
 import { LayoutDashboard, TrendingUp, AlertTriangle, History, MoreHorizontal, Plus } from 'lucide-react';
 
 interface BottomNavProps {
@@ -9,19 +10,32 @@ interface BottomNavProps {
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({ onOpenMobileMenu, onOpenQuickAdd }) => {
-  const { activeTab, setActiveTab, driveUser, driveSyncStatus } = useBudgetStore(
+  const {
+    activeTab,
+    setActiveTab,
+    driveUser,
+    driveAutoSync,
+    driveSyncStatus,
+    hasUnsyncedChanges,
+  } = useBudgetStore(
     useShallow((state) => ({
       activeTab: state.activeTab,
       setActiveTab: state.setActiveTab,
       driveUser: state.driveUser,
+      driveAutoSync: state.driveAutoSync,
       driveSyncStatus: state.driveSyncStatus,
+      hasUnsyncedChanges: state.hasUnsyncedChanges,
     }))
   );
 
-  const isConnected = Boolean(driveUser);
-  const isExpired = driveSyncStatus === 'expired';
+  const { isConnected, isExpired, dotColor } = getSyncStatusPresentation({
+    driveUser,
+    driveAutoSync,
+    driveSyncStatus,
+    hasUnsyncedChanges,
+  });
   const isError = driveSyncStatus === 'error';
-  const showDot = isConnected && (isExpired || isError);
+  const showDot = isConnected && (isExpired || isError || hasUnsyncedChanges);
 
   return (
     <nav className="mobile-bottom-nav" aria-label="Mobile primary navigation">
@@ -103,7 +117,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ onOpenMobileMenu, onOpenQu
                 width: '7px',
                 height: '7px',
                 borderRadius: '50%',
-                background: '#ef4444',
+                background: dotColor,
                 border: '1.5px solid var(--surface, #1e293b)',
               }}
             />

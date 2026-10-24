@@ -12,6 +12,7 @@ import { isCreditCardExpense } from '../../engine/creditCards';
 import { isLoanInflow } from '../../engine/forecast';
 import {
   saveStorage as adapterSaveStorage,
+  saveStorageBatch as adapterSaveStorageBatch,
   loadStorageSync as adapterLoadStorageSync,
   persistUndoHistoryToStorage,
 } from '../../utils/storageAdapter';
@@ -57,6 +58,7 @@ export const STORAGE_KEYS = {
   importUndoBackup: 'budget-control-import-undo-backup',
   lastLocalModified: 'budget-control-last-local-modified',
   lastDriveSync: 'budget-control-last-drive-sync',
+  hasUnsyncedChanges: 'budget-control-has-unsynced-changes',
   lastGistUpload: 'budget-control-last-gist-upload',
   lastGistSync: 'budget-control-last-gist-sync',
   gdriveClientId: 'budget-control-gdrive-client-id',
@@ -177,6 +179,11 @@ export function setHasPendingUserEdit(val: boolean) {
   hasPendingUserEdit = val;
 }
 
+export let localMutationCounter = 0;
+export function incrementLocalMutationCounter(): number {
+  return ++localMutationCounter;
+}
+
 export let initStoragePromise: Promise<void> | null = null;
 export function setInitStoragePromise(promise: Promise<void> | null) {
   initStoragePromise = promise;
@@ -189,12 +196,22 @@ export function setSuppressAutoSync(val: boolean) {
   suppressAutoSync = val;
 }
 
+export function flushPendingDriveSyncNow(getState: () => BudgetStoreState): void {
+  if (driveSyncTimer) {
+    clearTimeout(driveSyncTimer);
+    driveSyncTimer = null;
+  }
+  scheduleAutoDriveSync(getState, true);
+}
+
 export function scheduleAutoDriveSync(
   getState: () => BudgetStoreState,
   immediate = false,
   options?: { isUserEdit?: boolean; rateRefresh?: boolean }
 ): void {
   if (typeof window === 'undefined') return;
+  if (suppressAutoSync) return;
+
   const token = getStoredDriveToken();
   const user = getStoredDriveUser();
   const autoSync = getStoredDriveAutoSync();
@@ -204,6 +221,9 @@ export function scheduleAutoDriveSync(
   const isUserEdit = options?.isUserEdit !== undefined ? options.isUserEdit : !isRateRefresh;
   if (isUserEdit) {
     hasPendingUserEdit = true;
+    try {
+      getState().setHasUnsyncedChanges(true);
+    } catch {}
   }
 
   if (driveSyncTimer) {
@@ -228,14 +248,22 @@ export function scheduleAutoDriveSync(
     }
     driveSyncInFlight = true;
     getState().setDriveSyncStatus('syncing');
+    const mutationVersionAtStart = localMutationCounter;
     const wasUserEdit = hasPendingUserEdit;
-    hasPendingUserEdit = false;
+    const expectedBaseTime = getState().lastDriveSyncTime;
     try {
       const state = getState();
       const payload = state.exportJSON();
-      const res = await uploadBudgetToDrive(payload, { isUserEdit: wasUserEdit });
+      const res = await uploadBudgetToDrive(payload, {
+        isUserEdit: wasUserEdit,
+        expectedModifiedTime: expectedBaseTime,
+      });
+
       if (res.success) {
-        getState().setDriveSyncStatus('synced');
+        if (localMutationCounter === mutationVersionAtStart) {
+          hasPendingUserEdit = false;
+          state.setHasUnsyncedChanges(false);
+        }
         if (res.modifiedTime) {
           const syncTime = res.modifiedTime;
           const now = Date.now();
@@ -243,6 +271,10 @@ export function scheduleAutoDriveSync(
           state.setDriveSyncStatus('synced');
           saveStorage(STORAGE_KEYS.lastDriveSync, syncTime);
           saveStorage(STORAGE_KEYS.lastLocalModified, String(now));
+          getState().setDriveSyncTime?.(syncTime);
+          getState().setLastLocalModified?.(now);
+        } else {
+          state.setDriveSyncStatus('synced');
         }
       } else {
         const isExpired = res.error?.includes('session expired') || res.error?.includes('re-authorize') || res.error?.includes('Not connected');
@@ -420,23 +452,25 @@ export function captureFinancialSnapshot(state: BudgetStoreState): BudgetFinanci
 }
 
 export function persistFinancialSnapshot(snapshot: BudgetFinancialSnapshot): void {
-  saveStorage(STORAGE_KEYS.entries, snapshot.entries);
-  saveStorage(STORAGE_KEYS.archivedEntries, snapshot.archivedEntries);
-  saveStorage(STORAGE_KEYS.deletedForecasts, snapshot.deletedForecasts);
-  saveStorage(STORAGE_KEYS.accounts, snapshot.accounts);
-  saveStorage(STORAGE_KEYS.salary, snapshot.salaryPattern);
-  saveStorage(STORAGE_KEYS.installments, snapshot.installments);
-  saveStorage(STORAGE_KEYS.rates, snapshot.rates);
-  saveStorage(STORAGE_KEYS.storage, snapshot.storageAssets);
-  saveStorage(STORAGE_KEYS.asf, snapshot.asfJobs);
-  saveStorage(STORAGE_KEYS.irq, snapshot.irqJobs);
-  saveStorage(STORAGE_KEYS.partTimeJobs, snapshot.partTimeJobs);
-  saveStorage(STORAGE_KEYS.entryActuals, snapshot.entryActuals);
-  saveStorage(STORAGE_KEYS.entryActualDates, snapshot.entryActualDates);
-  saveStorage(STORAGE_KEYS.creditDues, snapshot.creditDues);
-  saveStorage(STORAGE_KEYS.creditDueMonths, snapshot.creditDueMonths);
-  saveStorage(STORAGE_KEYS.creditSettlementOverrides, snapshot.creditSettlementOverrides);
-  saveStorage(STORAGE_KEYS.salaryAnchor, snapshot.salaryAnchorMonth);
+  adapterSaveStorageBatch([
+    [STORAGE_KEYS.entries, snapshot.entries],
+    [STORAGE_KEYS.archivedEntries, snapshot.archivedEntries],
+    [STORAGE_KEYS.deletedForecasts, snapshot.deletedForecasts],
+    [STORAGE_KEYS.accounts, snapshot.accounts],
+    [STORAGE_KEYS.salary, snapshot.salaryPattern],
+    [STORAGE_KEYS.installments, snapshot.installments],
+    [STORAGE_KEYS.rates, snapshot.rates],
+    [STORAGE_KEYS.storage, snapshot.storageAssets],
+    [STORAGE_KEYS.asf, snapshot.asfJobs],
+    [STORAGE_KEYS.irq, snapshot.irqJobs],
+    [STORAGE_KEYS.partTimeJobs, snapshot.partTimeJobs],
+    [STORAGE_KEYS.entryActuals, snapshot.entryActuals],
+    [STORAGE_KEYS.entryActualDates, snapshot.entryActualDates],
+    [STORAGE_KEYS.creditDues, snapshot.creditDues],
+    [STORAGE_KEYS.creditDueMonths, snapshot.creditDueMonths],
+    [STORAGE_KEYS.creditSettlementOverrides, snapshot.creditSettlementOverrides],
+    [STORAGE_KEYS.salaryAnchor, snapshot.salaryAnchorMonth],
+  ]);
 }
 
 export function recordUndoableStep(
@@ -445,9 +479,14 @@ export function recordUndoableStep(
   label: string
 ): void {
   const now = Date.now();
+  incrementLocalMutationCounter();
   hasPendingUserEdit = true;
   lastLocalMutationTimestamp = now;
   saveStorage(STORAGE_KEYS.lastLocalModified, String(now));
+  saveStorage(STORAGE_KEYS.hasUnsyncedChanges, true);
+  try {
+    get().setHasUnsyncedChanges(true);
+  } catch {}
   if (isTransactionRunning) return;
 
   try {

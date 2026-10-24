@@ -2,6 +2,7 @@ import React from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore, type ViewTab } from '../../store/useBudgetStore';
 import { useAppUpdateStatus } from '../../hooks/useAppUpdateStatus';
+import { getSyncStatusPresentation } from '../../utils/syncPresentation';
 import { 
   Menu, 
   Sun, 
@@ -48,6 +49,7 @@ export const Topbar: React.FC<TopbarProps> = ({
     driveUser,
     driveAutoSync,
     driveSyncStatus,
+    hasUnsyncedChanges,
     undoStack,
     redoStack,
     undo,
@@ -62,6 +64,7 @@ export const Topbar: React.FC<TopbarProps> = ({
       driveUser: state.driveUser,
       driveAutoSync: state.driveAutoSync,
       driveSyncStatus: state.driveSyncStatus,
+      hasUnsyncedChanges: state.hasUnsyncedChanges,
       undoStack: state.undoStack,
       redoStack: state.redoStack,
       undo: state.undo,
@@ -70,31 +73,18 @@ export const Topbar: React.FC<TopbarProps> = ({
     }))
   );
   const updateStatus = useAppUpdateStatus();
-  const isConnected = Boolean(driveUser);
-  const isExpired = driveSyncStatus === 'expired';
-  const syncLabel = !isConnected
-    ? 'Setup'
-    : isExpired
-      ? 'Reconnect'
-      : !driveAutoSync
-        ? 'Manual'
-        : {
-          idle: 'Synced',
-          scheduled: 'Queued',
-          syncing: 'Syncing',
-          synced: 'Synced',
-          error: 'Error',
-          expired: 'Reconnect',
-        }[driveSyncStatus];
-  const syncPillClass = !isConnected
-    ? ''
-    : isExpired
-      ? 'error'
-      : driveSyncStatus === 'error'
-        ? 'error'
-        : driveSyncStatus === 'syncing' || driveSyncStatus === 'scheduled'
-          ? 'syncing'
-          : 'synced';
+  const {
+    label: syncLabel,
+    pillClass: syncPillClass,
+    dotColor,
+    isExpired,
+    isConnected,
+  } = getSyncStatusPresentation({
+    driveUser,
+    driveAutoSync,
+    driveSyncStatus,
+    hasUnsyncedChanges,
+  });
 
   return (
     <>
@@ -154,13 +144,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                   width: '7px',
                   height: '7px',
                   borderRadius: '50%',
-                  background: !isConnected
-                    ? 'var(--muted, #94a3b8)'
-                    : driveSyncStatus === 'error'
-                      ? '#ef4444'
-                      : driveSyncStatus === 'syncing' || driveSyncStatus === 'scheduled'
-                        ? '#eab308'
-                        : '#22c55e',
+                  background: dotColor,
                   border: '1.5px solid var(--surface, #1e293b)',
                 }}
               />

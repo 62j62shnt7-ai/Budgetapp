@@ -1,6 +1,7 @@
 import React from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore, type ViewTab } from '../../store/useBudgetStore';
+import { getSyncStatusPresentation } from '../../utils/syncPresentation';
 import {
   LayoutDashboard,
   AlertTriangle,
@@ -20,7 +21,17 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ onOpenDriveSync }) => {
-  const { activeTab, setActiveTab, sidebarCollapsed, toggleSidebar, closeMobileSidebar, driveUser, driveSyncStatus, driveAutoSync } = useBudgetStore(
+  const {
+    activeTab,
+    setActiveTab,
+    sidebarCollapsed,
+    toggleSidebar,
+    closeMobileSidebar,
+    driveUser,
+    driveSyncStatus,
+    driveAutoSync,
+    hasUnsyncedChanges,
+  } = useBudgetStore(
     useShallow((state) => ({
       activeTab: state.activeTab,
       setActiveTab: state.setActiveTab,
@@ -30,25 +41,21 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenDriveSync }) => {
       driveUser: state.driveUser,
       driveSyncStatus: state.driveSyncStatus,
       driveAutoSync: state.driveAutoSync,
+      hasUnsyncedChanges: state.hasUnsyncedChanges,
     }))
   );
 
-  const isConnected = Boolean(driveUser);
-  const isExpired = driveSyncStatus === 'expired';
-  const syncLabel = !isConnected
-    ? 'Setup'
-    : isExpired
-      ? 'Reconnect'
-      : !driveAutoSync
-        ? 'Manual'
-        : {
-          idle: 'Synced',
-          scheduled: 'Queued',
-          syncing: 'Syncing',
-          synced: 'Synced',
-          error: 'Error',
-          expired: 'Reconnect',
-        }[driveSyncStatus];
+  const {
+    label: syncLabel,
+    dotColor,
+    isExpired,
+    isConnected,
+  } = getSyncStatusPresentation({
+    driveUser,
+    driveAutoSync,
+    driveSyncStatus,
+    hasUnsyncedChanges,
+  });
 
   const tabs: Array<{ id: ViewTab; label: string; icon: React.ReactNode }> = [
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={18} /> },
@@ -158,13 +165,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenDriveSync }) => {
                     width: '6px',
                     height: '6px',
                     borderRadius: '50%',
-                    background: !isConnected
-                      ? 'var(--muted, #94a3b8)'
-                      : isExpired || driveSyncStatus === 'error'
-                        ? '#ef4444'
-                        : driveSyncStatus === 'syncing' || driveSyncStatus === 'scheduled'
-                          ? '#eab308'
-                          : '#22c55e',
+                    background: dotColor,
                     border: '1px solid var(--surface, #1e293b)',
                   }}
                 />

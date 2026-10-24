@@ -14,6 +14,7 @@ import {
   getOrCreateDailyBackupsFolder,
   signInWithGoogleDrive,
   signOutFromGoogleDrive,
+  preWarmGisTokenClient,
   uploadBudgetToDrive,
   downloadBudgetFromDrive,
   createUserSnapshot,
@@ -129,9 +130,11 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
     }
   }
 
-  // Fetch remote details when modal opens
+  // Pre-warm GIS client and fetch remote details when modal opens
   useEffect(() => {
     if (!isOpen) return;
+    // Eagerly pre-load GIS client in background so user click can trigger requestAccessToken synchronously
+    void preWarmGisTokenClient().catch(() => {});
     const timer = setTimeout(() => {
       void fetchCloudDetails();
     }, 0);
@@ -156,7 +159,7 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
       try {
         const pullRes = await downloadBudgetFromDrive();
         if (pullRes.success && pullRes.payload) {
-          importJSON(JSON.stringify(pullRes.payload));
+          importJSON(JSON.stringify(pullRes.payload), { isRemoteSync: true });
           showMsg(`✓ Connected as ${user.name}! Restored latest budget from Google Drive.`);
         } else {
           showMsg(`✓ Connected as ${user.name} (${user.email})! Ready to sync.`);
@@ -214,7 +217,7 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
         return;
       }
       const success = runTransaction('Pull from Google Drive', () => {
-        return importJSON(JSON.stringify(res.payload));
+        return importJSON(JSON.stringify(res.payload), { isRemoteSync: true });
       });
       if (success) {
         showMsg(`✓ Restored latest budget ledger from your Google Drive! (${res.modifiedTime ? new Date(res.modifiedTime).toLocaleString() : 'recently'})`);
@@ -259,7 +262,7 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
         return;
       }
       const success = runTransaction(`Restore backup: ${item.name}`, () => {
-        return importJSON(JSON.stringify(res.payload));
+        return importJSON(JSON.stringify(res.payload), { isRemoteSync: true });
       });
       if (success) {
         showMsg(`✓ Successfully restored backup from ${new Date(item.modifiedTime).toLocaleDateString()}!`);
@@ -414,21 +417,21 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
           <>
             {/* User Account & Status Card */}
             <div style={{ padding: '12px 14px', background: 'var(--card-bg, rgba(255,255,255,0.03))', borderRadius: '10px', border: '1px solid var(--border-color, rgba(255,255,255,0.08))' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: '1 1 200px' }}>
                   {driveUser.picture ? (
-                    <img src={driveUser.picture} alt="Avatar" style={{ width: '36px', height: '36px', borderRadius: '50%' }} />
+                    <img src={driveUser.picture} alt="Avatar" style={{ width: '36px', height: '36px', borderRadius: '50%', flexShrink: 0 }} />
                   ) : (
-                    <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'var(--accent, #6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
+                    <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'var(--accent, #6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', flexShrink: 0 }}>
                       {(driveUser.name || driveUser.email || 'G')[0].toUpperCase()}
                     </div>
                   )}
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: '13px' }}>{driveUser.name || 'Google User'}</div>
-                    <div style={{ fontSize: '11px', opacity: 0.7 }}>{driveUser.email}</div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{driveUser.name || 'Google User'}</div>
+                    <div style={{ fontSize: '11px', opacity: 0.7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{driveUser.email}</div>
                   </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                   {isDriveTokenValid() ? (
                     <span style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '12px', background: 'rgba(34, 197, 94, 0.15)', color: 'var(--green, #22c55e)', fontWeight: 600 }}>
                       🟢 Connected
@@ -695,7 +698,7 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
               {showSnapshotsSection && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {/* Folder Tabs */}
-                  <div style={{ display: 'flex', gap: '6px', borderBottom: '1px solid var(--border-color, rgba(255,255,255,0.08))', paddingBottom: '8px' }}>
+                  <div style={{ display: 'flex', gap: '6px', borderBottom: '1px solid var(--border-color, rgba(255,255,255,0.08))', paddingBottom: '8px', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
                     <button
                       type="button"
                       className="ghost-button"
@@ -796,13 +799,13 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
                             fontSize: '11px',
                           }}
                         >
-                          <div>
-                            <div style={{ fontWeight: 600 }}>{item.name}</div>
+                          <div style={{ minWidth: 0, paddingRight: '8px' }}>
+                            <div style={{ fontWeight: 600, wordBreak: 'break-all' }}>{item.name}</div>
                             <div style={{ fontSize: '10px', opacity: 0.6 }}>
                               {new Date(item.modifiedTime).toLocaleString()} • {formatBytes(item.size)}
                             </div>
                           </div>
-                          <div style={{ display: 'flex', gap: '6px' }}>
+                          <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
                             <button
                               type="button"
                               className="ghost-button"

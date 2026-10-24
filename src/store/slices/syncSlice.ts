@@ -41,18 +41,27 @@ import {
   setLastLocalMutationTimestamp,
   initStoragePromise,
   setInitStoragePromise,
+  suppressAutoSync,
+  setSuppressAutoSync,
 } from './common';
 import type { SliceCreator, SyncSlice, BudgetStoreState } from './types';
 
 export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => {
   const initialUser = getStoredDriveUser();
+  const initialHasUnsynced = Boolean(loadStorage<boolean>(STORAGE_KEYS.hasUnsyncedChanges, false));
 
   return {
     driveUser: initialUser,
     driveAutoSync: getStoredDriveAutoSync(),
     driveSyncStatus: 'idle',
-    lastDriveSyncTime: null,
+    lastDriveSyncTime: loadStorage<string | null>(STORAGE_KEYS.lastDriveSync, null),
     lastLocalModified: lastLocalMutationTimestamp,
+    hasUnsyncedChanges: initialHasUnsynced,
+
+    setHasUnsyncedChanges: (hasChanges: boolean) => {
+      saveStorage(STORAGE_KEYS.hasUnsyncedChanges, hasChanges);
+      set({ hasUnsyncedChanges: hasChanges });
+    },
 
     setDriveUser: (user: GoogleDriveUser | null) => {
       saveStoredDriveUser(user);
@@ -73,6 +82,12 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => {
       driveSyncStatus: status,
       gistSyncStatus: status === 'expired' ? 'error' : status,
     }),
+
+  setDriveSyncTime: (time: string | null) =>
+    set({ lastDriveSyncTime: time }),
+
+  setLastLocalModified: (timestamp: number) =>
+    set({ lastLocalModified: timestamp }),
 
   // Deprecated Gist compatibility fields (maintained for test harness / zero-breakage)
   gistToken: '',
@@ -166,29 +181,42 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => {
       };
       persistFinancialSnapshot(atomicPayload);
 
-      set({
-        entries: migrated.entries,
-        archivedEntries: migrated.archivedEntries,
-        accounts: migrated.accounts,
-        salaryPattern: migrated.salaryPattern,
-        installments: migrated.installments,
-        rates: migrated.rates,
-        creditDues: migrated.creditDues,
-        creditDueMonths: migrated.creditDueMonths,
-        creditSettlementOverrides: migrated.creditSettlementOverrides,
-        salaryAnchorMonth: migrated.salaryAnchorMonth,
-        storageAssets: migrated.storageAssets,
-        asfJobs: migrated.asfJobs,
-        irqJobs: migrated.irqJobs,
-        partTimeJobs: migrated.partTimeJobs,
-        entryActuals: migrated.entryActuals,
-        entryActualDates: migrated.entryActualDates,
-        deletedForecasts: migrated.deletedForecasts,
-        redoStack: [],
-        undoToast: null,
-      });
+      const prevSuppress = suppressAutoSync;
+      if (isRemoteSync) {
+        setSuppressAutoSync(true);
+      }
+      try {
+        set({
+          entries: migrated.entries,
+          archivedEntries: migrated.archivedEntries,
+          accounts: migrated.accounts,
+          salaryPattern: migrated.salaryPattern,
+          installments: migrated.installments,
+          rates: migrated.rates,
+          creditDues: migrated.creditDues,
+          creditDueMonths: migrated.creditDueMonths,
+          creditSettlementOverrides: migrated.creditSettlementOverrides,
+          salaryAnchorMonth: migrated.salaryAnchorMonth,
+          storageAssets: migrated.storageAssets,
+          asfJobs: migrated.asfJobs,
+          irqJobs: migrated.irqJobs,
+          partTimeJobs: migrated.partTimeJobs,
+          entryActuals: migrated.entryActuals,
+          entryActualDates: migrated.entryActualDates,
+          deletedForecasts: migrated.deletedForecasts,
+          redoStack: [],
+          undoToast: null,
+          ...(isRemoteSync ? { hasUnsyncedChanges: false } : {}),
+        });
+      } finally {
+        if (isRemoteSync) {
+          setSuppressAutoSync(prevSuppress);
+        }
+      }
 
       if (!options?.isRemoteSync) {
+        saveStorage(STORAGE_KEYS.hasUnsyncedChanges, true);
+        set({ hasUnsyncedChanges: true });
         scheduleAutoDriveSync(get);
       }
       return true;
@@ -471,8 +499,17 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => {
         if (storedData[STORAGE_KEYS.gdriveAutoSync] !== undefined) {
           updates.driveAutoSync = Boolean(storedData[STORAGE_KEYS.gdriveAutoSync]);
         }
+        if (storedData[STORAGE_KEYS.hasUnsyncedChanges] !== undefined) {
+          updates.hasUnsyncedChanges = Boolean(storedData[STORAGE_KEYS.hasUnsyncedChanges]);
+        }
 
-        set(updates);
+        const prevSuppress = suppressAutoSync;
+        setSuppressAutoSync(true);
+        try {
+          set(updates);
+        } finally {
+          setSuppressAutoSync(prevSuppress);
+        }
       } catch (err) {
         console.warn('initStorage failed:', err);
         set({ isStorageReady: true });

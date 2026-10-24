@@ -18,6 +18,7 @@ import {
   X 
 } from 'lucide-react';
 import { executeAppRefresh } from '../../utils/appRefresh';
+import { getSyncStatusPresentation } from '../../utils/syncPresentation';
 
 interface MobileActionSheetProps {
   isOpen: boolean;
@@ -47,6 +48,7 @@ export const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
     driveUser, 
     driveAutoSync, 
     driveSyncStatus, 
+    hasUnsyncedChanges,
     activeTab, 
     setActiveTab,
     undo,
@@ -61,6 +63,7 @@ export const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
       driveUser: state.driveUser,
       driveAutoSync: state.driveAutoSync,
       driveSyncStatus: state.driveSyncStatus,
+      hasUnsyncedChanges: state.hasUnsyncedChanges,
       activeTab: state.activeTab,
       setActiveTab: state.setActiveTab,
       undo: state.undo,
@@ -111,32 +114,15 @@ export const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
     }
   };
 
-  const isConnected = Boolean(driveUser);
-  const isExpired = driveSyncStatus === 'expired';
-  const syncLabel = !isConnected
-    ? 'Setup'
-    : isExpired
-      ? 'Reconnect'
-      : !driveAutoSync
-        ? 'Manual'
-        : {
-          idle: 'Synced',
-          scheduled: 'Queued',
-          syncing: 'Syncing',
-          synced: 'Synced',
-          error: 'Error',
-          expired: 'Reconnect',
-        }[driveSyncStatus];
-
-  const syncPillClass = !isConnected
-    ? ''
-    : isExpired
-      ? 'error'
-      : driveSyncStatus === 'error'
-        ? 'error'
-        : driveSyncStatus === 'syncing' || driveSyncStatus === 'scheduled'
-          ? 'syncing'
-          : 'synced';
+  const {
+    label: syncLabel,
+    pillClass: syncPillClass,
+  } = getSyncStatusPresentation({
+    driveUser,
+    driveAutoSync,
+    driveSyncStatus,
+    hasUnsyncedChanges,
+  });
 
   const secondaryViews: Array<{ id: ViewTab; label: string; icon: React.ReactNode }> = [
     { id: 'accounts', label: 'Accounts', icon: <Landmark size={18} color="#38bdf8" /> },

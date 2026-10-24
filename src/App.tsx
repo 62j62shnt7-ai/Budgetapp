@@ -47,7 +47,9 @@ import {
   preWarmGisTokenClient,
   requestSilentTokenOnUserGesture,
   downloadBudgetFromDrive,
+  uploadBudgetToDrive,
 } from './services/googleDriveClient';
+import { flushPendingDriveSyncNow, setSuppressAutoSync } from './store/slices/common';
 import { loadStorageAsync, saveStorage, onStorageChange } from './utils/storageAdapter';
 import type { CashEntry, JobItem, Installment } from './types';
 
@@ -137,7 +139,7 @@ export const App: React.FC = () => {
   }, []);
 
   // Multi-tab sync coordination using BroadcastChannel via storageAdapter.
-  // Only real user data counts as a conflict — timestamp/bookkeeping keys are ignored.
+  // When another tab modifies data, hot-hydrate the updated state cleanly without bounce-back upload
   useEffect(() => {
     const dataKeys = new Set<string>([
       STORAGE_KEYS.entries,
@@ -158,8 +160,17 @@ export const App: React.FC = () => {
       STORAGE_KEYS.salaryAnchor,
     ]);
     const unsubscribe = onStorageChange((key: string) => {
-      if (key && dataKeys.has(key)) {
-        setTabConflictDetected(true);
+      const isBatch = key === '__batch__';
+      const isDataKey = key && dataKeys.has(key);
+      if (isBatch || isDataKey) {
+        // Silently hot-hydrate from storage in secondary tab
+        const prevSuppress = useBudgetStore.getState().driveSyncStatus === 'syncing';
+        if (!prevSuppress) {
+          setSuppressAutoSync(true);
+          useBudgetStore.getState().initStorage().finally(() => {
+            setSuppressAutoSync(false);
+          });
+        }
       }
     });
     return unsubscribe;
@@ -218,16 +229,16 @@ export const App: React.FC = () => {
         }
 
         if (driveUser && !driveToken) {
-          // Pre-warm GIS client and arm a one-time user interaction listener so token refreshes silently on first user click
+          // Pre-warm GIS client for immediate synchronous activation on user gesture
           void preWarmGisTokenClient();
           const onFirstInteraction = () => {
-            window.removeEventListener('pointerdown', onFirstInteraction, true);
+            window.removeEventListener('click', onFirstInteraction, true);
             window.removeEventListener('keydown', onFirstInteraction, true);
             if (!getStoredDriveToken()) {
               requestSilentTokenOnUserGesture();
             }
           };
-          window.addEventListener('pointerdown', onFirstInteraction, { capture: true, once: true });
+          window.addEventListener('click', onFirstInteraction, { capture: true, once: true });
           window.addEventListener('keydown', onFirstInteraction, { capture: true, once: true });
 
           // Keep in idle state rather than flashing 'expired' reconnect banner immediately
@@ -236,38 +247,73 @@ export const App: React.FC = () => {
           }
         } else if (driveToken && driveAutoSync) {
           try {
-            // Keep idle background checks silent — do not flash 'syncing' unless actually downloading newer changes
-            if (!options?.isBackgroundPoll && state.driveSyncStatus !== 'synced') {
+            // BIDIRECTIONAL RECONCILIATION FLOW:
+            // 1. If local has unsynced offline changes, prioritize pushing to Drive!
+            if (state.hasUnsyncedChanges) {
               state.setDriveSyncStatus('syncing');
-            }
-            const res = await downloadBudgetFromDrive();
-            if (res.success && res.payload) {
-              const lastSyncTime = state.lastDriveSyncTime;
-              // If remote modifiedTime matches what this device already uploaded, local state is 100% identical
-              if (res.modifiedTime && lastSyncTime && res.modifiedTime === lastSyncTime) {
+              const payload = state.exportJSON();
+              const uploadRes = await uploadBudgetToDrive(payload, {
+                isUserEdit: true,
+                expectedModifiedTime: state.lastDriveSyncTime,
+              });
+              if (uploadRes.success) {
+                state.setHasUnsyncedChanges(false);
                 state.setDriveSyncStatus('synced');
-                await fetchRates(options?.forceRates);
-                return;
-              }
-
-              const remoteTime = res.modifiedTime ? new Date(res.modifiedTime).getTime() : 0;
-              const lastLocal = state.lastLocalModified || Number(await loadStorageAsync(STORAGE_KEYS.lastLocalModified, '0')) || 0;
-              if (remoteTime > 0 && remoteTime > lastLocal + 2000) {
-                state.setDriveSyncStatus('syncing');
-                state.importJSON(res.payload as string, { isRemoteSync: true });
-                if (res.modifiedTime) {
-                  useBudgetStore.setState({ lastDriveSyncTime: res.modifiedTime });
-                  saveStorage(STORAGE_KEYS.lastDriveSync, res.modifiedTime);
+                if (uploadRes.modifiedTime) {
+                  const now = Date.now();
+                  saveStorage(STORAGE_KEYS.lastDriveSync, uploadRes.modifiedTime);
+                  saveStorage(STORAGE_KEYS.lastLocalModified, String(now));
+                  useBudgetStore.setState({
+                    lastDriveSyncTime: uploadRes.modifiedTime,
+                    lastLocalModified: now,
+                  });
                 }
+              } else if (uploadRes.conflict) {
+                // Remote changed while local was dirty. Pull remote, backing up local diverged state
+                const res = await downloadBudgetFromDrive();
+                if (res.success && res.payload) {
+                  state.importJSON(res.payload as string, { isRemoteSync: true });
+                  if (res.modifiedTime) {
+                    useBudgetStore.setState({ lastDriveSyncTime: res.modifiedTime, hasUnsyncedChanges: false });
+                    saveStorage(STORAGE_KEYS.lastDriveSync, res.modifiedTime);
+                    saveStorage(STORAGE_KEYS.hasUnsyncedChanges, false);
+                  }
+                }
+                state.setDriveSyncStatus('synced');
+              } else {
+                state.setDriveSyncStatus('error');
               }
-              state.setDriveSyncStatus('synced');
-            } else if (!res.success && res.error && !res.error.includes("No 'budget-data.json' found")) {
-              state.setDriveSyncStatus('error');
             } else {
-              state.setDriveSyncStatus('synced');
+              // 2. Local is clean -> check if remote has newer edits to pull
+              const res = await downloadBudgetFromDrive();
+              if (res.success && res.payload) {
+                const lastSyncTime = state.lastDriveSyncTime;
+                if (res.modifiedTime && lastSyncTime && res.modifiedTime === lastSyncTime) {
+                  state.setDriveSyncStatus('synced');
+                  await fetchRates(options?.forceRates);
+                  return;
+                }
+
+                const remoteTime = res.modifiedTime ? new Date(res.modifiedTime).getTime() : 0;
+                const lastLocal = state.lastLocalModified || Number(await loadStorageAsync(STORAGE_KEYS.lastLocalModified, '0')) || 0;
+                if (remoteTime > 0 && remoteTime > lastLocal + 2000) {
+                  state.setDriveSyncStatus('syncing');
+                  state.importJSON(res.payload as string, { isRemoteSync: true });
+                  if (res.modifiedTime) {
+                    useBudgetStore.setState({ lastDriveSyncTime: res.modifiedTime, hasUnsyncedChanges: false });
+                    saveStorage(STORAGE_KEYS.lastDriveSync, res.modifiedTime);
+                    saveStorage(STORAGE_KEYS.hasUnsyncedChanges, false);
+                  }
+                }
+                state.setDriveSyncStatus('synced');
+              } else if (!res.success && res.error && !res.error.includes("No 'budget-data.json' found")) {
+                state.setDriveSyncStatus('error');
+              } else {
+                state.setDriveSyncStatus('synced');
+              }
             }
           } catch (err) {
-            console.warn('[Google Drive auto-sync pull]:', err);
+            console.warn('[Google Drive auto-sync]:', err);
             state.setDriveSyncStatus('error');
           }
         }
@@ -282,8 +328,9 @@ export const App: React.FC = () => {
     }, SYNC_INTERVAL_MS);
 
     const onTabReactivated = () => {
-      // Throttle: only check on tab return if at least 5 minutes have elapsed since the last check
-      if (Date.now() - lastBackgroundCheckTime >= SYNC_INTERVAL_MS) {
+      // If local has unsynced changes or if 5 minutes elapsed, sync immediately upon tab/app resume
+      const state = useBudgetStore.getState();
+      if (state.hasUnsyncedChanges || Date.now() - lastBackgroundCheckTime >= SYNC_INTERVAL_MS) {
         void handleSyncAndRates({ isBackgroundPoll: true });
       }
     };
@@ -300,11 +347,22 @@ export const App: React.FC = () => {
       useBudgetStore.getState().setDriveSyncStatus('expired');
     };
 
+    // Mobile background flush: flush pending debounced sync immediately when switching apps or locking phone
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        flushPendingDriveSyncNow(() => useBudgetStore.getState());
+      } else {
+        onTabReactivated();
+      }
+    };
+
     window.addEventListener('budget-drive-token-refreshed', onTokenRefreshed);
     window.addEventListener('budget-drive-token-failed', onTokenFailed);
     window.addEventListener('online', onOnline);
+    window.addEventListener('pagehide', () => flushPendingDriveSyncNow(() => useBudgetStore.getState()));
+    window.addEventListener('beforeunload', () => flushPendingDriveSyncNow(() => useBudgetStore.getState()));
     window.addEventListener('focus', onTabReactivated);
-    document.addEventListener('visibilitychange', onTabReactivated);
+    document.addEventListener('visibilitychange', onVisibilityChange);
 
     return () => {
       isMounted = false;
@@ -313,7 +371,7 @@ export const App: React.FC = () => {
       window.removeEventListener('budget-drive-token-failed', onTokenFailed);
       window.removeEventListener('online', onOnline);
       window.removeEventListener('focus', onTabReactivated);
-      document.removeEventListener('visibilitychange', onTabReactivated);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [updateRates]);
 

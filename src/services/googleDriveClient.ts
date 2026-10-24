@@ -33,6 +33,8 @@ export interface GoogleDriveSyncResult {
   fileId?: string;
   modifiedTime?: string;
   error?: string;
+  conflict?: boolean;
+  remoteModifiedTime?: string;
 }
 
 const DEFAULT_GOOGLE_CLIENT_ID = '191333657161-aqptqa80usrujqbuqckp15ddf9ib8g7t.apps.googleusercontent.com';
@@ -339,11 +341,18 @@ export function getStoredDriveToken(): string | null {
   if (!token || Date.now() >= expiry) {
     return null;
   }
-  // If token is valid but expiring within 5 minutes, trigger a proactive silent refresh
-  if (expiry - Date.now() < 5 * 60 * 1000 && !silentRefreshPromise) {
+  return token;
+}
+
+/**
+ * Pure check without side-effects for render paths
+ */
+export function checkAndProactivelyRefreshDriveToken(): void {
+  const token = loadStorageSync<string | null>(GDRIVE_TOKEN_KEY, null);
+  const expiry = Number(loadStorageSync<number>(GDRIVE_TOKEN_EXPIRY_KEY, 0));
+  if (token && expiry && expiry - Date.now() < 5 * 60 * 1000 && !silentRefreshPromise) {
     void refreshDriveTokenSilently({ force: true });
   }
-  return token;
 }
 
 export function saveStoredDriveToken(token: string, expiresInSeconds: number): void {
@@ -638,63 +647,187 @@ async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Re
 }
 
 /**
- * Find or create visible 'Budget Control' folder in My Drive
+ * In-memory ID cache & mutex locks for Drive folders & files
+ */
+let cachedBudgetFolderId: string | null = null;
+let cachedLiveFileId: string | null = null;
+const cachedSubfolderIds = new Map<string, string>();
+let budgetFolderPromise: Promise<string> | null = null;
+const subfolderPromises = new Map<string, Promise<string>>();
+
+export function invalidateDriveCaches(): void {
+  cachedBudgetFolderId = null;
+  cachedLiveFileId = null;
+  cachedSubfolderIds.clear();
+}
+
+/**
+ * Find or create visible 'Budget Control' folder in My Drive (deduplicated & cached)
  */
 export async function getOrCreateBudgetFolder(): Promise<string> {
-  // Check if folder already exists
-  const query = encodeURIComponent(`name = '${FOLDER_NAME}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`);
-  const listRes = await fetchWithAuth(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)`);
-  if (!listRes.ok) {
-    const errText = await listRes.text();
-    throw new Error(`Failed to query Google Drive: ${errText}`);
-  }
+  if (cachedBudgetFolderId) return cachedBudgetFolderId;
+  if (budgetFolderPromise) return budgetFolderPromise;
 
-  const listData = (await listRes.json()) as { files?: Array<{ id: string; name: string }> };
-  if (listData.files && listData.files.length > 0) {
-    return listData.files[0].id;
-  }
+  budgetFolderPromise = (async () => {
+    // Check if folder already exists
+    const query = encodeURIComponent(`name = '${FOLDER_NAME}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`);
+    const listRes = await fetchWithAuth(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)`);
+    if (!listRes.ok) {
+      const errText = await listRes.text();
+      throw new Error(`Failed to query Google Drive: ${errText}`);
+    }
 
-  // Create folder if not found
-  const createRes = await fetchWithAuth('https://www.googleapis.com/drive/v3/files', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      name: FOLDER_NAME,
-      mimeType: 'application/vnd.google-apps.folder',
-    }),
+    const listData = (await listRes.json()) as { files?: Array<{ id: string; name: string }> };
+    if (listData.files && listData.files.length > 0) {
+      cachedBudgetFolderId = listData.files[0].id;
+      return cachedBudgetFolderId;
+    }
+
+    // Create folder if not found
+    const createRes = await fetchWithAuth('https://www.googleapis.com/drive/v3/files', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: FOLDER_NAME,
+        mimeType: 'application/vnd.google-apps.folder',
+      }),
+    });
+
+    if (!createRes.ok) {
+      const errText = await createRes.text();
+      throw new Error(`Failed to create 'Budget Control' folder: ${errText}`);
+    }
+
+    const folderData = (await createRes.json()) as { id: string };
+    cachedBudgetFolderId = folderData.id;
+    return cachedBudgetFolderId;
+  })().finally(() => {
+    budgetFolderPromise = null;
   });
 
-  if (!createRes.ok) {
-    const errText = await createRes.text();
-    throw new Error(`Failed to create 'Budget Control' folder: ${errText}`);
+  return budgetFolderPromise;
+}
+
+/**
+ * Generic helper to find or create a visible subfolder inside 'Budget Control' (cached & mutex locked)
+ */
+export async function getOrCreateSubfolder(parentFolderId: string, folderName: string): Promise<string> {
+  const cacheKey = `${parentFolderId}::${folderName}`;
+  if (cachedSubfolderIds.has(cacheKey)) {
+    return cachedSubfolderIds.get(cacheKey)!;
+  }
+  if (subfolderPromises.has(cacheKey)) {
+    return subfolderPromises.get(cacheKey)!;
   }
 
-  const folderData = (await createRes.json()) as { id: string };
-  return folderData.id;
+  const promise = (async () => {
+    const query = encodeURIComponent(`name = '${folderName}' and '${parentFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`);
+    const listRes = await fetchWithAuth(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)`);
+    if (listRes.ok) {
+      const listData = (await listRes.json()) as { files?: Array<{ id: string; name: string }> };
+      if (listData.files && listData.files.length > 0) {
+        cachedSubfolderIds.set(cacheKey, listData.files[0].id);
+        return listData.files[0].id;
+      }
+    }
+
+    const createRes = await fetchWithAuth('https://www.googleapis.com/drive/v3/files', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: folderName,
+        mimeType: 'application/vnd.google-apps.folder',
+        parents: [parentFolderId],
+      }),
+    });
+
+    if (!createRes.ok) {
+      throw new Error(`Failed to create ${folderName} folder in Google Drive`);
+    }
+
+    const folderData = (await createRes.json()) as { id: string };
+    cachedSubfolderIds.set(cacheKey, folderData.id);
+    return folderData.id;
+  })().finally(() => {
+    subfolderPromises.delete(cacheKey);
+  });
+
+  subfolderPromises.set(cacheKey, promise);
+  return promise;
 }
 
 /**
  * Autonomous Upload to Google Drive ('My Drive / Budget Control / budget-data.json')
+ * Supports Optimistic Concurrency Control (OCC) to prevent silent multi-device overwrites.
  */
 export async function uploadBudgetToDrive(
   payload: unknown,
-  options?: { isUserEdit?: boolean }
+  options?: {
+    isUserEdit?: boolean;
+    expectedModifiedTime?: string | null;
+    forceOverwrite?: boolean;
+  }
 ): Promise<GoogleDriveSyncResult> {
   try {
     const folderId = await getOrCreateBudgetFolder();
     const content = typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2);
 
-    // Check if budget-data.json already exists in folder
-    const query = encodeURIComponent(`name = '${FILE_NAME}' and '${folderId}' in parents and trashed = false`);
-    const searchRes = await fetchWithAuth(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,modifiedTime)`);
-    if (!searchRes.ok) {
-      throw new Error('Failed to search for existing budget file in Google Drive');
+    let existingFile: { id: string; name: string; modifiedTime?: string } | null = null;
+    if (cachedLiveFileId) {
+      const getRes = await fetchWithAuth(`https://www.googleapis.com/drive/v3/files/${cachedLiveFileId}?fields=id,name,modifiedTime,trashed`);
+      if (getRes.ok) {
+        const data = (await getRes.json()) as { id: string; name: string; modifiedTime?: string; trashed?: boolean };
+        if (!data.trashed) {
+          existingFile = data;
+        } else {
+          cachedLiveFileId = null;
+        }
+      } else if (getRes.status === 404) {
+        cachedLiveFileId = null;
+      }
     }
 
-    const searchData = (await searchRes.json()) as { files?: Array<{ id: string; name: string; modifiedTime?: string }> };
-    const existingFile = searchData.files && searchData.files.length > 0 ? searchData.files[0] : null;
+    if (!existingFile) {
+      // Check if budget-data.json already exists in folder
+      const query = encodeURIComponent(`name = '${FILE_NAME}' and '${folderId}' in parents and trashed = false`);
+      const searchRes = await fetchWithAuth(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,modifiedTime)`);
+      if (!searchRes.ok) {
+        throw new Error('Failed to search for existing budget file in Google Drive');
+      }
+
+      const searchData = (await searchRes.json()) as { files?: Array<{ id: string; name: string; modifiedTime?: string }> };
+      existingFile = searchData.files && searchData.files.length > 0 ? searchData.files[0] : null;
+      if (existingFile) {
+        cachedLiveFileId = existingFile.id;
+      }
+    }
 
     if (existingFile) {
+      // Optimistic Concurrency Check: If remote changed independently since our last sync,
+      // save a safety snapshot of the diverged state to Edit Snapshots so no data can be lost.
+      if (
+        !options?.forceOverwrite &&
+        options?.expectedModifiedTime &&
+        existingFile.modifiedTime &&
+        existingFile.modifiedTime !== options.expectedModifiedTime
+      ) {
+        console.warn('[googleDriveClient] Concurrency conflict detected: remote modifiedTime', existingFile.modifiedTime, 'does not match expected', options.expectedModifiedTime);
+        // Automatically save a conflict backup in Edit Snapshots
+        void uploadFileToFolder(
+          await getOrCreateEditSnapshotsFolder(folderId),
+          `conflict-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.json`,
+          payload,
+          'Auto-saved conflict snapshot before reconciliation'
+        );
+        return {
+          success: false,
+          conflict: true,
+          fileId: existingFile.id,
+          remoteModifiedTime: existingFile.modifiedTime,
+          error: 'Remote data in Google Drive was modified on another device.',
+        };
+      }
+
       // Overwrite existing file content directly in place (fast live sync)
       const updateRes = await fetchWithAuth(`https://www.googleapis.com/upload/drive/v3/files/${existingFile.id}?uploadType=media`, {
         method: 'PATCH',
@@ -713,6 +846,7 @@ export async function uploadBudgetToDrive(
       }
 
       const updatedData = (await updateRes.json()) as { id: string; modifiedTime?: string };
+      cachedLiveFileId = updatedData.id;
       return {
         success: true,
         fileId: updatedData.id,
@@ -758,6 +892,7 @@ export async function uploadBudgetToDrive(
       }
 
       const createdData = (await createRes.json()) as { id: string; modifiedTime?: string };
+      cachedLiveFileId = createdData.id;
       return {
         success: true,
         fileId: createdData.id,
@@ -839,37 +974,6 @@ export interface DriveLiveMetadata {
 
 export function getFolderWebUrl(folderId: string): string {
   return `https://drive.google.com/drive/folders/${folderId}`;
-}
-
-/**
- * Generic helper to find or create a visible subfolder inside 'Budget Control'
- */
-export async function getOrCreateSubfolder(parentFolderId: string, folderName: string): Promise<string> {
-  const query = encodeURIComponent(`name = '${folderName}' and '${parentFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`);
-  const listRes = await fetchWithAuth(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)`);
-  if (listRes.ok) {
-    const listData = (await listRes.json()) as { files?: Array<{ id: string; name: string }> };
-    if (listData.files && listData.files.length > 0) {
-      return listData.files[0].id;
-    }
-  }
-
-  const createRes = await fetchWithAuth('https://www.googleapis.com/drive/v3/files', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      name: folderName,
-      mimeType: 'application/vnd.google-apps.folder',
-      parents: [parentFolderId],
-    }),
-  });
-
-  if (!createRes.ok) {
-    throw new Error(`Failed to create ${folderName} folder in Google Drive`);
-  }
-
-  const folderData = (await createRes.json()) as { id: string };
-  return folderData.id;
 }
 
 export async function getOrCreateDailyBackupsFolder(budgetFolderId: string): Promise<string> {
@@ -986,7 +1090,9 @@ export async function createDailyBackupIfNeeded(payload: unknown, budgetFolderId
 
   try {
     const dailyFolderId = await getOrCreateDailyBackupsFolder(budgetFolderId);
-    const todayStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    // Use local calendar date matching DateUtils.todayString() instead of UTC date
+    const d = new Date();
+    const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     const fileName = `daily-${todayStr}.json`;
 
     // Exact name match query

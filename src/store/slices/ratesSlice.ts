@@ -76,7 +76,9 @@ export const createRatesSlice: SliceCreator<RatesSlice> = (set, get) => ({
       } else {
         set({ rates: ratesToSave });
       }
-      scheduleAutoDriveSync(get, syncImmediately, { rateRefresh: isMachineRateRefresh });
+      if (syncImmediately) {
+        scheduleAutoDriveSync(get, true, { rateRefresh: false });
+      }
     } finally {
       if (isMachineRateRefresh) setSuppressDirtyMarking(false);
     }

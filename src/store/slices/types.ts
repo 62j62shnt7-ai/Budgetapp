@@ -179,10 +179,14 @@ export interface SyncSlice {
   driveSyncStatus: 'idle' | 'scheduled' | 'syncing' | 'synced' | 'error' | 'expired';
   lastDriveSyncTime: string | null;
   lastLocalModified: number;
+  hasUnsyncedChanges: boolean;
 
   setDriveUser: (user: GoogleDriveUser | null) => void;
   setDriveAutoSync: (enabled: boolean) => void;
   setDriveSyncStatus: (status: 'idle' | 'scheduled' | 'syncing' | 'synced' | 'error' | 'expired') => void;
+  setHasUnsyncedChanges: (hasChanges: boolean) => void;
+  setDriveSyncTime: (time: string | null) => void;
+  setLastLocalModified: (timestamp: number) => void;
 
   // Legacy compatibility fields (deprecated)
   gistToken: string;
