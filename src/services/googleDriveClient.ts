@@ -1,66 +1,44 @@
-/**
- * Google Drive Autonomous Sync Service (Option B: Visible 'Budget Control' Folder)
- *
- * Uses Google Identity Services (GIS) token client to authorize Drive access.
- * Saves/updates 'budget-data.json' inside 'My Drive / Budget Control /'.
- *
- * Scope: 'https://www.googleapis.com/auth/drive.file'
- * Restricts access strictly to files created by Budget Control.
- */
-
 import {
   saveStorage,
   loadStorageSync,
   removeStorage,
 } from '../utils/storageAdapter';
+import type { GoogleDriveUser, GoogleDriveSyncResult, DriveBackupItem, DriveLiveMetadata, GoogleDriveStorageQuota } from './googleDriveTypes';
+
+export * from './googleDriveTypes';
 
 const GDRIVE_CLIENT_ID_KEY = 'budget-control-gdrive-client-id';
-const GDRIVE_CLIENT_SECRET_KEY = 'budget-control-gdrive-client-secret';
 const GDRIVE_TOKEN_KEY = 'budget-control-gdrive-token';
 const GDRIVE_TOKEN_EXPIRY_KEY = 'budget-control-gdrive-token-expiry';
 const GDRIVE_REFRESH_TOKEN_KEY = 'budget-control-gdrive-refresh-token';
 const GDRIVE_USER_KEY = 'budget-control-gdrive-user';
 const GDRIVE_AUTO_SYNC_KEY = 'budget-control-gdrive-auto-sync';
-
-export interface GoogleDriveUser {
-  email: string;
-  name: string;
-  picture?: string;
-}
-
-export interface GoogleDriveSyncResult {
-  success: boolean;
-  fileId?: string;
-  modifiedTime?: string;
-  error?: string;
-  conflict?: boolean;
-  remoteModifiedTime?: string;
-}
+const GDRIVE_AUTH_PROXY_URL_KEY = 'budget-control-gdrive-auth-proxy-url';
 
 const DEFAULT_GOOGLE_CLIENT_ID = '191333657161-aqptqa80usrujqbuqckp15ddf9ib8g7t.apps.googleusercontent.com';
 
-export function getStoredDriveClientSecret(): string {
-  const envSecret = typeof import.meta !== 'undefined' && import.meta.env?.VITE_GOOGLE_CLIENT_SECRET
-    ? String(import.meta.env.VITE_GOOGLE_CLIENT_SECRET).trim()
+export function getStoredDriveAuthProxyUrl(): string {
+  const envUrl = typeof import.meta !== 'undefined' && import.meta.env?.VITE_DRIVE_AUTH_PROXY_URL
+    ? String(import.meta.env.VITE_DRIVE_AUTH_PROXY_URL).trim()
     : '';
-  let storedSecret = loadStorageSync<string>(GDRIVE_CLIENT_SECRET_KEY, '');
-  if (!storedSecret && typeof localStorage !== 'undefined') {
-    storedSecret = localStorage.getItem(GDRIVE_CLIENT_SECRET_KEY) || '';
+  let stored = loadStorageSync<string>(GDRIVE_AUTH_PROXY_URL_KEY, '');
+  if (!stored && typeof localStorage !== 'undefined') {
+    stored = localStorage.getItem(GDRIVE_AUTH_PROXY_URL_KEY) || '';
   }
-  return storedSecret || envSecret;
+  return stored || envUrl;
 }
 
-export function saveStoredDriveClientSecret(clientSecret: string): void {
-  const trimmed = clientSecret.trim();
+export function saveStoredDriveAuthProxyUrl(url: string): void {
+  const trimmed = url.trim();
   if (trimmed) {
-    saveStorage(GDRIVE_CLIENT_SECRET_KEY, trimmed);
+    saveStorage(GDRIVE_AUTH_PROXY_URL_KEY, trimmed);
     if (typeof localStorage !== 'undefined') {
-      try { localStorage.setItem(GDRIVE_CLIENT_SECRET_KEY, trimmed); } catch {}
+      try { localStorage.setItem(GDRIVE_AUTH_PROXY_URL_KEY, trimmed); } catch {}
     }
   } else {
-    void removeStorage(GDRIVE_CLIENT_SECRET_KEY);
+    void removeStorage(GDRIVE_AUTH_PROXY_URL_KEY);
     if (typeof localStorage !== 'undefined') {
-      try { localStorage.removeItem(GDRIVE_CLIENT_SECRET_KEY); } catch {}
+      try { localStorage.removeItem(GDRIVE_AUTH_PROXY_URL_KEY); } catch {}
     }
   }
 }
@@ -69,6 +47,10 @@ export function getStoredDriveRefreshToken(): string | null {
   let token = loadStorageSync<string | null>(GDRIVE_REFRESH_TOKEN_KEY, null);
   if (!token && typeof localStorage !== 'undefined') {
     token = localStorage.getItem(GDRIVE_REFRESH_TOKEN_KEY);
+    if (token) {
+      saveStorage(GDRIVE_REFRESH_TOKEN_KEY, token);
+      try { localStorage.removeItem(GDRIVE_REFRESH_TOKEN_KEY); } catch {}
+    }
   }
   return token || null;
 }
@@ -77,20 +59,14 @@ export function saveStoredDriveRefreshToken(refreshToken: string): void {
   const trimmed = refreshToken.trim();
   if (trimmed) {
     saveStorage(GDRIVE_REFRESH_TOKEN_KEY, trimmed);
-    if (typeof localStorage !== 'undefined') {
-      try { localStorage.setItem(GDRIVE_REFRESH_TOKEN_KEY, trimmed); } catch {}
-    }
   } else {
     void removeStorage(GDRIVE_REFRESH_TOKEN_KEY);
-    if (typeof localStorage !== 'undefined') {
-      try { localStorage.removeItem(GDRIVE_REFRESH_TOKEN_KEY); } catch {}
-    }
+  }
+  if (typeof localStorage !== 'undefined') {
+    try { localStorage.removeItem(GDRIVE_REFRESH_TOKEN_KEY); } catch {}
   }
 }
 
-/**
- * Pre-initialize GIS Token Client and cache in memory for synchronous execution during user gestures
- */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let preInitializedTokenClient: any = null;
 
@@ -123,7 +99,6 @@ export async function preWarmGisTokenClient(): Promise<boolean> {
         const token = resp.access_token as string;
         const expiresIn = Number(resp.expires_in || 3600);
         saveStoredDriveToken(token, expiresIn);
-        // Trigger auto-sync in store if ready
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('budget-drive-token-refreshed', { detail: { token } }));
         }
@@ -143,9 +118,6 @@ export async function preWarmGisTokenClient(): Promise<boolean> {
   }
 }
 
-/**
- * Trigger immediate silent token request if pre-warmed token client is ready during user interaction
- */
 export function requestSilentTokenOnUserGesture(): boolean {
   if (!preInitializedTokenClient) return false;
   try {
@@ -210,7 +182,6 @@ function scheduleProactiveTokenRefresh(expiresInSeconds: number): void {
     clearTimeout(proactiveRefreshTimer);
     proactiveRefreshTimer = null;
   }
-  // Renew 5 minutes before token expiry (minimum 60s delay)
   const delayMs = Math.max(60_000, (expiresInSeconds - 300) * 1000);
   proactiveRefreshTimer = setTimeout(() => {
     proactiveRefreshTimer = null;
@@ -221,9 +192,9 @@ function scheduleProactiveTokenRefresh(expiresInSeconds: number): void {
 }
 
 /**
- * Attempt to refresh the Google Drive OAuth token silently in the background.
- * 1. If an OAuth refresh_token and client_secret are present, use background fetch() (zero popups, zero user gesture needed).
- * 2. Otherwise, use Google Identity Services silent token client request (prompt: '').
+ * Refresh Google Drive OAuth access token silently:
+ * Strategy 1: Serverless token proxy with refresh_token if proxy URL is available
+ * Strategy 2: GIS silent token request (prompt: '')
  */
 export async function refreshDriveTokenSilently(options?: { force?: boolean }): Promise<string | null> {
   const user = getStoredDriveUser();
@@ -240,36 +211,46 @@ export async function refreshDriveTokenSilently(options?: { force?: boolean }): 
   if (!clientId || typeof window === 'undefined') return null;
 
   silentRefreshPromise = (async () => {
-    // Strategy 1: Background fetch() with refresh_token if available
+    // Strategy 1: Serverless Auth Proxy with refresh_token
     const refreshToken = getStoredDriveRefreshToken();
-    const clientSecret = getStoredDriveClientSecret();
-    if (refreshToken && clientSecret) {
+    const proxyUrl = getStoredDriveAuthProxyUrl();
+    if (refreshToken && proxyUrl) {
       try {
-        const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+        const refreshEndpoint = `${proxyUrl.replace(/\/+$/, '')}/auth/refresh`;
+        const res = await fetch(refreshEndpoint, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams({
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
             client_id: clientId,
-            client_secret: clientSecret,
             refresh_token: refreshToken,
-            grant_type: 'refresh_token',
           }),
         });
-        if (tokenRes.ok) {
-          const tokenData = await tokenRes.json();
-          if (tokenData.access_token) {
-            const token = tokenData.access_token as string;
-            const expiresIn = Number(tokenData.expires_in || 3600);
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.access_token) {
+            const token = data.access_token as string;
+            const expiresIn = Number(data.expires_in || 3600);
             saveStoredDriveToken(token, expiresIn);
             return token;
           }
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          if (errData.error === 'invalid_grant' || res.status === 400) {
+            console.warn('[googleDriveClient] Refresh token invalid or revoked (invalid_grant)');
+            clearStoredDriveToken();
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('budget-drive-token-failed', { detail: { error: 'invalid_grant' } }));
+            }
+            return null;
+          }
         }
-      } catch (refreshErr) {
-        console.warn('[googleDriveClient] Refresh token exchange failed, falling back to GIS:', refreshErr);
+      } catch (proxyErr) {
+        console.warn('[googleDriveClient] Proxy refresh error, falling back to GIS:', proxyErr);
       }
     }
 
-    // Strategy 2: Google Identity Services GIS token client
+    // Strategy 2: GIS token client silent refresh
     const loaded = await loadGisScript();
     if (!loaded) return null;
 
@@ -317,7 +298,6 @@ export async function refreshDriveTokenSilently(options?: { force?: boolean }): 
           },
         });
 
-        // Request token silently without popup prompt
         client.requestAccessToken({ prompt: '' });
       } catch (err) {
         console.warn('[googleDriveClient] Silent token refresh exception:', err);
@@ -344,9 +324,6 @@ export function getStoredDriveToken(): string | null {
   return token;
 }
 
-/**
- * Pure check without side-effects for render paths
- */
 export function checkAndProactivelyRefreshDriveToken(): void {
   const token = loadStorageSync<string | null>(GDRIVE_TOKEN_KEY, null);
   const expiry = Number(loadStorageSync<number>(GDRIVE_TOKEN_EXPIRY_KEY, 0));
@@ -368,7 +345,11 @@ export function saveStoredDriveToken(token: string, expiresInSeconds: number): v
   scheduleProactiveTokenRefresh(expiresInSeconds);
 }
 
-export function clearStoredDriveToken(): void {
+/**
+ * 0.1 Hotfix: Clear ONLY the access token & expiry on 401.
+ * Retains user profile & refresh token so silent refresh can recover without forcing re-sign-in.
+ */
+export function clearAccessTokenOnly(): void {
   if (proactiveRefreshTimer) {
     clearTimeout(proactiveRefreshTimer);
     proactiveRefreshTimer = null;
@@ -376,12 +357,23 @@ export function clearStoredDriveToken(): void {
   preInitializedTokenClient = null;
   void removeStorage(GDRIVE_TOKEN_KEY);
   void removeStorage(GDRIVE_TOKEN_EXPIRY_KEY);
-  void removeStorage(GDRIVE_REFRESH_TOKEN_KEY);
-  void removeStorage(GDRIVE_USER_KEY);
   if (typeof localStorage !== 'undefined') {
     try {
       localStorage.removeItem(GDRIVE_TOKEN_KEY);
       localStorage.removeItem(GDRIVE_TOKEN_EXPIRY_KEY);
+    } catch {}
+  }
+}
+
+/**
+ * Total clearance (called only on explicit sign-out or invalid_grant)
+ */
+export function clearStoredDriveToken(): void {
+  clearAccessTokenOnly();
+  void removeStorage(GDRIVE_REFRESH_TOKEN_KEY);
+  void removeStorage(GDRIVE_USER_KEY);
+  if (typeof localStorage !== 'undefined') {
+    try {
       localStorage.removeItem(GDRIVE_REFRESH_TOKEN_KEY);
       localStorage.removeItem(GDRIVE_USER_KEY);
     } catch {}
@@ -472,9 +464,6 @@ export function saveStoredDriveBackupRetentionLimit(limit: number): void {
   }
 }
 
-/**
- * Load Google Identity Services (GSI) script dynamically
- */
 let gisLoadingPromise: Promise<boolean> | null = null;
 
 export function loadGisScript(): Promise<boolean> {
@@ -517,17 +506,109 @@ export function loadGisScript(): Promise<boolean> {
 }
 
 /**
- * Request OAuth Access Token with drive.file scope via pure Google Identity Services
+ * Sign in to Google Drive:
+ * 1. If auth proxy URL is configured, use initCodeClient (popup) with auth code exchange
+ * 2. Otherwise fall back to GIS initTokenClient
  */
 export async function signInWithGoogleDrive(): Promise<{ user: GoogleDriveUser | null; error: Error | null }> {
   const clientId = getStoredDriveClientId();
   if (!clientId) {
     return {
       user: null,
-      error: new Error('Google OAuth Client ID is required to connect to Google Drive. Please enter your Client ID below.'),
+      error: new Error('Google OAuth Client ID is required to connect to Google Drive.'),
     };
   }
+
+  const proxyUrl = getStoredDriveAuthProxyUrl();
+  if (proxyUrl) {
+    return signInWithCodeFlow(clientId, proxyUrl);
+  }
   return signInWithGis(clientId);
+}
+
+async function signInWithCodeFlow(clientId: string, proxyUrl: string): Promise<{ user: GoogleDriveUser | null; error: Error | null }> {
+  const loaded = await loadGisScript();
+  if (!loaded) {
+    return { user: null, error: new Error('Failed to load Google Identity Services.') };
+  }
+
+  return new Promise((resolve) => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const g = (window as any).google;
+      const client = g.accounts.oauth2.initCodeClient({
+        client_id: clientId,
+        scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
+        ux_mode: 'popup',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        callback: async (resp: any) => {
+          if (resp.error || !resp.code) {
+            resolve({ user: null, error: new Error(resp.error_description || resp.error || 'Sign-in cancelled') });
+            return;
+          }
+
+          try {
+            const exchangeEndpoint = `${proxyUrl.replace(/\/+$/, '')}/auth/exchange`;
+            const tokenRes = await fetch(exchangeEndpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                client_id: clientId,
+                code: resp.code,
+                redirect_uri: 'postmessage',
+              }),
+            });
+
+            if (!tokenRes.ok) {
+              const err = await tokenRes.json().catch(() => ({}));
+              throw new Error(err.error_description || err.error || 'Failed to exchange authorization code');
+            }
+
+            const tokenData = await tokenRes.json();
+            const token = tokenData.access_token as string;
+            const expiresIn = Number(tokenData.expires_in || 3600);
+            saveStoredDriveToken(token, expiresIn);
+            if (tokenData.refresh_token) {
+              saveStoredDriveRefreshToken(tokenData.refresh_token);
+            }
+
+            const userinfo = await fetchUserProfile(token);
+            saveStoredDriveUser(userinfo);
+            resolve({ user: userinfo, error: null });
+          } catch (exchangeErr) {
+            resolve({ user: null, error: exchangeErr as Error });
+          }
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        error_callback: (err: any) => {
+          resolve({ user: null, error: new Error(err?.message || 'Authentication cancelled') });
+        },
+      });
+
+      client.requestCode();
+    } catch (err) {
+      resolve({ user: null, error: err as Error });
+    }
+  });
+}
+
+async function fetchUserProfile(token: string): Promise<GoogleDriveUser> {
+  try {
+    const userinfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (userinfoRes.ok) {
+      const uData = await userinfoRes.json();
+      return {
+        email: uData.email || '',
+        name: uData.name || uData.given_name || 'Google User',
+        picture: uData.picture || '',
+      };
+    }
+  } catch (err) {
+    console.warn('[googleDriveClient] Failed to fetch user profile:', err);
+  }
+  return { email: 'Connected', name: 'Google User' };
 }
 
 async function signInWithGis(clientId: string): Promise<{ user: GoogleDriveUser | null; error: Error | null }> {
@@ -561,29 +642,9 @@ async function signInWithGis(clientId: string): Promise<{ user: GoogleDriveUser 
           const expiresIn = Number(resp.expires_in || 3600);
           saveStoredDriveToken(token, expiresIn);
 
-          // Fetch user profile info
-          try {
-            const userinfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-              headers: { Authorization: `Bearer ${token}` },
-            });
-            if (userinfoRes.ok) {
-              const uData = await userinfoRes.json();
-              const user: GoogleDriveUser = {
-                email: uData.email || '',
-                name: uData.name || uData.given_name || 'Google User',
-                picture: uData.picture || '',
-              };
-              saveStoredDriveUser(user);
-              resolve({ user, error: null });
-              return;
-            }
-          } catch (fetchErr) {
-            console.warn('[googleDriveClient] Failed to fetch user profile:', fetchErr);
-          }
-
-          const fallbackUser: GoogleDriveUser = { email: 'Connected', name: 'Google User' };
-          saveStoredDriveUser(fallbackUser);
-          resolve({ user: fallbackUser, error: null });
+          const user = await fetchUserProfile(token);
+          saveStoredDriveUser(user);
+          resolve({ user, error: null });
         },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         error_callback: (err: any) => {
@@ -591,7 +652,6 @@ async function signInWithGis(clientId: string): Promise<{ user: GoogleDriveUser 
         },
       });
 
-      // Synchronously trigger request without selecting account if user is already known
       const currentUser = getStoredDriveUser();
       client.requestAccessToken({ prompt: currentUser?.email ? '' : 'select_account', hint: currentUser?.email || undefined });
     } catch (err) {
@@ -615,40 +675,66 @@ export function signOutFromGoogleDrive(): void {
 }
 
 /**
- * Drive API Helpers
+ * Drive API Helpers & Backoff Retry
  */
 const FOLDER_NAME = 'Budget Control';
 const FILE_NAME = 'budget-data.json';
+export const DUPLICATES_FOLDER_NAME = 'Duplicates';
 
-async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
-  let token = getStoredDriveToken();
-  if (!token) {
-    // Attempt silent background refresh before failing
-    token = await refreshDriveTokenSilently();
-  }
-  if (!token) throw new Error('Not connected to Google Drive or session expired.');
-
-  const headers = new Headers(options.headers || {});
-  headers.set('Authorization', `Bearer ${token}`);
-
-  let res = await fetch(url, { ...options, headers });
-  if (res.status === 401) {
-    // Token may have just been invalidated or revoked remotely; try one silent refresh
-    clearStoredDriveToken();
-    const freshToken = await refreshDriveTokenSilently();
-    if (freshToken) {
-      headers.set('Authorization', `Bearer ${freshToken}`);
-      res = await fetch(url, { ...options, headers });
-      if (res.ok) return res;
-    }
-    throw new Error('Google Drive session expired. Please click "Sign in with Google" to re-authorize.');
-  }
-  return res;
+export let retryDelayMultiplier = 1; // Can be reduced to 0 in tests for fast execution
+export function setRetryDelayMultiplier(val: number) {
+  retryDelayMultiplier = val;
 }
 
-/**
- * In-memory ID cache & mutex locks for Drive folders & files
- */
+export async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
+  const maxRetries = 3;
+  let attempt = 0;
+
+  while (attempt <= maxRetries) {
+    attempt++;
+    let token = getStoredDriveToken();
+    if (!token) {
+      token = await refreshDriveTokenSilently();
+    }
+    if (!token) throw new Error('Not connected to Google Drive or session expired.');
+
+    const headers = new Headers(options.headers || {});
+    headers.set('Authorization', `Bearer ${token}`);
+
+    try {
+      const res = await fetch(url, { ...options, headers });
+      if (res.status === 401) {
+        clearAccessTokenOnly();
+        const freshToken = await refreshDriveTokenSilently({ force: true });
+        if (freshToken) {
+          headers.set('Authorization', `Bearer ${freshToken}`);
+          const retryRes = await fetch(url, { ...options, headers });
+          if (retryRes.ok) return retryRes;
+        }
+        throw new Error('Google Drive session expired. Please click "Sign in with Google" to re-authorize.');
+      }
+
+      const isRetryable = res.status === 429 || (res.status >= 500 && res.status <= 504);
+      if (isRetryable && attempt <= maxRetries) {
+        const delay = Math.min(2000, Math.pow(2, attempt) * 200 + Math.random() * 100) * retryDelayMultiplier;
+        if (delay > 0) await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+
+      return res;
+    } catch (networkErr) {
+      const isAuthExpired = (networkErr as Error).message?.includes('session expired');
+      if (isAuthExpired || attempt > maxRetries) {
+        throw networkErr;
+      }
+      const delay = Math.min(2000, Math.pow(2, attempt) * 200 + Math.random() * 100) * retryDelayMultiplier;
+      if (delay > 0) await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+
+  throw new Error('Google Drive request failed after retries.');
+}
+
 let cachedBudgetFolderId: string | null = null;
 let cachedLiveFileId: string | null = null;
 const cachedSubfolderIds = new Map<string, string>();
@@ -661,15 +747,11 @@ export function invalidateDriveCaches(): void {
   cachedSubfolderIds.clear();
 }
 
-/**
- * Find or create visible 'Budget Control' folder in My Drive (deduplicated & cached)
- */
 export async function getOrCreateBudgetFolder(): Promise<string> {
   if (cachedBudgetFolderId) return cachedBudgetFolderId;
   if (budgetFolderPromise) return budgetFolderPromise;
 
   budgetFolderPromise = (async () => {
-    // Check if folder already exists
     const query = encodeURIComponent(`name = '${FOLDER_NAME}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`);
     const listRes = await fetchWithAuth(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)`);
     if (!listRes.ok) {
@@ -683,7 +765,6 @@ export async function getOrCreateBudgetFolder(): Promise<string> {
       return cachedBudgetFolderId;
     }
 
-    // Create folder if not found
     const createRes = await fetchWithAuth('https://www.googleapis.com/drive/v3/files', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -708,9 +789,6 @@ export async function getOrCreateBudgetFolder(): Promise<string> {
   return budgetFolderPromise;
 }
 
-/**
- * Generic helper to find or create a visible subfolder inside 'Budget Control' (cached & mutex locked)
- */
 export async function getOrCreateSubfolder(parentFolderId: string, folderName: string): Promise<string> {
   const cacheKey = `${parentFolderId}::${folderName}`;
   if (cachedSubfolderIds.has(cacheKey)) {
@@ -756,9 +834,22 @@ export async function getOrCreateSubfolder(parentFolderId: string, folderName: s
   return promise;
 }
 
+export async function getOrCreateDuplicatesFolder(budgetFolderId: string): Promise<string> {
+  return getOrCreateSubfolder(budgetFolderId, DUPLICATES_FOLDER_NAME);
+}
+
+// Track uploaded conflict snapshots to prevent spamming on retries (0.7)
+let lastConflictSnapshotKey = '';
+export function clearConflictSnapshotDeduplication(): void {
+  lastConflictSnapshotKey = '';
+}
+
 /**
- * Autonomous Upload to Google Drive ('My Drive / Budget Control / budget-data.json')
- * Supports Optimistic Concurrency Control (OCC) to prevent silent multi-device overwrites.
+ * Upload to Google Drive:
+ * - Query with orderBy=createdTime asc to deterministically pick oldest
+ * - Moves duplicate files to Duplicates/ subfolder
+ * - Awaited conflict snapshot creation without duplicate spamming
+ * - Compact JSON payload for bandwidth efficiency
  */
 export async function uploadBudgetToDrive(
   payload: unknown,
@@ -766,18 +857,20 @@ export async function uploadBudgetToDrive(
     isUserEdit?: boolean;
     expectedModifiedTime?: string | null;
     forceOverwrite?: boolean;
+    localHash?: string;
   }
 ): Promise<GoogleDriveSyncResult> {
   try {
     const folderId = await getOrCreateBudgetFolder();
-    const content = typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2);
+    // Compact JSON stringification (Phase 3 / M5)
+    const content = typeof payload === 'string' ? payload : JSON.stringify(payload);
 
     let existingFile: { id: string; name: string; modifiedTime?: string } | null = null;
     if (cachedLiveFileId) {
       const getRes = await fetchWithAuth(`https://www.googleapis.com/drive/v3/files/${cachedLiveFileId}?fields=id,name,modifiedTime,trashed`);
       if (getRes.ok) {
         const data = (await getRes.json()) as { id: string; name: string; modifiedTime?: string; trashed?: boolean };
-        if (!data.trashed) {
+        if (!data.trashed && data.id) {
           existingFile = data;
         } else {
           cachedLiveFileId = null;
@@ -788,37 +881,61 @@ export async function uploadBudgetToDrive(
     }
 
     if (!existingFile) {
-      // Check if budget-data.json already exists in folder
+      // Query with orderBy=createdTime asc (H5 / Phase 3)
       const query = encodeURIComponent(`name = '${FILE_NAME}' and '${folderId}' in parents and trashed = false`);
-      const searchRes = await fetchWithAuth(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,modifiedTime)`);
+      const searchRes = await fetchWithAuth(`https://www.googleapis.com/drive/v3/files?q=${query}&orderBy=createdTime%20asc&fields=files(id,name,modifiedTime,createdTime)`);
       if (!searchRes.ok) {
         throw new Error('Failed to search for existing budget file in Google Drive');
       }
 
       const searchData = (await searchRes.json()) as { files?: Array<{ id: string; name: string; modifiedTime?: string }> };
-      existingFile = searchData.files && searchData.files.length > 0 ? searchData.files[0] : null;
-      if (existingFile) {
+      const files = searchData.files || [];
+      if (files.length > 0) {
+        existingFile = files[0];
         cachedLiveFileId = existingFile.id;
+
+        // Move excess duplicate files into Duplicates/ folder
+        if (files.length > 1) {
+          void (async () => {
+            try {
+              const dupFolderId = await getOrCreateDuplicatesFolder(folderId);
+              for (const dup of files.slice(1)) {
+                await fetchWithAuth(`https://www.googleapis.com/drive/v3/files/${dup.id}?addParents=${dupFolderId}&removeParents=${folderId}`, {
+                  method: 'PATCH',
+                });
+              }
+            } catch (dupErr) {
+              console.warn('[googleDriveClient] Failed to quarantine duplicate files:', dupErr);
+            }
+          })();
+        }
       }
     }
 
     if (existingFile) {
-      // Optimistic Concurrency Check: If remote changed independently since our last sync,
-      // save a safety snapshot of the diverged state to Edit Snapshots so no data can be lost.
+      // Optimistic Concurrency Control Check
       if (
         !options?.forceOverwrite &&
         options?.expectedModifiedTime &&
         existingFile.modifiedTime &&
         existingFile.modifiedTime !== options.expectedModifiedTime
       ) {
-        console.warn('[googleDriveClient] Concurrency conflict detected: remote modifiedTime', existingFile.modifiedTime, 'does not match expected', options.expectedModifiedTime);
-        // Automatically save a conflict backup in Edit Snapshots
-        void uploadFileToFolder(
-          await getOrCreateEditSnapshotsFolder(folderId),
-          `conflict-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.json`,
-          payload,
-          'Auto-saved conflict snapshot before reconciliation'
-        );
+        console.warn('[googleDriveClient] Concurrency conflict detected: remote', existingFile.modifiedTime, '!= expected', options.expectedModifiedTime);
+        
+        // 0.7: Write conflict snapshot once per (remoteModifiedTime, localHash) pair & await it
+        const conflictKey = `${existingFile.modifiedTime}::${options.localHash || ''}`;
+        if (conflictKey !== lastConflictSnapshotKey) {
+          lastConflictSnapshotKey = conflictKey;
+          const editFolderId = await getOrCreateEditSnapshotsFolder(folderId);
+          const timeStr = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+          await uploadFileToFolder(
+            editFolderId,
+            `conflict-${timeStr}.json`,
+            payload,
+            'Auto-saved conflict snapshot before reconciliation'
+          );
+        }
+
         return {
           success: false,
           conflict: true,
@@ -828,7 +945,7 @@ export async function uploadBudgetToDrive(
         };
       }
 
-      // Overwrite existing file content directly in place (fast live sync)
+      // Overwrite existing file content directly
       const updateRes = await fetchWithAuth(`https://www.googleapis.com/upload/drive/v3/files/${existingFile.id}?uploadType=media`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -839,7 +956,6 @@ export async function uploadBudgetToDrive(
         throw new Error(`Failed to update budget file in Google Drive: ${updateRes.statusText}`);
       }
 
-      // When triggered by an actual user edit, check daily backup and timed edit snapshot
       if (options?.isUserEdit) {
         void createDailyBackupIfNeeded(payload, folderId);
         void createEditSnapshotIfNeeded(payload, folderId);
@@ -885,7 +1001,6 @@ export async function uploadBudgetToDrive(
         throw new Error(`Failed to upload budget file to Google Drive: ${createRes.statusText}`);
       }
 
-      // When triggered by an actual user edit, check daily backup and timed edit snapshot
       if (options?.isUserEdit) {
         void createDailyBackupIfNeeded(payload, folderId);
         void createEditSnapshotIfNeeded(payload, folderId);
@@ -907,7 +1022,7 @@ export async function uploadBudgetToDrive(
 }
 
 /**
- * Autonomous Download from Google Drive ('My Drive / Budget Control / budget-data.json')
+ * Download from Google Drive
  */
 export async function downloadBudgetFromDrive(): Promise<{
   success: boolean;
@@ -918,13 +1033,14 @@ export async function downloadBudgetFromDrive(): Promise<{
   try {
     const folderId = await getOrCreateBudgetFolder();
     const query = encodeURIComponent(`name = '${FILE_NAME}' and '${folderId}' in parents and trashed = false`);
-    const searchRes = await fetchWithAuth(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,modifiedTime)`);
+    const searchRes = await fetchWithAuth(`https://www.googleapis.com/drive/v3/files?q=${query}&orderBy=createdTime%20asc&fields=files(id,name,modifiedTime)`);
     if (!searchRes.ok) {
       throw new Error('Failed to find budget file in Google Drive');
     }
 
     const searchData = (await searchRes.json()) as { files?: Array<{ id: string; name: string; modifiedTime?: string }> };
-    const file = searchData.files && searchData.files.length > 0 ? searchData.files[0] : null;
+    const files = searchData.files || [];
+    const file = files.length > 0 ? files[0] : null;
 
     if (!file) {
       return {
@@ -933,7 +1049,6 @@ export async function downloadBudgetFromDrive(): Promise<{
       };
     }
 
-    // Download content
     const downloadRes = await fetchWithAuth(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`);
     if (!downloadRes.ok) {
       throw new Error(`Failed to download content: ${downloadRes.statusText}`);
@@ -957,21 +1072,6 @@ export const EDIT_SNAPSHOTS_FOLDER_NAME = 'Edit Snapshots';
 export const USER_SNAPSHOTS_FOLDER_NAME = 'User Snapshots';
 export const BACKUPS_FOLDER_NAME = 'Backups';
 
-export interface DriveBackupItem {
-  id: string;
-  name: string;
-  modifiedTime: string;
-  size?: number;
-}
-
-export interface DriveLiveMetadata {
-  folderId: string;
-  folderUrl: string;
-  fileId?: string;
-  modifiedTime?: string;
-  size?: number;
-}
-
 export function getFolderWebUrl(folderId: string): string {
   return `https://drive.google.com/drive/folders/${folderId}`;
 }
@@ -988,14 +1088,10 @@ export async function getOrCreateUserSnapshotsFolder(budgetFolderId: string): Pr
   return getOrCreateSubfolder(budgetFolderId, USER_SNAPSHOTS_FOLDER_NAME);
 }
 
-// Legacy alias for backward compatibility
 export async function getOrCreateBackupsFolder(budgetFolderId: string): Promise<string> {
   return getOrCreateDailyBackupsFolder(budgetFolderId);
 }
 
-/**
- * Helper to upload a multipart file to a specific folder
- */
 async function uploadFileToFolder(
   folderId: string,
   fileName: string,
@@ -1038,6 +1134,7 @@ async function uploadFileToFolder(
 
 /**
  * Permanently deletes excess files in a folder beyond maxFiles (oldest first).
+ * Excludes conflict-* files from being pruned in Edit Snapshots/ (0.7).
  */
 export async function pruneFolderFiles(folderId: string, maxFiles: number): Promise<number> {
   try {
@@ -1047,11 +1144,14 @@ export async function pruneFolderFiles(folderId: string, maxFiles: number): Prom
     );
     if (!res.ok) return 0;
     const data = (await res.json()) as { files?: Array<{ id: string; name: string }> };
-    const files = data.files || [];
-    if (files.length <= maxFiles) return 0;
+    const rawFiles = data.files || [];
+    
+    // Protect conflict-* snapshot files from rolling prune
+    const prunableFiles = rawFiles.filter((f) => !f.name.startsWith('conflict-'));
+    if (prunableFiles.length <= maxFiles) return 0;
 
-    const excessCount = files.length - maxFiles;
-    const toDelete = files.slice(0, excessCount);
+    const excessCount = prunableFiles.length - maxFiles;
+    const toDelete = prunableFiles.slice(0, excessCount);
     let deletedCount = 0;
 
     for (const f of toDelete) {
@@ -1073,35 +1173,29 @@ export async function pruneFolderFiles(folderId: string, maxFiles: number): Prom
 
 export const MAX_BACKUPS_CAP = 7;
 
-/**
- * Prunes backups in the daily folder according to configured retention limit.
- */
 export async function pruneOldBackups(backupsFolderId: string, customLimit?: number): Promise<number> {
   const limit = customLimit !== undefined ? customLimit : getStoredDriveBackupRetentionLimit();
   return pruneFolderFiles(backupsFolderId, limit);
 }
 
 /**
- * Automatically creates a daily backup in 'Daily Backups/' if not already created today.
- * Exact name: daily-YYYY-MM-DD.json (guarantees exactly 1 file per day).
+ * Creates daily backup if not already present.
  */
 export async function createDailyBackupIfNeeded(payload: unknown, budgetFolderId: string): Promise<void> {
   if (!getStoredDriveDailySnapshotsEnabled()) return;
 
   try {
     const dailyFolderId = await getOrCreateDailyBackupsFolder(budgetFolderId);
-    // Use local calendar date matching DateUtils.todayString() instead of UTC date
     const d = new Date();
     const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     const fileName = `daily-${todayStr}.json`;
 
-    // Exact name match query
     const query = encodeURIComponent(`name = '${fileName}' and '${dailyFolderId}' in parents and trashed = false`);
     const searchRes = await fetchWithAuth(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id)`);
     if (searchRes.ok) {
       const data = (await searchRes.json()) as { files?: Array<{ id: string }> };
       if (data.files && data.files.length > 0) {
-        return; // Today's daily backup already exists!
+        return;
       }
     }
 
@@ -1114,11 +1208,8 @@ export async function createDailyBackupIfNeeded(payload: unknown, budgetFolderId
 
 export const MAX_EDIT_SNAPSHOTS_CAP = 5;
 const LAST_EDIT_SNAPSHOT_KEY = 'budget-control-last-edit-snapshot-time';
-const EDIT_SNAPSHOT_COOLDOWN_MS = 15 * 60 * 1000; // 15-minute session cooldown
+const EDIT_SNAPSHOT_COOLDOWN_MS = 15 * 60 * 1000;
 
-/**
- * Automatically creates an edit session snapshot in 'Edit Snapshots/' (capped at 5).
- */
 export async function createEditSnapshotIfNeeded(payload: unknown, budgetFolderId: string): Promise<void> {
   try {
     let lastTime = Number(loadStorageSync<number | string>(LAST_EDIT_SNAPSHOT_KEY, 0));
@@ -1127,7 +1218,7 @@ export async function createEditSnapshotIfNeeded(payload: unknown, budgetFolderI
     }
     const now = Date.now();
     if (now - lastTime < EDIT_SNAPSHOT_COOLDOWN_MS) {
-      return; // Within edit session cooldown window
+      return;
     }
 
     const editFolderId = await getOrCreateEditSnapshotsFolder(budgetFolderId);
@@ -1146,9 +1237,6 @@ export async function createEditSnapshotIfNeeded(payload: unknown, budgetFolderI
   }
 }
 
-/**
- * Creates a deliberate manual snapshot in 'User Snapshots/' when the user presses "Save Snapshot"
- */
 export async function createUserSnapshot(
   payload: unknown,
   customLabel?: string
@@ -1175,7 +1263,6 @@ export async function createUserSnapshot(
   }
 }
 
-// Legacy alias calling createUserSnapshot
 export async function createDriveSnapshot(
   payload: unknown,
   customLabel?: string
@@ -1237,9 +1324,6 @@ export async function listDriveBackups(): Promise<DriveBackupItem[]> {
   return listDailyBackups();
 }
 
-/**
- * Download a specific backup file by ID
- */
 export async function downloadBackupFile(fileId: string): Promise<{
   success: boolean;
   payload?: unknown;
@@ -1258,16 +1342,13 @@ export async function downloadBackupFile(fileId: string): Promise<{
   }
 }
 
-/**
- * Fetch live metadata about the Google Drive sync status & folder
- */
 export async function getLiveDriveMetadata(): Promise<DriveLiveMetadata | null> {
   try {
     const folderId = await getOrCreateBudgetFolder();
     const folderUrl = getFolderWebUrl(folderId);
 
     const query = encodeURIComponent(`name = '${FILE_NAME}' and '${folderId}' in parents and trashed = false`);
-    const searchRes = await fetchWithAuth(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,modifiedTime,size)`);
+    const searchRes = await fetchWithAuth(`https://www.googleapis.com/drive/v3/files?q=${query}&orderBy=createdTime%20asc&fields=files(id,name,modifiedTime,size)`);
     if (!searchRes.ok) {
       return { folderId, folderUrl };
     }
@@ -1276,7 +1357,8 @@ export async function getLiveDriveMetadata(): Promise<DriveLiveMetadata | null> 
       files?: Array<{ id: string; name: string; modifiedTime: string; size?: string }>;
     };
 
-    const file = searchData.files && searchData.files.length > 0 ? searchData.files[0] : null;
+    const files = searchData.files || [];
+    const file = files.length > 0 ? files[0] : null;
     if (!file) {
       return { folderId, folderUrl };
     }
@@ -1294,9 +1376,6 @@ export async function getLiveDriveMetadata(): Promise<DriveLiveMetadata | null> 
   }
 }
 
-/**
- * Delete an individual backup file from Google Drive permanently
- */
 export async function deleteDriveBackupFile(fileId: string): Promise<boolean> {
   try {
     const res = await fetchWithAuth(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
@@ -1309,9 +1388,6 @@ export async function deleteDriveBackupFile(fileId: string): Promise<boolean> {
   }
 }
 
-/**
- * Permanently deletes all files in 'Daily Backups/'
- */
 export async function clearDailyBackups(): Promise<number> {
   try {
     const budgetFolderId = await getOrCreateBudgetFolder();
@@ -1323,9 +1399,6 @@ export async function clearDailyBackups(): Promise<number> {
   }
 }
 
-/**
- * Permanently deletes all files in 'Edit Snapshots/'
- */
 export async function clearEditSnapshots(): Promise<number> {
   try {
     const budgetFolderId = await getOrCreateBudgetFolder();
@@ -1337,9 +1410,6 @@ export async function clearEditSnapshots(): Promise<number> {
   }
 }
 
-/**
- * Permanently deletes all files in 'User Snapshots/'
- */
 export async function clearUserSnapshots(): Promise<number> {
   try {
     const budgetFolderId = await getOrCreateBudgetFolder();
@@ -1351,9 +1421,6 @@ export async function clearUserSnapshots(): Promise<number> {
   }
 }
 
-/**
- * Delete all backup files in 'Budget Control / Backups /' (keeps live budget-data.json intact)
- */
 export async function clearAllDriveBackups(): Promise<number> {
   try {
     const budgetFolderId = await getOrCreateBudgetFolder();
@@ -1377,15 +1444,6 @@ export async function clearAllDriveBackups(): Promise<number> {
   }
 }
 
-export interface GoogleDriveStorageQuota {
-  limit?: number;
-  usage?: number;
-  usageInDrive?: number;
-}
-
-/**
- * Fetch Google Drive storage quota telemetry
- */
 export async function getGoogleDriveStorageQuota(): Promise<GoogleDriveStorageQuota | null> {
   try {
     const res = await fetchWithAuth('https://www.googleapis.com/drive/v3/about?fields=storageQuota');

@@ -7,6 +7,7 @@ import type {
   RatesData,
   StorageAsset,
   JobItem,
+  SyncMetadata,
 } from '../types';
 import { DateUtils } from './dateUtils';
 import { inferTag } from './tags';
@@ -16,6 +17,7 @@ export interface MigratedBudgetDataset {
   schemaVersion: string;
   migratedAt: string;
   exportedAt?: string;
+  sync?: Partial<SyncMetadata>;
   entries: CashEntry[];
   archivedEntries: CashEntry[];
   accounts: Record<string, AccountBalance>;
@@ -55,7 +57,7 @@ const defaultRates: RatesData = currencyDefaultRates;
 
 /** Major schema version this migration pipeline produces and understands. */
 export const CURRENT_SCHEMA_MAJOR = '2';
-export const CURRENT_SCHEMA_VERSION = `${CURRENT_SCHEMA_MAJOR}.1`;
+export const CURRENT_SCHEMA_VERSION = `${CURRENT_SCHEMA_MAJOR}.2`;
 
 /** Payload keys that carry real financial data (used to tell an empty backup from a wrong-shaped file). */
 const FINANCIAL_PAYLOAD_KEYS = [
@@ -416,10 +418,19 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
     );
   }
 
+  const rawSync = (parsed.sync && typeof parsed.sync === 'object' ? parsed.sync : data.sync) as Record<string, unknown> | undefined;
+  const sync: Partial<SyncMetadata> | undefined = rawSync ? {
+    deviceId: typeof rawSync.deviceId === 'string' ? rawSync.deviceId : undefined,
+    revision: typeof rawSync.revision === 'number' ? rawSync.revision : undefined,
+    baseRevision: typeof rawSync.baseRevision === 'number' ? rawSync.baseRevision : undefined,
+    contentHash: typeof rawSync.contentHash === 'string' ? rawSync.contentHash : undefined,
+  } : undefined;
+
   return {
     schemaVersion: CURRENT_SCHEMA_VERSION,
     migratedAt: new Date().toISOString(),
     exportedAt,
+    sync,
     entries,
     archivedEntries,
     accounts,

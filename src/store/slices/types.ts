@@ -14,6 +14,7 @@ import type {
   CreditSettlementOverride,
 } from '../../types';
 import type { GoogleDriveUser } from '../../services/googleDriveClient';
+import type { SyncConflictPayload } from '../../types';
 
 export interface UISlice {
   theme: 'dark' | 'light';
@@ -176,17 +177,19 @@ export interface SyncSlice {
   // Google Drive Cloud Sync & Admin
   driveUser: GoogleDriveUser | null;
   driveAutoSync: boolean;
-  driveSyncStatus: 'idle' | 'scheduled' | 'syncing' | 'synced' | 'error' | 'expired';
+  driveSyncStatus: 'idle' | 'scheduled' | 'syncing' | 'synced' | 'conflict' | 'error' | 'expired';
   lastDriveSyncTime: string | null;
   lastLocalModified: number;
   hasUnsyncedChanges: boolean;
+  syncConflict: SyncConflictPayload | null;
 
   setDriveUser: (user: GoogleDriveUser | null) => void;
   setDriveAutoSync: (enabled: boolean) => void;
-  setDriveSyncStatus: (status: 'idle' | 'scheduled' | 'syncing' | 'synced' | 'error' | 'expired') => void;
+  setDriveSyncStatus: (status: 'idle' | 'scheduled' | 'syncing' | 'synced' | 'conflict' | 'error' | 'expired') => void;
   setHasUnsyncedChanges: (hasChanges: boolean) => void;
   setDriveSyncTime: (time: string | null) => void;
   setLastLocalModified: (timestamp: number) => void;
+  setSyncConflict: (conflict: SyncConflictPayload | null) => void;
 
   // Legacy compatibility fields (deprecated)
   gistToken: string;

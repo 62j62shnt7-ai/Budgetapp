@@ -38,12 +38,12 @@ for (const bad of ['3.0', '99.1', '10']) {
 // Current major and pre-versioning legacy payloads (no version field) still import.
 assert.strictEqual(
   migrateBackupPayload({ version: '2.0', entries: [{ id: 'a', date: '2026-01-01', amount: 10, type: 'expense' }] }).schemaVersion,
-  '2.1',
+  '2.2',
   'Current major version imports'
 );
 assert.strictEqual(
   migrateBackupPayload({ entries: [{ id: 'b', date: '2026-01-01', amount: 10, type: 'expense' }] }).schemaVersion,
-  '2.1',
+  '2.2',
   'Unversioned legacy payload still imports'
 );
 console.log('✓ Unknown schema major versions are rejected; legacy payloads still import');

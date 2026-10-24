@@ -19,6 +19,8 @@ import { createJobsSlice } from './slices/jobsSlice';
 import { createRatesSlice } from './slices/ratesSlice';
 import { createSyncSlice } from './slices/syncSlice';
 
+import { getSyncEngine } from '../services/syncEngine';
+
 export type { ViewTab, BudgetStoreState };
 export { STORAGE_KEYS, loadStorage, saveStorage, inferTag };
 
@@ -31,6 +33,9 @@ export const useBudgetStore = create<BudgetStoreState>((set, get, api) => ({
   ...createRatesSlice(set, get, api),
   ...createSyncSlice(set, get, api),
 }));
+
+// Initialize SyncEngine with store getter
+getSyncEngine(() => useBudgetStore.getState());
 
 const syncedDataKeys: Array<keyof BudgetStoreState> = [
   'entries',

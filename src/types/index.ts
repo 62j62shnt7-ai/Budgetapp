@@ -364,3 +364,28 @@ export interface UndoToastState {
   timestamp: number;
 }
 
+export interface SyncMetadata {
+  deviceId: string;
+  revision: number;
+  baseRevision: number;
+  contentHash: string;
+}
+
+export interface SyncConflictPayload {
+  localPayload: string;
+  remotePayload: string;
+  remoteModifiedTime?: string;
+  diffSummary: {
+    localEntriesCount: number;
+    remoteEntriesCount: number;
+    localModifiedAt?: string;
+    remoteModifiedAt?: string;
+    localRevision?: number;
+    remoteRevision?: number;
+    localTotalBalances: number;
+    remoteTotalBalances: number;
+  };
+  isSanityWarning?: boolean;
+  isFirstSignIn?: boolean;
+}
+

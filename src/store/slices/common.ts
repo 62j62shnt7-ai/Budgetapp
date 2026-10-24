@@ -16,12 +16,6 @@ import {
   loadStorageSync as adapterLoadStorageSync,
   persistUndoHistoryToStorage,
 } from '../../utils/storageAdapter';
-import {
-  getStoredDriveToken,
-  getStoredDriveUser,
-  getStoredDriveAutoSync,
-  uploadBudgetToDrive,
-} from '../../services/googleDriveClient';
 import type { BudgetStoreState } from './types';
 
 export const STORAGE_KEYS = {
@@ -70,6 +64,12 @@ export const STORAGE_KEYS = {
   gdriveAutoSync: 'budget-control-gdrive-auto-sync',
   gdriveDailySnapshots: 'budget-control-gdrive-daily-snapshots',
   gdriveBackupRetention: 'budget-control-gdrive-backup-retention',
+  gdriveAuthProxyUrl: 'budget-control-gdrive-auth-proxy-url',
+  deviceId: 'budget-control-device-id',
+  syncRevision: 'budget-control-sync-revision',
+  syncBaseRevision: 'budget-control-sync-base-revision',
+  syncContentHash: 'budget-control-sync-content-hash',
+  localSyncBackups: 'budget-control-local-sync-backups',
 };
 
 export function loadStorage<T>(key: string, fallback: T): T {
@@ -169,6 +169,11 @@ export function setLastGistUploadTimestamp(ts: number) {
   lastGistUploadTimestamp = ts;
 }
 
+export let suppressAutoSync = false;
+export function setSuppressAutoSync(val: boolean) {
+  suppressAutoSync = val;
+}
+
 export let suppressDirtyMarking = false;
 export function setSuppressDirtyMarking(val: boolean) {
   suppressDirtyMarking = val;
@@ -189,19 +194,14 @@ export function setInitStoragePromise(promise: Promise<void> | null) {
   initStoragePromise = promise;
 }
 
-let driveSyncTimer: ReturnType<typeof setTimeout> | null = null;
-let driveSyncInFlight = false;
-export let suppressAutoSync = false;
-export function setSuppressAutoSync(val: boolean) {
-  suppressAutoSync = val;
-}
+import { getSyncEngine } from '../../services/syncEngine';
 
 export function flushPendingDriveSyncNow(getState: () => BudgetStoreState): void {
-  if (driveSyncTimer) {
-    clearTimeout(driveSyncTimer);
-    driveSyncTimer = null;
+  try {
+    void getSyncEngine(getState).flushNow();
+  } catch {
+    // If syncEngine not yet ready, ignore
   }
-  scheduleAutoDriveSync(getState, true);
 }
 
 export function scheduleAutoDriveSync(
@@ -209,91 +209,10 @@ export function scheduleAutoDriveSync(
   immediate = false,
   options?: { isUserEdit?: boolean; rateRefresh?: boolean }
 ): void {
-  if (typeof window === 'undefined') return;
-  if (suppressAutoSync) return;
-
-  const token = getStoredDriveToken();
-  const user = getStoredDriveUser();
-  const autoSync = getStoredDriveAutoSync();
-  if ((!token && !user) || !autoSync) return;
-
-  const isRateRefresh = options?.rateRefresh === true;
-  const isUserEdit = options?.isUserEdit !== undefined ? options.isUserEdit : !isRateRefresh;
-  if (isUserEdit) {
-    hasPendingUserEdit = true;
-    try {
-      getState().setHasUnsyncedChanges(true);
-    } catch {}
-  }
-
-  if (driveSyncTimer) {
-    clearTimeout(driveSyncTimer);
-    driveSyncTimer = null;
-  }
-
   try {
-    const curStatus = getState().driveSyncStatus;
-    if (curStatus !== 'syncing') {
-      getState().setDriveSyncStatus('scheduled');
-    }
+    getSyncEngine(getState).schedule(immediate, options);
   } catch {
-    // Store might not be fully initialized yet
-  }
-
-  const executeSync = async () => {
-    driveSyncTimer = null;
-    if (driveSyncInFlight) {
-      scheduleAutoDriveSync(getState, false);
-      return;
-    }
-    driveSyncInFlight = true;
-    getState().setDriveSyncStatus('syncing');
-    const mutationVersionAtStart = localMutationCounter;
-    const wasUserEdit = hasPendingUserEdit;
-    const expectedBaseTime = getState().lastDriveSyncTime;
-    try {
-      const state = getState();
-      const payload = state.exportJSON();
-      const res = await uploadBudgetToDrive(payload, {
-        isUserEdit: wasUserEdit,
-        expectedModifiedTime: expectedBaseTime,
-      });
-
-      if (res.success) {
-        if (localMutationCounter === mutationVersionAtStart) {
-          hasPendingUserEdit = false;
-          state.setHasUnsyncedChanges(false);
-        }
-        if (res.modifiedTime) {
-          const syncTime = res.modifiedTime;
-          const now = Date.now();
-          lastLocalMutationTimestamp = now;
-          state.setDriveSyncStatus('synced');
-          saveStorage(STORAGE_KEYS.lastDriveSync, syncTime);
-          saveStorage(STORAGE_KEYS.lastLocalModified, String(now));
-          getState().setDriveSyncTime?.(syncTime);
-          getState().setLastLocalModified?.(now);
-        } else {
-          state.setDriveSyncStatus('synced');
-        }
-      } else {
-        const isExpired = res.error?.includes('session expired') || res.error?.includes('re-authorize') || res.error?.includes('Not connected');
-        getState().setDriveSyncStatus(isExpired ? 'expired' : 'error');
-      }
-    } catch (err) {
-      console.warn('[scheduleAutoDriveSync] background sync error:', err);
-      const errMsg = err instanceof Error ? err.message : String(err);
-      const isExpired = errMsg.includes('session expired') || errMsg.includes('re-authorize') || errMsg.includes('Not connected');
-      getState().setDriveSyncStatus(isExpired ? 'expired' : 'error');
-    } finally {
-      driveSyncInFlight = false;
-    }
-  };
-
-  if (immediate) {
-    void executeSync();
-  } else {
-    driveSyncTimer = setTimeout(executeSync, 2000);
+    // In case called before store initialization
   }
 }
 

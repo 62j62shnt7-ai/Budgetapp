@@ -31,6 +31,7 @@ import {
 } from './components/Modals/JobModals';
 import { RateModal } from './components/Modals/RateModal';
 import { DriveSyncModal } from './components/Modals/DriveSyncModal';
+import { SyncConflictModal } from './components/Modals/SyncConflictModal';
 import { DataToolsModal } from './components/Modals/DataToolsModal';
 import { DeductAccountModal } from './components/Modals/DeductAccountModal';
 import { AccountTransferModal } from './components/Modals/AccountTransferModal';
@@ -46,11 +47,10 @@ import {
   refreshDriveTokenSilently,
   preWarmGisTokenClient,
   requestSilentTokenOnUserGesture,
-  downloadBudgetFromDrive,
-  uploadBudgetToDrive,
 } from './services/googleDriveClient';
-import { flushPendingDriveSyncNow, setSuppressAutoSync } from './store/slices/common';
-import { loadStorageAsync, saveStorage, onStorageChange } from './utils/storageAdapter';
+import { getSyncEngine } from './services/syncEngine';
+import { flushPendingDriveSyncNow } from './store/slices/common';
+import { onStorageChange } from './utils/storageAdapter';
 import type { CashEntry, JobItem, Installment } from './types';
 
 export const App: React.FC = () => {
@@ -163,14 +163,8 @@ export const App: React.FC = () => {
       const isBatch = key === '__batch__';
       const isDataKey = key && dataKeys.has(key);
       if (isBatch || isDataKey) {
-        // Silently hot-hydrate from storage in secondary tab
-        const prevSuppress = useBudgetStore.getState().driveSyncStatus === 'syncing';
-        if (!prevSuppress) {
-          setSuppressAutoSync(true);
-          useBudgetStore.getState().initStorage().finally(() => {
-            setSuppressAutoSync(false);
-          });
-        }
+        // Silently hot-hydrate from storage in secondary tab via syncEngine
+        void getSyncEngine().handleIncomingStorageChange();
       }
     });
     return unsubscribe;
@@ -211,136 +205,84 @@ export const App: React.FC = () => {
       }
     };
 
-    const handleSyncAndRates = async (options?: { isBackgroundPoll?: boolean; forceRates?: boolean }) => {
-      if (document.visibilityState === 'visible' && navigator.onLine) {
-        lastBackgroundCheckTime = Date.now();
+    const runSyncAsLeader = async (trigger: 'poll' | 'tab_reactivated' | 'online' | 'token_refreshed') => {
+      if (!navigator.onLine || document.visibilityState !== 'visible') return;
+      lastBackgroundCheckTime = Date.now();
+
+      const driveUser = getStoredDriveUser();
+      let driveToken = getStoredDriveToken();
+      const driveAutoSync = getStoredDriveAutoSync();
+
+      // Silent token refresh check
+      if (driveUser && !driveToken) {
+        driveToken = await refreshDriveTokenSilently();
+      }
+
+      if (driveUser && !driveToken) {
+        // Pre-warm GIS client for immediate synchronous activation on user gesture
+        void preWarmGisTokenClient();
+        const onFirstInteraction = () => {
+          window.removeEventListener('click', onFirstInteraction, true);
+          window.removeEventListener('keydown', onFirstInteraction, true);
+          if (!getStoredDriveToken()) {
+            requestSilentTokenOnUserGesture();
+          }
+        };
+        window.addEventListener('click', onFirstInteraction, { capture: true, once: true });
+        window.addEventListener('keydown', onFirstInteraction, { capture: true, once: true });
+
         const state = useBudgetStore.getState();
-        if (!state.isStorageReady) {
-          await state.initStorage();
+        if (state.driveSyncStatus !== 'expired') {
+          state.setDriveSyncStatus('idle');
         }
-        // Autonomous Google Drive Sync (Option B: My Drive / Budget Control / budget-data.json)
-        const driveUser = getStoredDriveUser();
-        let driveToken = getStoredDriveToken();
-        const driveAutoSync = getStoredDriveAutoSync();
+        return;
+      }
 
-        // If user is connected to Google Drive and token has lapsed, silently refresh it
-        if (driveUser && !driveToken) {
-          driveToken = await refreshDriveTokenSilently();
-        }
+      if (!driveToken || !driveAutoSync) return;
 
-        if (driveUser && !driveToken) {
-          // Pre-warm GIS client for immediate synchronous activation on user gesture
-          void preWarmGisTokenClient();
-          const onFirstInteraction = () => {
-            window.removeEventListener('click', onFirstInteraction, true);
-            window.removeEventListener('keydown', onFirstInteraction, true);
-            if (!getStoredDriveToken()) {
-              requestSilentTokenOnUserGesture();
+      // Coordinate background sync via Web Locks API (Leader Tab Election)
+      if (typeof navigator !== 'undefined' && 'locks' in navigator && navigator.locks?.request) {
+        try {
+          await navigator.locks.request('budget-control-sync-leader', { ifAvailable: true }, async (lock) => {
+            if (!lock) {
+              // Another tab is actively acting as sync leader
+              return;
             }
-          };
-          window.addEventListener('click', onFirstInteraction, { capture: true, once: true });
-          window.addEventListener('keydown', onFirstInteraction, { capture: true, once: true });
-
-          // Keep in idle state rather than flashing 'expired' reconnect banner immediately
-          if (state.driveSyncStatus !== 'expired') {
-            state.setDriveSyncStatus('idle');
-          }
-        } else if (driveToken && driveAutoSync) {
-          try {
-            // BIDIRECTIONAL RECONCILIATION FLOW:
-            // 1. If local has unsynced offline changes, prioritize pushing to Drive!
-            if (state.hasUnsyncedChanges) {
-              state.setDriveSyncStatus('syncing');
-              const payload = state.exportJSON();
-              const uploadRes = await uploadBudgetToDrive(payload, {
-                isUserEdit: true,
-                expectedModifiedTime: state.lastDriveSyncTime,
-              });
-              if (uploadRes.success) {
-                state.setHasUnsyncedChanges(false);
-                state.setDriveSyncStatus('synced');
-                if (uploadRes.modifiedTime) {
-                  const now = Date.now();
-                  saveStorage(STORAGE_KEYS.lastDriveSync, uploadRes.modifiedTime);
-                  saveStorage(STORAGE_KEYS.lastLocalModified, String(now));
-                  useBudgetStore.setState({
-                    lastDriveSyncTime: uploadRes.modifiedTime,
-                    lastLocalModified: now,
-                  });
-                }
-              } else if (uploadRes.conflict) {
-                // Remote changed while local was dirty. Pull remote, backing up local diverged state
-                const res = await downloadBudgetFromDrive();
-                if (res.success && res.payload) {
-                  state.importJSON(res.payload as string, { isRemoteSync: true });
-                  if (res.modifiedTime) {
-                    useBudgetStore.setState({ lastDriveSyncTime: res.modifiedTime, hasUnsyncedChanges: false });
-                    saveStorage(STORAGE_KEYS.lastDriveSync, res.modifiedTime);
-                    saveStorage(STORAGE_KEYS.hasUnsyncedChanges, false);
-                  }
-                }
-                state.setDriveSyncStatus('synced');
-              } else {
-                state.setDriveSyncStatus('error');
-              }
-            } else {
-              // 2. Local is clean -> check if remote has newer edits to pull
-              const res = await downloadBudgetFromDrive();
-              if (res.success && res.payload) {
-                const lastSyncTime = state.lastDriveSyncTime;
-                if (res.modifiedTime && lastSyncTime && res.modifiedTime === lastSyncTime) {
-                  state.setDriveSyncStatus('synced');
-                  await fetchRates(options?.forceRates);
-                  return;
-                }
-
-                const remoteTime = res.modifiedTime ? new Date(res.modifiedTime).getTime() : 0;
-                const lastLocal = state.lastLocalModified || Number(await loadStorageAsync(STORAGE_KEYS.lastLocalModified, '0')) || 0;
-                if (remoteTime > 0 && remoteTime > lastLocal + 2000) {
-                  state.setDriveSyncStatus('syncing');
-                  state.importJSON(res.payload as string, { isRemoteSync: true });
-                  if (res.modifiedTime) {
-                    useBudgetStore.setState({ lastDriveSyncTime: res.modifiedTime, hasUnsyncedChanges: false });
-                    saveStorage(STORAGE_KEYS.lastDriveSync, res.modifiedTime);
-                    saveStorage(STORAGE_KEYS.hasUnsyncedChanges, false);
-                  }
-                }
-                state.setDriveSyncStatus('synced');
-              } else if (!res.success && res.error && !res.error.includes("No 'budget-data.json' found")) {
-                state.setDriveSyncStatus('error');
-              } else {
-                state.setDriveSyncStatus('synced');
-              }
-            }
-          } catch (err) {
-            console.warn('[Google Drive auto-sync]:', err);
-            state.setDriveSyncStatus('error');
-          }
+            await getSyncEngine().sync(trigger);
+          });
+        } catch {
+          await getSyncEngine().sync(trigger);
         }
-        await fetchRates(options?.forceRates);
+      } else {
+        await getSyncEngine().sync(trigger);
       }
     };
 
-    void handleSyncAndRates({ isBackgroundPoll: false, forceRates: true });
+    const handleSyncAndRates = async (options?: { isBackgroundPoll?: boolean; forceRates?: boolean; trigger?: 'poll' | 'tab_reactivated' | 'online' | 'token_refreshed' }) => {
+      const trigger = options?.trigger || (options?.isBackgroundPoll ? 'poll' : 'tab_reactivated');
+      await runSyncAsLeader(trigger);
+      await fetchRates(options?.forceRates);
+    };
+
+    void handleSyncAndRates({ isBackgroundPoll: false, forceRates: true, trigger: 'poll' });
 
     const pollInterval = setInterval(() => {
-      void handleSyncAndRates({ isBackgroundPoll: true });
+      void handleSyncAndRates({ isBackgroundPoll: true, trigger: 'poll' });
     }, SYNC_INTERVAL_MS);
 
     const onTabReactivated = () => {
-      // If local has unsynced changes or if 5 minutes elapsed, sync immediately upon tab/app resume
       const state = useBudgetStore.getState();
       if (state.hasUnsyncedChanges || Date.now() - lastBackgroundCheckTime >= SYNC_INTERVAL_MS) {
-        void handleSyncAndRates({ isBackgroundPoll: true });
+        void handleSyncAndRates({ isBackgroundPoll: true, trigger: 'tab_reactivated' });
       }
     };
 
     const onOnline = () => {
-      void handleSyncAndRates({ isBackgroundPoll: true });
+      void handleSyncAndRates({ isBackgroundPoll: true, trigger: 'online' });
     };
 
     const onTokenRefreshed = () => {
-      void handleSyncAndRates({ isBackgroundPoll: true });
+      void handleSyncAndRates({ isBackgroundPoll: true, trigger: 'token_refreshed' });
     };
 
     const onTokenFailed = () => {
@@ -702,6 +644,8 @@ export const App: React.FC = () => {
         isOpen={driveSyncOpen}
         onClose={() => setDriveSyncOpen(false)}
       />
+
+      <SyncConflictModal />
 
       <DataToolsModal
         isOpen={dataToolsOpen}

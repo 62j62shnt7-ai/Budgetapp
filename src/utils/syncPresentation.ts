@@ -15,7 +15,7 @@ export interface SyncStatusPresentation {
 export function getSyncStatusPresentation(params: {
   driveUser: GoogleDriveUser | null;
   driveAutoSync: boolean;
-  driveSyncStatus: 'idle' | 'scheduled' | 'syncing' | 'synced' | 'error' | 'expired';
+  driveSyncStatus: 'idle' | 'scheduled' | 'syncing' | 'synced' | 'conflict' | 'error' | 'expired';
   hasUnsyncedChanges: boolean;
 }): SyncStatusPresentation {
   const { driveUser, driveAutoSync, driveSyncStatus, hasUnsyncedChanges } = params;
@@ -38,6 +38,16 @@ export function getSyncStatusPresentation(params: {
       pillClass: 'error',
       dotColor: '#ef4444',
       isExpired: true,
+      isConnected: true,
+    };
+  }
+
+  if (driveSyncStatus === 'conflict') {
+    return {
+      label: 'Conflict',
+      pillClass: 'error',
+      dotColor: '#f59e0b',
+      isExpired: false,
       isConnected: true,
     };
   }

@@ -34,7 +34,7 @@ src/
 │   ├── History/              # HistoryView + HistorySummaryTab + HistoryAnalyticsSection
 │   ├── Jobs/                 # JobsView — project billing, logged days, payments
 │   ├── Layout/               # App shell: Sidebar, Topbar, BottomNav, MobileActionSheet
-│   ├── Modals/               # EntryModal, JobModals, DataToolsModal, GistSyncModal, Loan/Storage/Rate modals, AffectedRecordsModal
+│   ├── Modals/               # EntryModal, JobModals, DataToolsModal, DriveSyncModal, SyncConflictModal, Loan/Storage/Rate modals, AffectedRecordsModal
 │   ├── Rates/                # RatesView — currency & gold rates editor
 │   └── Storage/              # StorageView — physical assets & valuables
 ├── engine/                   # Pure financial math. NO React/JSX/Zustand imports.
@@ -53,7 +53,9 @@ src/
 │   ├── useForecastCandidates.ts  # Shared salary/installment/credit → forecast candidate pipeline
 │   └── useHashRouting.ts         # Hash-based routing (#/cashflow) for back/forward navigation
 ├── services/
-│   └── googleDriveClient.ts  # Autonomous Google Drive sync bridge (Option B visible folder)
+│   ├── googleDriveClient.ts  # Google Drive API client, OAuth PKCE/GIS, folder structure, 401 recovery
+│   ├── googleDriveTypes.ts   # Google Drive domain types & telemetry interfaces
+│   └── syncEngine.ts         # Unified Sync Engine (single mutex, 4-row OCC, sanity guards, conflict handling)
 ├── store/
 │   ├── slices/               # Domain-specific Zustand slices
 │   │   ├── accountsSlice.ts  # Bank balances, credit cards, dues, settlements, transfers

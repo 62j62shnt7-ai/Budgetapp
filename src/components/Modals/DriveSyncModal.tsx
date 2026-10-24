@@ -15,7 +15,6 @@ import {
   signInWithGoogleDrive,
   signOutFromGoogleDrive,
   preWarmGisTokenClient,
-  uploadBudgetToDrive,
   downloadBudgetFromDrive,
   createUserSnapshot,
   listDailyBackups,
@@ -31,13 +30,14 @@ import {
   MAX_EDIT_SNAPSHOTS_CAP,
   getStoredDriveRefreshToken,
   saveStoredDriveRefreshToken,
-  getStoredDriveClientSecret,
-  saveStoredDriveClientSecret,
+  getStoredDriveAuthProxyUrl,
+  saveStoredDriveAuthProxyUrl,
   type GoogleDriveUser,
   type DriveBackupItem,
   type DriveLiveMetadata,
   type GoogleDriveStorageQuota,
 } from '../../services/googleDriveClient';
+import { getSyncEngine } from '../../services/syncEngine';
 
 interface DriveSyncModalProps {
   isOpen: boolean;
@@ -80,7 +80,7 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
   const [retentionLimit, setRetentionLimit] = useState(getStoredDriveBackupRetentionLimit);
   const [liveMetadata, setLiveMetadata] = useState<DriveLiveMetadata | null>(null);
   const [storageQuota, setStorageQuota] = useState<GoogleDriveStorageQuota | null>(null);
-  const [clientSecretInput, setClientSecretInput] = useState(getStoredDriveClientSecret);
+  const [authProxyUrlInput, setAuthProxyUrlInput] = useState(getStoredDriveAuthProxyUrl);
   const [refreshTokenInput, setRefreshTokenInput] = useState(getStoredDriveRefreshToken() || '');
   const [showAdvancedAuth, setShowAdvancedAuth] = useState(false);
 
@@ -155,13 +155,29 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
       setDriveUser(user);
       useBudgetStore.getState().setDriveUser(user);
       useBudgetStore.getState().setDriveSyncStatus('synced');
-      // Auto-pull existing budget on first sign-in
+      
+      // Auto-reconciliation choice matrix on sign-in (Phase 0.4)
       try {
         const pullRes = await downloadBudgetFromDrive();
+        const state = useBudgetStore.getState();
+        const hasLocalData = state.entries.length > 0 || state.archivedEntries.length > 0;
+        const hasUnsynced = state.hasUnsyncedChanges;
+
         if (pullRes.success && pullRes.payload) {
-          importJSON(JSON.stringify(pullRes.payload), { isRemoteSync: true });
-          showMsg(`✓ Connected as ${user.name}! Restored latest budget from Google Drive.`);
+          if (hasUnsynced || hasLocalData) {
+            // Prompt user: Keep Mine or Take Theirs via conflict modal
+            await getSyncEngine().sync('first_signin_detected');
+            showMsg(`✓ Connected as ${user.name}! Cloud budget detected — review choices.`);
+          } else {
+            // Local is fresh/empty -> auto-import remote
+            importJSON(JSON.stringify(pullRes.payload), { isRemoteSync: true });
+            showMsg(`✓ Connected as ${user.name}! Restored latest budget from Google Drive.`);
+          }
         } else {
+          // No remote file found yet -> push local if populated
+          if (hasLocalData) {
+            await getSyncEngine().sync('first_signin_push', { forcePush: true });
+          }
           showMsg(`✓ Connected as ${user.name} (${user.email})! Ready to sync.`);
         }
       } catch {
@@ -189,14 +205,9 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
   const handleDrivePush = async () => {
     setIsLoading(true);
     try {
-      const payload = JSON.parse(exportJSON());
-      const res = await uploadBudgetToDrive(payload, { isUserEdit: true });
-      if (res.success) {
-        showMsg(`✓ Saved live budget to Google Drive! (${res.modifiedTime ? new Date(res.modifiedTime).toLocaleTimeString() : 'now'})`);
-        void fetchCloudDetails();
-      } else {
-        showMsg(`Upload failed: ${res.error || 'Unknown error'}`, true);
-      }
+      await getSyncEngine().sync('manual_push', { forcePush: true });
+      showMsg(`✓ Saved live budget to Google Drive! (${new Date().toLocaleTimeString()})`);
+      void fetchCloudDetails();
     } catch (err) {
       showMsg(`Upload error: ${(err as Error).message}`, true);
     } finally {
@@ -207,23 +218,9 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
   const handleDrivePull = async () => {
     setIsLoading(true);
     try {
-      const res = await downloadBudgetFromDrive();
-      if (!res.success) {
-        showMsg(`Download failed: ${res.error || 'Unknown error'}`, true);
-        return;
-      }
-      if (!res.payload) {
-        showMsg("No budget file found in your Google Drive 'Budget Control' folder. Try 'Push Live' first.", true);
-        return;
-      }
-      const success = runTransaction('Pull from Google Drive', () => {
-        return importJSON(JSON.stringify(res.payload), { isRemoteSync: true });
-      });
-      if (success) {
-        showMsg(`✓ Restored latest budget ledger from your Google Drive! (${res.modifiedTime ? new Date(res.modifiedTime).toLocaleString() : 'recently'})`);
-      } else {
-        showMsg('Failed to parse downloaded cloud budget payload.', true);
-      }
+      await getSyncEngine().sync('manual_pull', { forcePull: true });
+      showMsg(`✓ Pulled latest budget ledger from your Google Drive! (${new Date().toLocaleTimeString()})`);
+      void fetchCloudDetails();
     } catch (err) {
       showMsg(`Restore error: ${(err as Error).message}`, true);
     } finally {
@@ -605,7 +602,7 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
                   </div>
                 )}
 
-                {/* Advanced OAuth / Refresh Token (Optional for 100% zero-popup background renewal) */}
+                {/* Advanced OAuth Proxy / Background Refresh */}
                 <div style={{ marginTop: '4px', borderTop: '1px dashed var(--border-color, rgba(255,255,255,0.08))', paddingTop: '6px' }}>
                   <button
                     type="button"
@@ -614,23 +611,23 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
                     style={{ fontSize: '11px', opacity: 0.8, padding: 0, border: 'none', background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
                   >
                     <span>{showAdvancedAuth ? '▼' : '►'}</span>
-                    <span>Advanced: Permanent OAuth Refresh Token (Optional)</span>
+                    <span>Advanced: Cloudflare Auth Proxy / Refresh Token (Optional)</span>
                   </button>
 
                   {showAdvancedAuth && (
                     <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '11px' }}>
                       <div style={{ opacity: 0.75, lineHeight: 1.4 }}>
-                        By default, your session refreshes silently on your first tap/click via Google Identity Services. To enable 100% invisible background renewal on page startup via <code>fetch()</code> without any browser popups, enter your Google OAuth Client Secret:
+                        By default, Budget Control signs in using Google Identity Services. To enable automatic background renewal via a zero-secret Cloudflare Worker proxy, enter your worker endpoint:
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <label style={{ opacity: 0.8, fontWeight: 500 }}>Google OAuth Client Secret</label>
+                        <label style={{ opacity: 0.8, fontWeight: 500 }}>Auth Proxy Endpoint URL</label>
                         <input
-                          type="password"
-                          value={clientSecretInput}
-                          placeholder="Paste client_secret from Google Cloud Console"
+                          type="url"
+                          value={authProxyUrlInput}
+                          placeholder="https://drive-auth-proxy.your-name.workers.dev"
                           onChange={(e) => {
-                            setClientSecretInput(e.target.value);
-                            saveStoredDriveClientSecret(e.target.value);
+                            setAuthProxyUrlInput(e.target.value);
+                            saveStoredDriveAuthProxyUrl(e.target.value);
                           }}
                           style={{
                             padding: '6px 8px',
@@ -648,7 +645,7 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
                         <input
                           type="password"
                           value={refreshTokenInput}
-                          placeholder="Paste refresh_token if generated offline"
+                          placeholder="Stored securely in IndexedDB"
                           onChange={(e) => {
                             setRefreshTokenInput(e.target.value);
                             saveStoredDriveRefreshToken(e.target.value);

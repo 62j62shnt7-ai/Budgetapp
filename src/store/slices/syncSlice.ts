@@ -8,6 +8,7 @@ import type {
   StorageAsset,
   BudgetFinancialSnapshot,
   CreditSettlementOverride,
+  SyncConflictPayload,
 } from '../../types';
 import { DateUtils } from '../../engine/dateUtils';
 import { defaultRates, inferAssetLocation } from '../../engine/currency';
@@ -25,6 +26,12 @@ import {
   saveStoredDriveAutoSync,
   type GoogleDriveUser,
 } from '../../services/googleDriveClient';
+import {
+  getOrCreateDeviceId,
+  getLocalSyncRevision,
+  getSyncBaseRevision,
+  computeContentHash,
+} from '../../services/syncEngine';
 import {
   STORAGE_KEYS,
   loadStorage,
@@ -57,6 +64,9 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => {
     lastDriveSyncTime: loadStorage<string | null>(STORAGE_KEYS.lastDriveSync, null),
     lastLocalModified: lastLocalMutationTimestamp,
     hasUnsyncedChanges: initialHasUnsynced,
+    syncConflict: null,
+
+    setSyncConflict: (conflict: SyncConflictPayload | null) => set({ syncConflict: conflict }),
 
     setHasUnsyncedChanges: (hasChanges: boolean) => {
       saveStorage(STORAGE_KEYS.hasUnsyncedChanges, hasChanges);
@@ -77,10 +87,10 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => {
     set({ driveAutoSync: enabled, gistAutoSync: enabled });
   },
 
-  setDriveSyncStatus: (status: 'idle' | 'scheduled' | 'syncing' | 'synced' | 'error' | 'expired') =>
+  setDriveSyncStatus: (status: 'idle' | 'scheduled' | 'syncing' | 'synced' | 'conflict' | 'error' | 'expired') =>
     set({
       driveSyncStatus: status,
-      gistSyncStatus: status === 'expired' ? 'error' : status,
+      gistSyncStatus: status === 'expired' || status === 'conflict' ? 'error' : status,
     }),
 
   setDriveSyncTime: (time: string | null) =>
@@ -114,30 +124,38 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => {
 
   exportJSON: () => {
     const state = get();
+    const dataObj = {
+      salaryPattern: state.salaryPattern,
+      cashEntries: state.entries,
+      installments: state.installments,
+      storageAssets: state.storageAssets,
+      accountBalances: state.accounts,
+      asfJobs: state.asfJobs,
+      irqJobs: state.irqJobs,
+      partTimeJobs: state.partTimeJobs,
+      ratesData: state.rates,
+      entryActuals: state.entryActuals,
+      entryActualDates: state.entryActualDates,
+      deletedForecasts: state.deletedForecasts,
+      creditDues: state.creditDues,
+      creditDueMonths: state.creditDueMonths,
+      creditSettlementOverrides: state.creditSettlementOverrides,
+      salaryAnchorMonth: state.salaryAnchorMonth,
+      archivedEntries: state.archivedEntries,
+    };
+    const contentHash = computeContentHash(dataObj);
     const payload = {
       app: 'budget-control',
-      version: '2.1',
+      version: '2.2',
       exportedAt: new Date().toISOString(),
       seedVersion: 'blank-template-v2',
-      data: {
-        salaryPattern: state.salaryPattern,
-        cashEntries: state.entries,
-        installments: state.installments,
-        storageAssets: state.storageAssets,
-        accountBalances: state.accounts,
-        asfJobs: state.asfJobs,
-        irqJobs: state.irqJobs,
-        partTimeJobs: state.partTimeJobs,
-        ratesData: state.rates,
-        entryActuals: state.entryActuals,
-        entryActualDates: state.entryActualDates,
-        deletedForecasts: state.deletedForecasts,
-        creditDues: state.creditDues,
-        creditDueMonths: state.creditDueMonths,
-        creditSettlementOverrides: state.creditSettlementOverrides,
-        salaryAnchorMonth: state.salaryAnchorMonth,
-        archivedEntries: state.archivedEntries,
+      sync: {
+        deviceId: getOrCreateDeviceId(),
+        revision: getLocalSyncRevision(),
+        baseRevision: getSyncBaseRevision(),
+        contentHash,
       },
+      data: dataObj,
     };
     return JSON.stringify(payload, null, 2);
   },
