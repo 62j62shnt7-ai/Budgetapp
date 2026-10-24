@@ -3,7 +3,7 @@ main = "index.ts"
 compatibility_date = "2024-01-01"
 
 [vars]
-ALLOWED_ORIGINS = "https://xear0.github.io,http://localhost:5173,http://localhost:4173"
+ALLOWED_ORIGINS = "https://62j62shnt7-ai.github.io,https://xear0.github.io,http://localhost:5173,http://localhost:4173"
 
 # Set secret via wrangler CLI:
 # npx wrangler secret put GOOGLE_CLIENT_SECRET

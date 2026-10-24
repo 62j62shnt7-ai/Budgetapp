@@ -6,6 +6,7 @@ export interface Env {
 const DEFAULT_ALLOWED = [
   'http://localhost:5173',
   'http://localhost:4173',
+  'https://62j62shnt7-ai.github.io',
   'https://xear0.github.io',
 ];
 
