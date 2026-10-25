@@ -1202,20 +1202,25 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                 // even when the due date has passed or a payment was recorded.
                 const isOverdueIncome = e.type === 'income' && !isOngoingEntry(e, entryActuals);
                 const isCompletedSplitContainer = isSplitSlice && actualValue >= plannedAmt && remainingAmt <= 0 && Boolean(parentEntry.keepOngoing);
+                // An active split slice is currently underway when actual drawing has started on the entry
+                // and this slice is the active head tranche (or if its scheduled date has passed and it carried forward)
+                const isActiveDrawingSlice = isSplitSlice && actualValue > 0 && actualValue < plannedAmt && (e.date <= DateUtils.todayString() || e.id === parentEntry.id);
                 const displayPlannedAmt = isCompletedSplitContainer
                   ? Number(parentEntry.amount || plannedAmt)
                   : (isSplitSlice ? Number(e.amount || 0) : plannedAmt);
-                const ongoing = (!isSplitSlice || isCompletedSplitContainer)
+                const ongoing = (!isSplitSlice || isCompletedSplitContainer || isActiveDrawingSlice)
                   && !(isCreditSettlement || isCreditDueLumpSum(e))
                   && !isOverdueIncome
                   && (isOngoingEntry(parentEntry, entryActuals) || (isPartial && !parentEntry.isClosed && (actualValue > 0 || isPastDate)));
                 const canFinish = !parentEntry.isClosed && !isOpening && (actualValue > 0 || isPastDate || isLoan || ongoing || (isPartial && remainingAmt > 0));
                 const actualDate = actualValue > 0 ? getEntryActualDate(parentEntry, entryActualDates) : '';
                 const origStartDate = parentEntry.date || e.date;
-                const dateLabel = ongoing
+                const dateLabel = isCompletedSplitContainer
                   ? `${DateUtils.formatDisplayDate(origStartDate)} → ${actualDate && actualDate !== DateUtils.todayString()
                     ? DateUtils.formatDisplayDate(actualDate)
                     : 'Today'}`
+                  : (isActiveDrawingSlice && isPastDate)
+                  ? `${DateUtils.formatDisplayDate(e.date)} → Today`
                   : DateUtils.formatDisplayDate(e.date);
 
                 const statusInfo = !isOpening ? (entryStatusMap.get(e.id) || entryStatusMap.get(getEntryId(e))) : null;
