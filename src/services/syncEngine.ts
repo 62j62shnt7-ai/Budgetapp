@@ -342,14 +342,25 @@ export class SyncEngine {
       }
 
       // Concurrency check: revision mismatch OR modifiedTime changed since last sync
-      const isRemoteChanged =
-        (remoteRev !== undefined && baseRev > 0 && remoteRev !== baseRev) ||
-        (remoteModified && lastSyncTime && remoteModified !== lastSyncTime);
+      const isRevisionConflict = remoteRev !== undefined && baseRev > 0 && remoteRev !== baseRev;
+      const isTimestampMismatch = Boolean(remoteModified && lastSyncTime && remoteModified !== lastSyncTime);
 
-      if (isRemoteChanged) {
+      // Self-heal false conflicts caused by clock-skew or unsaved remote timestamps:
+      // If the remote payload was authored by our own device with our own expected revision,
+      // or its content hash matches what we previously synced, this is our own write.
+      const isOurOwnPreviousWrite =
+        (rawSync?.deviceId && rawSync.deviceId === getOrCreateDeviceId() && (remoteRev === baseRev || baseRev === 0)) ||
+        (rawSync?.contentHash && rawSync.contentHash === loadStorage(STORAGE_KEYS.syncContentHash, ''));
+
+      if (isTimestampMismatch && isOurOwnPreviousWrite && !isRevisionConflict) {
+        console.info('[syncEngine] Self-healing remote modifiedTime divergence for our own device write.');
+        if (remoteModified) {
+          saveStorage(STORAGE_KEYS.lastDriveSync, remoteModified);
+          state.setDriveSyncTime?.(remoteModified);
+        }
+      } else if (isRevisionConflict || isTimestampMismatch) {
         // True Divergence Conflict!
         console.warn('[syncEngine] True conflict detected! Remote changed while local had unsynced edits.');
-        // Trigger OCC snapshot upload via performPush with expectedModifiedTime to guarantee conflict snapshot in Drive
         await this.performPush(state, startMutationCount, false);
         return;
       }
@@ -369,8 +380,9 @@ export class SyncEngine {
     }
   }
 
-  private async performPush(state: BudgetStoreState, startMutationCount: number, forceOverwrite: boolean): Promise<void> {
-    const rawExport = state.exportJSON();
+  private async performPush(state: BudgetStoreState, startMutationCount: number, forceOverwrite: boolean, retryCount = 0): Promise<void> {
+    const freshState = this.getState();
+    const rawExport = freshState.exportJSON();
     const parsed = JSON.parse(rawExport);
     const contentHash = computeContentHash(parsed.data);
 
@@ -387,7 +399,7 @@ export class SyncEngine {
 
     const res: GoogleDriveSyncResult = await uploadBudgetToDrive(payloadObj, {
       isUserEdit: true,
-      expectedModifiedTime: forceOverwrite ? undefined : state.lastDriveSyncTime,
+      expectedModifiedTime: forceOverwrite ? undefined : (freshState.lastDriveSyncTime || undefined),
       forceOverwrite,
       localHash: contentHash,
     });
@@ -400,15 +412,35 @@ export class SyncEngine {
           contentHash,
         });
       } else {
-        // User edited while upload was in flight -> retain dirty status & schedule next cycle
+        // User edited while upload was in flight -> retain dirty status, advance base revision & schedule next cycle
         saveStorage(STORAGE_KEYS.lastDriveSync, res.modifiedTime || '');
         state.setDriveSyncTime?.(res.modifiedTime || null);
+        setSyncBaseRevision(getLocalSyncRevision());
+        saveStorage(STORAGE_KEYS.syncContentHash, contentHash);
         this.schedule(false);
       }
     } else if (res.conflict) {
       // Remote changed during upload
       const remoteRes = await downloadBudgetFromDrive();
       if (remoteRes.success && remoteRes.payload) {
+        const remoteData = remoteRes.payload as Record<string, unknown>;
+        const rawSync = (remoteData.sync || (remoteData.data as Record<string, unknown>)?.sync) as Partial<SyncMetadata> | undefined;
+        const remoteRev = rawSync?.revision;
+        const baseRev = getSyncBaseRevision();
+
+        const isOurOwnPreviousWrite =
+          (rawSync?.deviceId && rawSync.deviceId === getOrCreateDeviceId() && (remoteRev === baseRev || baseRev === 0)) ||
+          (rawSync?.contentHash && rawSync.contentHash === loadStorage(STORAGE_KEYS.syncContentHash, ''));
+
+        // If conflict was triggered purely due to stale modifiedTime but remote was our own write, heal and retry push once
+        if (isOurOwnPreviousWrite && remoteRes.modifiedTime && !forceOverwrite && retryCount === 0) {
+          console.info('[syncEngine] Recovered from self-conflict due to stale modifiedTime; updating baseline and retrying.');
+          saveStorage(STORAGE_KEYS.lastDriveSync, remoteRes.modifiedTime);
+          this.getState().setDriveSyncTime?.(remoteRes.modifiedTime);
+          await this.performPush(this.getState(), startMutationCount, false, retryCount + 1);
+          return;
+        }
+
         await this.handleConflictDetected(state, remoteRes.payload, remoteRes.modifiedTime);
       } else {
         state.setDriveSyncStatus('error');

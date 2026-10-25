@@ -133,9 +133,12 @@ globalThis.fetch = async (input, init = {}) => {
     );
   }
 
-  // Drive Files list
+  // Drive Files list (only matches /drive/v3/files collection, not /drive/v3/files/{id})
   if (url.startsWith('https://www.googleapis.com/drive/v3/files') && method === 'GET') {
     const parsedUrl = new URL(url);
+    if (parsedUrl.pathname !== '/drive/v3/files') {
+      // Fall through to specific file routes below
+    } else {
     const rawQ = parsedUrl.searchParams.get('q') || '';
     const q = decodeURIComponent(rawQ);
     
@@ -164,6 +167,7 @@ globalThis.fetch = async (input, init = {}) => {
       matching.push(f);
     }
     return new Response(JSON.stringify({ files: matching }), { status: 200 });
+    }
   }
 
   // Drive file download (alt=media)
@@ -390,7 +394,40 @@ assert.strictEqual(useBudgetStore.getState().hasUnsyncedChanges, true);
 await engine.sync('post_edit_push');
 assert.strictEqual(useBudgetStore.getState().driveSyncStatus, 'synced');
 assert.strictEqual(useBudgetStore.getState().syncConflict, null, 'No false conflict after manual push');
-console.log('✓ Scenario 4 passed: Manual push followed by edit syncs cleanly.');
+
+// Make a SECOND consecutive local edit immediately after
+useBudgetStore.getState().addEntry({
+  date: '2026-10-11',
+  amount: 450,
+  category: 'Lunch',
+  type: 'expense',
+  account: 'hsbc',
+});
+assert.strictEqual(useBudgetStore.getState().hasUnsyncedChanges, true);
+
+// Second consecutive sync should push cleanly without conflict
+await engine.sync('post_edit_push_2');
+assert.strictEqual(useBudgetStore.getState().driveSyncStatus, 'synced');
+assert.strictEqual(useBudgetStore.getState().syncConflict, null, 'No false conflict on consecutive edit');
+
+// Test self-healing of stale client-clock timestamp baseline:
+// Intentionally corrupt lastDriveSyncTime to simulate a past client-clock bug
+useBudgetStore.setState({ lastDriveSyncTime: '2026-01-01T00:00:00.000Z' });
+useBudgetStore.getState().addEntry({
+  date: '2026-10-12',
+  amount: 120,
+  category: 'Snack',
+  type: 'expense',
+  account: 'hsbc',
+});
+assert.strictEqual(useBudgetStore.getState().hasUnsyncedChanges, true);
+
+// Stale timestamp should self-heal because the remote file was written by this device with matching baseRevision
+await engine.sync('post_stale_timestamp_edit');
+assert.strictEqual(useBudgetStore.getState().driveSyncStatus, 'synced');
+assert.strictEqual(useBudgetStore.getState().syncConflict, null, 'Self-healed stale timestamp without raising false conflict');
+
+console.log('✓ Scenario 4 passed: Manual push followed by consecutive edits syncs cleanly.');
 
 // ----------------------------------------------------------------------------
 // Scenario 5: First sign-in matrix

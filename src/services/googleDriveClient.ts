@@ -946,7 +946,7 @@ export async function uploadBudgetToDrive(
       }
 
       // Overwrite existing file content directly
-      const updateRes = await fetchWithAuth(`https://www.googleapis.com/upload/drive/v3/files/${existingFile.id}?uploadType=media`, {
+      const updateRes = await fetchWithAuth(`https://www.googleapis.com/upload/drive/v3/files/${existingFile.id}?uploadType=media&fields=id,modifiedTime`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: content,
@@ -963,10 +963,20 @@ export async function uploadBudgetToDrive(
 
       const updatedData = (await updateRes.json()) as { id: string; modifiedTime?: string };
       cachedLiveFileId = updatedData.id;
+      let verifiedModifiedTime = updatedData.modifiedTime;
+      if (!verifiedModifiedTime) {
+        try {
+          const metaRes = await fetchWithAuth(`https://www.googleapis.com/drive/v3/files/${updatedData.id}?fields=id,modifiedTime`);
+          if (metaRes.ok) {
+            const metaJson = (await metaRes.json()) as { modifiedTime?: string };
+            verifiedModifiedTime = metaJson.modifiedTime;
+          }
+        } catch {}
+      }
       return {
         success: true,
         fileId: updatedData.id,
-        modifiedTime: updatedData.modifiedTime || new Date().toISOString(),
+        modifiedTime: verifiedModifiedTime || new Date().toISOString(),
       };
     } else {
       // Create new file with multipart upload inside folder
@@ -989,7 +999,7 @@ export async function uploadBudgetToDrive(
         content +
         closeDelimiter;
 
-      const createRes = await fetchWithAuth('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+      const createRes = await fetchWithAuth('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,modifiedTime', {
         method: 'POST',
         headers: {
           'Content-Type': `multipart/related; boundary=${boundary}`,
@@ -1008,10 +1018,20 @@ export async function uploadBudgetToDrive(
 
       const createdData = (await createRes.json()) as { id: string; modifiedTime?: string };
       cachedLiveFileId = createdData.id;
+      let verifiedCreatedTime = createdData.modifiedTime;
+      if (!verifiedCreatedTime) {
+        try {
+          const metaRes = await fetchWithAuth(`https://www.googleapis.com/drive/v3/files/${createdData.id}?fields=id,modifiedTime`);
+          if (metaRes.ok) {
+            const metaJson = (await metaRes.json()) as { modifiedTime?: string };
+            verifiedCreatedTime = metaJson.modifiedTime;
+          }
+        } catch {}
+      }
       return {
         success: true,
         fileId: createdData.id,
-        modifiedTime: createdData.modifiedTime || new Date().toISOString(),
+        modifiedTime: verifiedCreatedTime || new Date().toISOString(),
       };
     }
   } catch (err) {
