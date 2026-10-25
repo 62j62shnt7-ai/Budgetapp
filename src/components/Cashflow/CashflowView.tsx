@@ -1215,12 +1215,14 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                 const canFinish = !parentEntry.isClosed && !isOpening && (actualValue > 0 || isPastDate || isLoan || ongoing || (isPartial && remainingAmt > 0));
                 const actualDate = actualValue > 0 ? getEntryActualDate(parentEntry, entryActualDates) : '';
                 const origStartDate = parentEntry.date || e.date;
-                const dateLabel = isCompletedSplitContainer
-                  ? `${DateUtils.formatDisplayDate(origStartDate)} → ${actualDate && actualDate !== DateUtils.todayString()
-                    ? DateUtils.formatDisplayDate(actualDate)
-                    : 'Today'}`
-                  : (isActiveDrawingSlice && isPastDate)
-                  ? `${DateUtils.formatDisplayDate(e.date)} → Today`
+                const dateLabel = ongoing
+                  ? (isSplitSlice && !isCompletedSplitContainer)
+                    ? (isActiveDrawingSlice && isPastDate
+                      ? `${DateUtils.formatDisplayDate(e.date)} → ${actualDate && actualDate !== DateUtils.todayString() ? DateUtils.formatDisplayDate(actualDate) : 'Today'}`
+                      : DateUtils.formatDisplayDate(e.date))
+                    : `${DateUtils.formatDisplayDate(origStartDate)} → ${actualDate && actualDate !== DateUtils.todayString()
+                      ? DateUtils.formatDisplayDate(actualDate)
+                      : 'Today'}`
                   : DateUtils.formatDisplayDate(e.date);
 
                 const statusInfo = !isOpening ? (entryStatusMap.get(e.id) || entryStatusMap.get(getEntryId(e))) : null;
