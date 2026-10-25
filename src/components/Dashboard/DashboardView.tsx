@@ -338,13 +338,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
     entryActualDates,
     creditSettlementOverrides,
   });
-  const insights = generateSmartInsights({
+  const rawInsights = generateSmartInsights({
     entries: allCandidateEntries,
     forecast,
     deficitPeriods,
     actualCashNow: totalCash,
     storageTotal,
   });
+  // Filter out redundant deficit-alert insight when an active deficit already dominates the Action Center
+  const insights = hasDeficit
+    ? rawInsights.filter((insight) => insight.id !== 'deficit-alert')
+    : rawInsights;
   const deficits = {
     hasDeficit,
     worstDeficit: Math.max(0, ...deficitPeriods.map((item) => Math.abs(item.lowestBalance))),
@@ -451,7 +455,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
     : (forecast.length > 0 ? Math.min(0, ...forecast.map((f) => f.balance)) : 0);
   const peakDeficit = Math.ceil(Math.abs(lowestDeficitNumber));
 
-  const remediationAdvice = targetPeriod && peakDeficit > 0
+  const remediationData = targetPeriod && peakDeficit > 0
     ? (() => {
         const peak = peakDeficit;
         const fx = storageAssets.find(
@@ -496,182 +500,279 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
         const fxAmountNeeded = Math.ceil(peak / fxRate);
         const fxLabel = fx ? (fx.unit || fx.name || 'USD') : 'foreign currency';
 
-        const options = [
-          fx
-            ? `Exchange approx. ${fxAmountNeeded.toLocaleString()} ${fxLabel}`
-            : 'Exchange foreign currency if available',
-          goldGramsNeeded
-            ? `Liquidate approx. ${goldGramsNeeded}g gold (${formatMoney(peak)})`
-            : 'Liquidate gold or another liquid asset',
-          flexible ? `Postpone ${flexible.category} (${formatMoney(flexible.amount)})` : 'Postpone a flexible expense',
-          targetPeriod.resolvedDate
-            ? `Bridge ${formatMoney(peak)} until ${DateUtils.formatDisplayDate(targetPeriod.resolvedDate)}`
-            : `Bridge ${formatMoney(peak)} via short-term loan or credit`,
+        const chips = [
+          {
+            id: 'fx',
+            label: fx
+              ? `Exchange ~${fxAmountNeeded.toLocaleString()} ${fxLabel}`
+              : 'Exchange foreign currency',
+            icon: '💱',
+            action: () => setActiveTab('storage'),
+            title: 'Go to Stored Assets to exchange foreign currency',
+          },
+          {
+            id: 'gold',
+            label: goldGramsNeeded
+              ? `Liquidate ~${goldGramsNeeded}g gold (${formatMoney(peak)})`
+              : 'Liquidate gold / liquid asset',
+            icon: '🪙',
+            action: () => setActiveTab('storage'),
+            title: 'Go to Stored Assets to liquidate gold or stored asset',
+          },
+          ...(flexible
+            ? [
+                {
+                  id: 'postpone',
+                  label: `Postpone ${flexible.category} (${formatMoney(flexible.amount)})`,
+                  icon: '⏱️',
+                  action: () =>
+                    navigateTo('cashflow', {
+                      category: flexible.category,
+                      month: DateUtils.getMonthKey(flexible.date),
+                    }),
+                  title: `Navigate to Cashflow to postpone ${flexible.category}`,
+                },
+              ]
+            : []),
+          {
+            id: 'bridge',
+            label: targetPeriod.resolvedDate
+              ? `Bridge ${formatMoney(peak)} until ${DateUtils.formatDisplayDate(targetPeriod.resolvedDate)}`
+              : `Bridge ${formatMoney(peak)} via credit/loan`,
+            icon: '💳',
+            action: () => setActiveTab('deficits'),
+            title: 'Go to Deficits view to review the recovery path',
+          },
         ];
-        return `Remediation (peak deficit ${formatMoney(peak)}): ${options.join(' · ')}`;
+
+        const legacyText = `Remediation (peak deficit ${formatMoney(peak)}): ${chips.map((c) => c.label).join(' · ')}`;
+
+        return {
+          chips,
+          legacyText,
+        };
       })()
-    : '';
+    : null;
+
+  const remediationAdvice = remediationData?.legacyText || '';
 
   return (
     <section className="view dashboard-view" id="dashboard" style={{ display: 'block' }}>
-      {/* Credit Settlement Account Funding Deficit Warning Banner */}
-      {criticalFundingAlerts.length > 0 && (() => {
-        const hasUncovered = criticalFundingAlerts.some((a) => !a.canBeCoveredByTransfer);
-        const bannerBorder = hasUncovered ? 'var(--red, #f43f5e)' : 'var(--amber, #f59e0b)';
-        const bannerBg = hasUncovered
-          ? 'linear-gradient(135deg, rgba(244, 63, 94, 0.14) 0%, rgba(239, 68, 68, 0.05) 100%)'
-          : 'linear-gradient(135deg, rgba(245, 158, 11, 0.14) 0%, rgba(217, 119, 6, 0.05) 100%)';
-        const bannerIconBg = hasUncovered ? 'var(--red, #f43f5e)' : 'var(--amber, #f59e0b)';
-        const bannerTitleColor = hasUncovered ? 'var(--red, #f43f5e)' : 'var(--amber, #f59e0b)';
-        const bannerTitle = hasUncovered
-          ? 'Credit Due Account Shortfall'
-          : 'Credit Settlement: Transfer Needed Before Due Date';
+      {/* Consolidated Dashboard Action Center */}
+      {(criticalFundingAlerts.length > 0 || deficits.hasDeficit) && (() => {
+        const hasUncoveredFunding = criticalFundingAlerts.some((a) => !a.canBeCoveredByTransfer);
+        const isCritical = hasUncoveredFunding || deficits.hasDeficit;
+        const totalActionCount = criticalFundingAlerts.length + (deficits.hasDeficit ? 1 : 0);
 
         return (
-          <div
-            className="alert-banner credit-funding-alert-banner"
-            id="creditFundingAlertBanner"
-            style={{
-              borderColor: bannerBorder,
-              background: bannerBg,
-              marginBottom: '16px',
-            }}
+          <section
+            className={`dashboard-action-center ${isCritical ? 'has-danger' : 'has-warning'}`}
+            aria-label="Dashboard Action Center"
           >
-            <div className="alert-banner-icon" style={{ background: bannerIconBg, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <AlertTriangle size={16} />
-            </div>
-            <div className="alert-banner-body">
-              <strong style={{ color: bannerTitleColor, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span>{bannerTitle}</span>
-                <span
-                  style={{
-                    fontSize: '11px',
-                    background: hasUncovered ? 'rgba(244, 63, 94, 0.2)' : 'rgba(245, 158, 11, 0.2)',
-                    color: bannerTitleColor,
-                    padding: '2px 6px',
-                    borderRadius: '4px',
-                    fontWeight: 700,
-                  }}
-                >
-                  {criticalFundingAlerts.length} Action Needed
+            <div className="dashboard-action-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <AlertTriangle size={18} style={{ color: isCritical ? 'var(--red, #f43f5e)' : 'var(--amber, #f59e0b)' }} />
+                <h3>Action Center</h3>
+                <span className="dashboard-action-badge">
+                  {totalActionCount} {totalActionCount === 1 ? 'Action Required' : 'Actions Required'}
                 </span>
-              </strong>
-              <div id="creditFundingAlertList" style={{ marginTop: '4px', fontSize: '13px', lineHeight: '1.4' }}>
-                {criticalFundingAlerts.map((alert) => (
-                  <div key={alert.entryId} style={{ marginTop: '3px' }}>
-                    <strong>{alert.cardName}</strong> settlement of{' '}
-                    <strong>{formatMoney(alert.remainingDue)}</strong> is due on{' '}
-                    {DateUtils.formatDisplayDate(alert.settlementDate)} (
-                    {alert.daysUntilSettlement < 0
-                      ? `${Math.abs(alert.daysUntilSettlement)}d overdue`
-                      : alert.daysUntilSettlement === 0
-                      ? 'Today'
-                      : `in ${alert.daysUntilSettlement}d`}
-                    ), but <strong>{alert.accountName}</strong> has only{' '}
-                    <strong>{formatMoney(alert.accountBalance)}</strong>. Shortfall:{' '}
-                    <strong style={{ color: hasUncovered ? 'var(--red, #f43f5e)' : 'var(--amber, #f59e0b)' }}>
-                      {formatMoney(alert.shortfall)}
-                    </strong>
-                    {alert.canBeCoveredByTransfer && alert.suggestedSourceAccount ? (
-                      <span style={{ color: 'var(--muted)', marginLeft: '4px' }}>
-                        (can be covered by transfer from {alert.suggestedSourceAccount.accountName})
-                      </span>
-                    ) : alert.suggestedSourceAccount && alert.maxTransferableAmount && alert.maxTransferableAmount > 0 ? (
-                      <span style={{ color: 'var(--muted)', marginLeft: '4px' }}>
-                        ({formatMoney(alert.maxTransferableAmount)} can be transferred from {alert.suggestedSourceAccount.accountName}; <strong>Remaining Shortfall: {formatMoney(alert.remainingUncoveredShortfall ?? (alert.shortfall - alert.maxTransferableAmount))}</strong>)
-                      </span>
-                    ) : null}
-                  </div>
-                ))}
               </div>
-              {criticalFundingAlerts[0]?.suggestedSourceAccount && (
-                <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <Lightbulb size={13} style={{ flexShrink: 0 }} />
-                  <span>
-                    Suggested transfer:{' '}
-                    {criticalFundingAlerts[0].canBeCoveredByTransfer ? (
-                    <>
-                      {formatMoney(criticalFundingAlerts[0].shortfall)} from{' '}
-                      {criticalFundingAlerts[0].suggestedSourceAccount.accountName} (projected at settlement:{' '}
-                      {formatMoney(criticalFundingAlerts[0].suggestedSourceAccount.projectedBalance ?? criticalFundingAlerts[0].suggestedSourceAccount.balance)}) into{' '}
-                      {criticalFundingAlerts[0].accountName}.
-                    </>
-                  ) : (
-                    <>
-                      Partial transfer of {formatMoney(criticalFundingAlerts[0].maxTransferableAmount || 0)} from{' '}
-                      {criticalFundingAlerts[0].suggestedSourceAccount.accountName} (projected at settlement:{' '}
-                      {formatMoney(criticalFundingAlerts[0].suggestedSourceAccount.projectedBalance ?? criticalFundingAlerts[0].suggestedSourceAccount.balance)}). Remaining shortfall:{' '}
-                      <strong>{formatMoney(criticalFundingAlerts[0].remainingUncoveredShortfall || 0)}</strong>.
-                    </>
-                  )}
-                  </span>
-                </div>
-              )}
-            </div>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-              {(criticalFundingAlerts[0]?.canBeCoveredByTransfer || (criticalFundingAlerts[0]?.maxTransferableAmount && criticalFundingAlerts[0].maxTransferableAmount > 0)) && (
-                <button
-                  className="primary-button"
-                  id="creditFundingTransferAction"
-                  type="button"
-                  style={{
-                    background: hasUncovered ? '#be123c' : '#b45309',
-                    borderColor: hasUncovered ? '#9f1239' : '#92400e',
-                    color: '#ffffff',
-                    fontSize: '12px',
-                    padding: '6px 14px',
-                    height: 'auto',
-                    fontWeight: 700,
-                  }}
-                  onClick={() => handleOpenAlertTransfer(criticalFundingAlerts[0])}
-                >
-                  Transfer Funds
-                </button>
-              )}
               <button
                 className="ghost-button"
                 type="button"
-                style={{ fontSize: '12px', padding: '6px 10px', height: 'auto' }}
+                style={{ fontSize: '12px', padding: '4px 10px', height: 'auto' }}
                 onClick={() => setActiveTab('deficits')}
               >
-                View Deficits
+                Deficits Workspace →
               </button>
             </div>
-          </div>
+
+            <div className="dashboard-action-list">
+              {/* Credit Settlement Funding Alerts */}
+              {criticalFundingAlerts.length > 0 && (
+                <div
+                  className="alert-banner credit-funding-alert-banner dashboard-action-item"
+                  id="creditFundingAlertBanner"
+                  style={{
+                    borderColor: hasUncoveredFunding ? 'var(--red, #f43f5e)' : 'var(--amber, #f59e0b)',
+                    background: hasUncoveredFunding
+                      ? 'linear-gradient(135deg, rgba(244, 63, 94, 0.12) 0%, rgba(239, 68, 68, 0.04) 100%)'
+                      : 'linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(217, 119, 6, 0.04) 100%)',
+                    margin: 0,
+                  }}
+                >
+                  <div
+                    className="alert-banner-icon"
+                    style={{
+                      background: hasUncoveredFunding ? 'var(--red, #f43f5e)' : 'var(--amber, #f59e0b)',
+                      color: '#fff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <AlertTriangle size={16} />
+                  </div>
+                  <div className="alert-banner-body dashboard-action-item-body">
+                    <strong
+                      style={{
+                        color: hasUncoveredFunding ? 'var(--red, #f43f5e)' : 'var(--amber, #f59e0b)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
+                    >
+                      <span>
+                        {hasUncoveredFunding
+                          ? 'Credit Due Account Shortfall'
+                          : 'Credit Settlement: Transfer Needed Before Due Date'}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: '11px',
+                          background: hasUncoveredFunding ? 'rgba(244, 63, 94, 0.2)' : 'rgba(245, 158, 11, 0.2)',
+                          color: hasUncoveredFunding ? 'var(--red, #f43f5e)' : 'var(--amber, #f59e0b)',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          fontWeight: 700,
+                        }}
+                      >
+                        {criticalFundingAlerts.length} Shortfall{criticalFundingAlerts.length === 1 ? '' : 's'}
+                      </span>
+                    </strong>
+                    <div id="creditFundingAlertList" style={{ marginTop: '4px', fontSize: '13px', lineHeight: '1.4' }}>
+                      {criticalFundingAlerts.map((alert) => (
+                        <div key={alert.entryId} style={{ marginTop: '3px' }}>
+                          <strong>{alert.cardName}</strong> settlement of{' '}
+                          <strong>{formatMoney(alert.remainingDue)}</strong> is due on{' '}
+                          {DateUtils.formatDisplayDate(alert.settlementDate)} (
+                          {alert.daysUntilSettlement < 0
+                            ? `${Math.abs(alert.daysUntilSettlement)}d overdue`
+                            : alert.daysUntilSettlement === 0
+                            ? 'Today'
+                            : `in ${alert.daysUntilSettlement}d`}
+                          ), but <strong>{alert.accountName}</strong> has only{' '}
+                          <strong>{formatMoney(alert.accountBalance)}</strong>. Shortfall:{' '}
+                          <strong style={{ color: hasUncoveredFunding ? 'var(--red, #f43f5e)' : 'var(--amber, #f59e0b)' }}>
+                            {formatMoney(alert.shortfall)}
+                          </strong>
+                          {alert.canBeCoveredByTransfer && alert.suggestedSourceAccount ? (
+                            <span style={{ color: 'var(--muted)', marginLeft: '4px' }}>
+                              (can be covered by transfer from {alert.suggestedSourceAccount.accountName})
+                            </span>
+                          ) : alert.suggestedSourceAccount && alert.maxTransferableAmount && alert.maxTransferableAmount > 0 ? (
+                            <span style={{ color: 'var(--muted)', marginLeft: '4px' }}>
+                              ({formatMoney(alert.maxTransferableAmount)} can be transferred from {alert.suggestedSourceAccount.accountName}; <strong>Remaining Shortfall: {formatMoney(alert.remainingUncoveredShortfall ?? (alert.shortfall - alert.maxTransferableAmount))}</strong>)
+                            </span>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                    {criticalFundingAlerts[0]?.suggestedSourceAccount && (
+                      <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                        <Lightbulb size={13} style={{ flexShrink: 0 }} />
+                        <span>
+                          Suggested transfer:{' '}
+                          {criticalFundingAlerts[0].canBeCoveredByTransfer ? (
+                            <>
+                              {formatMoney(criticalFundingAlerts[0].shortfall)} from{' '}
+                              {criticalFundingAlerts[0].suggestedSourceAccount.accountName} (projected at settlement:{' '}
+                              {formatMoney(criticalFundingAlerts[0].suggestedSourceAccount.projectedBalance ?? criticalFundingAlerts[0].suggestedSourceAccount.balance)}) into{' '}
+                              {criticalFundingAlerts[0].accountName}.
+                            </>
+                          ) : (
+                            <>
+                              Partial transfer of {formatMoney(criticalFundingAlerts[0].maxTransferableAmount || 0)} from{' '}
+                              {criticalFundingAlerts[0].suggestedSourceAccount.accountName} (projected at settlement:{' '}
+                              {formatMoney(criticalFundingAlerts[0].suggestedSourceAccount.projectedBalance ?? criticalFundingAlerts[0].suggestedSourceAccount.balance)}). Remaining shortfall:{' '}
+                              <strong>{formatMoney(criticalFundingAlerts[0].remainingUncoveredShortfall || 0)}</strong>.
+                            </>
+                          )}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="dashboard-action-item-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    {(criticalFundingAlerts[0]?.canBeCoveredByTransfer || (criticalFundingAlerts[0]?.maxTransferableAmount && criticalFundingAlerts[0].maxTransferableAmount > 0)) && (
+                      <button
+                        className="primary-button"
+                        id="creditFundingTransferAction"
+                        type="button"
+                        style={{
+                          background: hasUncoveredFunding ? '#be123c' : '#b45309',
+                          borderColor: hasUncoveredFunding ? '#9f1239' : '#92400e',
+                          color: '#ffffff',
+                          fontSize: '12px',
+                          padding: '6px 14px',
+                          height: 'auto',
+                          fontWeight: 700,
+                        }}
+                        onClick={() => handleOpenAlertTransfer(criticalFundingAlerts[0])}
+                      >
+                        Transfer Funds
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Cash Forecast Deficit Alert */}
+              {deficits.hasDeficit && (
+                <div className="alert-banner dashboard-action-item" id="deficitBanner" style={{ margin: 0 }}>
+                  <div className="alert-banner-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <AlertTriangle size={16} />
+                  </div>
+                  <div className="alert-banner-body dashboard-action-item-body">
+                    <strong>Deficiencies detected</strong>
+                    <p id="deficitBannerSummary">
+                      Balance turns negative on {DateUtils.formatDisplayDate(firstDeficit?.startDate || DateUtils.todayString())}
+                      {' · '}peak deficit {formatMoney(deficits.worstDeficit)}
+                      {targetPeriod?.isResolved ? ` · recovers on ${DateUtils.formatDisplayDate(targetPeriod.resolvedDate || targetPeriod.lowestDate)}` : ' · remains unresolved'}
+                      {overdueNow.length > 0 ? ` · ${overdueNow.length} overdue obligation${overdueNow.length === 1 ? '' : 's'}` : ''}
+                    </p>
+
+                    {/* Interactive Remediation Chips */}
+                    {remediationData?.chips && (
+                      <div className="dashboard-remediation-chips" style={{ marginTop: '8px' }}>
+                        {remediationData.chips.map((chip) => (
+                          <button
+                            key={chip.id}
+                            type="button"
+                            className="dashboard-remediation-chip"
+                            onClick={chip.action}
+                            title={chip.title}
+                          >
+                            <span>{chip.icon}</span>
+                            <span>{chip.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Preserved pill element for test and DOM accessibility compatibility */}
+                    <div id="deficitRemediationAdvice" className="deficit-remediation-pill" style={{ display: 'block', marginTop: '6px' }}>
+                      {remediationAdvice}
+                    </div>
+                  </div>
+                  <div className="dashboard-action-item-actions">
+                    <button
+                      className="ghost-button"
+                      id="deficitBannerAction"
+                      type="button"
+                      onClick={() => setActiveTab('deficits')}
+                    >
+                      View Deficits
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
         );
       })()}
 
-      {/* Deficit Alert Banner */}
-      {deficits.hasDeficit && (
-        <div className="alert-banner" id="deficitBanner">
-          <div className="alert-banner-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <AlertTriangle size={16} />
-          </div>
-          <div className="alert-banner-body">
-            <strong>Deficiencies detected</strong>
-            <p id="deficitBannerSummary">
-              Balance turns negative on {DateUtils.formatDisplayDate(firstDeficit?.startDate || DateUtils.todayString())}
-              {' · '}peak deficit {formatMoney(deficits.worstDeficit)}
-              {targetPeriod?.isResolved ? ` · recovers on ${DateUtils.formatDisplayDate(targetPeriod.resolvedDate || targetPeriod.lowestDate)}` : ' · remains unresolved'}
-              {overdueNow.length > 0 ? ` · ${overdueNow.length} overdue obligation${overdueNow.length === 1 ? '' : 's'}` : ''}
-            </p>
-            <div id="deficitRemediationAdvice" className="deficit-remediation-pill" style={{ display: 'block' }}>
-              {remediationAdvice}
-            </div>
-          </div>
-          <button
-            className="ghost-button"
-            id="deficitBannerAction"
-            type="button"
-            onClick={() => setActiveTab('deficits')}
-          >
-            View Deficits
-          </button>
-        </div>
-      )}
-
-      {/* Metrics Grid */}
-      <div className="metrics-grid">
+      {/* Metrics Row 1: Core Financial KPIs */}
+      <div className="dashboard-kpi-row">
         <article
           className="metric highlight-metric history-summary-clickable-row"
           style={{ cursor: 'pointer' }}
@@ -707,13 +808,137 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
           role="button"
           title="Click to view and adjust Bank & Cash Accounts"
         >
-          <span>Actual cash today</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+            <span>Actual cash today</span>
+            <span
+              id="cashflowStatus"
+              style={{
+                fontSize: '0.6875rem',
+                fontWeight: 700,
+                padding: '2px 6px',
+                borderRadius: '4px',
+                background: overdueNow.length > 0
+                  ? 'rgba(245, 158, 11, 0.15)'
+                  : deficits.hasDeficit
+                  ? 'rgba(244, 63, 94, 0.15)'
+                  : 'rgba(16, 185, 129, 0.15)',
+                color: overdueNow.length > 0
+                  ? 'var(--amber, #f59e0b)'
+                  : deficits.hasDeficit
+                  ? 'var(--red, #f43f5e)'
+                  : 'var(--green, #10b981)',
+              }}
+              title={
+                overdueNow.length > 0
+                  ? `${overdueNow.length} overdue obligation(s)`
+                  : deficits.hasDeficit
+                  ? 'Deficit risk in forecast'
+                  : 'Forecast stays positive'
+              }
+            >
+              {overdueNow.length > 0
+                ? 'OVERDUE'
+                : deficits.hasDeficit
+                ? 'DEFICIT RISK'
+                : 'STATUS OK'}
+            </span>
+          </div>
           <strong id="actualCashToday" style={{ color: '#38bdf8', fontWeight: 800 }}>
             {formatMoney(totalCash)}
           </strong>
-          <small>Sum of account balances only</small>
+          <small id="cashflowStatusNote">
+            {overdueNow.length > 0
+              ? `${overdueNow.length} past due · ${formatMoney(overdueNow.reduce((s, o) => s + o.remaining, 0))} unpaid`
+              : 'Sum of account balances only'}
+          </small>
         </article>
 
+        <article
+          className="metric history-summary-clickable-row"
+          style={{ cursor: 'pointer' }}
+          onClick={() => setActiveTab('storage')}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setActiveTab('storage');
+            }
+          }}
+          tabIndex={0}
+          role="button"
+          title="Click to view Stored Assets & Valuations"
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+            <span>Stored assets</span>
+            {rates.lastFetched && (
+              <span
+                id="storageLastPulled"
+                style={{
+                  fontSize: '0.6875rem',
+                  color: 'var(--muted, #94a3b8)',
+                  fontWeight: 500,
+                }}
+                title={`Last pulled: ${new Date(rates.lastFetched).toLocaleString()}`}
+              >
+                {formatLastUpdated(rates.lastFetched)}
+              </span>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
+            <strong id="storageTotal" style={{ color: '#fbbf24', fontWeight: 800 }}>
+              {formatMoney(storageTotal)}
+            </strong>
+            {storageChange && (
+              <span
+                id="storageChangePct"
+                style={{
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  padding: '1px 6px',
+                  borderRadius: '4px',
+                  background: storageChange.isPositive ? 'rgba(16, 185, 129, 0.15)' : 'rgba(244, 63, 94, 0.15)',
+                  color: storageChange.isPositive ? 'var(--green, #10b981)' : 'var(--red, #f43f5e)',
+                }}
+                title={storageChange.title}
+              >
+                {storageChange.text}
+              </span>
+            )}
+          </div>
+          <small>Gold, USD, EUR</small>
+        </article>
+
+        <article
+          className="metric history-summary-clickable-row"
+          style={{ cursor: 'pointer' }}
+          onClick={() => setActiveTab('deficits')}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setActiveTab('deficits');
+            }
+          }}
+          tabIndex={0}
+          role="button"
+          title="Click to view Deficit analysis and recovery plan"
+        >
+          <span>Forecast low point</span>
+          <strong
+            id="forecastLow"
+            style={{
+              color: lowestPoint < 0 ? 'var(--red, #f43f5e)' : lowestPoint < 15000 ? 'var(--amber, #f59e0b)' : '#34d399',
+              fontWeight: 800,
+            }}
+          >
+            {formatMoney(lowestPoint)}
+          </strong>
+          <small id="forecastLowDate">
+            {lowestProjection.date ? `Floor on ${DateUtils.formatDisplayDate(lowestProjection.date)}` : 'Lowest projected cash'}
+          </small>
+        </article>
+      </div>
+
+      {/* Metrics Row 2: Credit Cards & Dues */}
+      <div className="dashboard-credit-cards-row">
         {/* CIB Dual Metric */}
         <article
           className="metric credit-dual-metric cib-metric-card history-summary-clickable-row"
@@ -919,146 +1144,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
             </div>
           </div>
         </article>
-
-        <article
-          className="metric history-summary-clickable-row"
-          style={{ cursor: 'pointer' }}
-          onClick={() => setActiveTab('storage')}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              setActiveTab('storage');
-            }
-          }}
-          tabIndex={0}
-          role="button"
-          title="Click to view Stored Assets & Valuations"
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-            <span>Stored assets</span>
-            {rates.lastFetched && (
-              <span
-                id="storageLastPulled"
-                style={{
-                  fontSize: '0.6875rem',
-                  color: 'var(--muted, #94a3b8)',
-                  fontWeight: 500,
-                }}
-                title={`Last pulled: ${new Date(rates.lastFetched).toLocaleString()}`}
-              >
-                {formatLastUpdated(rates.lastFetched)}
-              </span>
-            )}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
-            <strong id="storageTotal" style={{ color: '#fbbf24', fontWeight: 800 }}>
-              {formatMoney(storageTotal)}
-            </strong>
-            {storageChange && (
-              <span
-                id="storageChangePct"
-                style={{
-                  fontSize: '0.75rem',
-                  fontWeight: 700,
-                  padding: '1px 6px',
-                  borderRadius: '4px',
-                  background: storageChange.isPositive ? 'rgba(16, 185, 129, 0.15)' : 'rgba(244, 63, 94, 0.15)',
-                  color: storageChange.isPositive ? 'var(--green, #10b981)' : 'var(--red, #f43f5e)',
-                }}
-                title={storageChange.title}
-              >
-                {storageChange.text}
-              </span>
-            )}
-          </div>
-          <small>Gold, USD, EUR</small>
-        </article>
-
-        <article
-          className="metric history-summary-clickable-row"
-          style={{ cursor: 'pointer' }}
-          onClick={() => setActiveTab('deficits')}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              setActiveTab('deficits');
-            }
-          }}
-          tabIndex={0}
-          role="button"
-          title="Click to view Deficit analysis and recovery plan"
-        >
-          <span>Forecast low point</span>
-          <strong
-            id="forecastLow"
-            style={{
-              color: lowestPoint < 0 ? 'var(--red, #f43f5e)' : lowestPoint < 15000 ? 'var(--amber, #f59e0b)' : '#34d399',
-              fontWeight: 800,
-            }}
-          >
-            {formatMoney(lowestPoint)}
-          </strong>
-          <small id="forecastLowDate">
-            {lowestProjection.date ? `Floor on ${DateUtils.formatDisplayDate(lowestProjection.date)}` : 'Lowest projected cash'}
-          </small>
-        </article>
-
-        <article
-          className="metric history-summary-clickable-row"
-          style={{ cursor: 'pointer' }}
-          onClick={() => {
-            if (overdueNow.length > 0 || deficits.hasDeficit) {
-              setActiveTab('deficits');
-            } else {
-              setActiveTab('cashflow');
-            }
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              if (overdueNow.length > 0 || deficits.hasDeficit) {
-                setActiveTab('deficits');
-              } else {
-                setActiveTab('cashflow');
-              }
-            }
-          }}
-          tabIndex={0}
-          role="button"
-          title={
-            overdueNow.length > 0
-              ? 'Click to view overdue obligations in Deficits view'
-              : deficits.hasDeficit
-              ? 'Click to view Deficit analysis and recovery plan'
-              : 'Click to view Cash Flow forecast'
-          }
-        >
-          <span>Cashflow status</span>
-          <strong
-            id="cashflowStatus"
-            style={{
-              color: overdueNow.length > 0
-                ? 'var(--amber, #f59e0b)'
-                : deficits.hasDeficit
-                ? 'var(--red, #f43f5e)'
-                : 'var(--green, #10b981)',
-              fontWeight: 800,
-            }}
-          >
-            {overdueNow.length > 0
-              ? 'Overdue'
-              : deficits.hasDeficit
-              ? 'Deficit Risk'
-              : 'OK'}
-          </strong>
-          <small id="cashflowStatusNote">
-            {overdueNow.length > 0
-              ? `${overdueNow.length} past due obligation${overdueNow.length === 1 ? '' : 's'} · ${formatMoney(overdueNow.reduce((s, o) => s + o.remaining, 0))} unpaid`
-              : deficits.hasDeficit
-              ? 'Review upcoming obligations'
-              : 'Cash stays positive across entire forecast'}
-          </small>
-        </article>
       </div>
 
       {/* Advisory & Health Score */}
@@ -1142,29 +1227,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
       <section className="panel dashboard-focus-panel dashboard-section-block" aria-labelledby="dashboardFocusHeading">
         <div className="panel-heading panel-heading-compact dashboard-focus-heading">
           <div className="dashboard-focus-title">
-            <h3 id="dashboardFocusHeading">Today at a glance</h3>
-            <span className="panel-kicker">Your next useful actions</span>
+            <h3 id="dashboardFocusHeading">Upcoming Activity</h3>
+            <span className="panel-kicker">Next scheduled transactions</span>
           </div>
         </div>
         <div className="dashboard-focus-grid">
-          <div className={`dashboard-focus-card ${hasSpendableFloor ? 'dashboard-focus-card--safe' : 'dashboard-focus-card--danger'}`}>
-            <span className="dashboard-focus-label">Safe to spend</span>
-            <strong style={{ color: hasSpendableFloor ? 'var(--green, #10b981)' : 'var(--red, #f43f5e)', fontWeight: 800 }}>
-              {formatMoney(safeToSpend)}
-            </strong>
-            <small>
-              {hasSpendableFloor
-                ? 'Protected by your lowest projected floor'
-                : `No headroom — projected floor is ${formatMoney(lowestPoint)}`}
-            </small>
-          </div>
-          <div className={`dashboard-focus-card ${deficits.hasDeficit ? 'dashboard-focus-card--danger' : 'dashboard-focus-card--safe'}`}>
-            <span className="dashboard-focus-label">{deficits.hasDeficit ? 'Deficit watch' : 'Forecast status'}</span>
-            <strong style={{ color: deficits.hasDeficit ? 'var(--red, #f43f5e)' : 'var(--green, #10b981)', fontWeight: 800 }}>
-              {deficits.hasDeficit ? formatMoney(deficits.worstDeficit) : 'Covered'}
-            </strong>
-            <small>{deficits.hasDeficit ? 'Review the remediation plan above' : 'No negative balance in the forecast'}</small>
-          </div>
           <div
             className={`dashboard-focus-card ${nextUpcomingExpense ? 'history-summary-clickable-row' : ''}`}
             style={{ cursor: nextUpcomingExpense ? 'pointer' : 'default' }}
@@ -1228,6 +1295,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
               {nextUpcomingIncome ? `+${formatMoney(nextUpcomingIncome.amount)}` : 'None'}
             </strong>
             <small>{nextUpcomingIncome ? `${nextUpcomingIncome.category} · ${DateUtils.formatDisplayDate(nextUpcomingIncome.date)}` : 'No upcoming income in range'}</small>
+          </div>
+          <div
+            className={`dashboard-focus-card ${hasSpendableFloor ? 'dashboard-focus-card--safe' : 'dashboard-focus-card--danger'}`}
+            style={{ cursor: 'pointer' }}
+            onClick={() => setActiveTab('deficits')}
+            title="View Deficits & Cash Flow forecast"
+          >
+            <span className="dashboard-focus-label">Safe to spend</span>
+            <strong style={{ color: hasSpendableFloor ? 'var(--green, #10b981)' : 'var(--red, #f43f5e)', fontWeight: 800 }}>
+              {formatMoney(safeToSpend)}
+            </strong>
+            <small>
+              {hasSpendableFloor
+                ? 'Protected headroom above projected floor'
+                : `No headroom — projected floor is ${formatMoney(lowestPoint)}`}
+            </small>
           </div>
         </div>
         {nextUpcomingEntries.length > 0 && (
@@ -1572,63 +1655,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
                   );
                 })}
             </div>
-          </section>
-          <section className="panel">
-            <div className="panel-heading">
-              <h3 style={{ margin: 0 }}>Forecast warning</h3>
-            </div>
-            {deficits.hasDeficit ? (
-              <div
-                className="stack-list history-summary-clickable-row"
-                style={{ cursor: 'pointer', borderRadius: '6px' }}
-                onClick={() => setActiveTab('deficits')}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    setActiveTab('deficits');
-                  }
-                }}
-                tabIndex={0}
-                role="button"
-                title="Click to view Deficit analysis and recovery plan"
-              >
-                <div className="list-row danger-row">
-                  <span>Projected deficit peak</span>
-                  <strong>{formatMoney(deficits.worstDeficit)}</strong>
-                </div>
-                <div className="list-row">
-                  <span>Trigger date</span>
-                  <strong>{DateUtils.formatDisplayDate(firstDeficit?.startDate || DateUtils.todayString())}</strong>
-                </div>
-                <div className="list-row">
-                  <span>Recovery date</span>
-                  <strong>{targetPeriod?.resolvedDate ? DateUtils.formatDisplayDate(targetPeriod.resolvedDate) : 'Unresolved'}</strong>
-                </div>
-                <div className="list-row">
-                  <span>Status</span>
-                  <strong style={{ color: 'var(--red)' }}>Action Required →</strong>
-                </div>
-              </div>
-            ) : (
-              <div className="stack-list">
-                <div className="list-row success-row">
-                  <span>Cashflow status</span>
-                  <strong>Fully Covered</strong>
-                </div>
-                <div className="list-row">
-                  <span>Projected cash floor</span>
-                  <strong>{formatMoney(lowestPoint)}</strong>
-                </div>
-                <div className="list-row">
-                  <span>Forecast horizon</span>
-                  <strong>{visibleForecast.length} months safe</strong>
-                </div>
-                <div className="list-row">
-                  <span>Deficit risk</span>
-                  <strong style={{ color: 'var(--green)' }}>None detected</strong>
-                </div>
-              </div>
-            )}
           </section>
         </section>
       </div>
