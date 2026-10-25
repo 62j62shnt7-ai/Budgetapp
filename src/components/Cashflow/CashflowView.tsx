@@ -1193,7 +1193,13 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                   0
                 );
                 const isSplitSlice = Boolean(e.parentEntryId || (e.splitTotalCount && e.splitTotalCount > 1));
-                const remainingAmt = isSplitSlice ? Number(e.amount || 0) : Math.max(0, plannedAmt - actualValue);
+                const isCompletedSplitContainer = isSplitSlice && Number(e.amount || 0) <= 0 && Boolean(parentEntry.keepOngoing);
+                const displayPlannedAmt = isSplitSlice
+                  ? (isCompletedSplitContainer ? Number(parentEntry.amount || plannedAmt) : Number(e.amount || 0))
+                  : plannedAmt;
+                const remainingAmt = isSplitSlice
+                  ? (isCompletedSplitContainer ? 0 : Number(e.amount || 0))
+                  : Math.max(0, plannedAmt - actualValue);
                 const isFull = plannedAmt > 0 && actualValue >= plannedAmt;
                 const isPartial = isPartialTracked(parentEntry);
                 const isPastDate = Boolean(e.date && e.date < DateUtils.todayString());
@@ -1201,10 +1207,6 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                 // they never represent an ongoing budget, so never badge them ongoing
                 // even when the due date has passed or a payment was recorded.
                 const isOverdueIncome = e.type === 'income' && !isOngoingEntry(e, entryActuals);
-                const isCompletedSplitContainer = isSplitSlice && (remainingAmt <= 0 || !e.isSplitGhost) && Boolean(parentEntry.keepOngoing);
-                const displayPlannedAmt = isCompletedSplitContainer
-                  ? Number(parentEntry.amount || plannedAmt)
-                  : (isSplitSlice ? Number(e.amount || 0) : plannedAmt);
                 const ongoing = (!isSplitSlice || isCompletedSplitContainer)
                   && !(isCreditSettlement || isCreditDueLumpSum(e))
                   && !isOverdueIncome
@@ -1528,12 +1530,12 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                       {isForeign ? (
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
                           <span>
-                            {e.type === 'income' ? '+' : '-'}{formatNativeCurrency(nativeQty, e.currency)}
+                            {e.type === 'income' ? '+' : '-'}{formatNativeCurrency(isSplitSlice && e.fxRateAtEntry ? Math.round((displayPlannedAmt / e.fxRateAtEntry) * 100) / 100 : nativeQty, e.currency)}
                           </span>
                           <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 500 }}>
                             ≈ {formatMoney(displayPlannedAmt)}
                           </span>
-                          {actualValue > 0 && remainingAmt > 0 && (
+                          {!isSplitSlice && actualValue > 0 && remainingAmt > 0 && (
                             <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600 }}>
                               ({formatMoney(remainingAmt)} rem)
                             </span>
@@ -1542,7 +1544,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
                           <span>{e.type === 'income' ? '+' : '-'}{formatMoney(displayPlannedAmt)}</span>
-                          {actualValue > 0 && remainingAmt > 0 && (
+                          {!isSplitSlice && actualValue > 0 && remainingAmt > 0 && (
                             <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600 }}>
                               ({formatMoney(remainingAmt)} rem)
                             </span>
