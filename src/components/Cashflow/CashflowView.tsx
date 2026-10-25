@@ -1201,7 +1201,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                 // they never represent an ongoing budget, so never badge them ongoing
                 // even when the due date has passed or a payment was recorded.
                 const isOverdueIncome = e.type === 'income' && !isOngoingEntry(e, entryActuals);
-                const isCompletedSplitContainer = isSplitSlice && (remainingAmt <= 0 || !e.isSplitGhost) && Boolean(parentEntry.keepOngoing);
+                const isCompletedSplitContainer = isSplitSlice && actualValue >= plannedAmt && remainingAmt <= 0 && Boolean(parentEntry.keepOngoing);
                 const displayPlannedAmt = isCompletedSplitContainer
                   ? Number(parentEntry.amount || plannedAmt)
                   : (isSplitSlice ? Number(e.amount || 0) : plannedAmt);
