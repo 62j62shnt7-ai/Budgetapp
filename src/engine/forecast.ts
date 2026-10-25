@@ -121,6 +121,7 @@ export function isOngoingEntry(
   if (!entry) return false;
   if (entry.isClosed) return false;
   if (entry.keepOngoing) return true;
+  if ((entry.splitCount && entry.splitCount > 1) || (entry.plannedSplits && entry.plannedSplits.length > 1) || Boolean(entry.parentEntryId)) return true;
   if (isLoanInflow(entry)) return true;
   if (
     isPartialTracked(entry) &&
@@ -278,6 +279,114 @@ export function groupByMonth(
   }, {});
 }
 
+// --- expandEntrySplits ---
+export function expandEntrySplits(
+  entry: CashEntry,
+  remainingAmount: number,
+  effStartDate: string,
+  entryActuals: Record<string, number>,
+  today: string
+): CashEntry[] {
+  if (remainingAmount <= 0) {
+    // If the entry has keepOngoing enabled, maintain an ongoing anchor row at 0 remaining
+    // so the user can continue logging further spending/draws without the entry vanishing.
+    if (entry.keepOngoing && !entry.isClosed) {
+      return [{
+        ...entry,
+        id: entry.id,
+        parentEntryId: entry.id,
+        date: effStartDate < today ? today : effStartDate,
+        amount: 0,
+        splitIndex: 1,
+        splitTotalCount: 1,
+        isSplitGhost: false,
+      }];
+    }
+    return [];
+  }
+
+  // Mode A: Custom plannedSplits array
+  if (Array.isArray(entry.plannedSplits) && entry.plannedSplits.length > 1) {
+    const sortedSplits = [...entry.plannedSplits].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    let unallocatedActual = getEntryActualAmount(entry, entryActuals);
+
+    const activeSlices: { date: string; amount: number; note?: string }[] = [];
+    for (let i = 0; i < sortedSplits.length; i++) {
+      const split = sortedSplits[i];
+      const plannedAmt = Number(split.amount || 0);
+      if (unallocatedActual >= plannedAmt) {
+        unallocatedActual -= plannedAmt;
+        continue;
+      }
+      const unspent = Math.round((plannedAmt - unallocatedActual) * 100) / 100;
+      unallocatedActual = 0;
+      if (unspent > 0) {
+        let sDate = split.date || effStartDate;
+        if (sDate < today) {
+          sDate = today;
+        }
+        activeSlices.push({
+          date: sDate,
+          amount: unspent,
+          note: split.note,
+        });
+      }
+    }
+
+    // Align sum with remainingAmount if user-defined tranches didn't sum to original or due to rounding
+    const sumActive = activeSlices.reduce((sum, s) => sum + s.amount, 0);
+    if (activeSlices.length > 0 && Math.abs(sumActive - remainingAmount) > 0.001) {
+      const diff = Math.round((remainingAmount - sumActive) * 100) / 100;
+      activeSlices[activeSlices.length - 1].amount = Math.max(0.01, Math.round((activeSlices[activeSlices.length - 1].amount + diff) * 100) / 100);
+    }
+
+    if (activeSlices.length === 0) {
+      activeSlices.push({ date: effStartDate, amount: remainingAmount });
+    }
+
+    const totalCount = activeSlices.length;
+    return activeSlices.map((slice, idx) => ({
+      ...entry,
+      id: idx === 0 ? entry.id : `${entry.id}::split-${idx + 1}`,
+      parentEntryId: entry.id,
+      date: slice.date,
+      amount: slice.amount,
+      splitIndex: idx + 1,
+      splitTotalCount: totalCount,
+      isSplitGhost: idx > 0,
+      note: slice.note || entry.note,
+    }));
+  }
+
+  // Mode B: Even splitCount
+  const count = Math.min(30, Math.max(1, Math.floor(entry.splitCount || 1)));
+  if (count <= 1) {
+    return [{ ...entry, date: effStartDate, amount: remainingAmount }];
+  }
+
+  const interval = Math.max(1, Math.floor(entry.splitIntervalDays || 7));
+  const baseAmount = Math.floor((remainingAmount / count) * 100) / 100;
+  const remainder = Math.round((remainingAmount - baseAmount * count) * 100) / 100;
+
+  const result: CashEntry[] = [];
+  for (let i = 0; i < count; i++) {
+    const sDate = DateUtils.addDays(effStartDate, i * interval);
+    const sAmount = i === count - 1 ? Math.round((baseAmount + remainder) * 100) / 100 : baseAmount;
+    result.push({
+      ...entry,
+      id: i === 0 ? entry.id : `${entry.id}::split-${i + 1}`,
+      parentEntryId: entry.id,
+      date: sDate,
+      amount: sAmount,
+      splitIndex: i + 1,
+      splitTotalCount: count,
+      isSplitGhost: i > 0,
+    });
+  }
+
+  return result;
+}
+
 // ==========================================================================
 // getForecastCandidateEntries — matches legacy exactly
 // Excludes manually deleted forecasts and lump-sum credit entries from
@@ -327,6 +436,10 @@ export function getActiveForecastEntries(
       if (isPartialTracked(entry) && !entry.isClosed && getRemainingForecastAmount(entry, entryActuals) > 0) {
         return true;
       }
+      // Explicitly keep ongoing entries visible regardless of date or whether remaining is 0
+      if (entry.keepOngoing && !entry.isClosed) {
+        return true;
+      }
       // Uncollected non-partial income (e.g. salary, freelance, refunds): keep when unclosed and remaining > 0 regardless of date
       if (entry.type === 'income' && !entry.isClosed && getEntryActualAmount(entry, entryActuals) <= 0) {
         return true;
@@ -334,6 +447,7 @@ export function getActiveForecastEntries(
       return !entry.date || entry.date >= today;
     })
     .filter((entry) => {
+      if (entry.keepOngoing && !entry.isClosed) return true;
       if (isPartialTracked(entry)) {
         const actualAmount = getEntryActualAmount(entry, entryActuals);
         if (actualAmount > 0) {
@@ -359,15 +473,34 @@ export function getActiveForecastEntries(
       // so it surfaces as OVERDUE in deficits, dashboard, and cashflow views instead of sliding to today.
       const isOverdueIncome = entry.type === 'income' && !isOngoingEntry(entry, entryActuals);
 
-      // Regular ongoing flexible expenses: undrawn/unspent carry forward to today
-      if (!isStrictObligation && !isOverdueIncome && isPartialTracked(entry) && effDate && effDate < today && getRemainingForecastAmount(entry, entryActuals) > 0) {
+      // Regular ongoing flexible expenses: undrawn/unspent carry forward to today (or if keepOngoing is active)
+      if (!isStrictObligation && !isOverdueIncome && (isPartialTracked(entry) || entry.keepOngoing) && effDate && effDate < today) {
         effDate = today;
       }
-      if (isPartialTracked(entry) && getEntryActualAmount(entry, entryActuals) > 0) {
-        return { ...entry, date: effDate, amount: getRemainingForecastAmount(entry, entryActuals) };
+      const remaining = isPartialTracked(entry) && getEntryActualAmount(entry, entryActuals) > 0
+        ? getRemainingForecastAmount(entry, entryActuals)
+        : Number(entry.amount || 0);
+
+      // Check if entry has split configuration and should expand into multiple tranches
+      const hasSplits =
+        !isStrictObligation &&
+        !isOverdueIncome &&
+        ((entry.splitCount && entry.splitCount > 1) || (entry.plannedSplits && entry.plannedSplits.length > 1));
+
+      if (hasSplits) {
+        return expandEntrySplits(entry, remaining, effDate, entryActuals, today);
       }
-      return { ...entry, date: effDate };
-    });
+
+      if (entry.keepOngoing && !entry.isClosed && getRemainingForecastAmount(entry, entryActuals) <= 0) {
+        return [{ ...entry, date: effDate, amount: 0 }];
+      }
+
+      if (isPartialTracked(entry) && getEntryActualAmount(entry, entryActuals) > 0) {
+        return [{ ...entry, date: effDate, amount: remaining }];
+      }
+      return [{ ...entry, date: effDate }];
+    })
+    .flat();
 }
 
 // ==========================================================================

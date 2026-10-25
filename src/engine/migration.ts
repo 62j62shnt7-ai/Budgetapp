@@ -177,6 +177,9 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
       currency: normalizeCurrencyCode(typeof e.currency === 'string' ? e.currency : undefined) || 'EGP',
       actualAmount: parseMoneyValue(e.actualAmount),
       actualDate: typeof e.actualDate === 'string' ? e.actualDate.slice(0, 10) : undefined,
+      splitCount: typeof e.splitCount === 'number' ? e.splitCount : undefined,
+      splitIntervalDays: typeof e.splitIntervalDays === 'number' ? e.splitIntervalDays : undefined,
+      plannedSplits: Array.isArray(e.plannedSplits) ? e.plannedSplits : undefined,
     };
   });
 

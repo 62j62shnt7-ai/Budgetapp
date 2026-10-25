@@ -5867,3 +5867,13 @@ select.job-status-select option {
   }
 }
 
+.split-ghost-row {
+  border-left: 3px dashed var(--brand-primary, #6366f1) !important;
+  background: rgba(99, 102, 241, 0.04);
+}
+
+.split-ghost-row:hover {
+  background: rgba(99, 102, 241, 0.08) !important;
+}
+
+

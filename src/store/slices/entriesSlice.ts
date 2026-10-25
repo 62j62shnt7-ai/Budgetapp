@@ -602,6 +602,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
         const entry = get().entries[existingIndex];
         const isCardSwipe = isCreditCardExpense(entry);
         const isLoan = isLoanInflow(entry);
+        const isSplit = Boolean((entry.splitCount && entry.splitCount > 1) || (entry.plannedSplits && entry.plannedSplits.length > 1));
         const prevActual = Number(get().entryActuals[entryId] ?? entry.actualAmount ?? 0);
         const tranche = amount > prevActual ? Math.round((amount - prevActual) * 100) / 100 : amount;
 
@@ -609,7 +610,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
         if (isCardSwipe) {
           // Credit card swipes are immediate 1-click transactions; do not generate synthetic partial draw tranches
           draws = draws.length > 1 ? draws : [];
-        } else if (!isLoan && draws.length === 0 && !entry.keepOngoing) {
+        } else if (!isLoan && !isSplit && draws.length === 0 && !entry.keepOngoing) {
           // Standard 1-click expense/income payment: record actual directly without fabricating a 1-item draws array.
           draws = [];
         } else {
@@ -657,8 +658,8 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
           }
         }
 
-        // If draws has <= 1 item and is not a loan facility, strip the redundant draws array
-        if (draws.length <= 1 && !isLoan) {
+        // If draws has <= 1 item and is not a loan facility or split entry, strip the redundant draws array
+        if (draws.length <= 1 && !isLoan && !isSplit && !entry.keepOngoing) {
           draws = [];
         }
 
@@ -677,13 +678,14 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
           const entry = get().archivedEntries[archivedIndex];
           const isCardSwipe = isCreditCardExpense(entry);
           const isLoan = isLoanInflow(entry);
+          const isSplit = Boolean((entry.splitCount && entry.splitCount > 1) || (entry.plannedSplits && entry.plannedSplits.length > 1));
           const prevActual = Number(get().entryActuals[entryId] ?? entry.actualAmount ?? 0);
           const tranche = amount > prevActual ? Math.round((amount - prevActual) * 100) / 100 : amount;
 
           let draws = Array.isArray(entry.draws) ? [...entry.draws] : [];
           if (isCardSwipe) {
             draws = draws.length > 1 ? draws : [];
-          } else if (!isLoan && draws.length === 0 && !entry.keepOngoing) {
+          } else if (!isLoan && !isSplit && draws.length === 0 && !entry.keepOngoing) {
             draws = [];
           } else {
             if (draws.length === 0 && prevActual > 0) {
@@ -730,7 +732,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
             }
           }
 
-          if (draws.length <= 1 && !isLoan) {
+          if (draws.length <= 1 && !isLoan && !isSplit && !entry.keepOngoing) {
             draws = [];
           }
 

@@ -526,6 +526,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
         const actual = getEntryActualAmount(entry, entryActuals);
         if (actual <= 0) return true;
         if ((entry as CashEntry & { keepOngoing?: boolean }).keepOngoing) return true;
+        if ((entry.splitCount && entry.splitCount > 1) || (entry.plannedSplits && entry.plannedSplits.length > 1)) return true;
         return isPartialTracked(entry) && getRemainingForecastAmount(entry, entryActuals) > 0;
       });
     const rows = getActiveForecastEntries(
@@ -535,12 +536,53 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
       deletedForecasts,
       entryActuals,
     );
+    // Expand candidateList for table view so split ghost rows show on their respective dates
+    const expandedCandidateList = candidateList.flatMap((entry) => {
+      const isStrict =
+        entry.id.startsWith('credit-settlement-') ||
+        entry.id.startsWith('installment-') ||
+        isCreditDueLumpSum(entry) ||
+        entry.tag === 'Loan Repayment' ||
+        entry.subcategory === 'Loan Repayment' ||
+        Boolean(entry.loanId && entry.type === 'expense');
+
+      const isOverdueInc = entry.type === 'income' && !isOngoingEntry(entry, entryActuals);
+      const hasSplits =
+        !isStrict &&
+        !isOverdueInc &&
+        ((entry.splitCount && entry.splitCount > 1) || (entry.plannedSplits && entry.plannedSplits.length > 1));
+
+      if (hasSplits) {
+        const remaining = isPartialTracked(entry) && getEntryActualAmount(entry, entryActuals) > 0
+          ? getRemainingForecastAmount(entry, entryActuals)
+          : Number(entry.amount || 0);
+        let effDate = entry.date;
+        const today = DateUtils.todayString();
+        if (isPartialTracked(entry) && effDate && effDate < today && remaining > 0) {
+          effDate = today;
+        }
+        const matchingRows = rows.filter((r) => r.id === entry.id || r.parentEntryId === entry.id);
+        if (matchingRows.length > 0) {
+          return matchingRows;
+        }
+        if (entry.keepOngoing && !entry.isClosed) {
+          return [{
+            ...entry,
+            date: effDate < today ? today : effDate,
+            amount: 0,
+          }];
+        }
+        return [];
+      }
+      return [entry];
+    });
+
     return {
       salaryEntries: salary,
       installmentEntries: installment,
       creditEntries: credit,
       forecastCandidates: candidates,
-      allCandidate: candidateList,
+      allCandidate: expandedCandidateList,
       forecastRows: rows,
     };
   }, [
@@ -678,6 +720,10 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
 
   // Helper to determine the remaining forecast amount for candidate entries
   const getCandidateForecastAmount = (e: CashEntry): number => {
+    // If entry is an expanded split slice, its amount is already the remaining slice amount
+    if (e.parentEntryId || Boolean(e.splitTotalCount && e.splitTotalCount > 1)) {
+      return Number(e.amount || 0);
+    }
     if (isPartialTracked(e)) {
       return getRemainingForecastAmount(e, entryActuals);
     }
@@ -1120,6 +1166,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
             </thead>
             <tbody>
               {renderedRows.map((e) => {
+                const parentEntry = (e.parentEntryId ? entries.find((item) => item.id === e.parentEntryId) : null) || entries.find((item) => item.id === e.id) || e;
                 const isOpening = e.source === 'starting balance';
                 const isLoan = (e.source || '').toLowerCase().includes('loan') || (e.category || '').toLowerCase().includes('loan');
                 const isCreditSettlement = (e.source || '').toLowerCase().includes('credit') || (e.id && e.id.startsWith('credit-settlement-'));
@@ -1139,29 +1186,34 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                   : e.type === 'income'
                   ? 'Add actual'
                   : 'Add spend';
-                const actualValue = getEntryActualAmount(e, entryActuals);
-                const originalEntry = entries.find((entry) => entry.id === e.id);
+                const actualValue = getEntryActualAmount(parentEntry, entryActuals);
                 const plannedAmt = Number(
-                  originalEntry?.amount ??
-                  (e as CashEntry & { plannedAmount?: number }).plannedAmount ??
-                  e.amount ??
+                  parentEntry.amount ??
+                  (parentEntry as CashEntry & { plannedAmount?: number }).plannedAmount ??
                   0
                 );
-                const remainingAmt = Math.max(0, plannedAmt - actualValue);
+                const isSplitSlice = Boolean(e.parentEntryId || (e.splitTotalCount && e.splitTotalCount > 1));
+                const remainingAmt = isSplitSlice ? Number(e.amount || 0) : Math.max(0, plannedAmt - actualValue);
                 const isFull = plannedAmt > 0 && actualValue >= plannedAmt;
-                const isPartial = isPartialTracked(e);
+                const isPartial = isPartialTracked(parentEntry);
                 const isPastDate = Boolean(e.date && e.date < DateUtils.todayString());
                 // Credit settlements are single-dated due rows (overdue or upcoming):
                 // they never represent an ongoing budget, so never badge them ongoing
                 // even when the due date has passed or a payment was recorded.
                 const isOverdueIncome = e.type === 'income' && !isOngoingEntry(e, entryActuals);
-                const ongoing = !(isCreditSettlement || isCreditDueLumpSum(e))
+                const isCompletedSplitContainer = isSplitSlice && (remainingAmt <= 0 || !e.isSplitGhost) && Boolean(parentEntry.keepOngoing);
+                const displayPlannedAmt = isCompletedSplitContainer
+                  ? Number(parentEntry.amount || plannedAmt)
+                  : (isSplitSlice ? Number(e.amount || 0) : plannedAmt);
+                const ongoing = (!isSplitSlice || isCompletedSplitContainer)
+                  && !(isCreditSettlement || isCreditDueLumpSum(e))
                   && !isOverdueIncome
-                  && (isOngoingEntry(e, entryActuals) || (isPartial && !e.isClosed && remainingAmt > 0 && (actualValue > 0 || isPastDate)));
-                const canFinish = !e.isClosed && !isOpening && (actualValue > 0 || isPastDate || isLoan || ongoing || (isPartial && remainingAmt > 0));
-                const actualDate = actualValue > 0 ? getEntryActualDate(e, entryActualDates) : '';
+                  && (isOngoingEntry(parentEntry, entryActuals) || (isPartial && !parentEntry.isClosed && (actualValue > 0 || isPastDate)));
+                const canFinish = !parentEntry.isClosed && !isOpening && (actualValue > 0 || isPastDate || isLoan || ongoing || (isPartial && remainingAmt > 0));
+                const actualDate = actualValue > 0 ? getEntryActualDate(parentEntry, entryActualDates) : '';
+                const origStartDate = parentEntry.date || e.date;
                 const dateLabel = ongoing
-                  ? `${DateUtils.formatDisplayDate(e.date)} → ${actualDate && actualDate !== DateUtils.todayString()
+                  ? `${DateUtils.formatDisplayDate(origStartDate)} → ${actualDate && actualDate !== DateUtils.todayString()
                     ? DateUtils.formatDisplayDate(actualDate)
                     : 'Today'}`
                   : DateUtils.formatDisplayDate(e.date);
@@ -1173,10 +1225,10 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                 const legacyId = getEntryId(e);
                 const isTargeted =
                   highlightedEntryId === e.id ||
-                  (Boolean(highlightedEntryId) && legacyId === highlightedEntryId);
+                  (Boolean(highlightedEntryId) && (legacyId === highlightedEntryId || e.parentEntryId === highlightedEntryId));
                 const rowClass = `entry-row ${isOpening ? 'opening-balance-row' : isLoan ? 'loan-entry-row' : ''} ${
                   isDeficit ? 'deficit-entry-row danger-row' : isRecovery ? 'recovery-entry-row success-row' : ''
-                } ${isTargeted ? 'entry-row-targeted' : ''}`.trim();
+                } ${isTargeted ? 'entry-row-targeted' : ''} ${isSplitSlice ? 'split-ghost-row' : ''}`.trim();
 
                 const rowTitle = isOpening
                   ? 'Edit on the Accounts page'
@@ -1200,12 +1252,29 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                       if (isOpening) {
                         setActiveTab('accounts');
                       } else if (onEditEntry) {
-                        onEditEntry(e);
+                        onEditEntry(parentEntry);
                       }
                     }}
                   >
                     <td className="cell-date">
                       <strong>{dateLabel}</strong>
+                      {isSplitSlice && (
+                        <span
+                          className="source-pill"
+                          style={{
+                            fontSize: '10px',
+                            marginLeft: '4px',
+                            padding: '1px 6px',
+                            background: 'rgba(99, 102, 241, 0.15)',
+                            color: 'var(--brand-primary, #6366f1)',
+                            border: '1px dashed rgba(99, 102, 241, 0.4)',
+                            fontWeight: 700,
+                          }}
+                          title={`Scheduled tranche ${e.splitIndex} of ${e.splitTotalCount} (${formatMoney(e.amount)} of ${formatMoney(parentEntry.amount)})`}
+                        >
+                          👻 Split {e.splitIndex}/{e.splitTotalCount}
+                        </span>
+                      )}
                       {ongoing && (
                         <span
                           className={isLoan ? 'source-pill loan' : 'source-pill'}
@@ -1462,7 +1531,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                             {e.type === 'income' ? '+' : '-'}{formatNativeCurrency(nativeQty, e.currency)}
                           </span>
                           <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 500 }}>
-                            ≈ {formatMoney(e.amount)}
+                            ≈ {formatMoney(displayPlannedAmt)}
                           </span>
                           {actualValue > 0 && remainingAmt > 0 && (
                             <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600 }}>
@@ -1472,7 +1541,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                         </div>
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
-                          <span>{e.type === 'income' ? '+' : '-'}{formatMoney(e.amount)}</span>
+                          <span>{e.type === 'income' ? '+' : '-'}{formatMoney(displayPlannedAmt)}</span>
                           {actualValue > 0 && remainingAmt > 0 && (
                             <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600 }}>
                               ({formatMoney(remainingAmt)} rem)
@@ -1501,7 +1570,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                                 if (rawVal > 0) {
                                   const effectiveRate = e.fxRateAtEntry || getCurrencyRateOr(rates, e.currency, 1);
                                   const egpVal = isForeign ? Math.round(rawVal * effectiveRate * 100) / 100 : Math.round(rawVal * 100) / 100;
-                                  handleActualSpend(e, egpVal, actualValue);
+                                  handleActualSpend(parentEntry, egpVal, actualValue);
                                 }
                               }
                             }}
@@ -1512,7 +1581,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                               if (rawVal > 0) {
                                 const effectiveRate = e.fxRateAtEntry || getCurrencyRateOr(rates, e.currency, 1);
                                 const egpVal = isForeign ? Math.round(rawVal * effectiveRate * 100) / 100 : Math.round(rawVal * 100) / 100;
-                                handleActualSpend(e, egpVal, actualValue);
+                                handleActualSpend(parentEntry, egpVal, actualValue);
                               }
                             }}
                           />
@@ -1552,10 +1621,10 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                               onClick={(ev) => {
                                 ev.stopPropagation();
                                 setExactDecisionData({
-                                  entry: e,
+                                  entry: parentEntry,
                                   actualAmount: actualValue,
-                                  plannedAmount: Number(e.amount || 0),
-                                  linkedRepayment: getLinkedRepaymentOption(e, actualValue),
+                                  plannedAmount: Number(parentEntry.amount || 0),
+                                  linkedRepayment: getLinkedRepaymentOption(parentEntry, actualValue),
                                 });
                               }}
                             >
@@ -1563,7 +1632,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                             </button>
                           )}
                           {(() => {
-                            const hasAffected = hasEntryAffectedParties(e, {
+                            const hasAffected = hasEntryAffectedParties(parentEntry, {
                               installments,
                               storageAssets,
                               partTimeJobs,
@@ -1578,7 +1647,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                                 title={hasAffected ? 'Delete entry (has affected linked records)' : 'Delete entry'}
                                 onClick={(ev) => {
                                   ev.stopPropagation();
-                                  setDeleteEntryTarget(e);
+                                  setDeleteEntryTarget(parentEntry);
                                 }}
                               >
                                 Delete

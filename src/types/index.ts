@@ -4,6 +4,13 @@
 
 export type EntryType = 'income' | 'expense';
 
+export interface PlannedSplit {
+  id?: string;
+  date: string; // YYYY-MM-DD
+  amount: number;
+  note?: string;
+}
+
 export interface EntryDraw {
   id?: string;
   date: string;
@@ -69,6 +76,13 @@ export interface CashEntry {
   jobId?: string;
   storageAssetId?: string;
   initialAmount?: number;
+  splitCount?: number;
+  splitIntervalDays?: number;
+  plannedSplits?: PlannedSplit[];
+  parentEntryId?: string;
+  splitIndex?: number;
+  splitTotalCount?: number;
+  isSplitGhost?: boolean;
   // Marks an entry as a one-time internal transfer (e.g. FX conversion) rather than
   // a real forecastable inflow/outflow. Entries with this set are always excluded
   // from forecast/cashflow candidate lists, even if their actual is cleared.

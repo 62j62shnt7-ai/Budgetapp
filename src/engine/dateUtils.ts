@@ -79,6 +79,13 @@ export const DateUtils = {
     const newM = ((totalMonths % 12) + 12) % 12 + 1;
     return `${newY}-${String(newM).padStart(2, '0')}`;
   },
+
+  addDays: (dateString: string, days: number): string => {
+    if (!dateString) return DateUtils.todayString();
+    const [y, m, d] = DateUtils.parseDate(dateString);
+    const date = new Date(Date.UTC(y, m - 1, d + days));
+    return DateUtils.formatDate(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate());
+  },
 };
 
 export const numberFormatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });

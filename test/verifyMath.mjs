@@ -35,6 +35,8 @@ import {
   getRemainingForecastAmount,
   calculateLoanRepaymentScale,
   isOngoingEntry,
+  expandEntrySplits,
+  getActiveForecastEntries,
   simulateSpend,
 } from '../src/engine/forecast.ts';
 import { computeSpreadPct, computeAssetEgpValue, defaultRates, autoFetchLatestRates, getAccountNativeCurrency, convertAmountBetweenCurrencies, getCurrencyRate, getCurrencyRateOr, normalizeCurrencyCode } from '../src/engine/currency.ts';
@@ -2032,6 +2034,126 @@ console.log('✓ Settlement clear: reverts to single planned due (overdue) and r
   assert.strictEqual(forecastWithPrior[0].balance, 12000, 'Prior-month uncollected income rolled into first forecast month balance');
 
   console.log('✓ Overdue income capture in active forecast, deficit summary, and rolling forecast verified');
+}
+
+// -------------------------------------------------------------
+// Forecast Split Schedules (Ongoing Draws & Uneven Tranches)
+// -------------------------------------------------------------
+{
+  const testToday = '2026-10-25';
+
+  // Test 1: Even split generation across intervals
+  const evenEntry = {
+    id: 'exp-split-1',
+    date: '2026-10-25',
+    amount: 15000,
+    type: 'expense',
+    category: 'Home Renovation',
+    splitCount: 3,
+    splitIntervalDays: 7,
+  };
+  const evenSlices = expandEntrySplits(evenEntry, 15000, '2026-10-25', {}, testToday);
+  assert.strictEqual(evenSlices.length, 3, 'Even split must produce 3 slices');
+  assert.strictEqual(evenSlices[0].amount, 5000, 'Slice 1 amount must be 5000');
+  assert.strictEqual(evenSlices[1].amount, 5000, 'Slice 2 amount must be 5000');
+  assert.strictEqual(evenSlices[2].amount, 5000, 'Slice 3 amount must be 5000');
+  assert.strictEqual(evenSlices[0].date, '2026-10-25', 'Slice 1 date matches start date');
+  assert.strictEqual(evenSlices[1].date, '2026-11-01', 'Slice 2 date is 7 days later');
+  assert.strictEqual(evenSlices[2].date, '2026-11-08', 'Slice 3 date is 14 days later');
+  assert.strictEqual(evenSlices[0].parentEntryId, 'exp-split-1', 'Parent entry ID matches');
+  assert.strictEqual(evenSlices[1].isSplitGhost, true, 'Slice 2 is flagged as split ghost');
+
+  // Test 2: Custom uneven tranches (e.g. 10000 + 5000 for 15000)
+  const unevenEntry = {
+    id: 'exp-split-uneven',
+    date: '2026-10-25',
+    amount: 15000,
+    type: 'expense',
+    category: 'Materials',
+    plannedSplits: [
+      { id: 's1', date: '2026-10-25', amount: 10000 },
+      { id: 's2', date: '2026-11-05', amount: 5000 },
+    ],
+  };
+  const unevenSlices = expandEntrySplits(unevenEntry, 15000, '2026-10-25', {}, testToday);
+  assert.strictEqual(unevenSlices.length, 2, 'Uneven entry must produce 2 slices');
+  assert.strictEqual(unevenSlices[0].amount, 10000, 'First tranche is 10000');
+  assert.strictEqual(unevenSlices[1].amount, 5000, 'Second tranche is 5000');
+  assert.strictEqual(unevenSlices[0].date, '2026-10-25');
+  assert.strictEqual(unevenSlices[1].date, '2026-11-05');
+
+  // Test 3: FIFO consumption with partial actual spend
+  // Recorded 12,000 actual spend on the uneven 15,000 entry:
+  // - First tranche (10,000) is fully consumed (0 remaining)
+  // - Second tranche (5,000) has 2,000 consumed, leaving 3,000 remaining
+  const partialSlices = expandEntrySplits(unevenEntry, 3000, '2026-10-25', { 'exp-split-uneven': 12000 }, testToday);
+  assert.strictEqual(partialSlices.length, 1, 'Only remaining tranche must be produced');
+  assert.strictEqual(partialSlices[0].splitIndex, 1, 'Remaining tranche index in active slices is 1');
+  assert.strictEqual(partialSlices[0].amount, 3000, 'Remaining tranche amount is 3000 (5000 - 2000)');
+  assert.strictEqual(partialSlices[0].date, '2026-11-05', 'Remaining tranche scheduled date preserved');
+
+  // Test 4: Past split slices slide to today if unspent, while future slices keep future dates
+  const pastEntry = {
+    id: 'exp-past-split',
+    date: '2026-10-10',
+    amount: 6000,
+    type: 'expense',
+    category: 'Supplies',
+    plannedSplits: [
+      { id: 'p1', date: '2026-10-10', amount: 2000 }, // past (< testToday)
+      { id: 'p2', date: '2026-10-20', amount: 2000 }, // past (< testToday)
+      { id: 'p3', date: '2026-11-10', amount: 2000 }, // future (> testToday)
+    ],
+  };
+  const pastSlices = expandEntrySplits(pastEntry, 6000, '2026-10-10', {}, testToday);
+  assert.strictEqual(pastSlices.length, 3);
+  assert.strictEqual(pastSlices[0].date, testToday, 'Past slice 1 slides to today');
+  assert.strictEqual(pastSlices[1].date, testToday, 'Past slice 2 slides to today');
+  assert.strictEqual(pastSlices[2].date, '2026-11-10', 'Future slice 3 stays on scheduled future date');
+
+  // Test 5: Integration with getActiveForecastEntries
+  const activeSplits = getActiveForecastEntries([evenEntry], [], [], [], {}, testToday);
+  assert.strictEqual(activeSplits.length, 3, 'getActiveForecastEntries expands splits into forecast rows');
+  const totalForecastAmount = activeSplits.reduce((acc, curr) => acc + curr.amount, 0);
+  assert.strictEqual(totalForecastAmount, 15000, 'Total forecasted amount matches original planned amount');
+
+  // Test 6: Unified keepOngoing behavior when actual >= planned
+  // 6a: Unsplit entry with keepOngoing stays visible with 0 amount
+  const unsplitOngoing = {
+    id: 'exp-unsplit-ongoing',
+    date: '2026-10-10',
+    amount: 5000,
+    type: 'expense',
+    category: 'Groceries',
+    keepOngoing: true,
+  };
+  const activeUnsplit = getActiveForecastEntries([unsplitOngoing], [], [], [], { 'exp-unsplit-ongoing': 5000 }, testToday);
+  assert.strictEqual(activeUnsplit.length, 1, 'Unsplit entry with keepOngoing must stay in active forecast even when 100% spent');
+  assert.strictEqual(activeUnsplit[0].amount, 0, 'Forecast amount is 0 when 100% spent');
+  assert.strictEqual(activeUnsplit[0].date, testToday, 'Date slides to today for ongoing entry');
+
+  // 6b: Split entry with keepOngoing stays visible with 0 amount when all tranches spent
+  const splitOngoing = {
+    id: 'exp-split-ongoing',
+    date: '2026-10-10',
+    amount: 10000,
+    type: 'expense',
+    category: 'Materials',
+    splitCount: 2,
+    splitIntervalDays: 7,
+    keepOngoing: true,
+  };
+  const activeSplitOngoing = getActiveForecastEntries([splitOngoing], [], [], [], { 'exp-split-ongoing': 12000 }, testToday);
+  assert.strictEqual(activeSplitOngoing.length, 1, 'Split entry with keepOngoing must stay in active forecast when budget is exceeded');
+  assert.strictEqual(activeSplitOngoing[0].amount, 0, 'Remaining forecast amount is 0');
+  assert.strictEqual(activeSplitOngoing[0].date, testToday, 'Date slides to today for ongoing split entry');
+
+  // 6c: When closed (isClosed: true), entry leaves active forecast completely
+  const closedEntry = { ...splitOngoing, isClosed: true };
+  const activeClosed = getActiveForecastEntries([closedEntry], [], [], [], { 'exp-split-ongoing': 12000 }, testToday);
+  assert.strictEqual(activeClosed.length, 0, 'Closed entry leaves active forecast');
+
+  console.log('✓ Forecast split schedules (even splits, uneven tranches, FIFO consumption, and unified keepOngoing) verified');
 }
 
 console.log('\n=================================================================');

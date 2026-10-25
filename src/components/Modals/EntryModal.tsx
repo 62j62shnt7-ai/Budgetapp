@@ -5,7 +5,7 @@ import { calculateCreditSettlementDate, getCreditCycleHint, isCreditCardExpense 
 import { getCurrencyRateOr, formatNativeCurrency, getAccountNativeCurrency, convertAmountBetweenCurrencies } from '../../engine/currency';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { getEntryActualAmount, isLoanInflow, findLinkedLoanRepayment, calculateLoanRepaymentScale } from '../../engine/forecast';
-import type { CashEntry, EntryDraw } from '../../types';
+import type { CashEntry, EntryDraw, PlannedSplit } from '../../types';
 import { AffectedRecordsModal, type AffectedPartyOption } from './AffectedRecordsModal';
 
 function generateSeriesId(): string {
@@ -145,6 +145,12 @@ export const EntryModal: React.FC<EntryModalProps> = ({
   const [recurringCount, setRecurringCount] = useState<number>(12);
   const [recurringDayOfWeek, setRecurringDayOfWeek] = useState<number>(() => new Date().getDay());
 
+  // Split / Ongoing Draw options
+  const [isSplitEnabled, setIsSplitEnabled] = useState<boolean>(false);
+  const [splitCount, setSplitCount] = useState<number>(2);
+  const [splitIntervalDays, setSplitIntervalDays] = useState<number>(7);
+  const [plannedSplits, setPlannedSplits] = useState<PlannedSplit[]>([]);
+
   const currentEntryKey = isOpen
     ? `${entryToEdit?.id || 'new'}-${activeEntry?.draws?.length || 0}-${activeEntry ? (entryActuals[activeEntry.id] ?? '') : ''}`
     : 'closed';
@@ -176,6 +182,12 @@ export const EntryModal: React.FC<EntryModalProps> = ({
         : existingActual;
       setActualAmount(nativeActual > 0 ? String(nativeActual) : '');
 
+      const hasSplits = Boolean((activeEntry.splitCount && activeEntry.splitCount > 1) || (activeEntry.plannedSplits && activeEntry.plannedSplits.length > 1));
+      setIsSplitEnabled(hasSplits);
+      setSplitCount(activeEntry.splitCount || (activeEntry.plannedSplits?.length || 2));
+      setSplitIntervalDays(activeEntry.splitIntervalDays || 7);
+      setPlannedSplits(activeEntry.plannedSplits ? [...activeEntry.plannedSplits] : []);
+
       setCreditSettlementDate(activeEntry.creditSettlementDate || activeEntry.settlementDate || '');
       setStatementNote(activeEntry.statementNote || '');
       setSeriesEditMode('single');
@@ -198,6 +210,10 @@ export const EntryModal: React.FC<EntryModalProps> = ({
       setCurrency('EGP');
       setAmount('');
       setActualAmount('');
+      setIsSplitEnabled(false);
+      setSplitCount(2);
+      setSplitIntervalDays(7);
+      setPlannedSplits([]);
       setCreditSettlementDate('');
       setCreditSettlementHint('');
       setStatementNote('');
@@ -437,6 +453,10 @@ export const EntryModal: React.FC<EntryModalProps> = ({
       source: isCardExpense ? 'credit card' : isSettlement ? 'recurring credit' : preservedSource,
       actualAmount: resolvedActual,
       actualDate: resolvedActualDate,
+      splitCount: isSplitEnabled ? Math.max(2, splitCount) : undefined,
+      splitIntervalDays: isSplitEnabled ? Math.max(1, splitIntervalDays) : undefined,
+      plannedSplits: isSplitEnabled && plannedSplits.length > 0 ? plannedSplits : undefined,
+      keepOngoing: isSplitEnabled ? true : (entryToEdit?.keepOngoing || undefined),
     };
 
     if (entryToEdit) {
@@ -999,6 +1019,179 @@ export const EntryModal: React.FC<EntryModalProps> = ({
               ) : null
             )}
           </>
+        )}
+
+        {/* Split / Ongoing Draw Schedule */}
+        {!isCardExpense && !isSettlement && (
+          <div className="entry-field split-group" style={{ marginTop: '12px', padding: '12px', background: 'var(--surface-hover, rgba(255,255,255,0.03))', borderRadius: '8px', border: '1px solid var(--border-color, rgba(255,255,255,0.08))' }}>
+            <label className="check-row" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 600 }}>
+              <input
+                type="checkbox"
+                checked={isSplitEnabled}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setIsSplitEnabled(checked);
+                  if (checked && (!plannedSplits || plannedSplits.length === 0)) {
+                    const cnt = Math.max(2, splitCount || 2);
+                    const interval = Math.max(1, splitIntervalDays || 7);
+                    const baseAmt = numericAmount > 0 ? egpEquivalent : 0;
+                    const sliceAmt = Math.round((baseAmt / cnt) * 100) / 100;
+                    const initialSplits: PlannedSplit[] = [];
+                    for (let i = 0; i < cnt; i++) {
+                      initialSplits.push({
+                        id: `split-${i + 1}`,
+                        date: DateUtils.addDays(date, i * interval),
+                        amount: i === cnt - 1 ? Math.round((baseAmt - sliceAmt * (cnt - 1)) * 100) / 100 : sliceAmt,
+                      });
+                    }
+                    setPlannedSplits(initialSplits);
+                  }
+                }}
+              />
+              <span>👻 Split forecast across multiple dates (Ongoing Draws)</span>
+            </label>
+
+            {isSplitEnabled && (
+              <div style={{ marginTop: '10px' }}>
+                <small style={{ color: 'var(--muted)', display: 'block', marginBottom: '8px', fontSize: '11px' }}>
+                  Distributes the planned amount into ghost rows on the forecasted dates. Prevents false same-day deficit spikes while keeping the full expense together in History once actuals are recorded.
+                </small>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '10px', alignItems: 'flex-end', marginBottom: '10px' }}>
+                  <label>
+                    <span style={{ fontSize: '12px' }}>Split Count</span>
+                    <input
+                      type="number"
+                      min="2"
+                      max="30"
+                      value={splitCount}
+                      onChange={(e) => {
+                        const val = Math.max(2, parseInt(e.target.value) || 2);
+                        setSplitCount(val);
+                        const interval = Math.max(1, splitIntervalDays || 7);
+                        const baseAmt = numericAmount > 0 ? egpEquivalent : 0;
+                        const sliceAmt = Math.round((baseAmt / val) * 100) / 100;
+                        const newSplits: PlannedSplit[] = [];
+                        for (let i = 0; i < val; i++) {
+                          newSplits.push({
+                            id: `split-${i + 1}`,
+                            date: DateUtils.addDays(date, i * interval),
+                            amount: i === val - 1 ? Math.round((baseAmt - sliceAmt * (val - 1)) * 100) / 100 : sliceAmt,
+                          });
+                        }
+                        setPlannedSplits(newSplits);
+                      }}
+                    />
+                  </label>
+
+                  <label>
+                    <span style={{ fontSize: '12px' }}>Interval (Days)</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="365"
+                      value={splitIntervalDays}
+                      onChange={(e) => {
+                        const interval = Math.max(1, parseInt(e.target.value) || 1);
+                        setSplitIntervalDays(interval);
+                        setPlannedSplits((prev) =>
+                          prev.map((s, idx) => ({
+                            ...s,
+                            date: DateUtils.addDays(date, idx * interval),
+                          }))
+                        );
+                      }}
+                    />
+                  </label>
+
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    style={{ fontSize: '11px', height: '36px', padding: '0 10px', alignSelf: 'flex-end' }}
+                    onClick={() => {
+                      const cnt = Math.max(2, splitCount || 2);
+                      const interval = Math.max(1, splitIntervalDays || 7);
+                      const baseAmt = numericAmount > 0 ? egpEquivalent : 0;
+                      const sliceAmt = Math.round((baseAmt / cnt) * 100) / 100;
+                      const newSplits: PlannedSplit[] = [];
+                      for (let i = 0; i < cnt; i++) {
+                        newSplits.push({
+                          id: `split-${i + 1}`,
+                          date: DateUtils.addDays(date, i * interval),
+                          amount: i === cnt - 1 ? Math.round((baseAmt - sliceAmt * (cnt - 1)) * 100) / 100 : sliceAmt,
+                        });
+                      }
+                      setPlannedSplits(newSplits);
+                    }}
+                  >
+                    Reset Even
+                  </button>
+                </div>
+
+                {/* Custom Split Tranche Rows */}
+                {plannedSplits.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '40px 140px 1fr', gap: '8px', fontSize: '11px', color: 'var(--muted)', fontWeight: 600 }}>
+                      <span>#</span>
+                      <span>Date</span>
+                      <span>Amount ({currency})</span>
+                    </div>
+                    {plannedSplits.map((sp, idx) => (
+                      <div key={sp.id || idx} style={{ display: 'grid', gridTemplateColumns: '40px 140px 1fr', gap: '8px', alignItems: 'center' }}>
+                        <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--muted)' }}>#{idx + 1}</span>
+                        <input
+                          type="date"
+                          value={sp.date}
+                          style={{ fontSize: '12px', padding: '4px 6px' }}
+                          onChange={(ev) => {
+                            const newDate = ev.target.value;
+                            setPlannedSplits((prev) =>
+                              prev.map((item, i) => (i === idx ? { ...item, date: newDate } : item))
+                            );
+                          }}
+                        />
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={sp.amount}
+                          style={{ fontSize: '12px', padding: '4px 6px' }}
+                          onChange={(ev) => {
+                            const val = Number(ev.target.value) || 0;
+                            setPlannedSplits((prev) => {
+                              const next = [...prev];
+                              next[idx] = { ...next[idx], amount: val };
+                              // Auto-balance remainder onto last slice if not editing last slice
+                              if (idx !== next.length - 1 && next.length > 1) {
+                                const sumOthers = next.reduce((acc, curr, i) => (i === next.length - 1 ? acc : acc + curr.amount), 0);
+                                const remainder = Math.max(0, Math.round((egpEquivalent - sumOthers) * 100) / 100);
+                                next[next.length - 1] = { ...next[next.length - 1], amount: remainder };
+                              }
+                              return next;
+                            });
+                          }}
+                        />
+                      </div>
+                    ))}
+                    {(() => {
+                      const totalSplits = plannedSplits.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
+                      const diff = Math.round((egpEquivalent - totalSplits) * 100) / 100;
+                      return (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginTop: '4px', fontWeight: 600 }}>
+                          <span>Total Split: {formatMoney(totalSplits)}</span>
+                          {Math.abs(diff) > 0.01 && (
+                            <span style={{ color: 'var(--color-danger, #f43f5e)' }}>
+                              Difference from entry: {diff > 0 ? `+${formatMoney(diff)}` : formatMoney(diff)}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         )}
 
         {!entryToEdit && (
