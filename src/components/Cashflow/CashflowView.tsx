@@ -521,14 +521,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
       deletedForecasts,
     );
     const candidateList = candidates
-      .filter((entry) => !entry.isClosed)
-      .filter((entry) => {
-        const actual = getEntryActualAmount(entry, entryActuals);
-        if (actual <= 0) return true;
-        if ((entry as CashEntry & { keepOngoing?: boolean }).keepOngoing) return true;
-        if ((entry.splitCount && entry.splitCount > 1) || (entry.plannedSplits && entry.plannedSplits.length > 1)) return true;
-        return isPartialTracked(entry) && getRemainingForecastAmount(entry, entryActuals) > 0;
-      });
+      .filter((entry) => !entry.isClosed);
     const rows = getActiveForecastEntries(
       [...entries, ...salary],
       installment,
@@ -552,15 +545,13 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
         !isOverdueInc &&
         ((entry.splitCount && entry.splitCount > 1) || (entry.plannedSplits && entry.plannedSplits.length > 1));
 
+      const today = DateUtils.todayString();
+      let effDate = entry.date;
+      if (!isStrict && !isOverdueInc && (isPartialTracked(entry) || entry.keepOngoing) && effDate && effDate < today) {
+        effDate = today;
+      }
+
       if (hasSplits) {
-        const remaining = isPartialTracked(entry) && getEntryActualAmount(entry, entryActuals) > 0
-          ? getRemainingForecastAmount(entry, entryActuals)
-          : Number(entry.amount || 0);
-        let effDate = entry.date;
-        const today = DateUtils.todayString();
-        if (isPartialTracked(entry) && effDate && effDate < today && remaining > 0) {
-          effDate = today;
-        }
         const matchingRows = rows.filter((r) => r.id === entry.id || r.parentEntryId === entry.id);
         if (matchingRows.length > 0) {
           return matchingRows;
@@ -568,13 +559,16 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
         if (!entry.isClosed) {
           return [{
             ...entry,
-            date: effDate < today ? today : effDate,
+            date: effDate,
             amount: 0,
           }];
         }
         return [];
       }
-      return [entry];
+      return [{
+        ...entry,
+        date: effDate,
+      }];
     });
 
     return {
