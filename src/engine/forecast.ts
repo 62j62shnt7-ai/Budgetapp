@@ -432,6 +432,11 @@ export function getActiveForecastEntries(
       // Exclude individual credit card purchases — they're rolled into creditDueEntries
       if (isCreditCardExpense(entry)) return false;
 
+      const hasSplits = Boolean((entry.splitCount && entry.splitCount > 1) || (entry.plannedSplits && entry.plannedSplits.length > 1));
+      // Unclosed split entry with remaining balance: keep regardless of date so upcoming/future splits remain visible
+      if (hasSplits && !entry.isClosed && getRemainingForecastAmount(entry, entryActuals) > 0) {
+        return true;
+      }
       // Unclosed partial-tracked entry with remaining balance: keep regardless of date
       if (isPartialTracked(entry) && !entry.isClosed && getRemainingForecastAmount(entry, entryActuals) > 0) {
         return true;
@@ -448,6 +453,10 @@ export function getActiveForecastEntries(
     })
     .filter((entry) => {
       if (entry.keepOngoing && !entry.isClosed) return true;
+      const hasSplits = Boolean((entry.splitCount && entry.splitCount > 1) || (entry.plannedSplits && entry.plannedSplits.length > 1));
+      if (hasSplits && !entry.isClosed) {
+        return getRemainingForecastAmount(entry, entryActuals) > 0;
+      }
       if (isPartialTracked(entry)) {
         const actualAmount = getEntryActualAmount(entry, entryActuals);
         if (actualAmount > 0) {
