@@ -521,7 +521,14 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
       deletedForecasts,
     );
     const candidateList = candidates
-      .filter((entry) => !entry.isClosed);
+      .filter((entry) => !entry.isClosed)
+      .filter((entry) => {
+        const actual = getEntryActualAmount(entry, entryActuals);
+        if (actual <= 0) return true;
+        if ((entry as CashEntry & { keepOngoing?: boolean }).keepOngoing) return true;
+        if ((entry.splitCount && entry.splitCount > 1) || (entry.plannedSplits && entry.plannedSplits.length > 1)) return true;
+        return isPartialTracked(entry) && getRemainingForecastAmount(entry, entryActuals) > 0;
+      });
     const rows = getActiveForecastEntries(
       [...entries, ...salary],
       installment,
@@ -545,30 +552,29 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
         !isOverdueInc &&
         ((entry.splitCount && entry.splitCount > 1) || (entry.plannedSplits && entry.plannedSplits.length > 1));
 
-      const today = DateUtils.todayString();
-      let effDate = entry.date;
-      if (!isStrict && !isOverdueInc && (isPartialTracked(entry) || entry.keepOngoing) && effDate && effDate < today) {
-        effDate = today;
-      }
-
       if (hasSplits) {
+        const remaining = isPartialTracked(entry) && getEntryActualAmount(entry, entryActuals) > 0
+          ? getRemainingForecastAmount(entry, entryActuals)
+          : Number(entry.amount || 0);
+        let effDate = entry.date;
+        const today = DateUtils.todayString();
+        if (isPartialTracked(entry) && effDate && effDate < today && remaining > 0) {
+          effDate = today;
+        }
         const matchingRows = rows.filter((r) => r.id === entry.id || r.parentEntryId === entry.id);
         if (matchingRows.length > 0) {
           return matchingRows;
         }
-        if (!entry.isClosed) {
+        if (entry.keepOngoing && !entry.isClosed) {
           return [{
             ...entry,
-            date: effDate,
+            date: effDate < today ? today : effDate,
             amount: 0,
           }];
         }
         return [];
       }
-      return [{
-        ...entry,
-        date: effDate,
-      }];
+      return [entry];
     });
 
     return {
@@ -1187,13 +1193,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                   0
                 );
                 const isSplitSlice = Boolean(e.parentEntryId || (e.splitTotalCount && e.splitTotalCount > 1));
-                const isCompletedSplitContainer = isSplitSlice && Number(e.amount || 0) <= 0;
-                const displayPlannedAmt = isSplitSlice
-                  ? (isCompletedSplitContainer ? Number(parentEntry.amount || plannedAmt) : Number(e.amount || 0))
-                  : plannedAmt;
-                const remainingAmt = isSplitSlice
-                  ? (isCompletedSplitContainer ? 0 : Number(e.amount || 0))
-                  : Math.max(0, plannedAmt - actualValue);
+                const remainingAmt = isSplitSlice ? Number(e.amount || 0) : Math.max(0, plannedAmt - actualValue);
                 const isFull = plannedAmt > 0 && actualValue >= plannedAmt;
                 const isPartial = isPartialTracked(parentEntry);
                 const isPastDate = Boolean(e.date && e.date < DateUtils.todayString());
@@ -1201,6 +1201,10 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                 // they never represent an ongoing budget, so never badge them ongoing
                 // even when the due date has passed or a payment was recorded.
                 const isOverdueIncome = e.type === 'income' && !isOngoingEntry(e, entryActuals);
+                const isCompletedSplitContainer = isSplitSlice && (remainingAmt <= 0 || !e.isSplitGhost) && Boolean(parentEntry.keepOngoing);
+                const displayPlannedAmt = isCompletedSplitContainer
+                  ? Number(parentEntry.amount || plannedAmt)
+                  : (isSplitSlice ? Number(e.amount || 0) : plannedAmt);
                 const ongoing = (!isSplitSlice || isCompletedSplitContainer)
                   && !(isCreditSettlement || isCreditDueLumpSum(e))
                   && !isOverdueIncome
@@ -1524,12 +1528,12 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                       {isForeign ? (
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
                           <span>
-                            {e.type === 'income' ? '+' : '-'}{formatNativeCurrency(isSplitSlice && e.fxRateAtEntry ? Math.round((displayPlannedAmt / e.fxRateAtEntry) * 100) / 100 : nativeQty, e.currency)}
+                            {e.type === 'income' ? '+' : '-'}{formatNativeCurrency(nativeQty, e.currency)}
                           </span>
                           <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 500 }}>
                             ≈ {formatMoney(displayPlannedAmt)}
                           </span>
-                          {!isSplitSlice && actualValue > 0 && remainingAmt > 0 && (
+                          {actualValue > 0 && remainingAmt > 0 && (
                             <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600 }}>
                               ({formatMoney(remainingAmt)} rem)
                             </span>
@@ -1538,7 +1542,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
                           <span>{e.type === 'income' ? '+' : '-'}{formatMoney(displayPlannedAmt)}</span>
-                          {!isSplitSlice && actualValue > 0 && remainingAmt > 0 && (
+                          {actualValue > 0 && remainingAmt > 0 && (
                             <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600 }}>
                               ({formatMoney(remainingAmt)} rem)
                             </span>

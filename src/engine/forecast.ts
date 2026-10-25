@@ -288,10 +288,9 @@ export function expandEntrySplits(
   today: string
 ): CashEntry[] {
   if (remainingAmount <= 0) {
-    // If the entry is not closed, maintain an ongoing anchor row at 0 remaining
-    // so the user can continue logging further spending/draws without the entry vanishing
-    // before they explicitly finish and close it.
-    if (!entry.isClosed) {
+    // If the entry has keepOngoing enabled, maintain an ongoing anchor row at 0 remaining
+    // so the user can continue logging further spending/draws without the entry vanishing.
+    if (entry.keepOngoing && !entry.isClosed) {
       return [{
         ...entry,
         id: entry.id,
@@ -433,20 +432,27 @@ export function getActiveForecastEntries(
       // Exclude individual credit card purchases — they're rolled into creditDueEntries
       if (isCreditCardExpense(entry)) return false;
 
-      // Unclosed partial-tracked or ongoing entries: keep regardless of date
-      if (!entry.isClosed && (isPartialTracked(entry) || entry.keepOngoing || entry.splitCount || entry.plannedSplits)) {
+      // Unclosed partial-tracked entry with remaining balance: keep regardless of date
+      if (isPartialTracked(entry) && !entry.isClosed && getRemainingForecastAmount(entry, entryActuals) > 0) {
         return true;
       }
-      // Uncollected non-partial income (e.g. salary, freelance, refunds): keep when uncollected regardless of date
+      // Explicitly keep ongoing entries visible regardless of date or whether remaining is 0
+      if (entry.keepOngoing && !entry.isClosed) {
+        return true;
+      }
+      // Uncollected non-partial income (e.g. salary, freelance, refunds): keep when unclosed and remaining > 0 regardless of date
       if (entry.type === 'income' && !entry.isClosed && getEntryActualAmount(entry, entryActuals) <= 0) {
         return true;
       }
       return !entry.date || entry.date >= today;
     })
     .filter((entry) => {
-      // NEVER remove unclosed entries that the user hasn't explicitly finished!
-      if (!entry.isClosed && (isPartialTracked(entry) || entry.keepOngoing || entry.splitCount || entry.plannedSplits)) {
-        return true;
+      if (entry.keepOngoing && !entry.isClosed) return true;
+      if (isPartialTracked(entry)) {
+        const actualAmount = getEntryActualAmount(entry, entryActuals);
+        if (actualAmount > 0) {
+          return getRemainingForecastAmount(entry, entryActuals) > 0;
+        }
       }
       return getEntryActualAmount(entry, entryActuals) <= 0;
     })
@@ -485,7 +491,7 @@ export function getActiveForecastEntries(
         return expandEntrySplits(entry, remaining, effDate, entryActuals, today);
       }
 
-      if (!entry.isClosed && getRemainingForecastAmount(entry, entryActuals) <= 0) {
+      if (entry.keepOngoing && !entry.isClosed && getRemainingForecastAmount(entry, entryActuals) <= 0) {
         return [{ ...entry, date: effDate, amount: 0 }];
       }
 
