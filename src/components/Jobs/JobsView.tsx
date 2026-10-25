@@ -38,7 +38,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
   onOpenPaymentModal,
   onOpenForecastModal,
 }) => {
-  const { partTimeJobs, rates, entries, deletedForecasts, deleteJob, saveJob, deleteJobPayment, storageAssets, accounts } = useBudgetStore(
+  const { partTimeJobs, rates, entries, deletedForecasts, deleteJob, saveJob, deleteJobPayment, storageAssets, accounts, runTransaction } = useBudgetStore(
     useShallow((state) => ({
       partTimeJobs: state.partTimeJobs,
       rates: state.rates,
@@ -49,6 +49,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
       deleteJobPayment: state.deleteJobPayment,
       storageAssets: state.storageAssets,
       accounts: state.accounts,
+      runTransaction: state.runTransaction,
     }))
   );
 
@@ -58,6 +59,8 @@ export const JobsView: React.FC<JobsViewProps> = ({
   const [expandedJobIds, setExpandedJobIds] = useState<Set<string>>(new Set());
   const [activeJobSubTab, setActiveJobSubTab] = useState<Record<string, 'days' | 'expenses' | 'payments'>>({});
 
+  const [deleteDayTarget, setDeleteDayTarget] = useState<{ job: JobItem; dayIdx: number } | null>(null);
+  const [deleteExpenseTarget, setDeleteExpenseTarget] = useState<{ job: JobItem; expense: NonNullable<JobItem['expenses']>[number] } | null>(null);
   const [deletePaymentTarget, setDeletePaymentTarget] = useState<{ job: JobItem; payment: JobPayment } | null>(null);
   const [deleteJobTarget, setDeleteJobTarget] = useState<JobItem | null>(null);
 
@@ -78,70 +81,121 @@ export const JobsView: React.FC<JobsViewProps> = ({
     setActiveJobSubTab((prev) => ({ ...prev, [jobId]: tab }));
   };
 
-  // 1. Calculate Aggregated Metrics across all jobs
-  let totalPendingEgp = 0;
-  const pendingByCurrency: Record<string, number> = {};
-  let totalPaidEgp = 0;
-  let paidJobsCount = 0;
-  let activeJobsCount = 0;
-  let totalReimbursableEgp = 0;
+  // 1. Calculate Aggregated Financials across all jobs once using useMemo
+  const jobFinancialsMap = React.useMemo(() => {
+    const map = new Map<string, ReturnType<typeof calculateJobFinancials>>();
+    partTimeJobs.forEach((job) => {
+      map.set(job.id, calculateJobFinancials(job, rates));
+    });
+    return map;
+  }, [partTimeJobs, rates]);
 
-  partTimeJobs.forEach((job) => {
-    const fin = calculateJobFinancials(job, rates);
-    const curr = fin.currency;
+  const {
+    totalPendingEgp,
+    pendingByCurrency,
+    totalPaidEgp,
+    paidJobsCount,
+    activeJobsCount,
+    totalReimbursableEgp,
+  } = React.useMemo(() => {
+    let pendingEgp = 0;
+    const pendingCurr: Record<string, number> = {};
+    let paidEgp = 0;
+    let paidCount = 0;
+    let activeCount = 0;
+    let reimbursableEgp = 0;
 
-    totalPaidEgp += fin.totalPaidEgp;
-    if (fin.computedStatus === 'paid') {
-      paidJobsCount++;
-    }
+    partTimeJobs.forEach((job) => {
+      const fin = jobFinancialsMap.get(job.id) || calculateJobFinancials(job, rates);
+      const curr = fin.currency;
 
-    if (fin.remainingBalance > 0 && (fin.computedStatus === 'invoiced' || fin.computedStatus === 'partial')) {
-      totalPendingEgp += fin.remainingBalanceEgp;
-      pendingByCurrency[curr] = (pendingByCurrency[curr] || 0) + fin.remainingBalance;
-    }
+      paidEgp += fin.totalPaidEgp;
+      if (fin.computedStatus === 'paid') {
+        paidCount++;
+      }
 
-    if (fin.computedStatus === 'active') {
-      activeJobsCount++;
-    }
+      if (fin.remainingBalance > 0 && (fin.computedStatus === 'invoiced' || fin.computedStatus === 'partial')) {
+        pendingEgp += fin.remainingBalanceEgp;
+        pendingCurr[curr] = (pendingCurr[curr] || 0) + fin.remainingBalance;
+      }
 
-    if (fin.computedStatus !== 'paid') {
-      totalReimbursableEgp += fin.billableExpensesEgp;
-    }
-  });
+      if (fin.computedStatus === 'active') {
+        activeCount++;
+      }
+
+      if (fin.computedStatus !== 'paid') {
+        reimbursableEgp += fin.billableExpensesEgp;
+      }
+    });
+
+    return {
+      totalPendingEgp: pendingEgp,
+      pendingByCurrency: pendingCurr,
+      totalPaidEgp: paidEgp,
+      paidJobsCount: paidCount,
+      activeJobsCount: activeCount,
+      totalReimbursableEgp: reimbursableEgp,
+    };
+  }, [partTimeJobs, jobFinancialsMap, rates]);
 
   // 2. Filter & Sort Jobs
-  const filteredJobs = partTimeJobs.filter((job) => {
-    const fin = calculateJobFinancials(job, rates);
-    if (activeFilter !== 'all') {
-      if (activeFilter === 'partial' && fin.computedStatus !== 'partial') return false;
-      if (activeFilter === 'active' && fin.computedStatus !== 'active') return false;
-      if (activeFilter === 'invoiced' && fin.computedStatus !== 'invoiced') return false;
-      if (activeFilter === 'paid' && fin.computedStatus !== 'paid') return false;
-    }
-    if (activeCurrencyFilter !== 'all' && (job.currency || 'USD').toUpperCase() !== activeCurrencyFilter.toUpperCase()) {
-      return false;
-    }
-    return true;
-  });
+  const filteredJobs = React.useMemo(() => {
+    const list = partTimeJobs.filter((job) => {
+      const fin = jobFinancialsMap.get(job.id) || calculateJobFinancials(job, rates);
+      if (activeFilter !== 'all') {
+        if (activeFilter === 'partial' && fin.computedStatus !== 'partial') return false;
+        if (activeFilter === 'active' && fin.computedStatus !== 'active') return false;
+        if (activeFilter === 'invoiced' && fin.computedStatus !== 'invoiced') return false;
+        if (activeFilter === 'paid' && fin.computedStatus !== 'paid') return false;
+      }
+      if (activeCurrencyFilter !== 'all' && (job.currency || 'USD').toUpperCase() !== activeCurrencyFilter.toUpperCase()) {
+        return false;
+      }
+      return true;
+    });
 
-  filteredJobs.sort((a, b) => {
-    const dateA = a.startDate || (a.daysWorked && a.daysWorked[0]?.date) || '';
-    const dateB = b.startDate || (b.daysWorked && b.daysWorked[0]?.date) || '';
-    if (dateA && dateB) {
-      return activeSort === 'oldest' ? dateA.localeCompare(dateB) : dateB.localeCompare(dateA);
-    }
-    return 0;
-  });
+    list.sort((a, b) => {
+      const dateA = a.startDate || (a.daysWorked && a.daysWorked[0]?.date) || '';
+      const dateB = b.startDate || (b.daysWorked && b.daysWorked[0]?.date) || '';
+      if (dateA && dateB) {
+        return activeSort === 'oldest' ? dateA.localeCompare(dateB) : dateB.localeCompare(dateA);
+      }
+      return 0;
+    });
+
+    return list;
+  }, [partTimeJobs, jobFinancialsMap, activeFilter, activeCurrencyFilter, activeSort, rates]);
 
   const handleDeleteDay = (job: JobItem, dayIdx: number) => {
+    setDeleteDayTarget({ job, dayIdx });
+  };
+
+  const confirmDeleteDay = () => {
+    if (!deleteDayTarget) return;
+    const { job, dayIdx } = deleteDayTarget;
     const days = [...(job.daysWorked || [])];
+    const removedDay = days[dayIdx];
     days.splice(dayIdx, 1);
-    saveJob('partTime', { ...job, daysWorked: days });
+    runTransaction(`Delete shift: ${removedDay ? DateUtils.formatDisplayDate(removedDay.date) : 'Shift'}`, () => {
+      saveJob('partTime', { ...job, daysWorked: days });
+    });
+    setDeleteDayTarget(null);
   };
 
   const handleDeleteExpense = (job: JobItem, expenseId: string) => {
-    const expenses = (job.expenses || []).filter((e) => e.id !== expenseId);
-    saveJob('partTime', { ...job, expenses });
+    const expense = (job.expenses || []).find((e) => e.id === expenseId);
+    if (!expense) return;
+    setDeleteExpenseTarget({ job, expense });
+  };
+
+  const confirmDeleteExpense = () => {
+    if (!deleteExpenseTarget) return;
+    const { job, expense } = deleteExpenseTarget;
+    const expenses = (job.expenses || []).filter((e) => e.id !== expense.id);
+    runTransaction(`Delete expense: ${expense.title || expense.description || 'Expense'}`, () => {
+      saveJob('partTime', { ...job, expenses });
+    });
+    setDeleteExpenseTarget(null);
   };
 
   const handleDeletePayment = (job: JobItem, paymentId: string) => {
@@ -278,14 +332,27 @@ export const JobsView: React.FC<JobsViewProps> = ({
                 ? "Track part-time jobs, consulting gigs, daily rates, reimbursable expenses, and scheduled invoices."
                 : 'No projects match your current filters.'}
             </p>
-            <button className="primary-button" type="button" onClick={() => onOpenJobModal()}>
-              <Plus size={15} style={{ marginRight: '6px' }} />
-              Create First Project
-            </button>
+            {partTimeJobs.length === 0 ? (
+              <button className="primary-button" type="button" onClick={() => onOpenJobModal()}>
+                <Plus size={15} style={{ marginRight: '6px' }} />
+                Create First Project
+              </button>
+            ) : (
+              <button
+                className="ghost-button"
+                type="button"
+                onClick={() => {
+                  setActiveFilter('all');
+                  setActiveCurrencyFilter('all');
+                }}
+              >
+                Clear Filters
+              </button>
+            )}
           </div>
         ) : (
           filteredJobs.map((job) => {
-            const fin = calculateJobFinancials(job, rates);
+            const fin = jobFinancialsMap.get(job.id) || calculateJobFinancials(job, rates);
             const isExpanded = expandedJobIds.has(job.id);
             const days = job.daysWorked || [];
             const expenses = job.expenses || [];
@@ -304,11 +371,32 @@ export const JobsView: React.FC<JobsViewProps> = ({
                 className={`job-card glass-panel jobs-job-card ${isExpanded ? 'is-expanded' : ''}`}
               >
                 {/* Header Row */}
-                <div className="jobs-card-header">
+                <div
+                  className="jobs-card-header"
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => toggleExpand(job.id)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      toggleExpand(job.id);
+                    }
+                  }}
+                  title={isExpanded ? 'Collapse project details' : 'Expand project details'}
+                >
                   <div className="jobs-card-header-left">
                     <div className="jobs-card-status-row">
-                      <span className={`badge ${fin.computedStatus === 'paid' ? 'badge-income' : fin.computedStatus === 'invoiced' || fin.computedStatus === 'partial' ? 'badge-warning' : 'badge-neutral'}`}>
-                        {fin.computedStatus.toUpperCase()}
+                      <span className={`badge ${
+                        fin.computedStatus === 'paid'
+                          ? 'badge-income'
+                          : fin.computedStatus === 'invoiced'
+                          ? 'badge-warning'
+                          : fin.computedStatus === 'partial'
+                          ? 'badge-neutral'
+                          : 'badge-accent'
+                      }`}>
+                        {fin.computedStatus === 'active' ? 'Active Shift' : fin.computedStatus.toUpperCase()}
                       </span>
                       {job.client && (
                         <span className="job-client-tag">
@@ -352,7 +440,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
                     <div className="jobs-card-total-egp">
                       ≈ {formatMoney(fin.totalInvoiceEgp)}
                     </div>
-                    <div className="jobs-card-quick-actions">
+                    <div className="jobs-card-quick-actions" onClick={(e) => e.stopPropagation()}>
                       <button
                         className="ghost-button icon-button"
                         type="button"
@@ -725,6 +813,53 @@ export const JobsView: React.FC<JobsViewProps> = ({
           })
         )}
       </div>
+
+      {/* Confirmation Modal for Shift Deletion */}
+      {deleteDayTarget && (
+        <AffectedRecordsModal
+          isOpen={Boolean(deleteDayTarget)}
+          mode="delete"
+          title="Delete Shift"
+          subtitle="Are you sure you want to remove this shift? Financials will recalculate."
+          itemDescription={`Shift on ${DateUtils.formatDisplayDate(deleteDayTarget.job.daysWorked?.[deleteDayTarget.dayIdx]?.date || '')} (${deleteDayTarget.job.daysWorked?.[deleteDayTarget.dayIdx]?.units || 1} units)`}
+          options={[
+            {
+              id: 'shift',
+              label: 'Remove Shift',
+              sublabel: 'Deduct shift units from total days and recalculate project invoice.',
+              icon: '⏱️',
+              required: true,
+              defaultChecked: true,
+            },
+          ]}
+          onConfirm={confirmDeleteDay}
+          onClose={() => setDeleteDayTarget(null)}
+        />
+      )}
+
+      {/* Confirmation Modal for Expense Deletion */}
+      {deleteExpenseTarget && (
+        <AffectedRecordsModal
+          isOpen={Boolean(deleteExpenseTarget)}
+          mode="delete"
+          title="Delete Project Expense"
+          subtitle="Are you sure you want to remove this project expense?"
+          itemDescription={`${deleteExpenseTarget.expense.title || deleteExpenseTarget.expense.description || 'Expense'} (${formatJobCurrency(deleteExpenseTarget.expense.amount, deleteExpenseTarget.job.currency)})`}
+          amountFormatted={formatJobCurrency(deleteExpenseTarget.expense.amount, deleteExpenseTarget.job.currency)}
+          options={[
+            {
+              id: 'expense',
+              label: 'Remove Expense',
+              sublabel: 'Remove expense from project billing totals.',
+              icon: '🧾',
+              required: true,
+              defaultChecked: true,
+            },
+          ]}
+          onConfirm={confirmDeleteExpense}
+          onClose={() => setDeleteExpenseTarget(null)}
+        />
+      )}
 
       {/* Selective Payment Deletion Modal */}
       {deletePaymentTarget && (

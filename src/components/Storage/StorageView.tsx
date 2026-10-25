@@ -66,8 +66,6 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenStorageModal }) 
     deleteStorageAsset,
     syncStorageRates,
     partTimeJobs,
-    asfJobs,
-    irqJobs,
   } = useBudgetStore(
     useShallow((state) => ({
       storageAssets: state.storageAssets,
@@ -76,8 +74,6 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenStorageModal }) 
       deleteStorageAsset: state.deleteStorageAsset,
       syncStorageRates: state.syncStorageRates,
       partTimeJobs: state.partTimeJobs,
-      asfJobs: state.asfJobs,
-      irqJobs: state.irqJobs,
     }))
   );
 
@@ -349,8 +345,6 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenStorageModal }) 
                       {(() => {
                         const hasAffected = hasStorageAffectedParties(item, {
                           partTimeJobs,
-                          asfJobs,
-                          irqJobs,
                         });
                         return (
                           <button
@@ -523,8 +517,6 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenStorageModal }) 
       {deleteAssetTarget && (() => {
         const affectedData = buildStorageDeleteOptions(deleteAssetTarget, {
           partTimeJobs,
-          asfJobs,
-          irqJobs,
         });
 
         return (

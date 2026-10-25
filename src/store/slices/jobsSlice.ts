@@ -12,28 +12,22 @@ import { normalizeCurrencyCode, getCurrencyRateOr } from '../../engine/currency'
 import { DateUtils } from '../../engine/dateUtils';
 
 export const createJobsSlice: SliceCreator<JobsSlice> = (set, get) => ({
-  asfJobs: loadStorage<JobItem[]>(STORAGE_KEYS.asf, []),
-  irqJobs: loadStorage<JobItem[]>(STORAGE_KEYS.irq, []),
   partTimeJobs: loadStorage<JobItem[]>(STORAGE_KEYS.partTimeJobs, []),
 
-  saveJob: (jobType, job) => {
+  saveJob: (_jobType, job) => {
     return get().runTransaction(`Save Job: ${job.title}`, () => {
-      const key = jobType === 'asf' ? STORAGE_KEYS.asf : jobType === 'irq' ? STORAGE_KEYS.irq : STORAGE_KEYS.partTimeJobs;
-      const currentList = jobType === 'asf' ? get().asfJobs : jobType === 'irq' ? get().irqJobs : get().partTimeJobs;
+      const currentList = get().partTimeJobs;
       const exists = currentList.some((j) => j.id === job.id);
       const updated = exists ? currentList.map((j) => (j.id === job.id ? job : j)) : [...currentList, job];
 
-      saveStorage(key, updated);
-      if (jobType === 'asf') set({ asfJobs: updated });
-      else if (jobType === 'irq') set({ irqJobs: updated });
-      else set({ partTimeJobs: updated });
+      saveStorage(STORAGE_KEYS.partTimeJobs, updated);
+      set({ partTimeJobs: updated });
       scheduleAutoDriveSync(get);
     });
   },
 
-  deleteJob: (jobType, jobId, options) => {
-    const key = jobType === 'asf' ? STORAGE_KEYS.asf : jobType === 'irq' ? STORAGE_KEYS.irq : STORAGE_KEYS.partTimeJobs;
-    const currentList = jobType === 'asf' ? get().asfJobs : jobType === 'irq' ? get().irqJobs : get().partTimeJobs;
+  deleteJob: (_jobType, jobId, options) => {
+    const currentList = get().partTimeJobs;
     const targetJob = currentList.find((j) => j.id === jobId);
     return get().runTransaction(`Delete Job: ${targetJob?.title || 'Job'}`, () => {
       const updated = currentList.filter((j) => j.id !== jobId);
@@ -76,21 +70,19 @@ export const createJobsSlice: SliceCreator<JobsSlice> = (set, get) => ({
         }
       }
 
-      saveStorage(key, updated);
+      saveStorage(STORAGE_KEYS.partTimeJobs, updated);
       const stateUpdates: Partial<ReturnType<typeof get>> = {
         entries: updatedEntries,
         ...(storageUpdated ? { archivedEntries: updatedArchived, entryActuals: actuals, entryActualDates: actualDates } : {}),
       };
-      if (jobType === 'asf') set({ ...stateUpdates, asfJobs: updated });
-      else if (jobType === 'irq') set({ ...stateUpdates, irqJobs: updated });
-      else set({ ...stateUpdates, partTimeJobs: updated });
+      set({ ...stateUpdates, partTimeJobs: updated });
       scheduleAutoDriveSync(get);
     });
   },
 
-  deleteJobPayment: (jobType, jobId, paymentId, options) => {
+  deleteJobPayment: (_jobType, jobId, paymentId, options) => {
     return get().runTransaction('Delete Job Payment', () => {
-      const currentList = jobType === 'asf' ? get().asfJobs : jobType === 'irq' ? get().irqJobs : get().partTimeJobs;
+      const currentList = get().partTimeJobs;
       const targetJob = currentList.find((j) => j.id === jobId);
       if (!targetJob) return;
 
@@ -106,7 +98,7 @@ export const createJobsSlice: SliceCreator<JobsSlice> = (set, get) => ({
         forecastAmount: Math.max(0, fin.totalInvoice - totalPaid),
       };
 
-      get().saveJob(jobType, updatedJob);
+      get().saveJob('partTime', updatedJob);
 
       if (options?.syncCashflow !== false && payment?.entryId) {
         const shouldDeleteCashEntry = options?.deleteCashEntry === true;
@@ -151,16 +143,7 @@ export const createJobsSlice: SliceCreator<JobsSlice> = (set, get) => ({
     return get().runTransaction('Settle Job Payment', () => {
       const entry = get().entries.find((e) => e.id === entryId) || get().archivedEntries.find((e) => e.id === entryId);
 
-      let jobType: 'partTime' | 'asf' | 'irq' = 'partTime';
-      let targetJob = get().partTimeJobs.find((j) => j.forecastEntryId === entryId || j.payments?.some((p) => p.entryId === entryId));
-      if (!targetJob) {
-        targetJob = get().asfJobs.find((j) => j.forecastEntryId === entryId || j.payments?.some((p) => p.entryId === entryId));
-        if (targetJob) jobType = 'asf';
-      }
-      if (!targetJob) {
-        targetJob = get().irqJobs.find((j) => j.forecastEntryId === entryId || j.payments?.some((p) => p.entryId === entryId));
-        if (targetJob) jobType = 'irq';
-      }
+      const targetJob = get().partTimeJobs.find((j) => j.forecastEntryId === entryId || j.payments?.some((p) => p.entryId === entryId));
       if (!targetJob) return false;
 
       const jobCurrency = normalizeCurrencyCode(targetJob.currency || entry?.currency) || 'USD';
@@ -241,7 +224,7 @@ export const createJobsSlice: SliceCreator<JobsSlice> = (set, get) => ({
         forecastDestination: isFullyPaid ? undefined : targetJob.forecastDestination,
       };
 
-      get().saveJob(jobType, updatedJob);
+      get().saveJob('partTime', updatedJob);
       return true;
     });
   },

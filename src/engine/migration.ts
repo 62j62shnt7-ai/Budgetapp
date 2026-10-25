@@ -26,8 +26,6 @@ export interface MigratedBudgetDataset {
   installments: Installment[];
   rates: RatesData;
   storageAssets: StorageAsset[];
-  asfJobs: JobItem[];
-  irqJobs: JobItem[];
   partTimeJobs: JobItem[];
   entryActuals: Record<string, number>;
   entryActualDates: Record<string, string>;
@@ -131,8 +129,6 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
       installments: [],
       rates: defaultRates,
       storageAssets: [],
-      asfJobs: [],
-      irqJobs: [],
       partTimeJobs: [],
       entryActuals: {},
       entryActualDates: {},
@@ -306,10 +302,6 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
     : [];
 
   // 8. Jobs
-  const rawAsf = data.asfJobs || parsed.asfJobs;
-  const asfJobs: JobItem[] = Array.isArray(rawAsf) ? (rawAsf as JobItem[]) : [];
-  const rawIrq = data.irqJobs || parsed.irqJobs;
-  const irqJobs: JobItem[] = Array.isArray(rawIrq) ? (rawIrq as JobItem[]) : [];
   const rawPt = data.partTimeJobs || parsed.partTimeJobs;
   const partTimeJobs: JobItem[] = Array.isArray(rawPt) ? (rawPt as JobItem[]) : [];
 
@@ -351,7 +343,7 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
   const deletedForecasts: string[] = Array.isArray(rawDeleted) ? (rawDeleted as string[]) : [];
 
   // Auto-reconcile & link entities together for smooth affected tracking
-  const allMigratedJobs = [...partTimeJobs, ...asfJobs, ...irqJobs];
+  const allMigratedJobs = [...partTimeJobs];
   for (const job of allMigratedJobs) {
     const jTitle = (job.title || '').toLowerCase().trim();
     const jClient = (job.client || '').toLowerCase().trim();
@@ -439,8 +431,6 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
     installments,
     rates,
     storageAssets,
-    asfJobs,
-    irqJobs,
     partTimeJobs,
     entryActuals,
     entryActualDates,

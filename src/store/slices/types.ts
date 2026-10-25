@@ -138,8 +138,6 @@ export interface AccountsSlice {
 }
 
 export interface JobsSlice {
-  asfJobs: JobItem[];
-  irqJobs: JobItem[];
   partTimeJobs: JobItem[];
 
   saveJob: (jobType: 'asf' | 'irq' | 'partTime', job: JobItem) => void;

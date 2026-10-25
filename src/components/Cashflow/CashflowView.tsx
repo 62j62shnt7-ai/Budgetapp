@@ -5,6 +5,7 @@ import {
   buildSalaryEntries,
   buildInstallmentEntries,
   calculateInstallmentProgress,
+  summarizeActiveInstallments,
 } from '../../engine/salaryAndInstallments';
 import {
   buildCreditDueEntries,
@@ -24,13 +25,15 @@ import {
   findLinkedLoanRepayment,
   calculateLoanRepaymentScale,
   getDeficitPeriods,
+  calculateForecastRunningBalances,
   getEntryId,
 } from '../../engine/forecast';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { formatNativeCurrency, getCurrencyRateOr } from '../../engine/currency';
 import { getEntryTags } from '../../engine/tags';
-import { Plus } from 'lucide-react';
+import { Plus, Calendar } from 'lucide-react';
 import { loadStorageSync, saveStorage } from '../../utils/storageAdapter';
+import { LedgerFilterBar } from '../Common/LedgerFilterBar';
 
 import type { CashEntry, Installment } from '../../types';
 import { ExactAmountDecisionModal } from '../Modals/ExactAmountDecisionModal';
@@ -87,8 +90,6 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     rates,
     storageAssets,
     partTimeJobs,
-    asfJobs,
-    irqJobs,
     setActiveTab,
     pendingNavigation,
     clearPendingNavigation,
@@ -124,8 +125,6 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
       rates: state.rates,
       storageAssets: state.storageAssets,
       partTimeJobs: state.partTimeJobs,
-      asfJobs: state.asfJobs,
-      irqJobs: state.irqJobs,
       setActiveTab: state.setActiveTab,
       pendingNavigation: state.pendingNavigation,
       clearPendingNavigation: state.clearPendingNavigation,
@@ -170,6 +169,8 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
   const [searchTerm, setSearchTerm] = useState<string>(initialSearch);
   const [highlightedEntryId, setHighlightedEntryId] = useState<string | null>(initialHighlightId);
   const [highlightTrigger, setHighlightTrigger] = useState(0);
+  const [activeCashflowSubTab, setActiveCashflowSubTab] = useState<'forecast' | 'setup'>('forecast');
+  const [showDateRangeFilter, setShowDateRangeFilter] = useState(false);
 
   // Respond to programmatic navigation intents
   const [prevNav, setPrevNav] = useState(pendingNavigation);
@@ -238,6 +239,8 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     setSelectedAccount('all');
     setSelectedTag('all');
     setSearchTerm('');
+    setDateFrom('');
+    setDateTo('');
   };
 
   const handleTagFilter = (tag: string) => {
@@ -673,15 +676,23 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
 
   const allDisplayRows = [...filteredOpeningRows, ...filteredForecastRows];
 
+  // Helper to determine the remaining forecast amount for candidate entries
+  const getCandidateForecastAmount = (e: CashEntry): number => {
+    if (isPartialTracked(e)) {
+      return getRemainingForecastAmount(e, entryActuals);
+    }
+    return Number(e.amount || 0);
+  };
+
   // Only real forecast rows (not synthetic bank balance rows) count towards period income
   const filteredIncome = filteredForecastRows
     .filter((e) => e.type === 'income')
-    .reduce((sum, e) => sum + Number(e.amount || 0), 0);
+    .reduce((sum, e) => sum + getCandidateForecastAmount(e), 0);
 
   // Credit card purchases are already rolled up in credit-settlement-* rows; exclude them to avoid double-counting
   const filteredExpenses = filteredForecastRows
     .filter((e) => e.type === 'expense' && !isCreditCardExpense(e))
-    .reduce((sum, e) => sum + Number(e.amount || 0), 0);
+    .reduce((sum, e) => sum + getCandidateForecastAmount(e), 0);
 
   const filteredNet = filteredIncome - filteredExpenses;
 
@@ -691,12 +702,19 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     categoryFilter !== 'all' ||
     selectedAccount !== 'all' ||
     selectedTag !== 'all' ||
-    Boolean(searchTerm);
+    Boolean(searchTerm) ||
+    Boolean(dateFrom) ||
+    Boolean(dateTo);
 
   const totalCash = Object.values(accounts || {}).reduce(
     (sum, acc) => sum + (Number(acc.balance) || 0),
     0
   );
+
+  // Authoritative running balance map computed over the complete forecast sequence (immune to active UI filters)
+  const entryRunningBalanceMap = React.useMemo(() => {
+    return calculateForecastRunningBalances(forecastRows, totalCash);
+  }, [forecastRows, totalCash]);
   // Pass forecastRows (active forecast) rather than allCandidate to avoid double-counting card swipes + settlements
   const deficitPeriods = getDeficitPeriods(forecastRows, totalCash);
   const entryStatusMap = new Map<string, { type: 'deficit' | 'recovery'; balance: number }>();
@@ -711,13 +729,6 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
       }
     });
   });
-
-  // Summarise exactly the rows the table renders. Deriving these from the
-  // unfiltered candidate list made the cards report the whole ledger's date span
-  // and totals while the table (and the forecast window) showed a shorter period.
-  const totalIncome = filteredIncome;
-  const totalExpenses = filteredExpenses;
-  const netPeriod = filteredNet;
 
   // Count and date span describe the forecast rows themselves, not the synthetic
   // opening-balance rows (which are always dated today and would skew the range).
@@ -734,7 +745,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     .filter((e) => e.type === 'expense' && !isCreditCardExpense(e))
     .forEach((e) => {
       const cat = e.category || 'Other';
-      expensesByCategory[cat] = (expensesByCategory[cat] || 0) + (Number(e.amount) || 0);
+      expensesByCategory[cat] = (expensesByCategory[cat] || 0) + getCandidateForecastAmount(e);
     });
 
   // Progressive rendering. A year of forecast rows is ~120 rows, and on mobile the
@@ -791,6 +802,10 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     return sum + progress.outstandingAmount;
   }, 0);
 
+  const activeInstallmentSummary = React.useMemo(() => {
+    return summarizeActiveInstallments(installments, (inst) => getInstallmentProgress(inst));
+  }, [installments, installmentProgressMap]);
+
   const installmentProgressSummary = installments.reduce(
     (summary, installment) => {
       const progress = getInstallmentProgress(installment);
@@ -830,421 +845,265 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
 
   return (
     <section className="view cashflow-view" id="cashflow" style={{ display: 'block' }}>
-      {/* Summary Period Filter Bar */}
-      <div className="panel cashflow-top-panel" style={{ marginBottom: '18px' }}>
-        <div className="panel-heading">
-          <h3 style={{ margin: 0 }}>Summary period</h3>
-          <span style={{ fontSize: '13px', color: 'var(--muted)' }}>Forecast candidate entries list</span>
-        </div>
-        <div className="salary-controls cashflow-period-controls">
-          <label className="period-filter-label">
-            From:
-            <input
-              type="date"
-              className="form-input"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
+      {/* Subnav Tabs: Forecast Ledger vs Plan Setup */}
+      <div className="subnav-tabs cashflow-view-subnav" role="tablist" aria-label="Cashflow navigation tabs">
+        <button
+          className={`subnav-tab ${activeCashflowSubTab === 'forecast' ? 'active' : ''}`}
+          type="button"
+          role="tab"
+          aria-selected={activeCashflowSubTab === 'forecast'}
+          onClick={() => setActiveCashflowSubTab('forecast')}
+        >
+          Forecast Ledger
+        </button>
+        <button
+          className={`subnav-tab ${activeCashflowSubTab === 'setup' ? 'active' : ''}`}
+          type="button"
+          role="tab"
+          aria-selected={activeCashflowSubTab === 'setup'}
+          onClick={() => setActiveCashflowSubTab('setup')}
+        >
+          Plan Setup (Salary &amp; Installments)
+        </button>
+      </div>
+
+      {activeCashflowSubTab === 'setup' ? (
+        <div className="cashflow-setup-pane">
+          {/* Salary Structure Collapsible */}
+          <SalaryStructureSection
+            salaryOpen={salaryOpen}
+            setSalaryOpen={setSalaryOpen}
+            salaryQuarterTotal={salaryQuarterTotal}
+            salaryAnchorMonth={salaryAnchorMonth}
+            startMonth={startMonth}
+            setStartMonth={setStartMonth}
+            quarters={quarters}
+            setQuarters={setQuarters}
+            salaryPattern={salaryPattern}
+            onAddPayment={handleAddSalaryPayment}
+            onPopulate={handlePopulateSalaryForecast}
+            onClearPeriod={() => handleClearSalaryForecast(false)}
+            onClearAll={() => handleClearSalaryForecast(true)}
+            onUpdatePayment={(idx, field, value) => handleUpdateSalaryPayment(idx, { [field]: value })}
+            onRemovePayment={handleDeleteSalaryPayment}
+          />
+
+          {/* Installments & Expense Mix */}
+          <div className="content-grid salary-layout cashflow-card-grid" style={{ marginTop: '18px' }}>
+            <InstallmentsSection
+              installmentsOpen={installmentsOpen}
+              setInstallmentsOpen={setInstallmentsOpen}
+              installments={installments}
+              installmentMonthlyTotal={installmentMonthlyTotal}
+              installmentOutstandingTotal={installmentOutstandingTotal}
+              installmentProgressSummary={installmentProgressSummary}
+              activeCommitmentSummary={activeInstallmentSummary}
+              onOpenInstallmentModal={onOpenInstallmentModal}
+              getInstallmentProgress={getInstallmentProgress}
+              onDeleteInstallment={(inst) => setDeleteInstallmentTarget(inst)}
             />
-          </label>
-          <label className="period-filter-label">
-            To:
-            <input
-              type="date"
-              className="form-input"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-            />
-          </label>
-          <button
-            className="ghost-button full-list-btn"
-            type="button"
-            onClick={() => {
-              setDateFrom('');
-              setDateTo('');
-            }}
-          >
-            Use full list
-          </button>
-          <span className="period-filter-status" style={{ fontSize: '12px', color: 'var(--muted)' }}>
-            {dateFrom || dateTo ? `${dateFrom || 'start'} to ${dateTo || 'end'}` : 'Full forecast list'}
-          </span>
-        </div>
-      </div>
 
-      {/* Metrics Row */}
-      <div className="metrics-grid cashflow-summary-grid" id="cashflowSummary">
-        <article className="metric cashflow-metric">
-          <span>Forecast income</span>
-          <strong style={{ color: 'var(--green)' }}>{formatMoney(totalIncome)}</strong>
-          <small>Total across the selected period</small>
-        </article>
-        <article className="metric cashflow-metric">
-          <span>Forecast expenses</span>
-          <strong style={{ color: 'var(--red)' }}>{formatMoney(totalExpenses)}</strong>
-          <small>Includes installments &amp; credit dues</small>
-        </article>
-        <article className="metric cashflow-metric">
-          <span>Net</span>
-          <strong style={{ color: netPeriod >= 0 ? 'var(--green)' : 'var(--red)' }}>
-            {netPeriod >= 0 ? '+' : ''}{formatMoney(netPeriod)}
-          </strong>
-          <small>Income minus expenses</small>
-        </article>
-        <article className="metric cashflow-metric">
-          <span>Entries</span>
-          <strong>{summaryRows.length}</strong>
-          <small>{summaryRange}</small>
-        </article>
-      </div>
-
-      {/* Salary Structure Collapsible */}
-      <SalaryStructureSection
-        salaryOpen={salaryOpen}
-        setSalaryOpen={setSalaryOpen}
-        salaryQuarterTotal={salaryQuarterTotal}
-        salaryAnchorMonth={salaryAnchorMonth}
-        startMonth={startMonth}
-        setStartMonth={setStartMonth}
-        quarters={quarters}
-        setQuarters={setQuarters}
-        salaryPattern={salaryPattern}
-        onAddPayment={handleAddSalaryPayment}
-        onPopulate={handlePopulateSalaryForecast}
-        onClearPeriod={() => handleClearSalaryForecast(false)}
-        onClearAll={() => handleClearSalaryForecast(true)}
-        onUpdatePayment={(idx, field, value) => handleUpdateSalaryPayment(idx, { [field]: value })}
-        onRemovePayment={handleDeleteSalaryPayment}
-      />
-
-      {/* Installments & Expense Mix */}
-      <div className="content-grid salary-layout cashflow-card-grid" style={{ marginTop: '18px' }}>
-        <InstallmentsSection
-          installmentsOpen={installmentsOpen}
-          setInstallmentsOpen={setInstallmentsOpen}
-          installments={installments}
-          installmentMonthlyTotal={installmentMonthlyTotal}
-          installmentOutstandingTotal={installmentOutstandingTotal}
-          installmentProgressSummary={installmentProgressSummary}
-          onOpenInstallmentModal={onOpenInstallmentModal}
-          getInstallmentProgress={getInstallmentProgress}
-          onDeleteInstallment={(inst) => setDeleteInstallmentTarget(inst)}
-        />
-
-        <ExpenseMixSection
-          expenseMixOpen={expenseMixOpen}
-          setExpenseMixOpen={setExpenseMixOpen}
-          expensesByCategory={expensesByCategory}
-          totalExpenses={totalExpenses}
-          selectedCategory={categoryFilter}
-          onSelectCategory={(cat) => {
-            handleCategoryFilter(cat);
-            requestAnimationFrame(() => {
-              const panel = document.getElementById('forecastEntriesPanel');
-              if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            });
-          }}
-        />
-      </div>
-
-      {/* Forecast Entries Table */}
-      <section className="panel cashflow-table-panel" id="forecastEntriesPanel" style={{ marginTop: '18px' }}>
-        <div className="panel-heading cashflow-table-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <h3 style={{ margin: 0 }}>Forecast entries</h3>
-            <span id="cashflowFilteredCount" style={{ fontSize: '13px', color: 'var(--muted)' }}>
-              {allDisplayRows.length} {allDisplayRows.length === 1 ? 'entry' : 'entries'}
-            </span>
-          </div>
-          <button
-            className="ghost-button cashflow-add-btn"
-            type="button"
-            onClick={() => onOpenEntryModal('expense')}
-          >
-            <Plus size={14} style={{ marginRight: '4px' }} />
-            <span>Add entry</span>
-          </button>
-        </div>
-
-        {/* Quick Horizontal Month Jumper Chips */}
-        {orderedMonths.length > 0 && (
-          <div
-            className="cashflow-month-chips"
-            style={{
-              display: 'flex',
-              gap: '6px',
-              overflowX: 'auto',
-              padding: '4px 0 6px',
-              marginTop: '8px',
-              WebkitOverflowScrolling: 'touch',
-              scrollbarWidth: 'none',
-            }}
-            aria-label="Filter forecast entries by month"
-          >
-            <button
-              type="button"
-              className={`ghost-button ${selectedMonth === 'all' ? 'active' : ''}`}
-              style={{
-                padding: '4px 12px',
-                borderRadius: '999px',
-                fontSize: '12px',
-                fontWeight: 700,
-                whiteSpace: 'nowrap',
-                background: selectedMonth === 'all' ? 'var(--brand-primary, #6366f1)' : 'var(--surface-soft)',
-                color: selectedMonth === 'all' ? '#ffffff' : 'var(--ink)',
-                border: `1px solid ${selectedMonth === 'all' ? 'var(--brand-primary, #6366f1)' : 'var(--line)'}`,
-                minHeight: '32px',
-                cursor: 'pointer',
+            <ExpenseMixSection
+              expenseMixOpen={expenseMixOpen}
+              setExpenseMixOpen={setExpenseMixOpen}
+              expensesByCategory={expensesByCategory}
+              totalExpenses={filteredExpenses}
+              selectedCategory={categoryFilter}
+              onSelectCategory={(cat) => {
+                handleCategoryFilter(cat);
+                setActiveCashflowSubTab('forecast');
+                requestAnimationFrame(() => {
+                  const panel = document.getElementById('forecastEntriesPanel');
+                  if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                });
               }}
-              onClick={() => setSelectedMonth('all')}
+            />
+          </div>
+        </div>
+      ) : (
+        <div className="cashflow-forecast-pane">
+          {/* Single Authoritative Metrics Row */}
+          <div className="metrics-grid cashflow-summary-grid" id="cashflowSummary">
+            <article className="metric cashflow-metric">
+              <span>{isAnyFilterActive ? 'Filtered Inflow' : 'Forecast Income'}</span>
+              <strong style={{ color: 'var(--green)' }}>+{formatMoney(filteredIncome)}</strong>
+              <small>{isAnyFilterActive ? 'Planned for active criteria' : summaryRange}</small>
+            </article>
+            <article className="metric cashflow-metric">
+              <span>{isAnyFilterActive ? 'Filtered Outflow' : 'Forecast Expenses'}</span>
+              <strong style={{ color: 'var(--red)' }}>-{formatMoney(filteredExpenses)}</strong>
+              <small>Includes installments &amp; credit dues</small>
+            </article>
+            <article className="metric cashflow-metric">
+              <span>Net</span>
+              <strong style={{ color: filteredNet >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                {filteredNet >= 0 ? '+' : ''}{formatMoney(filteredNet)}
+              </strong>
+              <small>Income minus expenses</small>
+            </article>
+            <article
+              className="metric cashflow-metric cashflow-installments-kpi"
+              style={{ cursor: 'pointer', position: 'relative' }}
+              onClick={() => setActiveCashflowSubTab('setup')}
+              title="Click to view and manage installment plans"
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && setActiveCashflowSubTab('setup')}
             >
-              All Months
-            </button>
-            {orderedMonths.map((m) => (
-              <button
-                key={m}
-                type="button"
-                className={`ghost-button ${selectedMonth === m ? 'active' : ''}`}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>Installments</span>
+                <span
+                  style={{
+                    fontSize: '11px',
+                    padding: '2px 6px',
+                    borderRadius: '4px',
+                    background: 'var(--bg-surface-hover, rgba(255,255,255,0.06))',
+                    color: 'var(--text-muted)',
+                  }}
+                >
+                  {installments.length} {installments.length === 1 ? 'plan' : 'plans'}
+                </span>
+              </div>
+              <strong
+                className="installment-kpi-amount"
                 style={{
-                  padding: '4px 12px',
-                  borderRadius: '999px',
-                  fontSize: '12px',
-                  fontWeight: selectedMonth === m ? 700 : 500,
-                  whiteSpace: 'nowrap',
-                  background: selectedMonth === m ? 'var(--brand-primary, #6366f1)' : 'var(--surface-soft)',
-                  color: selectedMonth === m ? '#ffffff' : 'var(--ink)',
-                  border: `1px solid ${selectedMonth === m ? 'var(--brand-primary, #6366f1)' : 'var(--line)'}`,
-                  minHeight: '32px',
-                  cursor: 'pointer',
+                  color: '#f59e0b',
+                  fontSize: '1.75rem',
+                  fontWeight: 800,
+                  display: 'inline-flex',
+                  alignItems: 'baseline',
+                  flexWrap: 'wrap',
+                  gap: '6px',
                 }}
-                onClick={() => setSelectedMonth(m)}
               >
-                {DateUtils.formatDisplayDate(m) || m}
-              </button>
-            ))}
+                <span style={{ color: '#f59e0b', fontSize: '1.75rem', fontWeight: 800 }}>
+                  {formatMoney(activeInstallmentSummary.primaryAmount)}
+                </span>
+                {activeInstallmentSummary.primaryUnitSuffix && (
+                  <span
+                    className="installment-kpi-cadence"
+                    style={{ color: '#fbbf24', fontSize: '0.95rem', fontWeight: 600, opacity: 0.95 }}
+                  >
+                    {activeInstallmentSummary.primaryUnitSuffix}
+                  </span>
+                )}
+                {activeInstallmentSummary.secondaryLabel && (
+                  <span
+                    className="installment-kpi-secondary"
+                    style={{ color: '#fde68a', fontSize: '0.85rem', fontWeight: 600 }}
+                  >
+                    {activeInstallmentSummary.secondaryLabel}
+                  </span>
+                )}
+              </strong>
+              <small style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>Due: {formatMoney(installmentOutstandingTotal)}</span>
+                <span style={{ color: 'var(--brand-primary, #6366f1)', fontWeight: 600 }}>Manage ↗</span>
+              </small>
+            </article>
           </div>
-        )}
 
-        <div className="history-filters-bar" style={{ marginTop: '10px' }}>
-          <label className="history-filter-field">
-            <span className="field-label-text">Month</span>
-            <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)}>
-              <option value="all">All months</option>
-              {orderedMonths.map((m) => (
-                <option key={m} value={m}>{m}</option>
-              ))}
-            </select>
-          </label>
-          <label className="history-filter-field">
-            <span className="field-label-text">Type</span>
-            <select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value as 'all' | 'income' | 'expense')}
-            >
-              <option value="all">All types</option>
-              <option value="expense">Expenses</option>
-              <option value="income">Income</option>
-            </select>
-          </label>
-          <label className="history-filter-field">
-            <span className="field-label-text">Category</span>
-            <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
-              <option value="all">All categories</option>
-              {allCategories.map((cat) => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </select>
-          </label>
-          <label className="history-filter-field">
-            <span className="field-label-text">Account</span>
-            <select value={selectedAccount} onChange={(e) => setSelectedAccount(e.target.value)}>
-              <option value="all">All accounts</option>
-              {allAccounts.map((acc) => (
-                <option key={acc} value={acc}>{acc.toUpperCase()}</option>
-              ))}
-            </select>
-          </label>
-          <label className="history-filter-field">
-            <span className="field-label-text">Tag / Subcategory</span>
-            <select value={selectedTag} onChange={(e) => setSelectedTag(e.target.value)}>
-              <option value="all">All tags</option>
-              {hasUntagged && <option value="__untagged__">📁 Untagged</option>}
-              {allTags.map((tag) => (
-                <option key={tag} value={tag}>🏷️ {tag}</option>
-              ))}
-            </select>
-          </label>
-          <label className="history-filter-field history-search-field">
-            <span className="field-label-text">Search</span>
-            <input
-              id="searchEntries"
-              type="search"
-              placeholder="Search category, tag, account..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </label>
-          <button
-            className="ghost-button history-reset-btn"
-            type="button"
-            onClick={handleResetFilters}
-          >
-            Reset filters
-          </button>
-        </div>
+          {/* Forecast Filter Box */}
+          <section className="panel cashflow-filter-panel" style={{ marginTop: '18px' }}>
+            <div className="panel-heading cashflow-filter-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <h3 style={{ margin: 0 }}>Filter Entries</h3>
+                <span id="cashflowFilteredCount" style={{ fontSize: '13px', color: 'var(--muted)' }}>
+                  {allDisplayRows.length} {allDisplayRows.length === 1 ? 'entry' : 'entries'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <button
+                  className="ghost-button"
+                  type="button"
+                  style={{ fontSize: '12px', padding: '6px 10px' }}
+                  onClick={() => setShowDateRangeFilter(!showDateRangeFilter)}
+                  title="Toggle custom date range"
+                >
+                  <Calendar size={14} style={{ marginRight: '4px' }} />
+                  {dateFrom || dateTo ? `${dateFrom || 'start'} to ${dateTo || 'end'}` : 'Date range'}
+                </button>
+                <button
+                  className="primary-button cashflow-add-btn"
+                  type="button"
+                  onClick={() => onOpenEntryModal('expense')}
+                >
+                  <Plus size={14} style={{ marginRight: '4px' }} />
+                  <span>Add entry</span>
+                </button>
+              </div>
+            </div>
 
-        {isAnyFilterActive && (
-          <div
-            className="active-filters-container"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: '8px',
-              marginTop: '10px',
-              padding: '6px 12px',
-              background: 'rgba(99, 102, 241, 0.08)',
-              borderRadius: '6px',
-              border: '1px solid rgba(99, 102, 241, 0.25)',
-              fontSize: '12px',
-              color: 'var(--text-main, var(--ink))',
-            }}
-          >
-            <span style={{ fontWeight: 600, color: 'var(--muted)' }}>Active filters:</span>
-            {selectedMonth !== 'all' && (
-              <span className="active-filter-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
-                📅 Month: <strong>{selectedMonth}</strong>
-                <button
-                  type="button"
-                  className="filter-dismiss-btn"
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand-primary, #6366f1)', fontWeight: 700 }}
-                  onClick={() => setSelectedMonth('all')}
-                  title="Clear month filter"
-                  aria-label="Clear month filter"
-                >
-                  ✕
-                </button>
-              </span>
+            {/* Custom Date Range Collapsible */}
+            {showDateRangeFilter && (
+              <div className="cashflow-date-range-panel" style={{ display: 'flex', gap: '12px', alignItems: 'center', padding: '10px 14px', background: 'var(--bg-surface-elevated)', borderRadius: '6px', margin: '10px 0', border: '1px solid var(--border-subtle)' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}>
+                  <span>From:</span>
+                  <input
+                    type="date"
+                    className="form-input"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                  />
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}>
+                  <span>To:</span>
+                  <input
+                    type="date"
+                    className="form-input"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                  />
+                </label>
+                {(dateFrom || dateTo) && (
+                  <button
+                    className="ghost-button"
+                    type="button"
+                    style={{ fontSize: '12px', padding: '4px 8px' }}
+                    onClick={() => {
+                      setDateFrom('');
+                      setDateTo('');
+                    }}
+                  >
+                    Clear range
+                  </button>
+                )}
+              </div>
             )}
-            {typeFilter !== 'all' && (
-              <span className="active-filter-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
-                Type: <strong>{typeFilter}</strong>
-                <button
-                  type="button"
-                  className="filter-dismiss-btn"
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand-primary, #6366f1)', fontWeight: 700 }}
-                  onClick={() => setTypeFilter('all')}
-                  title="Clear type filter"
-                  aria-label="Clear type filter"
-                >
-                  ✕
-                </button>
-              </span>
-            )}
-            {categoryFilter !== 'all' && (
-              <span className="active-filter-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
-                📁 Category: <strong>{categoryFilter}</strong>
-                <button
-                  type="button"
-                  className="filter-dismiss-btn"
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand-primary, #6366f1)', fontWeight: 700 }}
-                  onClick={() => setCategoryFilter('all')}
-                  title="Clear category filter"
-                  aria-label="Clear category filter"
-                >
-                  ✕
-                </button>
-              </span>
-            )}
-            {selectedAccount !== 'all' && (
-              <span className="active-filter-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
-                Account: <strong>{selectedAccount.toUpperCase()}</strong>
-                <button
-                  type="button"
-                  className="filter-dismiss-btn"
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand-primary, #6366f1)', fontWeight: 700 }}
-                  onClick={() => setSelectedAccount('all')}
-                  title="Clear account filter"
-                  aria-label="Clear account filter"
-                >
-                  ✕
-                </button>
-              </span>
-            )}
-            {selectedTag !== 'all' && (
-              <span className="active-filter-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
-                🏷️ Tag: <strong>{selectedTag === '__untagged__' ? 'Untagged' : selectedTag}</strong>
-                <button
-                  type="button"
-                  className="filter-dismiss-btn"
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand-primary, #6366f1)', fontWeight: 700 }}
-                  onClick={() => setSelectedTag('all')}
-                  title="Clear tag filter"
-                  aria-label="Clear tag filter"
-                >
-                  ✕
-                </button>
-              </span>
-            )}
-            {searchTerm && (
-              <span className="active-filter-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
-                Search: <strong>&quot;{searchTerm}&quot;</strong>
-                <button
-                  type="button"
-                  className="filter-dismiss-btn"
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand-primary, #6366f1)', fontWeight: 700 }}
-                  onClick={() => setSearchTerm('')}
-                  title="Clear search filter"
-                  aria-label="Clear search filter"
-                >
-                  ✕
-                </button>
-              </span>
-            )}
-            <button
-              type="button"
-              className="filter-clear-all-btn"
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'var(--brand-primary, #6366f1)',
-                textDecoration: 'underline',
-                cursor: 'pointer',
-                fontWeight: 600,
-                padding: 0,
-                marginLeft: 'auto',
+
+            {/* Unified LedgerFilterBar */}
+            <LedgerFilterBar
+              selectedMonth={selectedMonth}
+              onMonthChange={setSelectedMonth}
+              orderedMonths={orderedMonths}
+              typeFilter={typeFilter}
+              onTypeChange={(t) => setTypeFilter(t as 'all' | 'income' | 'expense')}
+              categoryFilter={categoryFilter}
+              onCategoryChange={setCategoryFilter}
+              allCategories={allCategories}
+              selectedAccount={selectedAccount}
+              onAccountChange={setSelectedAccount}
+              allAccounts={allAccounts}
+              selectedTag={selectedTag}
+              onTagChange={setSelectedTag}
+              allTags={allTags}
+              hasUntagged={hasUntagged}
+              searchTerm={searchTerm}
+              onSearchChange={setSearchTerm}
+              onResetFilters={handleResetFilters}
+              isAnyFilterActive={isAnyFilterActive}
+              dateFrom={dateFrom}
+              dateTo={dateTo}
+              onClearDateRange={() => {
+                setDateFrom('');
+                setDateTo('');
               }}
-              onClick={handleResetFilters}
-            >
-              Clear all
-            </button>
-          </div>
-        )}
+            />
+          </section>
 
-        <div className="metrics-grid" id="cashflowFilteredSummary" style={{ margin: '14px 0 16px' }}>
-          <article className="metric">
-            <span>{isAnyFilterActive ? 'Filtered Inflow' : 'Forecast Inflow'}</span>
-            <strong style={{ color: 'var(--green)' }}>+{formatMoney(filteredIncome)}</strong>
-            <small>{isAnyFilterActive ? 'Planned for active criteria' : 'Total candidate inflows'}</small>
-          </article>
-          <article className="metric">
-            <span>{isAnyFilterActive ? 'Filtered Outflow' : 'Forecast Outflow'}</span>
-            <strong style={{ color: 'var(--red)' }}>-{formatMoney(filteredExpenses)}</strong>
-            <small>{isAnyFilterActive ? 'Planned for active criteria' : 'Total candidate outflows'}</small>
-          </article>
-          <article className="metric">
-            <span>{isAnyFilterActive ? 'Filtered Net' : 'Forecast Net'}</span>
-            <strong style={{ color: filteredNet >= 0 ? 'var(--green)' : 'var(--red)' }}>
-              {filteredNet >= 0 ? '+' : ''}{formatMoney(filteredNet)}
-            </strong>
-            <small>Inflows minus outflows</small>
-          </article>
-        </div>
-
-        <p style={{ color: 'var(--muted)', fontSize: '13px', margin: '-4px 0 12px' }}>
-          Every planned income and expense, including starting balances, salary, installments, and credit dues. Type an <strong>Actual</strong> amount once something really happens.
-        </p>
-
-        <div className="table-wrap responsive-cards" style={{ marginTop: '12px' }}>
+          {/* Forecast Entries Table Panel */}
+          <section className="panel cashflow-table-panel" id="forecastEntriesPanel" style={{ marginTop: '18px' }}>
+            <div className="table-wrap responsive-cards">
           <table>
             <thead>
               <tr>
@@ -1255,6 +1114,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                 <th className="cell-source">Source</th>
                 <th className="number">Amount</th>
                 <th className="number" style={{ minWidth: '190px' }}>Actual</th>
+                <th className="number" style={{ minWidth: '110px' }}>Balance After</th>
                 <th style={{ width: '120px', minWidth: '120px' }}></th>
               </tr>
             </thead>
@@ -1670,6 +1530,17 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                         </div>
                       )}
                     </td>
+                    <td className="number cashflow-table-running-balance" data-label="Balance After">
+                      {(() => {
+                        const bal = entryRunningBalanceMap.get(e.id);
+                        if (bal === undefined) return '—';
+                        return (
+                          <span style={{ color: bal < 0 ? 'var(--color-danger, #f43f5e)' : 'inherit' }}>
+                            {formatMoney(bal)}
+                          </span>
+                        );
+                      })()}
+                    </td>
                     <td className="cell-actions">
                       {isOpening ? null : (
                         <div className="cell-actions-wrapper">
@@ -1696,8 +1567,6 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                               installments,
                               storageAssets,
                               partTimeJobs,
-                              asfJobs,
-                              irqJobs,
                               accounts,
                               entryActuals,
                               entries,
@@ -1746,6 +1615,8 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
           )}
         </div>
       </section>
+        </div>
+      )}
 
       {/* Decision & Repayment Modals */}
       <AdjustLoanRepaymentModal
@@ -1774,8 +1645,6 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
           installments,
           storageAssets,
           partTimeJobs,
-          asfJobs,
-          irqJobs,
           accounts,
           entryActuals,
           entries,

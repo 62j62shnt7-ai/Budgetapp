@@ -424,24 +424,24 @@ useBudgetStore.getState().saveJob('asf', {
   ],
 });
 
-let job = useBudgetStore.getState().asfJobs.find((j) => j.id === testJobId);
+let job = useBudgetStore.getState().partTimeJobs.find((j) => j.id === testJobId);
 assert.strictEqual(job?.payments.length, 2);
 
 // Case 1: Delete payment while keeping cashflow history entry intact
-useBudgetStore.getState().deleteJobPayment('asf', testJobId, paymentId1, { deleteCashEntry: false });
-job = useBudgetStore.getState().asfJobs.find((j) => j.id === testJobId);
+useBudgetStore.getState().deleteJobPayment('partTime', testJobId, paymentId1, { deleteCashEntry: false });
+job = useBudgetStore.getState().partTimeJobs.find((j) => j.id === testJobId);
 assert.strictEqual(job?.payments.length, 1);
 assert.strictEqual(useBudgetStore.getState().entries.some((e) => e.id === linkedCashEntryId1), true, 'Linked cashflow entry must be PRESERVED when deleteCashEntry is false');
 
 // Case 2: Delete payment and also remove cashflow history entry
-useBudgetStore.getState().deleteJobPayment('asf', testJobId, paymentId2, { deleteCashEntry: true });
-job = useBudgetStore.getState().asfJobs.find((j) => j.id === testJobId);
+useBudgetStore.getState().deleteJobPayment('partTime', testJobId, paymentId2, { deleteCashEntry: true });
+job = useBudgetStore.getState().partTimeJobs.find((j) => j.id === testJobId);
 assert.strictEqual(job?.payments.length, 0);
 assert.strictEqual(useBudgetStore.getState().entries.some((e) => e.id === linkedCashEntryId2), false, 'Linked cashflow entry must be DELETED when deleteCashEntry is true');
 
 // Case 3: Delete entire job while preserving historical entries
-useBudgetStore.getState().deleteJob('asf', testJobId, { deleteCashEntries: false });
-assert.strictEqual(useBudgetStore.getState().asfJobs.some((j) => j.id === testJobId), false);
+useBudgetStore.getState().deleteJob('partTime', testJobId, { deleteCashEntries: false });
+assert.strictEqual(useBudgetStore.getState().partTimeJobs.some((j) => j.id === testJobId), false);
 assert.strictEqual(useBudgetStore.getState().entries.some((e) => e.id === linkedCashEntryId1), true, 'Payment 1 cashflow history entry remains intact');
 
 // Case 4: Forecast entry deletion auto-clears job forecast scheduling

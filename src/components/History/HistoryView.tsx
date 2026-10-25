@@ -24,6 +24,7 @@ import {
   hasEntryClearAffectedParties,
 } from '../../utils/affectedRecords';
 import { loadStorageSync, saveStorage } from '../../utils/storageAdapter';
+import { LedgerFilterBar } from '../Common/LedgerFilterBar';
 
 interface HistoryViewProps {
   onEditEntry?: (entry: CashEntry) => void;
@@ -47,8 +48,6 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
     runTransaction,
     storageAssets,
     partTimeJobs,
-    asfJobs,
-    irqJobs,
     pendingNavigation,
     clearPendingNavigation,
     analyticsCollapsed,
@@ -71,8 +70,6 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
       runTransaction: state.runTransaction,
       storageAssets: state.storageAssets,
       partTimeJobs: state.partTimeJobs,
-      asfJobs: state.asfJobs,
-      irqJobs: state.irqJobs,
       pendingNavigation: state.pendingNavigation,
       clearPendingNavigation: state.clearPendingNavigation,
       analyticsCollapsed: state.historyAnalyticsCollapsed,
@@ -396,7 +393,18 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
   const lifetimeSavingsRate = totalLifetimeIncome > 0 ? Math.round((lifetimeNet / totalLifetimeIncome) * 100) : 0;
 
   const allAccounts = Array.from(new Set(actualEntries.map((e) => e.account || 'cash'))).sort();
-  const allTags = Array.from(new Set(actualEntries.flatMap(getEntryTags))).sort((a, b) => a.localeCompare(b));
+  const getEffectiveEntryTags = React.useCallback((entry: CashEntry): string[] => {
+    const tags = getEntryTags(entry);
+    if (isCreditCardExpense(entry) && !tags.some((t) => t.toLowerCase() === 'credit swipes')) {
+      tags.push('Credit Swipes');
+    }
+    if (isCreditSettlementRow(entry) && !tags.some((t) => t.toLowerCase() === 'credit settlement')) {
+      tags.push('Credit Settlement');
+    }
+    return tags;
+  }, []);
+
+  const allTags = Array.from(new Set(actualEntries.flatMap(getEffectiveEntryTags))).sort((a, b) => a.localeCompare(b));
   const allCategories = Array.from(
     new Set(actualEntries.map((e) => e.category).filter(Boolean))
   ).sort((a, b) => a.localeCompare(b));
@@ -573,7 +581,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
     if (selectedCategoryGroup !== 'all' && getSmartGroupBucket(entry) !== selectedCategoryGroup) return false;
 
     if (selectedTag !== 'all') {
-      const entryTags = getEntryTags(entry).map((t) => t.toLowerCase());
+      const entryTags = getEffectiveEntryTags(entry).map((t) => t.toLowerCase());
       const hasUntaggedDraw = (entry.draws || []).some((draw) => !draw.tag || !draw.tag.trim());
       if (selectedTag === '__untagged__') {
         if (entryTags.length > 0 && !hasUntaggedDraw) return false;
@@ -701,7 +709,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
           aria-controls="historySummaryPane"
           onClick={() => setActiveHistoryTab('summary')}
         >
-          📊 Monthly Summary
+          Monthly Summary
         </button>
         <button
           className={`subnav-tab ${activeHistoryTab === 'transactions' ? 'active' : ''}`}
@@ -711,7 +719,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
           aria-controls="historyTransactionsPane"
           onClick={() => setActiveHistoryTab('transactions')}
         >
-          📋 Individual Validations
+          Transactions
         </button>
       </div>
 
@@ -738,222 +746,45 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
         />
       )}
 
-      {/* Tab 2: Individual Validations */}
+      {/* Tab 2: Individual Transactions */}
       {activeHistoryTab === 'transactions' && (
         <div className="history-tab-pane" id="historyTransactionsPane">
           <div className="panel history-filter-panel" style={{ marginBottom: '18px' }}>
             <div className="panel-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0 }}>Filter Validated Entries</h3>
+              <h3 style={{ margin: 0 }}>Filter Transactions</h3>
               <span id="historyFilteredCount" style={{ fontSize: '13px', color: 'var(--muted)' }}>
                 {filteredEntries.length} {filteredEntries.length === 1 ? 'entry' : 'entries'}
               </span>
             </div>
-            <div className="history-filters-bar">
-              <label className="history-filter-field">
-                <span className="field-label-text">Month</span>
-                <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)}>
-                  <option value="all">All months</option>
-                  {orderedMonths.slice().reverse().map((m) => (
-                    <option key={m} value={m}>{m}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="history-filter-field">
-                <span className="field-label-text">Type</span>
-                <select value={selectedType} onChange={(e) => setSelectedType(e.target.value)}>
-                  <option value="all">All types</option>
-                  <option value="expense">Expenses</option>
-                  <option value="income">Income</option>
-                </select>
-              </label>
-              <label className="history-filter-field">
-                <span className="field-label-text">Category</span>
-                <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)}>
-                  <option value="all">All categories</option>
-                  {allCategories.map((cat) => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="history-filter-field">
-                <span className="field-label-text">Account</span>
-                <select value={selectedAccount} onChange={(e) => setSelectedAccount(e.target.value)}>
-                  <option value="all">All accounts</option>
-                  {allAccounts.map((acc) => (
-                    <option key={acc} value={acc}>{acc.toUpperCase()}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="history-filter-field">
-                <span className="field-label-text">Tag / Subcategory</span>
-                <select value={selectedTag} onChange={(e) => setSelectedTag(e.target.value)}>
-                  <option value="all">All tags</option>
-                  {hasUntagged && <option value="__untagged__">📁 Untagged</option>}
-                  {allTags.map((tag) => (
-                    <option key={tag} value={tag}>🏷️ {tag}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="history-filter-field history-search-field">
-                <span className="field-label-text">Search</span>
-                <input
-                  id="historySearch"
-                  type="search"
-                  placeholder="Search category, tag..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </label>
-              <button
-                className="ghost-button history-reset-btn"
-                type="button"
-                onClick={handleResetFilters}
-              >
-                Reset filters
-              </button>
-            </div>
-            {(selectedMonth !== 'all' || selectedCategory !== 'all' || selectedCategoryGroup !== 'all' || selectedTag !== 'all' || selectedType !== 'all' || selectedAccount !== 'all' || searchTerm) && (
-              <div
-                className="active-filters-container"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  gap: '8px',
-                  marginTop: '10px',
-                  padding: '6px 12px',
-                  background: 'rgba(99, 102, 241, 0.08)',
-                  borderRadius: '6px',
-                  border: '1px solid rgba(99, 102, 241, 0.25)',
-                  fontSize: '12px',
-                  color: 'var(--text-main, var(--ink))',
-                }}
-              >
-                <span style={{ fontWeight: 600, color: 'var(--muted)' }}>Active filters:</span>
-                {selectedMonth !== 'all' && (
-                  <span className="active-filter-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
-                    📅 Month: <strong>{selectedMonth}</strong>
-                    <button
-                      type="button"
-                      className="filter-dismiss-btn"
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand-primary, #6366f1)', fontWeight: 700 }}
-                      onClick={() => setSelectedMonth('all')}
-                      title="Clear month filter"
-                      aria-label="Clear month filter"
-                    >
-                      ✕
-                    </button>
-                  </span>
-                )}
-                {selectedCategory !== 'all' && (
-                  <span className="active-filter-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
-                    📁 Category: <strong>{selectedCategory}</strong>
-                    <button
-                      type="button"
-                      className="filter-dismiss-btn"
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand-primary, #6366f1)', fontWeight: 700 }}
-                      onClick={() => setSelectedCategory('all')}
-                      title="Clear category filter"
-                      aria-label="Clear category filter"
-                    >
-                      ✕
-                    </button>
-                  </span>
-                )}
-                {selectedCategoryGroup !== 'all' && (
-                  <span className="active-filter-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
-                    📁 Group: <strong>{selectedCategoryGroup}</strong>
-                    <button
-                      type="button"
-                      className="filter-dismiss-btn"
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand-primary, #6366f1)', fontWeight: 700 }}
-                      onClick={() => setSelectedCategoryGroup('all')}
-                      title="Clear category group filter"
-                      aria-label="Clear category group filter"
-                    >
-                      ✕
-                    </button>
-                  </span>
-                )}
-                {selectedTag !== 'all' && (
-                  <span className="active-filter-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
-                    🏷️ Tag: <strong>{selectedTag === '__untagged__' ? 'Untagged' : selectedTag}</strong>
-                    <button
-                      type="button"
-                      className="filter-dismiss-btn"
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand-primary, #6366f1)', fontWeight: 700 }}
-                      onClick={() => setSelectedTag('all')}
-                      title="Clear tag filter"
-                      aria-label="Clear tag filter"
-                    >
-                      ✕
-                    </button>
-                  </span>
-                )}
-                {selectedType !== 'all' && (
-                  <span className="active-filter-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
-                    Type: <strong>{selectedType}</strong>
-                    <button
-                      type="button"
-                      className="filter-dismiss-btn"
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand-primary, #6366f1)', fontWeight: 700 }}
-                      onClick={() => setSelectedType('all')}
-                      title="Clear type filter"
-                      aria-label="Clear type filter"
-                    >
-                      ✕
-                    </button>
-                  </span>
-                )}
-                {selectedAccount !== 'all' && (
-                  <span className="active-filter-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
-                    Account: <strong>{selectedAccount.toUpperCase()}</strong>
-                    <button
-                      type="button"
-                      className="filter-dismiss-btn"
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand-primary, #6366f1)', fontWeight: 700 }}
-                      onClick={() => setSelectedAccount('all')}
-                      title="Clear account filter"
-                      aria-label="Clear account filter"
-                    >
-                      ✕
-                    </button>
-                  </span>
-                )}
-                {searchTerm && (
-                  <span className="active-filter-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--surface-soft)', padding: '2px 8px', borderRadius: '4px' }}>
-                    Search: <strong>&quot;{searchTerm}&quot;</strong>
-                    <button
-                      type="button"
-                      className="filter-dismiss-btn"
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand-primary, #6366f1)', fontWeight: 700 }}
-                      onClick={() => setSearchTerm('')}
-                      title="Clear search filter"
-                      aria-label="Clear search filter"
-                    >
-                      ✕
-                    </button>
-                  </span>
-                )}
-                <button
-                  type="button"
-                  className="filter-clear-all-btn"
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: 'var(--brand-primary, #6366f1)',
-                    textDecoration: 'underline',
-                    cursor: 'pointer',
-                    fontWeight: 600,
-                    padding: 0,
-                    marginLeft: 'auto',
-                  }}
-                  onClick={handleResetFilters}
-                >
-                  Clear all
-                </button>
-              </div>
-            )}
+            <LedgerFilterBar
+              selectedMonth={selectedMonth}
+              onMonthChange={setSelectedMonth}
+              orderedMonths={orderedMonths}
+              typeFilter={selectedType}
+              onTypeChange={setSelectedType}
+              categoryFilter={selectedCategory}
+              onCategoryChange={setSelectedCategory}
+              allCategories={allCategories}
+              selectedAccount={selectedAccount}
+              onAccountChange={setSelectedAccount}
+              allAccounts={allAccounts}
+              selectedTag={selectedTag}
+              onTagChange={setSelectedTag}
+              allTags={allTags}
+              hasUntagged={hasUntagged}
+              searchTerm={searchTerm}
+              onSearchChange={setSearchTerm}
+              onResetFilters={handleResetFilters}
+              isAnyFilterActive={
+                selectedMonth !== 'all' ||
+                selectedCategory !== 'all' ||
+                selectedCategoryGroup !== 'all' ||
+                selectedTag !== 'all' ||
+                selectedType !== 'all' ||
+                selectedAccount !== 'all' ||
+                Boolean(searchTerm)
+              }
+            />
           </div>
 
           <div className="metrics-grid history-summary-grid" id="historyFilteredSummary" style={{ marginBottom: '18px' }}>
@@ -1452,8 +1283,6 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                                     installments,
                                     storageAssets,
                                     partTimeJobs,
-                                    asfJobs,
-                                    irqJobs,
                                     accounts,
                                     entryActuals,
                                     entryActualDates,
@@ -1484,8 +1313,6 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                                     installments,
                                     storageAssets,
                                     partTimeJobs,
-                                    asfJobs,
-                                    irqJobs,
                                     accounts,
                                     entryActuals,
                                     entries,
@@ -1528,8 +1355,6 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                                   installments,
                                   storageAssets,
                                   partTimeJobs,
-                                  asfJobs,
-                                  irqJobs,
                                   accounts,
                                   entryActuals,
                                   entryActualDates,
@@ -1648,8 +1473,6 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
           installments,
           storageAssets,
           partTimeJobs,
-          asfJobs,
-          irqJobs,
           accounts,
           entryActuals,
           entries,
@@ -1688,8 +1511,6 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
           installments,
           storageAssets,
           partTimeJobs,
-          asfJobs,
-          irqJobs,
           accounts,
           entryActuals,
           entryActualDates,

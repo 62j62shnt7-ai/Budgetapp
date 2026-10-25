@@ -85,6 +85,22 @@ export function resolveCurrencyRate(rates: RatesData | null | undefined, code?: 
   return getCurrencyRateOr(rates, code, fallback ?? defaultFallback);
 }
 
+/**
+ * Calculates the authoritative EGP equivalent of a cash entry, accounting for foreign currencies and fxRate.
+ */
+export function getEffectiveEgpAmount(
+  entry: { amount?: number; originalAmount?: number; currency?: string; fxRateAtEntry?: number },
+  rates?: RatesData | null
+): number {
+  if (!entry) return 0;
+  const isForeign = Boolean(entry.currency && normalizeCurrencyCode(entry.currency) !== 'EGP');
+  if (isForeign && entry.originalAmount !== undefined && entry.originalAmount !== null) {
+    const fxRate = entry.fxRateAtEntry || getCurrencyRateOr(rates, entry.currency, 48.5);
+    return Math.round(Number(entry.originalAmount) * fxRate);
+  }
+  return Number(entry.amount || 0);
+}
+
 export function getAccountNativeCurrency(accountName: string, storageAssets: StorageAsset[] = []): string {
   const clean = (accountName || '').toLowerCase().trim();
   if (!clean) return 'EGP';

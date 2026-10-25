@@ -340,8 +340,6 @@ export interface BudgetFinancialSnapshot {
   installments: Installment[];
   rates: RatesData;
   storageAssets: StorageAsset[];
-  asfJobs: JobItem[];
-  irqJobs: JobItem[];
   partTimeJobs: JobItem[];
   entryActuals: Record<string, number>;
   entryActualDates: Record<string, string>;

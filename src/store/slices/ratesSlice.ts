@@ -127,42 +127,24 @@ export const createRatesSlice: SliceCreator<RatesSlice> = (set, get) => ({
       const updated = get().storageAssets.filter((a) => a.id !== id);
       saveStorage(STORAGE_KEYS.storage, updated);
 
-      let asfJobsUpdated = false;
-      let irqJobsUpdated = false;
       let partTimeJobsUpdated = false;
-      let updatedAsf = get().asfJobs;
-      let updatedIrq = get().irqJobs;
       let updatedPartTime = get().partTimeJobs;
 
       if (options?.resetJobDestinations && asset) {
         const resetJob = (j: JobItem): JobItem =>
           isJobLinkedToStorageAsset(j, asset) ? { ...j, forecastDestination: undefined } : j;
 
-        const nextAsf = get().asfJobs.map(resetJob);
-        if (nextAsf.some((j, i) => j !== get().asfJobs[i])) {
-          asfJobsUpdated = true;
-          updatedAsf = nextAsf;
-        }
-        const nextIrq = get().irqJobs.map(resetJob);
-        if (nextIrq.some((j, i) => j !== get().irqJobs[i])) {
-          irqJobsUpdated = true;
-          updatedIrq = nextIrq;
-        }
-        const nextPartTime = get().partTimeJobs.map(resetJob);
+        const nextPartTime = (get().partTimeJobs || []).map(resetJob);
         if (nextPartTime.some((j, i) => j !== get().partTimeJobs[i])) {
           partTimeJobsUpdated = true;
           updatedPartTime = nextPartTime;
         }
 
-        if (asfJobsUpdated) saveStorage(STORAGE_KEYS.asf, updatedAsf);
-        if (irqJobsUpdated) saveStorage(STORAGE_KEYS.irq, updatedIrq);
         if (partTimeJobsUpdated) saveStorage(STORAGE_KEYS.partTimeJobs, updatedPartTime);
       }
 
       set({
         storageAssets: updated,
-        ...(asfJobsUpdated ? { asfJobs: updatedAsf } : {}),
-        ...(irqJobsUpdated ? { irqJobs: updatedIrq } : {}),
         ...(partTimeJobsUpdated ? { partTimeJobs: updatedPartTime } : {}),
       });
       scheduleAutoDriveSync(get);

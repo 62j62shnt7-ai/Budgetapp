@@ -18,6 +18,21 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script>
+      (function() {
+        try {
+          var t = localStorage.getItem('budget-control-theme');
+          if (t) {
+            var parsed = JSON.parse(t);
+            if (parsed === 'light' || parsed === 'dark') {
+              document.documentElement.setAttribute('data-theme', parsed);
+              var m = document.querySelector('meta[name="theme-color"]');
+              if (m) m.setAttribute('content', parsed === 'dark' ? '#000000' : '#f8fafc');
+            }
+          }
+        } catch (e) {}
+      })();
+    </script>
     <!-- Styles are imported in src/main.tsx; the service worker is registered in src/App.tsx. -->
   </head>
   <body>

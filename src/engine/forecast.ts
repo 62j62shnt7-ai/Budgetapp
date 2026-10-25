@@ -757,6 +757,43 @@ export function getDeficitPeriods(
   return periods;
 }
 
+/**
+ * Calculates authoritative running bank balance across the active forecast sequence.
+ * Immune to UI filters so that filtering by category, account, or month does not distort
+ * the true chronological account balance projection after each entry.
+ */
+export function calculateForecastRunningBalances(
+  forecastEntriesArr: CashEntry[],
+  openingBalance: number
+): Map<string, number> {
+  const sorted = [...forecastEntriesArr]
+    .filter((e) => e.date)
+    .sort((a, b) => {
+      if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+      if (a.type !== b.type) return a.type === 'income' ? -1 : 1;
+      return 0;
+    });
+
+  let running = openingBalance;
+  const map = new Map<string, number>();
+
+  sorted.forEach((entry) => {
+    const isCardSwipe = isCreditCardExpense(entry);
+    const delta = isCardSwipe ? 0 : Number(entry.amount || 0) * (entry.type === 'income' ? 1 : -1);
+    running = Math.round((running + delta) * 100) / 100;
+    if (entry.id) {
+      map.set(entry.id, running);
+    }
+    const legacyId = getEntryId(entry);
+    if (legacyId) {
+      map.set(legacyId, running);
+    }
+  });
+
+  return map;
+}
+
+
 // ==========================================================================
 // getDeficitSummary — full legacy-compatible summary with overdue items
 // ==========================================================================

@@ -130,8 +130,6 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => {
       installments: state.installments,
       storageAssets: state.storageAssets,
       accountBalances: state.accounts,
-      asfJobs: state.asfJobs,
-      irqJobs: state.irqJobs,
       partTimeJobs: state.partTimeJobs,
       ratesData: state.rates,
       entryActuals: state.entryActuals,
@@ -190,8 +188,6 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => {
         installments: migrated.installments,
         rates: migrated.rates,
         storageAssets: migrated.storageAssets,
-        asfJobs: migrated.asfJobs,
-        irqJobs: migrated.irqJobs,
         partTimeJobs: migrated.partTimeJobs,
         entryActuals: migrated.entryActuals,
         entryActualDates: migrated.entryActualDates,
@@ -216,8 +212,6 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => {
           creditSettlementOverrides: migrated.creditSettlementOverrides,
           salaryAnchorMonth: migrated.salaryAnchorMonth,
           storageAssets: migrated.storageAssets,
-          asfJobs: migrated.asfJobs,
-          irqJobs: migrated.irqJobs,
           partTimeJobs: migrated.partTimeJobs,
           entryActuals: migrated.entryActuals,
           entryActualDates: migrated.entryActualDates,
@@ -254,8 +248,6 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => {
         installments: state.installments,
         storageAssets: state.storageAssets,
         accountBalances: state.accounts,
-        asfJobs: state.asfJobs,
-        irqJobs: state.irqJobs,
         partTimeJobs: state.partTimeJobs,
         ratesData: state.rates,
         creditDues: state.creditDues,
@@ -286,8 +278,6 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => {
         salaryAnchorMonth: DateUtils.currentYearMonth(),
         installments: emptyInstallments,
         storageAssets: emptyStorage,
-        asfJobs: emptyJobs,
-        irqJobs: emptyJobs,
         partTimeJobs: emptyJobs,
         entryActuals: {},
         entryActualDates: {},
@@ -319,8 +309,6 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => {
         installments: (backup.installments as Installment[]) || [],
         storageAssets: (backup.storageAssets as StorageAsset[]) || [],
         accounts: withoutCashAccount((backup.accountBalances as Record<string, AccountBalance>) || defaultAccounts),
-        asfJobs: (backup.asfJobs as JobItem[]) || [],
-        irqJobs: (backup.irqJobs as JobItem[]) || [],
         partTimeJobs: (backup.partTimeJobs as JobItem[]) || [],
         rates: (backup.ratesData as RatesData) || defaultRates,
         creditDues: (backup.creditDues as Record<string, Record<string, number>>) || {},
@@ -366,8 +354,6 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => {
         installments: (backup.installments as Installment[]) || [],
         storageAssets: (backup.storageAssets as StorageAsset[]) || [],
         accounts: withoutCashAccount((backup.accounts as Record<string, AccountBalance>) || defaultAccounts),
-        asfJobs: (backup.asfJobs as JobItem[]) || [],
-        irqJobs: (backup.irqJobs as JobItem[]) || [],
         partTimeJobs: (backup.partTimeJobs as JobItem[]) || [],
         rates: (backup.rates as RatesData) || defaultRates,
         creditDues: (backup.creditDues as Record<string, Record<string, number>>) || {},
@@ -439,12 +425,6 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => {
                 locationLabel: asset.locationLabel || loc.locationLabel,
               };
             });
-          }
-          if (storedData[STORAGE_KEYS.asf]) {
-            updates.asfJobs = storedData[STORAGE_KEYS.asf] as JobItem[];
-          }
-          if (storedData[STORAGE_KEYS.irq]) {
-            updates.irqJobs = storedData[STORAGE_KEYS.irq] as JobItem[];
           }
           if (storedData[STORAGE_KEYS.partTimeJobs]) {
             updates.partTimeJobs = storedData[STORAGE_KEYS.partTimeJobs] as JobItem[];

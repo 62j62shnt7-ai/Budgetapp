@@ -141,8 +141,8 @@ export function buildEntryDeleteOptions(
     installments: Installment[];
     storageAssets: StorageAsset[];
     partTimeJobs: JobItem[];
-    asfJobs: JobItem[];
-    irqJobs: JobItem[];
+    asfJobs?: JobItem[];
+    irqJobs?: JobItem[];
     accounts?: Record<string, AccountBalance>;
     entryActuals?: Record<string, number>;
     entryActualDates?: Record<string, string>;
@@ -557,8 +557,8 @@ export function buildStorageDeleteOptions(
   asset: StorageAsset,
   context: {
     partTimeJobs: JobItem[];
-    asfJobs: JobItem[];
-    irqJobs: JobItem[];
+    asfJobs?: JobItem[];
+    irqJobs?: JobItem[];
   }
 ): {
   itemDescription: string;
@@ -570,8 +570,8 @@ export function buildStorageDeleteOptions(
 
   const allJobs = [
     ...context.partTimeJobs,
-    ...context.asfJobs,
-    ...context.irqJobs,
+    ...(context.asfJobs || []),
+    ...(context.irqJobs || []),
   ];
   const linkedJobs = allJobs.filter((j) => isJobLinkedToStorageAsset(j, asset));
 
@@ -607,8 +607,8 @@ export function hasEntryAffectedParties(
     installments: Installment[];
     storageAssets: StorageAsset[];
     partTimeJobs: JobItem[];
-    asfJobs: JobItem[];
-    irqJobs: JobItem[];
+    asfJobs?: JobItem[];
+    irqJobs?: JobItem[];
     accounts?: Record<string, AccountBalance>;
     entryActuals?: Record<string, number>;
     entryActualDates?: Record<string, string>;
@@ -636,8 +636,8 @@ export function hasStorageAffectedParties(
   asset: StorageAsset,
   context: {
     partTimeJobs: JobItem[];
-    asfJobs: JobItem[];
-    irqJobs: JobItem[];
+    asfJobs?: JobItem[];
+    irqJobs?: JobItem[];
   }
 ): boolean {
   if (!asset) return false;

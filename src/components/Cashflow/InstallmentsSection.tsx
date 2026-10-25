@@ -2,6 +2,11 @@ import React from 'react';
 import { Plus, Trash2, Edit2, ChevronDown, ChevronUp } from 'lucide-react';
 import type { Installment } from '../../types';
 import { formatMoney } from '../../engine/dateUtils';
+import {
+  formatInstallmentRate,
+  summarizeActiveInstallments,
+  type ActiveInstallmentCommitmentSummary,
+} from '../../engine/salaryAndInstallments';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { hasInstallmentAffectedParties } from '../../utils/affectedRecords';
 
@@ -12,8 +17,9 @@ interface InstallmentsSectionProps {
   installmentMonthlyTotal: number;
   installmentOutstandingTotal: number;
   installmentProgressSummary: { paid: number; dismissed?: number; total: number; remaining: number };
+  activeCommitmentSummary?: ActiveInstallmentCommitmentSummary;
   onOpenInstallmentModal: (inst?: Installment) => void;
-  getInstallmentProgress: (inst: Installment) => { paid: number; dismissed?: number; total: number; remaining: number; outstandingAmount?: number; monthlyAmount?: number };
+  getInstallmentProgress: (inst: Installment) => { paid: number; dismissed?: number; total: number; remaining: number; outstandingAmount?: number; monthlyAmount?: number; isActive?: boolean };
   onDeleteInstallment: (installment: Installment) => void;
 }
 
@@ -21,15 +27,33 @@ export const InstallmentsSection: React.FC<InstallmentsSectionProps> = ({
   installmentsOpen,
   setInstallmentsOpen,
   installments,
-  installmentMonthlyTotal,
+  installmentMonthlyTotal: _unusedMonthlyTotal,
   installmentOutstandingTotal,
   installmentProgressSummary,
+  activeCommitmentSummary,
   onOpenInstallmentModal,
   getInstallmentProgress,
   onDeleteInstallment,
 }) => {
   const entries = useBudgetStore((state) => state.entries);
   const archivedEntries = useBudgetStore((state) => state.archivedEntries);
+
+  const commitment = React.useMemo(() => {
+    if (activeCommitmentSummary) return activeCommitmentSummary;
+    return summarizeActiveInstallments(installments, (inst) => {
+      const p = getInstallmentProgress(inst);
+      return {
+        total: p.total,
+        paid: p.paid,
+        dismissed: p.dismissed || 0,
+        remaining: p.remaining,
+        outstandingAmount: p.outstandingAmount || 0,
+        monthlyAmount: p.monthlyAmount || 0,
+        isActive: p.isActive ?? p.remaining > 0,
+      };
+    });
+  }, [activeCommitmentSummary, installments, getInstallmentProgress]);
+
   return (
     <section className="panel collapsible-panel cashflow-collapsible-panel">
       <div
@@ -48,7 +72,10 @@ export const InstallmentsSection: React.FC<InstallmentsSectionProps> = ({
           <span style={{ fontSize: '12px', color: 'var(--muted)' }}>({installments.length})</span>
           {!installmentsOpen && installments.length > 0 && (
             <span className="collapsed-installment-summary" style={{ fontSize: '12.5px', color: 'var(--muted)' }}>
-              <strong>{formatMoney(installmentMonthlyTotal)}/mo</strong>
+              <strong>
+                {commitment.primaryLabel}
+                {commitment.secondaryLabel && ` ${commitment.secondaryLabel}`}
+              </strong>
               <span style={{ margin: '0 6px' }}>· Total: {formatMoney(installmentOutstandingTotal)}</span>
               <span>
                 {installmentProgressSummary.paid > 0
@@ -106,9 +133,7 @@ export const InstallmentsSection: React.FC<InstallmentsSectionProps> = ({
                   <div>
                     <strong>{inst.name}</strong>
                     <span style={{ fontSize: '12px', color: 'var(--muted)', display: 'block', marginTop: '2px' }}>
-                      {inst.frequency && inst.frequency > 1
-                        ? `${formatMoney(inst.amount)} every ${inst.frequency} mos (${formatMoney(progress.monthlyAmount || 0)}/mo)`
-                        : `${formatMoney(inst.amount)}/mo`}{' '}
+                      {formatInstallmentRate(inst.amount, inst.frequency)}{' '}
                       · Total: {formatMoney((Number(inst.amount) || 0) * progress.total)}
                       {inst.account ? ` · Account: ${inst.account.toUpperCase()}` : ''}
                     </span>

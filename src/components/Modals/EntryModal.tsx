@@ -45,8 +45,6 @@ export const EntryModal: React.FC<EntryModalProps> = ({
     rates,
     entryActuals,
     partTimeJobs,
-    asfJobs,
-    irqJobs,
     storageAssets,
     accounts,
   } = useBudgetStore(
@@ -67,8 +65,6 @@ export const EntryModal: React.FC<EntryModalProps> = ({
       rates: state.rates,
       entryActuals: state.entryActuals,
       partTimeJobs: state.partTimeJobs,
-      asfJobs: state.asfJobs,
-      irqJobs: state.irqJobs,
       storageAssets: state.storageAssets,
       accounts: state.accounts,
     }))
@@ -675,9 +671,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
                     </span>
                     {(() => {
                       const linkedJob =
-                        partTimeJobs.find((j) => j.forecastEntryId === activeEntry.id || j.payments?.some((p) => p.entryId === activeEntry.id || p.id === d.id)) ||
-                        asfJobs.find((j) => j.forecastEntryId === activeEntry.id || j.payments?.some((p) => p.entryId === activeEntry.id || p.id === d.id)) ||
-                        irqJobs.find((j) => j.forecastEntryId === activeEntry.id || j.payments?.some((p) => p.entryId === activeEntry.id || p.id === d.id));
+                        partTimeJobs.find((j) => j.forecastEntryId === activeEntry.id || j.payments?.some((p) => p.entryId === activeEntry.id || p.id === d.id));
                       const hasAffectedDraw = Boolean(linkedJob || (storageAssets.length > 0 && (d.storageAssetId || d.account?.toLowerCase().includes('storage') || entryIsForeign)));
                       return (
                         <button
@@ -1132,9 +1126,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
       {/* Selective affected parties deletion modal */}
       {deleteDrawTarget && activeEntry && (() => {
         const linkedJob =
-          partTimeJobs.find((j) => j.forecastEntryId === activeEntry.id || j.payments?.some((p) => p.entryId === activeEntry.id)) ||
-          asfJobs.find((j) => j.forecastEntryId === activeEntry.id || j.payments?.some((p) => p.entryId === activeEntry.id)) ||
-          irqJobs.find((j) => j.forecastEntryId === activeEntry.id || j.payments?.some((p) => p.entryId === activeEntry.id));
+          partTimeJobs.find((j) => j.forecastEntryId === activeEntry.id || j.payments?.some((p) => p.entryId === activeEntry.id));
 
         const entryIsForeign = (activeEntry.currency || 'EGP').toUpperCase() !== 'EGP';
         const drawRate = activeEntry.fxRateAtEntry || getCurrencyRateOr(rates, activeEntry.currency || 'USD', 48.5);

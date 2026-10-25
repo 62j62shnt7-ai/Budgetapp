@@ -397,22 +397,8 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
         return job;
       };
 
-      let asfJobsUpdated = false;
-      const updatedAsf = get().asfJobs.map((j) => {
-        const next = cleanJobForecast(j);
-        if (next !== j) asfJobsUpdated = true;
-        return next;
-      });
-
-      let irqJobsUpdated = false;
-      const updatedIrq = get().irqJobs.map((j) => {
-        const next = cleanJobForecast(j);
-        if (next !== j) irqJobsUpdated = true;
-        return next;
-      });
-
       let partTimeJobsUpdated = false;
-      const updatedPartTime = get().partTimeJobs.map((j) => {
+      const updatedPartTime = (get().partTimeJobs || []).map((j) => {
         const next = cleanJobForecast(j);
         if (next !== j) partTimeJobsUpdated = true;
         return next;
@@ -521,8 +507,6 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
       saveStorage(STORAGE_KEYS.entryActuals, actuals);
       saveStorage(STORAGE_KEYS.entryActualDates, dates);
       saveStorage(STORAGE_KEYS.deletedForecasts, deletedForecasts);
-      if (asfJobsUpdated) saveStorage(STORAGE_KEYS.asf, updatedAsf);
-      if (irqJobsUpdated) saveStorage(STORAGE_KEYS.irq, updatedIrq);
       if (partTimeJobsUpdated) saveStorage(STORAGE_KEYS.partTimeJobs, updatedPartTime);
 
       set({
@@ -533,8 +517,6 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
         entryActuals: actuals,
         entryActualDates: dates,
         deletedForecasts,
-        asfJobs: updatedAsf,
-        irqJobs: updatedIrq,
         partTimeJobs: updatedPartTime,
       });
       scheduleAutoDriveSync(get);
@@ -924,17 +906,9 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
       }
 
       let targetJob: JobItem | undefined = undefined;
-      let jobType: 'partTime' | 'asf' | 'irq' = 'partTime';
+      const jobType: 'partTime' = 'partTime';
       if (options?.syncJob !== false) {
-        targetJob = get().partTimeJobs.find((j) => j.forecastEntryId === entryId || j.payments?.some((p) => p.entryId === entryId));
-        if (!targetJob) {
-          targetJob = get().asfJobs.find((j) => j.forecastEntryId === entryId || j.payments?.some((p) => p.entryId === entryId));
-          if (targetJob) jobType = 'asf';
-        }
-        if (!targetJob) {
-          targetJob = get().irqJobs.find((j) => j.forecastEntryId === entryId || j.payments?.some((p) => p.entryId === entryId));
-          if (targetJob) jobType = 'irq';
-        }
+        targetJob = (get().partTimeJobs || []).find((j) => j.forecastEntryId === entryId || j.payments?.some((p) => p.entryId === entryId));
 
         if (targetJob) {
           const entry = target;

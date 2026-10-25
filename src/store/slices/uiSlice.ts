@@ -14,8 +14,17 @@ export const createUISlice: SliceCreator<UISlice> = (set, get) => ({
 
   setTheme: (theme) => {
     saveStorage(STORAGE_KEYS.theme, theme);
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem(STORAGE_KEYS.theme, JSON.stringify(theme));
+      } catch {}
+    }
     if (typeof document !== 'undefined') {
       document.documentElement.setAttribute('data-theme', theme);
+      const metaTheme = document.querySelector('meta[name="theme-color"]');
+      if (metaTheme) {
+        metaTheme.setAttribute('content', theme === 'dark' ? '#000000' : '#f8fafc');
+      }
     }
     set({ theme });
   },

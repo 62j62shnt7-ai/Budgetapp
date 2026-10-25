@@ -170,3 +170,153 @@ export function calculateInstallmentProgress(
   };
 }
 
+export function getInstallmentFrequencyLabel(frequency?: number): {
+  unit: string;
+  perUnitSuffix: string;
+  cadenceDescription: string;
+} {
+  const freq = Math.max(1, Number(frequency) || 1);
+  switch (freq) {
+    case 1:
+      return { unit: 'month', perUnitSuffix: '/mo', cadenceDescription: 'Monthly' };
+    case 2:
+      return { unit: '2 months', perUnitSuffix: '/2 mos', cadenceDescription: 'Every 2 months' };
+    case 3:
+      return { unit: 'quarter', perUnitSuffix: '/quarter', cadenceDescription: 'Quarterly' };
+    case 6:
+      return { unit: 'half-year', perUnitSuffix: '/6 mos', cadenceDescription: 'Semi-annually' };
+    case 12:
+      return { unit: 'year', perUnitSuffix: '/yr', cadenceDescription: 'Annually' };
+    default:
+      return { unit: `${freq} months`, perUnitSuffix: `/every ${freq} mos`, cadenceDescription: `Every ${freq} months` };
+  }
+}
+
+export function formatInstallmentRate(amount: number, frequency?: number): string {
+  const { perUnitSuffix } = getInstallmentFrequencyLabel(frequency);
+  const formatted = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(Math.round(Number(amount) || 0));
+  return `${formatted} EGP${perUnitSuffix}`;
+}
+
+export interface ActiveInstallmentCommitmentSummary {
+  hasActive: boolean;
+  activeCount: number;
+  monthlyTotal: number;
+  quarterlyTotal: number;
+  otherPeriodicTotal: number;
+  primaryAmount: number;
+  primaryUnitSuffix: string;
+  primaryLabel: string;
+  secondaryLabel?: string;
+}
+
+export function summarizeActiveInstallments(
+  installments: Installment[],
+  getProgress: (inst: Installment) => InstallmentProgress
+): ActiveInstallmentCommitmentSummary {
+  let monthlyTotal = 0;
+  let quarterlyTotal = 0;
+  let otherPeriodicTotal = 0;
+  let activeCount = 0;
+  let hasMonthly = false;
+  let hasQuarterly = false;
+  let hasOther = false;
+
+  for (const inst of installments) {
+    const progress = getProgress(inst);
+    if (!progress.isActive) continue;
+    activeCount += 1;
+    const freq = Math.max(1, Number(inst.frequency) || 1);
+    const amt = Number(inst.amount) || 0;
+
+    if (freq === 1) {
+      monthlyTotal += amt;
+      hasMonthly = true;
+    } else if (freq === 3) {
+      quarterlyTotal += amt;
+      hasQuarterly = true;
+    } else {
+      otherPeriodicTotal += amt;
+      hasOther = true;
+    }
+  }
+
+  const formatEgp = (val: number) =>
+    `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(Math.round(val))} EGP`;
+
+  if (activeCount === 0) {
+    return {
+      hasActive: false,
+      activeCount: 0,
+      monthlyTotal: 0,
+      quarterlyTotal: 0,
+      otherPeriodicTotal: 0,
+      primaryAmount: 0,
+      primaryUnitSuffix: '',
+      primaryLabel: '0 EGP',
+    };
+  }
+
+  // Purely quarterly
+  if (hasQuarterly && !hasMonthly && !hasOther) {
+    return {
+      hasActive: true,
+      activeCount,
+      monthlyTotal: 0,
+      quarterlyTotal,
+      otherPeriodicTotal: 0,
+      primaryAmount: quarterlyTotal,
+      primaryUnitSuffix: '/quarter',
+      primaryLabel: `${formatEgp(quarterlyTotal)}/quarter`,
+    };
+  }
+
+  // Purely monthly
+  if (hasMonthly && !hasQuarterly && !hasOther) {
+    return {
+      hasActive: true,
+      activeCount,
+      monthlyTotal,
+      quarterlyTotal: 0,
+      otherPeriodicTotal: 0,
+      primaryAmount: monthlyTotal,
+      primaryUnitSuffix: '/mo',
+      primaryLabel: `${formatEgp(monthlyTotal)}/mo`,
+    };
+  }
+
+  // Mixed monthly + quarterly (or others)
+  if (hasMonthly && hasQuarterly && !hasOther) {
+    return {
+      hasActive: true,
+      activeCount,
+      monthlyTotal,
+      quarterlyTotal,
+      otherPeriodicTotal: 0,
+      primaryAmount: monthlyTotal,
+      primaryUnitSuffix: '/mo',
+      primaryLabel: `${formatEgp(monthlyTotal)}/mo`,
+      secondaryLabel: `+ ${formatEgp(quarterlyTotal)}/qtr`,
+    };
+  }
+
+  // If there are other frequencies
+  const parts: string[] = [];
+  if (hasMonthly) parts.push(`${formatEgp(monthlyTotal)}/mo`);
+  if (hasQuarterly) parts.push(`${formatEgp(quarterlyTotal)}/qtr`);
+  if (hasOther) parts.push(`${formatEgp(otherPeriodicTotal)} periodic`);
+
+  return {
+    hasActive: true,
+    activeCount,
+    monthlyTotal,
+    quarterlyTotal,
+    otherPeriodicTotal,
+    primaryAmount: hasMonthly ? monthlyTotal : hasQuarterly ? quarterlyTotal : otherPeriodicTotal,
+    primaryUnitSuffix: hasMonthly ? '/mo' : hasQuarterly ? '/qtr' : '',
+    primaryLabel: parts[0] || '0 EGP',
+    secondaryLabel: parts.length > 1 ? `+ ${parts.slice(1).join(' + ')}` : undefined,
+  };
+}
+
+

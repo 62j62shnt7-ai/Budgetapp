@@ -46,8 +46,6 @@ const syncedDataKeys: Array<keyof BudgetStoreState> = [
   'installments',
   'rates',
   'storageAssets',
-  'asfJobs',
-  'irqJobs',
   'partTimeJobs',
   'entryActuals',
   'entryActualDates',

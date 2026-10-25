@@ -128,9 +128,16 @@ export const App: React.FC = () => {
     setTransferModalOpen(true);
   };
 
-  // Apply theme to document
+  // Apply theme to document and update mobile status bar / browser chrome
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
+    try {
+      localStorage.setItem('budget-control-theme', JSON.stringify(theme));
+    } catch {}
+    const metaTheme = document.querySelector('meta[name="theme-color"]');
+    if (metaTheme) {
+      metaTheme.setAttribute('content', theme === 'dark' ? '#000000' : '#f8fafc');
+    }
   }, [theme]);
 
   // Initialize high-capacity IndexedDB storage and persistent undo history
@@ -147,8 +154,6 @@ export const App: React.FC = () => {
       STORAGE_KEYS.installments,
       STORAGE_KEYS.storage,
       STORAGE_KEYS.accounts,
-      STORAGE_KEYS.asf,
-      STORAGE_KEYS.irq,
       STORAGE_KEYS.partTimeJobs,
       STORAGE_KEYS.creditDues,
       STORAGE_KEYS.creditDueMonths,
