@@ -565,7 +565,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
         if (matchingRows.length > 0) {
           return matchingRows;
         }
-        if (entry.keepOngoing && !entry.isClosed) {
+        if (!entry.isClosed) {
           return [{
             ...entry,
             date: effDate < today ? today : effDate,
@@ -1193,7 +1193,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                   0
                 );
                 const isSplitSlice = Boolean(e.parentEntryId || (e.splitTotalCount && e.splitTotalCount > 1));
-                const isCompletedSplitContainer = isSplitSlice && Number(e.amount || 0) <= 0 && Boolean(parentEntry.keepOngoing);
+                const isCompletedSplitContainer = isSplitSlice && Number(e.amount || 0) <= 0;
                 const displayPlannedAmt = isSplitSlice
                   ? (isCompletedSplitContainer ? Number(parentEntry.amount || plannedAmt) : Number(e.amount || 0))
                   : plannedAmt;
