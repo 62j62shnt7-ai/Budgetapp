@@ -906,7 +906,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
       }
 
       let targetJob: JobItem | undefined = undefined;
-      const jobType: 'partTime' = 'partTime';
+      const jobType = 'partTime' as const;
       if (options?.syncJob !== false) {
         targetJob = (get().partTimeJobs || []).find((j) => j.forecastEntryId === entryId || j.payments?.some((p) => p.entryId === entryId));
 

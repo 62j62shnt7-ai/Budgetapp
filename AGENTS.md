@@ -27,7 +27,7 @@ src/
 ├── components/               # Feature-based UI components
 │   ├── Accounts/             # AccountsView — bank/cash balances, CD maturity
 │   ├── Cashflow/             # CashflowView (largest view) + SalaryStructure/Installments/ExpenseMix sections
-│   ├── Common/               # Modal, ErrorBoundary, UndoToast (shared primitives)
+│   ├── Common/               # Modal, ErrorBoundary, UndoToast, LedgerFilterBar, DriveReconnectBanner (shared primitives)
 │   ├── Dashboard/            # DashboardView — net worth, health index, forecast chart
 │   ├── Deficits/             # DeficitsView — deficit timeline & remediation
 │   ├── Forecast/             # ForecastChart
@@ -160,6 +160,7 @@ Additional suites that exist but are **not** part of `npm test` — run them whe
 | `npx tsx test/universalAuditRunner.mjs` | Universal domain audit runner against live real-world payload (`test/audit_user_data.json`) |
 | `npx tsx test/testCreditSettlementModal.mjs` | Credit settlement modal |
 | `node test/test-jobs-playwright.mjs` | Jobs flows via Playwright |
+| `npx tsx test/testSyncEngine.mjs` | Google Drive sync engine & 10 hardening scenarios |
 | `npm run score` | `healthReport.mjs` — health-score report |
 
 Notes:

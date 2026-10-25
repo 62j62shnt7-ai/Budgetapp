@@ -49,13 +49,19 @@ Budget Control v2 is a local-first, privacy-focused financial management web app
 - **Validated Entry Analytics:** Filter historical transactions by month, type, account, and subcategory tags, with automatic variance analysis (favorable vs. unfavorable).
 - **Admin Edit Mode:** Unlockable administrative table controls to quickly edit historical records, adjust actuals, or remove erroneous entries.
 
-### 🔒 8. High-Capacity IndexedDB Storage, Autonomous Google Drive Sync & Undo History
+### 🔒 8. High-Capacity IndexedDB Storage, Hardened Google Drive Sync & Undo History
 - **High-Capacity IndexedDB Architecture:** Unlimited local-first persistence via `storageAdapter` (IndexedDB / `idb-keyval`), automatically migrating legacy data and overcoming browser `localStorage` quota restrictions.
 - **Persistent Undo / Redo Engine:** 30-depth undo/redo history persisted across page refreshes and browser restarts, with an automatic 24-hour TTL and transaction rollbacks.
-- **Autonomous Google Drive Cloud Sync:** Seamless background sync to a visible user-controlled folder (`Budget Control Backups`) on Google Drive with customizable backup retention (capped at 5/10/20 files) and OAuth 2.0 token management.
-- **GitHub Gist Cloud Sync (Legacy):** Maintained support for secret GitHub Gist sync with auto-sync debouncing and `#gist=` URL deep-linking.
-- **Full Data Portability:** Instant JSON backup export/import (fully backward-compatible with legacy formats) and Excel CSV export.
+- **Hardened Google Drive Cloud Sync:** Enterprise-grade background sync with single mutex lock, 4-row OCC (revision + base + device tags), atomic IDB batching, rolling local snapshots, and interactive conflict resolution modal.
+- **Autonomous Cloudflare OAuth Proxy:** Secure PKCE token exchange and auto-refresh via `workers/drive-auth-proxy` with cross-origin isolation.
+- **Full Data Portability:** Instant JSON backup export/import (fully backward-compatible with legacy formats) and Excel CSV export with sensitive credential redaction.
 - **PWA Ready with Instant Cache Purge:** Progressive Web App support with service worker cache purging and one-click app updating.
+
+### 🎨 9. Universal Theme System (OLED Dark & High-Contrast Light)
+- **Zero-Flash Theme Bootloader:** Synchronous inline `<script>` in `<head>` applies active theme and updates `<meta name="theme-color">` before initial paint, eliminating white/dark flashes.
+- **True OLED Dark Mode:** Deep pitch-black background optimized for OLED/AMOLED mobile and desktop displays.
+- **High-Contrast Light Mode:** Fully tokenized design system (`--card-salary-bg`, `--summary-bg`, `--dialog-bg`, `--input-bg`, `--sidebar-*`) passing WCAG AA contrast standards across all 8 feature views, tables, KPI headers, and interactive dialogs.
+- **Single-Click Theme Toggle:** Easily toggle between Dark and Light mode from Topbar or Mobile Navigation.
 
 ---
 
@@ -203,9 +209,12 @@ Budgetapp/
 │   ├── universalAuditRunner.mjs # Universal domain test runner
 │   ├── verifyMath.mjs       # Comprehensive financial math test suite
 │   ├── testStorageAdapter.mjs # IndexedDB storage adapter & cloud sync test suite
+│   ├── testSyncEngine.mjs   # Google Drive sync engine & 10 hardening scenarios suite
 │   ├── testCreditSettlementModal.mjs # Credit settlement modal test suite
 │   ├── test-jobs-playwright.mjs # Jobs flows visual Playwright tests
 │   └── ui-audit.mjs         # Playwright visual audit test suite
+├── workers/                # Cloudflare Workers
+│   └── drive-auth-proxy/   # Google Drive OAuth PKCE exchange & token refresh proxy
 ├── AUDIT_REPORT.md         # Master Verification & Defect Ledger Report
 └── UNIVERSAL_LOGIC_AUDIT.md # Comprehensive Universal Domain & Business Logic Audit Report
 ```

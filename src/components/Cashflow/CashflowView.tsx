@@ -803,8 +803,8 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
   }, 0);
 
   const activeInstallmentSummary = React.useMemo(() => {
-    return summarizeActiveInstallments(installments, (inst) => getInstallmentProgress(inst));
-  }, [installments, installmentProgressMap]);
+    return summarizeActiveInstallments(installments, (inst) => installmentProgressMap.get(inst.id) || calculateInstallmentProgress(inst, entryActuals, deletedForecasts));
+  }, [installments, installmentProgressMap, entryActuals, deletedForecasts]);
 
   const installmentProgressSummary = installments.reduce(
     (summary, installment) => {
