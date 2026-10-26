@@ -167,3 +167,15 @@ Notes:
 * `npm run build` runs `npm test`, `npm run typecheck`, then `vite build`. CI (`.github/workflows/deploy.yml`) runs `lint` + `build` only, so the Playwright suites are **not** gated.
 * `playwright.config.ts` matches `*.spec.*` files and imports `@playwright/test`, which is not installed — `npx playwright test` therefore fails. The browser suites under `test/` are standalone scripts meant to be run with `npx tsx` / `node`, as in the table above.
 * All `test/*.mjs` files import TypeScript sources directly, so they must be run through `tsx` (or Node's type stripping); plain `node test/verifyMath.mjs` fails to resolve the extensionless `.ts` imports.
+
+---
+
+## 5. Token Budgeting & TPM Discipline (Strictly Under 2M TPM)
+
+To prevent API rate-limit errors and token exhaustion:
+* **Targeted File Reads:** Never dump entire large source files. Files exceeding 150 lines or 10KB must be queried using `grep` or read in narrow slices using bounded line ranges (`view_range`).
+* **Paced Tool Calls:** Do not issue rapid-fire massive tool batches. Keep tool execution batches to at most 2–3 actions per turn.
+* **Subagent Restraint:** Do not launch background or subagent processes unless strictly requested by the user. Subagents duplicate prompt context and consume tokens rapidly.
+* **Compact Command Output:** Run targeted test files (e.g. `npx tsx test/verifyMath.mjs`) during iteration rather than full verbose audit suites unless performing the final pre-flight check. Avoid unneeded directory or file tree dumps.
+* **Incremental Context:** Prefer reading only files directly implicated by the task. Re-use existing directory structure maps from this file instead of re-listing repository folders.
+
