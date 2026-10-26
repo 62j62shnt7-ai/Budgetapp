@@ -501,6 +501,10 @@ body.sidebar-collapsed .sidebar-open-btn {
 .primary-button,
 .ghost-button,
 .icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   border: 1px solid transparent;
   border-radius: 10px;
   min-height: 40px;
@@ -509,6 +513,18 @@ body.sidebar-collapsed .sidebar-open-btn {
   font-weight: 700;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   touch-action: manipulation;
+}
+
+.primary-button > svg,
+.ghost-button > svg,
+.icon-button > svg,
+.primary-button > span,
+.ghost-button > span,
+.icon-button > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
 
 .primary-button:active,
