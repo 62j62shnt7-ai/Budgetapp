@@ -15,6 +15,12 @@ export default defineConfig({
           if (id.includes('node_modules/lucide-react')) {
             return 'icons-vendor';
           }
+          if (id.includes('/src/engine/') || id.includes('/src/store/') || id.includes('/src/services/') || id.includes('/src/utils/')) {
+            return 'engine-store';
+          }
+          if (id.includes('/src/components/Modals/')) {
+            return 'modals';
+          }
         },
       },
     },

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Suspense, lazy } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { STORAGE_KEYS, useBudgetStore } from './store/useBudgetStore';
 import { useAppUpdateStatus } from './hooks/useAppUpdateStatus';
@@ -7,15 +7,15 @@ import { Topbar } from './components/Layout/Topbar';
 import { Sidebar } from './components/Layout/Sidebar';
 import { BottomNav } from './components/Layout/BottomNav';
 
-// Primary View (eager) + Secondary Views (lazy-loaded)
+// Views (eagerly loaded for instant zero-lag tab switching)
 import { DashboardView } from './components/Dashboard/DashboardView';
-const DeficitsView = lazy(() => import('./components/Deficits/DeficitsView').then((m) => ({ default: m.DeficitsView })));
-const CashflowView = lazy(() => import('./components/Cashflow/CashflowView').then((m) => ({ default: m.CashflowView })));
-const HistoryView = lazy(() => import('./components/History/HistoryView').then((m) => ({ default: m.HistoryView })));
-const AccountsView = lazy(() => import('./components/Accounts/AccountsView').then((m) => ({ default: m.AccountsView })));
-const StorageView = lazy(() => import('./components/Storage/StorageView').then((m) => ({ default: m.StorageView })));
-const JobsView = lazy(() => import('./components/Jobs/JobsView').then((m) => ({ default: m.JobsView })));
-const RatesView = lazy(() => import('./components/Rates/RatesView').then((m) => ({ default: m.RatesView })));
+import { DeficitsView } from './components/Deficits/DeficitsView';
+import { CashflowView } from './components/Cashflow/CashflowView';
+import { HistoryView } from './components/History/HistoryView';
+import { AccountsView } from './components/Accounts/AccountsView';
+import { StorageView } from './components/Storage/StorageView';
+import { JobsView } from './components/Jobs/JobsView';
+import { RatesView } from './components/Rates/RatesView';
 
 // Modals
 import { EntryModal } from './components/Modals/EntryModal';
@@ -30,9 +30,9 @@ import {
   JobForecastModal,
 } from './components/Modals/JobModals';
 import { RateModal } from './components/Modals/RateModal';
-const DriveSyncModal = lazy(() => import('./components/Modals/DriveSyncModal').then((m) => ({ default: m.DriveSyncModal })));
+import { DriveSyncModal } from './components/Modals/DriveSyncModal';
 import { SyncConflictModal } from './components/Modals/SyncConflictModal';
-const DataToolsModal = lazy(() => import('./components/Modals/DataToolsModal').then((m) => ({ default: m.DataToolsModal })));
+import { DataToolsModal } from './components/Modals/DataToolsModal';
 import { DeductAccountModal } from './components/Modals/DeductAccountModal';
 import { AccountTransferModal } from './components/Modals/AccountTransferModal';
 import { QuickAddModal, CommandPaletteModal } from './components/Modals/QuickAddModal';
@@ -535,9 +535,7 @@ export const App: React.FC = () => {
           onOpenCommandPalette={() => setCommandPaletteOpen(true)}
         />
         <DriveReconnectBanner onOpenDriveSync={() => setDriveSyncOpen(true)} />
-        <Suspense fallback={null}>
-          {renderActiveView()}
-        </Suspense>
+        {renderActiveView()}
       </main>
 
       {/* Mobile Bottom Navigation Bar */}
@@ -642,22 +640,17 @@ export const App: React.FC = () => {
         onClose={() => setRateModalOpen(false)}
       />
 
-      <Suspense fallback={null}>
-        {driveSyncOpen && (
-          <DriveSyncModal
-            isOpen={driveSyncOpen}
-            onClose={() => setDriveSyncOpen(false)}
-          />
-        )}
-        {dataToolsOpen && (
-          <DataToolsModal
-            isOpen={dataToolsOpen}
-            onClose={() => setDataToolsOpen(false)}
-          />
-        )}
-      </Suspense>
+      <DriveSyncModal
+        isOpen={driveSyncOpen}
+        onClose={() => setDriveSyncOpen(false)}
+      />
 
       <SyncConflictModal />
+
+      <DataToolsModal
+        isOpen={dataToolsOpen}
+        onClose={() => setDataToolsOpen(false)}
+      />
 
       <DeductAccountModal
         isOpen={deductModalOpen}
