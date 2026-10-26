@@ -74,20 +74,24 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({
   };
 
   const today = DateUtils.todayString();
-  const overdueEntries = allCandidateEntries
-    .filter((entry) => entry.date && entry.date < today)
-    .filter((entry) => !isOngoingEntry(entry, entryActuals))
-    .map((entry) => {
-      const partial = isPartialTracked(entry);
-      const remaining = partial
-        ? getRemainingForecastAmount(entry, entryActuals)
-        : Number(entry.amount || 0);
-      const settled = Boolean(entry.isClosed) || (partial
-        ? remaining <= 0
-        : getEntryActualAmount(entry, entryActuals) > 0);
-      return { entry, remaining, settled, daysOverdue: DateUtils.daysBetween(entry.date, today) };
-    })
-    .filter((item) => !item.settled && item.remaining > 0)
+  const overdueEntries = React.useMemo(
+    () =>
+      allCandidateEntries
+        .filter((entry) => entry.date && entry.date < today)
+        .filter((entry) => !isOngoingEntry(entry, entryActuals))
+        .map((entry) => {
+          const partial = isPartialTracked(entry);
+          const remaining = partial
+            ? getRemainingForecastAmount(entry, entryActuals)
+            : Number(entry.amount || 0);
+          const settled =
+            Boolean(entry.isClosed) ||
+            (partial ? remaining <= 0 : getEntryActualAmount(entry, entryActuals) > 0);
+          return { entry, remaining, settled, daysOverdue: DateUtils.daysBetween(entry.date, today) };
+        })
+        .filter((item) => !item.settled && item.remaining > 0),
+    [allCandidateEntries, entryActuals, today]
+  );
   const totalDaysInDeficit = deficitPeriods.reduce((sum, p) => sum + (p.daysInDeficit || 0), 0);
   const deficitNote = deficitPeriods.length > 0
     ? `${deficitPeriods.length} spell${deficitPeriods.length === 1 ? '' : 's'} (${totalDaysInDeficit} days in deficit)`

@@ -3,6 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { DateUtils } from '../../engine/dateUtils';
 import type { Installment } from '../../types';
+import { X } from 'lucide-react';
 
 interface InstallmentModalProps {
   isOpen: boolean;
@@ -102,8 +103,8 @@ export const InstallmentModal: React.FC<InstallmentModalProps> = ({ isOpen, inst
       <form onSubmit={handleSubmit} className="entry-form" id="installmentForm">
         <div className="dialog-heading">
           <h3>{installmentToEdit ? 'Edit installment' : 'Add installment'}</h3>
-          <button className="icon-button" type="button" aria-label="Close" onClick={onClose}>
-            x
+          <button className="icon-button close-dialog-btn" type="button" aria-label="Close" onClick={onClose}>
+            <X size={16} />
           </button>
         </div>
         <label>

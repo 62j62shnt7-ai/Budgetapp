@@ -7,6 +7,16 @@ import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { getEntryActualAmount, isLoanInflow, findLinkedLoanRepayment, calculateLoanRepaymentScale } from '../../engine/forecast';
 import type { CashEntry, EntryDraw, PlannedSplit } from '../../types';
 import { AffectedRecordsModal, type AffectedPartyOption } from './AffectedRecordsModal';
+import {
+  X,
+  CreditCard,
+  Landmark,
+  RefreshCw,
+  FileText,
+  Lightbulb,
+  Layers,
+  Check,
+} from 'lucide-react';
 
 function generateSeriesId(): string {
   return `series-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -100,6 +110,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
       ? document.activeElement
       : null;
     if (!dialog.open) dialog.showModal();
+    dialog.scrollTop = 0;
 
     const isMobile =
       typeof window !== 'undefined' &&
@@ -110,8 +121,9 @@ export const EntryModal: React.FC<EntryModalProps> = ({
     if (isMobile) {
       dialog.querySelector<HTMLElement>('button.close-dialog-btn')?.focus({ preventScroll: true });
     } else {
-      dialog.querySelector<HTMLElement>('select, input:not([type="hidden"]), textarea')?.focus();
+      dialog.querySelector<HTMLElement>('select, input:not([type="hidden"]), textarea')?.focus({ preventScroll: true });
     }
+    dialog.scrollTop = 0;
 
     return () => {
       if (dialog.open) dialog.close();
@@ -584,7 +596,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
         <div className="dialog-heading">
           <h3 id="entryDialogTitle">{entryToEdit ? 'Edit budget entry' : `Add ${type === 'income' ? 'Income' : 'Expense'}`}</h3>
           <button className="icon-button close-dialog-btn" type="button" aria-label="Close dialog" onClick={onClose}>
-            ✕
+            <X size={16} />
           </button>
         </div>
 
@@ -593,10 +605,10 @@ export const EntryModal: React.FC<EntryModalProps> = ({
             Payment / Credit Mode
             <select value={creditType} onChange={(e) => handleCreditTypeChange(e.target.value)}>
               <option value="">Direct (Bank account)</option>
-              <option value="hsbc_card">💳 Card Spend: Charged to HSBC Card (Settles next cycle)</option>
-              <option value="cib_card">💳 Card Spend: Charged to CIB Card (Settles next cycle)</option>
-              <option value="hsbc">🏛️ Card Bill Settlement: Pay HSBC Card (Deducts from account)</option>
-              <option value="cib">🏛️ Card Bill Settlement: Pay CIB Card (Deducts from account)</option>
+              <option value="hsbc_card">Card Spend: Charged to HSBC Card (Settles next cycle)</option>
+              <option value="cib_card">Card Spend: Charged to CIB Card (Settles next cycle)</option>
+              <option value="hsbc">Card Bill Settlement: Pay HSBC Card (Deducts from account)</option>
+              <option value="cib">Card Bill Settlement: Pay CIB Card (Deducts from account)</option>
             </select>
           </label>
         )}
@@ -604,7 +616,10 @@ export const EntryModal: React.FC<EntryModalProps> = ({
         {entryToEdit?.id.startsWith('credit-settlement-') && (
           <div style={{ padding: '10px 12px', background: 'var(--bg-card)', borderRadius: '8px', border: '1px solid var(--border)', marginTop: '8px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-              <span style={{ fontSize: '12px', fontWeight: 600 }}>🏛️ Credit Statement Reconciliation</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600 }}>
+                <Landmark size={13} style={{ color: 'var(--brand-primary, #6366f1)' }} />
+                Credit Statement Reconciliation
+              </span>
               <button className="ghost-button" style={{ fontSize: '11px', padding: '2px 8px' }} type="button" onClick={handleRecalculateCreditDue}>
                 Reset to calculated
               </button>
@@ -638,7 +653,10 @@ export const EntryModal: React.FC<EntryModalProps> = ({
 
         {entryToEdit && (entryToEdit.seriesId || entryToEdit.isRecurring) && (
           <div style={{ padding: '10px 12px', background: 'rgba(99, 102, 241, 0.08)', borderRadius: '8px', border: '1px solid rgba(99, 102, 241, 0.2)', marginTop: '8px' }}>
-            <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '6px' }}>🔄 Recurring Entry Scope</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, marginBottom: '6px' }}>
+              <RefreshCw size={13} style={{ color: 'var(--brand-primary, #6366f1)' }} />
+              Recurring Entry Scope
+            </div>
             <div style={{ display: 'flex', gap: '16px', fontSize: '13px' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', margin: 0 }}>
                 <input
@@ -671,7 +689,10 @@ export const EntryModal: React.FC<EntryModalProps> = ({
             ? activeEntry.draws.length > 1
             : activeEntry.draws.length > 0) && (
           <div style={{ padding: '10px 12px', background: 'var(--surface-soft)', borderRadius: '8px', border: '1px solid var(--line)', marginTop: '8px' }}>
-            <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '6px' }}>📋 Recorded Draws / Tranches ({activeEntry.draws.length})</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, marginBottom: '6px' }}>
+              <FileText size={13} style={{ color: 'var(--muted)' }} />
+              Recorded Draws / Tranches ({activeEntry.draws.length})
+            </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
               {activeEntry.draws.map((d, dIdx) => {
                 const entryIsForeign = (activeEntry.currency || 'EGP').toUpperCase() !== 'EGP';
@@ -703,7 +724,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
                             setDeleteDrawTarget({ drawIndex: dIdx, draw: d });
                           }}
                         >
-                          ✕
+                          <X size={13} />
                           {hasAffectedDraw && (
                             <span
                               className="affected-parties-dot"
@@ -741,8 +762,9 @@ export const EntryModal: React.FC<EntryModalProps> = ({
               onChange={(e) => setCreditSettlementDate(e.target.value)}
             />
             {creditSettlementHint && (
-              <small style={{ display: 'block', color: 'var(--muted)', fontSize: '11px', marginTop: '2px' }}>
-                💡 {creditSettlementHint}
+              <small style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: 'var(--muted)', fontSize: '11px', marginTop: '2px' }}>
+                <Lightbulb size={12} style={{ color: 'var(--amber)' }} />
+                <span>{creditSettlementHint}</span>
               </small>
             )}
           </label>
@@ -879,7 +901,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
               onChange={(e) => handleAccountChange(e.target.value)}
               required
             >
-              <optgroup label="🏦 Bank Operating Accounts">
+              <optgroup label="Bank Operating Accounts">
                 {Object.entries(accounts)
                   .sort(([idA], [idB]) => (idA === 'hsbc' ? -1 : idB === 'hsbc' ? 1 : 0))
                   .map(([id, a]) => (
@@ -890,13 +912,13 @@ export const EntryModal: React.FC<EntryModalProps> = ({
               </optgroup>
 
               {type === 'expense' && (
-                <optgroup label="💳 Credit Cards">
+                <optgroup label="Credit Cards">
                   <option value="HSBC Credit">HSBC Credit Card</option>
                   <option value="CIB Credit">CIB Credit Card</option>
                 </optgroup>
               )}
 
-              <optgroup label="💵 Foreign & Storage Reserves">
+              <optgroup label="Foreign & Storage Reserves">
                 {storageAssets.map((a) => (
                   <option key={a.id} value={a.name}>
                     {a.name} ({formatNativeCurrency(a.quantity, a.unit)})
@@ -986,7 +1008,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
               marginTop: '4px',
             }}
           >
-            <span style={{ fontSize: '16px' }}>💳</span>
+            <CreditCard size={16} style={{ color: 'var(--kpi-indigo, #818cf8)', flexShrink: 0 }} />
             <span>
               <strong>Credit card swipe:</strong> Amount is recorded immediately as actual spend. Settlement will be scheduled for{' '}
               <strong>{settlementDate ? DateUtils.formatDisplayDate(settlementDate) : 'upcoming cycle'}</strong>.
@@ -1023,8 +1045,8 @@ export const EntryModal: React.FC<EntryModalProps> = ({
 
         {/* Split / Ongoing Draw Schedule */}
         {!isCardExpense && !isSettlement && (
-          <div className="entry-field split-group" style={{ marginTop: '12px', padding: '12px', background: 'var(--surface-hover, rgba(255,255,255,0.03))', borderRadius: '8px', border: '1px solid var(--border-color, rgba(255,255,255,0.08))' }}>
-            <label className="check-row" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 600 }}>
+          <div className="entry-field split-group entry-option-card" style={{ marginTop: '4px' }}>
+            <label className="check-row">
               <input
                 type="checkbox"
                 checked={isSplitEnabled}
@@ -1048,7 +1070,10 @@ export const EntryModal: React.FC<EntryModalProps> = ({
                   }
                 }}
               />
-              <span>👻 Split forecast across multiple dates (Ongoing Draws)</span>
+              <span>
+                <Layers size={15} style={{ color: 'var(--brand-primary, #6366f1)', flexShrink: 0 }} />
+                <span>Split forecast across multiple dates (Ongoing Draws)</span>
+              </span>
             </label>
 
             {isSplitEnabled && (
@@ -1195,14 +1220,17 @@ export const EntryModal: React.FC<EntryModalProps> = ({
         )}
 
         {!entryToEdit && (
-          <div id="recurringField" className="entry-field recurring-group" style={{ marginTop: '8px' }}>
-            <label className="check-row" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+          <div id="recurringField" className="entry-field recurring-group entry-option-card" style={{ marginTop: '2px' }}>
+            <label className="check-row">
               <input
                 type="checkbox"
                 checked={isRecurring}
                 onChange={(e) => setIsRecurring(e.target.checked)}
               />
-              <span>Repeat this entry</span>
+              <span>
+                <RefreshCw size={14} style={{ color: 'var(--brand-primary, #6366f1)', flexShrink: 0 }} />
+                <span>Repeat this entry</span>
+              </span>
             </label>
 
             {isRecurring && (
@@ -1254,6 +1282,9 @@ export const EntryModal: React.FC<EntryModalProps> = ({
               type="button"
               className="ghost-button finish-loan-btn"
               style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
                 marginRight: 'auto',
                 color: 'var(--green, #16a34a)',
                 borderColor: 'var(--green, #16a34a)',
@@ -1304,7 +1335,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
                 onClose();
               }}
             >
-              ✓ Finish &amp; Fulfill
+              <Check size={14} /> Finish &amp; Fulfill
             </button>
           )}
           <button className="ghost-button" type="button" onClick={onClose}>
@@ -1333,7 +1364,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
             id: 'cashflow',
             label: 'Forecast & History Actuals',
             sublabel: `Deduct ${amountDisplay} from this forecast entry and recalculate actual received amount.`,
-            icon: '📊',
+            icon: 'chart',
             defaultChecked: true,
           },
           ...(linkedJob
@@ -1342,7 +1373,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
                   id: 'job',
                   label: `Job Tracker: ${linkedJob.title || linkedJob.client}`,
                   sublabel: `Deduct payment tranche from "${linkedJob.title || linkedJob.client}" and adjust remaining invoice.`,
-                  icon: '💼',
+                  icon: 'briefcase',
                   defaultChecked: true,
                 },
               ]
@@ -1397,7 +1428,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
                 id: 'storage',
                 label: matchingStorage ? `Storage Asset: ${assetName}` : `Bank Balance: ${assetName}`,
                 sublabel: `${actionText} ${assetName}${currentQtyDesc}.`,
-                icon: matchingStorage ? '🏦' : '💳',
+                icon: matchingStorage ? 'landmark' : 'credit-card',
                 defaultChecked: true,
               },
             ];

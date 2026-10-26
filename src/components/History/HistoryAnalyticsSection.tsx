@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Folder, Tag, PieChart, Table2, LayoutGrid } from 'lucide-react';
 import { formatMoney } from '../../engine/dateUtils';
 
 export interface GroupData {
@@ -66,39 +66,44 @@ export const HistoryAnalyticsSection: React.FC<HistoryAnalyticsSectionProps> = (
             <button
               type="button"
               className={`subnav-tab ${groupBy === 'category' ? 'active' : ''}`}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
               onClick={() => setGroupBy('category')}
             >
-              📁 Category
+              <Folder size={13} /> Category
             </button>
             <button
               type="button"
               className={`subnav-tab ${groupBy === 'tag' ? 'active' : ''}`}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
               onClick={() => setGroupBy('tag')}
             >
-              🏷️ Tag
+              <Tag size={13} /> Tag
             </button>
           </div>
           <div className="subnav-tabs history-view-tabs">
             <button
               type="button"
               className={`subnav-tab ${viewMode === 'chart' ? 'active' : ''}`}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
               onClick={() => setViewMode('chart')}
             >
-              📊 Breakdown
+              <PieChart size={13} /> Breakdown
             </button>
             <button
               type="button"
               className={`subnav-tab ${viewMode === 'table' ? 'active' : ''}`}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
               onClick={() => setViewMode('table')}
             >
-              📋 Table
+              <Table2 size={13} /> Table
             </button>
             <button
               type="button"
               className={`subnav-tab ${viewMode === 'both' ? 'active' : ''}`}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
               onClick={() => setViewMode('both')}
             >
-              📑 Both
+              <LayoutGrid size={13} /> Both
             </button>
           </div>
         </div>

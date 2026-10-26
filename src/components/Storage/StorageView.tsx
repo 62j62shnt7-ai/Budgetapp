@@ -8,7 +8,7 @@ import {
   formatNativeCurrency,
   inferAssetLocation,
 } from '../../engine/currency';
-import { Plus, ArrowRightLeft, Coins } from 'lucide-react';
+import { Plus, ArrowRightLeft, Coins, Landmark, Banknote, Lock, Edit2 } from 'lucide-react';
 import { StorageTransferModal } from '../Modals/StorageTransferModal';
 import { StorageFxModal } from '../Modals/StorageFxModal';
 import { AffectedRecordsModal } from '../Modals/AffectedRecordsModal';
@@ -231,23 +231,26 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenStorageModal }) 
             <button
               type="button"
               className={`chip-button ${activeFilter === 'bank' ? 'active' : ''}`}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
               onClick={() => setActiveFilter('bank')}
             >
-              🏦 Bank Foreign Accounts
+              <Landmark size={13} /> Bank Foreign Accounts
             </button>
             <button
               type="button"
               className={`chip-button ${activeFilter === 'cash' ? 'active' : ''}`}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
               onClick={() => setActiveFilter('cash')}
             >
-              💵 Physical Cash
+              <Banknote size={13} /> Physical Cash
             </button>
             <button
               type="button"
               className={`chip-button ${activeFilter === 'vault' ? 'active' : ''}`}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
               onClick={() => setActiveFilter('vault')}
             >
-              🔒 Gold & Vault
+              <Lock size={13} /> Gold &amp; Vault
             </button>
           </div>
 
@@ -306,19 +309,23 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenStorageModal }) 
                           </div>
                         ) : (
                           <strong
-                            style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                            style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
                             title="Click to edit name"
                             onClick={() => {
                               setEditingNameId(item.id);
                               setTempName(item.name);
                             }}
                           >
-                            {item.name} <span style={{ fontSize: '10px', color: 'var(--muted)' }}>✏️</span>
+                            <span>{item.name}</span>
+                            <Edit2 size={11} style={{ color: 'var(--muted)' }} />
                           </strong>
                         )}
                         <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '4px' }}>
                           <span
                             style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
                               fontSize: '11px',
                               padding: '2px 6px',
                               borderRadius: '4px',
@@ -337,8 +344,14 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenStorageModal }) 
                               fontWeight: 600,
                             }}
                           >
-                            {loc.locationType === 'bank' ? '🏦 ' : loc.locationType === 'cash' ? '💵 ' : '🔒 '}
-                            {loc.locationLabel}
+                            {loc.locationType === 'bank' ? (
+                              <Landmark size={11} />
+                            ) : loc.locationType === 'cash' ? (
+                              <Banknote size={11} />
+                            ) : (
+                              <Lock size={11} />
+                            )}
+                            <span>{loc.locationLabel}</span>
                           </span>
                         </div>
                       </div>
@@ -432,11 +445,11 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenStorageModal }) 
                           value={`${loc.locationType}:${loc.location}`}
                           onChange={(e) => handleLocationChange(item.id, e.target.value)}
                         >
-                          <option value="bank:hsbc">🏦 HSBC Bank</option>
-                          <option value="bank:cib">🏦 CIB Bank</option>
-                          <option value="cash:cash">💵 Physical Cash</option>
-                          <option value="vault:vault">🔒 Vault / Safe</option>
-                          <option value="other:other">📁 Other</option>
+                          <option value="bank:hsbc">HSBC Bank</option>
+                          <option value="bank:cib">CIB Bank</option>
+                          <option value="cash:cash">Physical Cash</option>
+                          <option value="vault:vault">Vault / Safe</option>
+                          <option value="other:other">Other</option>
                         </select>
                       </label>
                     </div>
@@ -484,16 +497,22 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenStorageModal }) 
             </p>
 
             <div style={{ marginTop: '16px', borderTop: '1px dashed var(--line)', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-                <span style={{ color: 'var(--muted)' }}>🏦 Bank Foreign Accounts:</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--muted)' }}>
+                  <Landmark size={13} /> Bank Foreign Accounts:
+                </span>
                 <strong>{formatMoney(bankTotal)}</strong>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-                <span style={{ color: 'var(--muted)' }}>💵 Physical Cash Foreign:</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--muted)' }}>
+                  <Banknote size={13} /> Physical Cash Foreign:
+                </span>
                 <strong>{formatMoney(cashTotal)}</strong>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-                <span style={{ color: 'var(--muted)' }}>🔒 Gold & Metals:</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--muted)' }}>
+                  <Lock size={13} /> Gold &amp; Metals:
+                </span>
                 <strong>{formatMoney(vaultTotal)}</strong>
               </div>
             </div>

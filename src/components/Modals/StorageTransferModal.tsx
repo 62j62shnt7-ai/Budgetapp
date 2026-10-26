@@ -3,7 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { formatNativeCurrency } from '../../engine/currency';
 import type { StorageAsset } from '../../types';
-import { ArrowRightLeft } from 'lucide-react';
+import { ArrowRightLeft, X } from 'lucide-react';
 
 interface StorageTransferModalProps {
   isOpen: boolean;
@@ -102,8 +102,8 @@ export const StorageTransferModal: React.FC<StorageTransferModalProps> = ({
             <ArrowRightLeft size={18} color="var(--primary)" />
             <h3 style={{ margin: 0 }}>Transfer Storage Holding</h3>
           </div>
-          <button className="icon-button" type="button" aria-label="Close" onClick={onClose}>
-            x
+          <button className="icon-button close-dialog-btn" type="button" aria-label="Close" onClick={onClose}>
+            <X size={16} />
           </button>
         </div>
 

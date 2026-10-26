@@ -21,7 +21,19 @@ import {
 import { isCreditCardExpense } from '../../engine/creditCards';
 import { DateUtils, formatMoney, formatLastUpdated } from '../../engine/dateUtils';
 import { ForecastChart } from '../Forecast/ForecastChart';
-import { CreditCard, CheckCircle2, Clock, Target, AlertTriangle, Lightbulb } from 'lucide-react';
+import {
+  CreditCard,
+  CheckCircle2,
+  Clock,
+  Target,
+  AlertTriangle,
+  AlertOctagon,
+  Info,
+  ArrowLeftRight,
+  Coins,
+  Banknote,
+  Lightbulb,
+} from 'lucide-react';
 import {
   getCreditDueFundingAlerts,
   getCriticalFundingAlerts,
@@ -198,8 +210,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
     if (isFunded) {
       const isFundedByIncome = alert.isFundedByProjectedIncome && alert.accountBalance < alert.remainingDue;
       const fundedText = isFundedByIncome
-        ? `🟢 ${alert.accountName} funded by upcoming income (${formatMoney(alert.projectedAccountBalance || alert.accountBalance)} projected)`
-        : `🟢 ${alert.accountName} Account funded (${formatMoney(alert.accountBalance)} avail)`;
+        ? `${alert.accountName} funded by upcoming income (${formatMoney(alert.projectedAccountBalance || alert.accountBalance)} projected)`
+        : `${alert.accountName} Account funded (${formatMoney(alert.accountBalance)} avail)`;
       const fundedTooltip = isFundedByIncome
         ? `${alert.accountName} current balance: ${formatMoney(alert.accountBalance)}, projected to reach ${formatMoney(alert.projectedAccountBalance || 0)} from scheduled income before settlement date (${DateUtils.formatDisplayDate(alert.settlementDate)}). Fully covers ${formatMoney(alert.remainingDue)} due with no deficits.`
         : `${alert.accountName} Account has ${formatMoney(alert.accountBalance)} (Fully covers ${formatMoney(alert.remainingDue)} due)`;
@@ -210,7 +222,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
           style={{
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between',
+            gap: '6px',
+            justifyContent: 'flex-start',
             padding: '5px 8px',
             borderRadius: '6px',
             fontSize: '11px',
@@ -223,6 +236,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
           }}
           title={fundedTooltip}
         >
+          <CheckCircle2 size={12} style={{ flexShrink: 0 }} />
           <span style={{ wordBreak: 'break-word' }}>{fundedText}</span>
         </div>
       );
@@ -239,49 +253,44 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
     );
     const canTransferAny = canCover || hasPartialSource;
 
-    // Styling & color tokens
-    // If fully covered & close: amber warning ("Needs Transfer")
-    // If fully covered & not close: blue notice ("Scheduled Transfer")
-    // If partially covered: amber warning mentioning remaining shortfall only ("Remaining Shortfall: X")
-    // If completely uncovered & close: red critical ("Unfunded Shortfall: X")
-    // If completely uncovered & not close: amber ("Upcoming Shortfall: X")
     let borderColor = 'var(--line)';
     let bgColor = 'var(--surface-soft)';
     let textColor = 'var(--ink)';
     let label = '';
+    let pillIcon: React.ReactNode = <AlertTriangle size={12} style={{ flexShrink: 0 }} />;
 
     if (canCover) {
       if (isClose) {
         borderColor = 'var(--amber, #f59e0b)';
         bgColor = 'rgba(245, 158, 11, 0.14)';
         textColor = 'var(--amber, #f59e0b)';
-        label = `⚠️ Needs Transfer: ${formatMoney(alert.shortfall)} (covered by ${alert.suggestedSourceAccount?.accountName})`;
+        label = `Needs Transfer: ${formatMoney(alert.shortfall)} (covered by ${alert.suggestedSourceAccount?.accountName})`;
       } else {
         borderColor = 'rgba(59, 130, 246, 0.4)';
         bgColor = 'rgba(59, 130, 246, 0.08)';
-        textColor = '#60a5fa';
-        label = `ℹ️ Scheduled Transfer: ${formatMoney(alert.shortfall)} available in ${alert.suggestedSourceAccount?.accountName}`;
+        textColor = 'var(--kpi-sky, #60a5fa)';
+        pillIcon = <Info size={12} style={{ flexShrink: 0 }} />;
+        label = `Scheduled Transfer: ${formatMoney(alert.shortfall)} available in ${alert.suggestedSourceAccount?.accountName}`;
       }
     } else if (hasPartialSource) {
-      // By the settlement date, only put the amount that will be available to partially cover it:
       const availableToCover = alert.maxTransferableAmount || 0;
       const remainingShortfall = alert.remainingUncoveredShortfall ?? (alert.shortfall - availableToCover);
       borderColor = isClose ? 'var(--red, #f43f5e)' : 'var(--amber, #f59e0b)';
       bgColor = isClose ? 'rgba(244, 63, 94, 0.14)' : 'rgba(245, 158, 11, 0.12)';
       textColor = isClose ? 'var(--red, #f43f5e)' : 'var(--amber, #f59e0b)';
-      label = `⚠️ ${formatMoney(availableToCover)} available to partially cover from ${alert.suggestedSourceAccount?.accountName} (${formatMoney(remainingShortfall)} remaining shortfall)`;
+      label = `${formatMoney(availableToCover)} available to partially cover from ${alert.suggestedSourceAccount?.accountName} (${formatMoney(remainingShortfall)} remaining shortfall)`;
     } else {
-      // Nothing can cover shortfall at all: no account has any funds
       if (isClose) {
         borderColor = 'var(--red, #f43f5e)';
         bgColor = 'rgba(244, 63, 94, 0.16)';
         textColor = 'var(--red, #f43f5e)';
-        label = `🚨 Unfunded Shortfall: ${formatMoney(alert.shortfall)} (no account has funds)`;
+        pillIcon = <AlertOctagon size={12} style={{ flexShrink: 0 }} />;
+        label = `Unfunded Shortfall: ${formatMoney(alert.shortfall)} (no account has funds)`;
       } else {
         borderColor = 'var(--amber, #f59e0b)';
         bgColor = 'rgba(245, 158, 11, 0.12)';
         textColor = 'var(--amber, #f59e0b)';
-        label = `⚠️ Upcoming Shortfall: ${formatMoney(alert.shortfall)} (uncovered)`;
+        label = `Upcoming Shortfall: ${formatMoney(alert.shortfall)} (uncovered)`;
       }
     }
 
@@ -312,8 +321,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
         }}
         title={`Due ${DateUtils.formatDisplayDate(alert.settlementDate)} on ${alert.cardName}. ${alert.accountName} has ${formatMoney(alert.accountBalance)}. ${canCover ? `Can be covered by transferring ${formatMoney(alert.shortfall)} from ${alert.suggestedSourceAccount?.accountName} (${formatMoney(alert.suggestedSourceAccount?.projectedBalance ?? alert.suggestedSourceAccount?.balance ?? 0)} projected by settlement date).` : hasPartialSource ? `${alert.suggestedSourceAccount?.accountName} can partially cover ${formatMoney(alert.maxTransferableAmount || 0)} based on projected balance (${formatMoney(alert.suggestedSourceAccount?.projectedBalance ?? alert.suggestedSourceAccount?.balance ?? 0)} at settlement), leaving a remaining shortfall of ${formatMoney(alert.remainingUncoveredShortfall || 0)}.` : `Shortfall of ${formatMoney(alert.shortfall)} — no other account has projected funds to cover.`} ${canTransferAny ? 'Click to transfer.' : ''}`}
       >
-        <span style={{ wordBreak: 'break-word', flex: 1 }}>
-          {label}
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', wordBreak: 'break-word', flex: 1 }}>
+          {pillIcon}
+          <span>{label}</span>
         </span>
         {canTransferAny && (
           <span style={{ fontWeight: 700, textDecoration: 'underline', flexShrink: 0, whiteSpace: 'nowrap' }}>
@@ -326,26 +336,47 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
 
   // Forecast & Deficits
   const visibleForecast = forecast.slice(0, forecastRangeMonths);
-  const health = computeFinancialHealthScore({
-    entries: allCandidateEntries,
-    forecast,
-    deficitPeriods,
-    actualCashNow: totalCash,
-    storageTotal,
-    entryActuals,
-    // Settled ledger rows so budget adherence and savings rate can be measured.
-    historyEntries: [...entries, ...installmentEntries, ...creditDueEntries],
-    archivedEntries,
-    entryActualDates,
-    creditSettlementOverrides,
-  });
-  const rawInsights = generateSmartInsights({
-    entries: allCandidateEntries,
-    forecast,
-    deficitPeriods,
-    actualCashNow: totalCash,
-    storageTotal,
-  });
+  const health = React.useMemo(
+    () =>
+      computeFinancialHealthScore({
+        entries: allCandidateEntries,
+        forecast,
+        deficitPeriods,
+        actualCashNow: totalCash,
+        storageTotal,
+        entryActuals,
+        // Settled ledger rows so budget adherence and savings rate can be measured.
+        historyEntries: [...entries, ...installmentEntries, ...creditDueEntries],
+        archivedEntries,
+        entryActualDates,
+        creditSettlementOverrides,
+      }),
+    [
+      allCandidateEntries,
+      forecast,
+      deficitPeriods,
+      totalCash,
+      storageTotal,
+      entryActuals,
+      entries,
+      installmentEntries,
+      creditDueEntries,
+      archivedEntries,
+      entryActualDates,
+      creditSettlementOverrides,
+    ]
+  );
+  const rawInsights = React.useMemo(
+    () =>
+      generateSmartInsights({
+        entries: allCandidateEntries,
+        forecast,
+        deficitPeriods,
+        actualCashNow: totalCash,
+        storageTotal,
+      }),
+    [allCandidateEntries, forecast, deficitPeriods, totalCash, storageTotal]
+  );
   // Filter out redundant deficit-alert insight when an active deficit already dominates the Action Center
   const insights = hasDeficit
     ? rawInsights.filter((insight) => insight.id !== 'deficit-alert')
@@ -357,20 +388,24 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
 
   // Overdue & unpaid obligations (same resolution as the Deficits view) so the
   // Cashflow status metric reacts the moment an obligation slips past due.
-  const overdueNow = allCandidateEntries
-    .filter((entry) => entry.date && entry.date < DateUtils.todayString())
-    .filter((entry) => !isOngoingEntry(entry, entryActuals))
-    .map((entry) => {
-      const partial = isPartialTracked(entry);
-      const remaining = partial
-        ? getRemainingForecastAmount(entry, entryActuals)
-        : Number(entry.amount || 0);
-      const settled = Boolean(entry.isClosed) || (partial
-        ? remaining <= 0
-        : getEntryActualAmount(entry, entryActuals) > 0);
-      return { entry, remaining, settled };
-    })
-    .filter((item) => !item.settled && item.remaining > 0);
+  const overdueNow = React.useMemo(
+    () =>
+      allCandidateEntries
+        .filter((entry) => entry.date && entry.date < DateUtils.todayString())
+        .filter((entry) => !isOngoingEntry(entry, entryActuals))
+        .map((entry) => {
+          const partial = isPartialTracked(entry);
+          const remaining = partial
+            ? getRemainingForecastAmount(entry, entryActuals)
+            : Number(entry.amount || 0);
+          const settled =
+            Boolean(entry.isClosed) ||
+            (partial ? remaining <= 0 : getEntryActualAmount(entry, entryActuals) > 0);
+          return { entry, remaining, settled };
+        })
+        .filter((item) => !item.settled && item.remaining > 0),
+    [allCandidateEntries, entryActuals]
+  );
 
   const lowestProjection = getLowestProjectedBalance(allCandidateEntries, totalCash);
   const lowestPoint = lowestProjection.balance;
@@ -501,13 +536,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
         const fxAmountNeeded = Math.ceil(peak / fxRate);
         const fxLabel = fx ? (fx.unit || fx.name || 'USD') : 'foreign currency';
 
-        const chips = [
+        const chips: Array<{
+          id: string;
+          label: string;
+          icon: React.ReactNode;
+          action: () => void;
+          title: string;
+        }> = [
           {
             id: 'fx',
             label: fx
               ? `Exchange ~${fxAmountNeeded.toLocaleString()} ${fxLabel}`
               : 'Exchange foreign currency',
-            icon: '💱',
+            icon: <ArrowLeftRight size={13} />,
             action: () => setActiveTab('storage'),
             title: 'Go to Stored Assets to exchange foreign currency',
           },
@@ -516,7 +557,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
             label: goldGramsNeeded
               ? `Liquidate ~${goldGramsNeeded}g gold (${formatMoney(peak)})`
               : 'Liquidate gold / liquid asset',
-            icon: '🪙',
+            icon: <Coins size={13} />,
             action: () => setActiveTab('storage'),
             title: 'Go to Stored Assets to liquidate gold or stored asset',
           },
@@ -525,7 +566,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
                 {
                   id: 'postpone',
                   label: `Postpone ${flexible.category} (${formatMoney(flexible.amount)})`,
-                  icon: '⏱️',
+                  icon: <Clock size={13} />,
                   action: () =>
                     navigateTo('cashflow', {
                       category: flexible.category,
@@ -540,7 +581,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
             label: targetPeriod.resolvedDate
               ? `Bridge ${formatMoney(peak)} until ${DateUtils.formatDisplayDate(targetPeriod.resolvedDate)}`
               : `Bridge ${formatMoney(peak)} via credit/loan`,
-            icon: '💳',
+            icon: <CreditCard size={13} />,
             action: () => setActiveTab('deficits'),
             title: 'Go to Deficits view to review the recovery path',
           },
@@ -743,7 +784,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
                             onClick={chip.action}
                             title={chip.title}
                           >
-                            <span>{chip.icon}</span>
+                            <span className="inline-icon-wrap">{chip.icon}</span>
                             <span>{chip.label}</span>
                           </button>
                         ))}
@@ -751,7 +792,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
                     )}
 
                     {/* Preserved pill element for test and DOM accessibility compatibility */}
-                    <div id="deficitRemediationAdvice" className="deficit-remediation-pill" style={{ display: 'block', marginTop: '6px' }}>
+                    <div id="deficitRemediationAdvice" className="deficit-remediation-pill sr-only">
                       {remediationAdvice}
                     </div>
                   </div>
@@ -844,7 +885,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
                 : 'STATUS OK'}
             </span>
           </div>
-          <strong id="actualCashToday" style={{ color: '#38bdf8', fontWeight: 800 }}>
+          <strong id="actualCashToday" style={{ color: 'var(--kpi-cyan, #38bdf8)', fontWeight: 800 }}>
             {formatMoney(totalCash)}
           </strong>
           <small id="cashflowStatusNote">
@@ -885,7 +926,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
-            <strong id="storageTotal" style={{ color: '#fbbf24', fontWeight: 800 }}>
+            <strong id="storageTotal" style={{ color: 'var(--kpi-gold, #fbbf24)', fontWeight: 800 }}>
               {formatMoney(storageTotal)}
             </strong>
             {storageChange && (
@@ -926,7 +967,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
           <strong
             id="forecastLow"
             style={{
-              color: lowestPoint < 0 ? 'var(--red, #f43f5e)' : lowestPoint < 15000 ? 'var(--amber, #f59e0b)' : '#34d399',
+              color: lowestPoint < 0 ? 'var(--red, #f43f5e)' : lowestPoint < 15000 ? 'var(--amber, #f59e0b)' : 'var(--kpi-emerald, #34d399)',
               fontWeight: 800,
             }}
           >
@@ -1354,8 +1395,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <strong>{entry.category}</strong>
                     {isForeign && (
-                      <span className="source-pill" style={{ background: 'rgba(99, 102, 241, 0.12)', color: '#818cf8', fontWeight: 700, fontSize: '10px' }}>
-                        💵 {entry.currency}
+                      <span className="source-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(99, 102, 241, 0.12)', color: 'var(--kpi-indigo, #818cf8)', fontWeight: 700, fontSize: '10px' }}>
+                        <Banknote size={11} /> {entry.currency}
                       </span>
                     )}
                   </div>
@@ -1381,8 +1422,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
                   {forecastRangeMonths} Months
                 </span>
                 {deficits.hasDeficit && (
-                  <span id="forecastDeficitAlertBadge" className="forecast-deficit-alert-badge" style={{ display: 'inline-block' }}>
-                    ⚠️ Deficit Detected
+                  <span id="forecastDeficitAlertBadge" className="forecast-deficit-alert-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <AlertTriangle size={12} /> Deficit Detected
                   </span>
                 )}
               </div>
@@ -1590,38 +1631,45 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
         </section>
 
         <section className="content-grid dashboard-summary-grid" style={{ marginTop: '16px' }}>
-          <section className="panel">
+          <section className="panel panel-recessed">
             <div className="panel-heading">
               <h3 style={{ margin: 0 }}>Category expense breakdown</h3>
             </div>
             {categoryRows.length === 0 ? (
-              <p style={{ color: 'var(--muted)' }}>No expense categories yet</p>
+              <p className="empty-state-subtle">No expense categories scheduled in this horizon.</p>
             ) : (
               <div className="stack-list">
-                {categoryRows.map(([category, amount]) => (
-                  <div
-                    key={category}
-                    className="list-row history-summary-clickable-row"
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => navigateTo('cashflow', { category })}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        navigateTo('cashflow', { category });
-                      }
-                    }}
-                    tabIndex={0}
-                    role="button"
-                    title={`Click to view ${category} in Cash Flow`}
-                  >
-                    <span>{category}</span>
-                    <strong>{formatMoney(amount)} ({categoryTotal ? Math.round((amount / categoryTotal) * 100) : 0}%)</strong>
-                  </div>
-                ))}
+                {categoryRows.map(([category, amount]) => {
+                  const pct = categoryTotal ? Math.round((amount / categoryTotal) * 100) : 0;
+                  return (
+                    <div
+                      key={category}
+                      className="list-row allocation-row history-summary-clickable-row"
+                      style={{
+                        cursor: 'pointer',
+                        '--alloc-pct': `${pct}%`,
+                        '--alloc-color': 'rgba(244, 63, 94, 0.12)',
+                      } as React.CSSProperties}
+                      onClick={() => navigateTo('cashflow', { category })}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          navigateTo('cashflow', { category });
+                        }
+                      }}
+                      tabIndex={0}
+                      role="button"
+                      title={`Click to view ${category} in Cash Flow`}
+                    >
+                      <span>{category}</span>
+                      <strong>{formatMoney(amount)} ({pct}%)</strong>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </section>
-          <section className="panel">
+          <section className="panel panel-recessed">
             <div className="panel-heading">
               <h3 style={{ margin: 0 }}>Asset allocation</h3>
               <strong>{formatMoney(assetTotal)}</strong>
@@ -1631,11 +1679,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
                 .filter(([, amount]) => amount > 0)
                 .map(([label, amount]) => {
                   const targetTab = label === 'Liquid Cash / Bank' ? 'accounts' : 'storage';
+                  const pct = assetTotal ? Math.round((amount / assetTotal) * 100) : 0;
+                  const allocColor =
+                    label === 'Gold Assets'
+                      ? 'rgba(245, 158, 11, 0.14)'
+                      : label === 'Foreign Currency'
+                      ? 'rgba(99, 102, 241, 0.14)'
+                      : 'rgba(16, 185, 129, 0.14)';
                   return (
                     <div
                       key={label}
-                      className="list-row history-summary-clickable-row"
-                      style={{ cursor: 'pointer' }}
+                      className="list-row allocation-row history-summary-clickable-row"
+                      style={{
+                        cursor: 'pointer',
+                        '--alloc-pct': `${pct}%`,
+                        '--alloc-color': allocColor,
+                      } as React.CSSProperties}
                       onClick={() => setActiveTab(targetTab)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' || e.key === ' ') {
@@ -1647,11 +1706,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
                       role="button"
                       title={`Click to view ${label === 'Liquid Cash / Bank' ? 'Accounts' : 'Storage'}`}
                     >
-                      <span>
-                        {label === 'Foreign Currency' ? '💱 ' : label === 'Gold Assets' ? '🪙 ' : label === 'Liquid Cash / Bank' ? '💵 ' : ''}
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        {label === 'Foreign Currency' ? (
+                          <ArrowLeftRight size={13} style={{ color: 'var(--kpi-indigo, #818cf8)', flexShrink: 0 }} />
+                        ) : label === 'Gold Assets' ? (
+                          <Coins size={13} style={{ color: 'var(--kpi-gold, #fbbf24)', flexShrink: 0 }} />
+                        ) : label === 'Liquid Cash / Bank' ? (
+                          <Banknote size={13} style={{ color: 'var(--kpi-emerald, #34d399)', flexShrink: 0 }} />
+                        ) : null}
                         {label}
                       </span>
-                      <strong>{formatMoney(amount)} ({assetTotal ? Math.round((amount / assetTotal) * 100) : 0}%)</strong>
+                      <strong>{formatMoney(amount)} ({pct}%)</strong>
                     </div>
                   );
                 })}

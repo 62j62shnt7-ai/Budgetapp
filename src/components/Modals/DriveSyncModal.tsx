@@ -1,6 +1,24 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
+import { requestAppConfirm } from '../Common/UndoToast';
+import {
+  Cloud,
+  X,
+  CheckCircle2,
+  AlertTriangle,
+  Lock,
+  Folder,
+  Calendar,
+  Clock,
+  Save,
+  Check,
+  ArrowUp,
+  ArrowDown,
+  Archive,
+  Trash2,
+  RotateCcw,
+} from 'lucide-react';
 import {
   getStoredDriveUser,
   getStoredDriveAutoSync,
@@ -248,7 +266,13 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
   };
 
   const handleRestoreBackup = async (item: DriveBackupItem) => {
-    if (!window.confirm(`Restore cloud backup '${item.name}' from ${new Date(item.modifiedTime).toLocaleString()}?\n\nYour current data will be safely backed up to undo history.`)) {
+    const confirmed = await requestAppConfirm({
+      title: 'Restore Cloud Backup',
+      message: `Restore cloud backup '${item.name}' from ${new Date(item.modifiedTime).toLocaleString()}? Your current data will be safely backed up to undo history.`,
+      confirmLabel: 'Restore Backup',
+      tone: 'warning',
+    });
+    if (!confirmed) {
       return;
     }
     setIsLoading(true);
@@ -274,7 +298,13 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
   };
 
   const handleDeleteIndividualBackup = async (item: DriveBackupItem) => {
-    if (!window.confirm(`Permanently delete backup '${item.name}' from Google Drive?`)) {
+    const confirmed = await requestAppConfirm({
+      title: 'Delete Cloud Backup',
+      message: `Permanently delete backup '${item.name}' from Google Drive?`,
+      confirmLabel: 'Delete Permanently',
+      tone: 'danger',
+    });
+    if (!confirmed) {
       return;
     }
     setIsLoading(true);
@@ -294,7 +324,13 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
   };
 
   const handleClearDaily = async () => {
-    if (!window.confirm(`Permanently delete all ${dailyBackups.length} daily backup files from 'Daily Backups/'?\n\nYour active ledger and other snapshots will remain intact.`)) {
+    const confirmed = await requestAppConfirm({
+      title: 'Clear Daily Backups',
+      message: `Permanently delete all ${dailyBackups.length} daily backup files from 'Daily Backups/'? Your active ledger and other snapshots will remain intact.`,
+      confirmLabel: 'Clear Daily Backups',
+      tone: 'danger',
+    });
+    if (!confirmed) {
       return;
     }
     setIsLoading(true);
@@ -310,7 +346,13 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
   };
 
   const handleClearEdits = async () => {
-    if (!window.confirm(`Permanently delete all ${editSnapshots.length} rolling edit snapshots from 'Edit Snapshots/'?\n\nYour active ledger will remain intact.`)) {
+    const confirmed = await requestAppConfirm({
+      title: 'Clear Edit Snapshots',
+      message: `Permanently delete all ${editSnapshots.length} rolling edit snapshots from 'Edit Snapshots/'? Your active ledger will remain intact.`,
+      confirmLabel: 'Clear Snapshots',
+      tone: 'danger',
+    });
+    if (!confirmed) {
       return;
     }
     setIsLoading(true);
@@ -326,7 +368,13 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
   };
 
   const handleClearUser = async () => {
-    if (!window.confirm(`Permanently delete all ${userSnapshots.length} user milestones from 'User Snapshots/'?`)) {
+    const confirmed = await requestAppConfirm({
+      title: 'Clear User Milestones',
+      message: `Permanently delete all ${userSnapshots.length} user milestones from 'User Snapshots/'?`,
+      confirmLabel: 'Clear Milestones',
+      tone: 'danger',
+    });
+    if (!confirmed) {
       return;
     }
     setIsLoading(true);
@@ -394,11 +442,11 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
     >
       <div className="dialog-heading">
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '18px' }}>📁</span>
+          <Cloud size={18} style={{ color: 'var(--blue, #3b82f6)' }} />
           <h3 style={{ margin: 0, fontSize: '16px' }}>Google Drive Cloud Sync</h3>
         </div>
         <button className="icon-button close-dialog-btn" type="button" aria-label="Close dialog" onClick={onClose}>
-          ✕
+          <X size={16} />
         </button>
       </div>
 
@@ -430,8 +478,8 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                   {isDriveTokenValid() ? (
-                    <span style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '12px', background: 'rgba(34, 197, 94, 0.15)', color: 'var(--green, #22c55e)', fontWeight: 600 }}>
-                      🟢 Connected
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', padding: '3px 8px', borderRadius: '12px', background: 'rgba(34, 197, 94, 0.15)', color: 'var(--green, #22c55e)', fontWeight: 600 }}>
+                      <CheckCircle2 size={12} /> Connected
                     </span>
                   ) : (
                     <button
@@ -439,10 +487,10 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
                       className="ghost-button"
                       onClick={handleDriveSignIn}
                       disabled={isLoading}
-                      style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '12px', background: 'rgba(234, 179, 8, 0.15)', color: '#eab308', borderColor: '#eab308', fontWeight: 600, cursor: 'pointer' }}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', padding: '3px 8px', borderRadius: '12px', background: 'rgba(234, 179, 8, 0.15)', color: '#eab308', borderColor: '#eab308', fontWeight: 600, cursor: 'pointer' }}
                       title="Session expired. Click to re-authorize Google Drive"
                     >
-                      🟡 Reconnect
+                      <AlertTriangle size={12} /> Reconnect
                     </button>
                   )}
                   <button className="ghost-button" type="button" onClick={handleDriveSignOut} disabled={isLoading} style={{ fontSize: '11px', padding: '4px 8px', color: 'var(--red, #ef4444)' }}>
@@ -453,7 +501,7 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
 
               {/* Privacy Shield */}
               <div style={{ marginTop: '10px', padding: '8px 10px', background: 'rgba(59, 130, 246, 0.08)', borderRadius: '6px', fontSize: '11px', lineHeight: 1.4, color: 'var(--text-muted, #94a3b8)', display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
-                <span>🔒</span>
+                <Lock size={13} style={{ flexShrink: 0, marginTop: '2px', color: 'var(--kpi-cyan, #38bdf8)' }} />
                 <span>
                   <strong>Privacy Sandboxed:</strong> Budget Control uses the strict <code>drive.file</code> scope. It can only access files it created inside this folder. It has zero access to your photos, personal docs, or other Drive folders.
                 </span>
@@ -463,7 +511,10 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
             {/* Folder Location & Telemetry Breakdown Card */}
             <div style={{ padding: '12px 14px', background: 'var(--card-bg, rgba(255,255,255,0.03))', borderRadius: '10px', border: '1px solid var(--border-color, rgba(255,255,255,0.08))' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <div style={{ fontSize: '12px', fontWeight: 600 }}>📂 Google Drive Location</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600 }}>
+                  <Folder size={13} style={{ color: 'var(--brand-primary, #6366f1)' }} />
+                  <span>Google Drive Location</span>
+                </div>
                 {liveMetadata?.folderUrl && (
                   <a
                     href={liveMetadata.folderUrl}
@@ -505,14 +556,17 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
               {/* 3-Tier Storage Usage Breakdown */}
               <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--border-color, rgba(255,255,255,0.05))' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', fontSize: '11px' }}>
-                  <div style={{ opacity: 0.8 }}>
-                    📅 Daily: <strong>{dailyBackups.length}</strong> ({formatBytes(dailyTotalBytes)})
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', opacity: 0.85 }}>
+                    <Calendar size={11} />
+                    <span>Daily: <strong>{dailyBackups.length}</strong> ({formatBytes(dailyTotalBytes)})</span>
                   </div>
-                  <div style={{ opacity: 0.8 }}>
-                    ⏱️ Edits: <strong>{editSnapshots.length}</strong> ({formatBytes(editTotalBytes)})
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', opacity: 0.85 }}>
+                    <Clock size={11} />
+                    <span>Edits: <strong>{editSnapshots.length}</strong> ({formatBytes(editTotalBytes)})</span>
                   </div>
-                  <div style={{ opacity: 0.8 }}>
-                    💾 User: <strong>{userSnapshots.length}</strong> ({formatBytes(userTotalBytes)})
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', opacity: 0.85 }}>
+                    <Save size={11} />
+                    <span>User: <strong>{userSnapshots.length}</strong> ({formatBytes(userTotalBytes)})</span>
                   </div>
                 </div>
               </div>
@@ -541,7 +595,9 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
                   ) : null}
                   <div style={{ fontSize: '10px', opacity: 0.65, marginTop: '4px', display: 'flex', justifyContent: 'space-between' }}>
                     <span>Total App Storage: ~{formatBytes(totalBudgetBytes)}</span>
-                    <span style={{ color: 'var(--green, #22c55e)' }}>✓ Auto-pruned &lt; 1 MB</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', color: 'var(--green, #22c55e)' }}>
+                      <Check size={10} /> Auto-pruned &lt; 1 MB
+                    </span>
                   </div>
                 </div>
               ) : null}
@@ -550,14 +606,14 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
             {/* Sync Actions & Configuration */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-                <button className="primary-button" type="button" onClick={handleDrivePush} disabled={isLoading} style={{ padding: '8px', fontSize: '12px' }}>
-                  ⬆️ Push Live
+                <button className="primary-button" type="button" onClick={handleDrivePush} disabled={isLoading} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '5px', padding: '8px', fontSize: '12px' }}>
+                  <ArrowUp size={13} /> Push Live
                 </button>
-                <button className="ghost-button" type="button" onClick={handleDrivePull} disabled={isLoading} style={{ padding: '8px', fontSize: '12px' }}>
-                  ⬇️ Pull Live
+                <button className="ghost-button" type="button" onClick={handleDrivePull} disabled={isLoading} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '5px', padding: '8px', fontSize: '12px' }}>
+                  <ArrowDown size={13} /> Pull Live
                 </button>
-                <button className="ghost-button" type="button" onClick={handleCreateUserSnapshot} disabled={isLoading} style={{ padding: '8px', fontSize: '12px' }}>
-                  💾 Save Snapshot
+                <button className="ghost-button" type="button" onClick={handleCreateUserSnapshot} disabled={isLoading} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '5px', padding: '8px', fontSize: '12px' }}>
+                  <Save size={13} /> Save Snapshot
                 </button>
               </div>
 
@@ -677,7 +733,8 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
                   style={{ fontSize: '12px', fontWeight: 600, padding: 0, border: 'none', background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
                 >
                   <span>{showSnapshotsSection ? '▼' : '►'}</span>
-                  <span>📦 Backup &amp; Snapshot History</span>
+                  <Archive size={13} style={{ color: 'var(--brand-primary, #6366f1)' }} />
+                  <span>Backup &amp; Snapshot History</span>
                 </button>
                 <div style={{ display: 'flex', gap: '6px' }}>
                   <button
@@ -701,6 +758,9 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
                       className="ghost-button"
                       onClick={() => setActiveSnapshotTab('daily')}
                       style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px',
                         fontSize: '11px',
                         padding: '5px 10px',
                         borderRadius: '6px',
@@ -709,13 +769,16 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
                         color: activeSnapshotTab === 'daily' ? 'var(--accent, #6366f1)' : 'inherit',
                       }}
                     >
-                      📅 Daily Backups ({dailyBackups.length}/{retentionLimit})
+                      <Calendar size={12} /> Daily Backups ({dailyBackups.length}/{retentionLimit})
                     </button>
                     <button
                       type="button"
                       className="ghost-button"
                       onClick={() => setActiveSnapshotTab('edits')}
                       style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px',
                         fontSize: '11px',
                         padding: '5px 10px',
                         borderRadius: '6px',
@@ -724,13 +787,16 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
                         color: activeSnapshotTab === 'edits' ? 'var(--accent, #6366f1)' : 'inherit',
                       }}
                     >
-                      ⏱️ Edit Snapshots ({editSnapshots.length}/{MAX_EDIT_SNAPSHOTS_CAP})
+                      <Clock size={12} /> Edit Snapshots ({editSnapshots.length}/{MAX_EDIT_SNAPSHOTS_CAP})
                     </button>
                     <button
                       type="button"
                       className="ghost-button"
                       onClick={() => setActiveSnapshotTab('user')}
                       style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px',
                         fontSize: '11px',
                         padding: '5px 10px',
                         borderRadius: '6px',
@@ -739,7 +805,7 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
                         color: activeSnapshotTab === 'user' ? 'var(--accent, #6366f1)' : 'inherit',
                       }}
                     >
-                      💾 User Snapshots ({userSnapshots.length})
+                      <Save size={12} /> User Snapshots ({userSnapshots.length})
                     </button>
                   </div>
 
@@ -766,9 +832,9 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
                           else void handleClearUser();
                         }}
                         disabled={isLoading}
-                        style={{ fontSize: '11px', padding: '2px 6px', color: 'var(--red, #ef4444)' }}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', padding: '2px 6px', color: 'var(--red, #ef4444)' }}
                       >
-                        🧹 Clear Folder
+                        <Trash2 size={11} /> Clear Folder
                       </button>
                     )}
                   </div>
@@ -779,7 +845,7 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
                       <div style={{ fontSize: '11px', opacity: 0.6, fontStyle: 'italic', padding: '12px', textAlign: 'center' }}>
                         {activeSnapshotTab === 'daily' && 'No daily backups created yet. Created once per day whenever you make ledger changes.'}
                         {activeSnapshotTab === 'edits' && 'No edit snapshots yet. Created during active edit sessions (15-min cooldown, max 5 rolling files).'}
-                        {activeSnapshotTab === 'user' && 'No user milestones saved yet. Click "💾 Save Snapshot" above to save one anytime.'}
+                        {activeSnapshotTab === 'user' && 'No user milestones saved yet. Click "Save Snapshot" above to save one anytime.'}
                       </div>
                     ) : (
                       currentTabList.map((item) => (
@@ -808,9 +874,9 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
                               className="ghost-button"
                               onClick={() => handleRestoreBackup(item)}
                               disabled={isLoading}
-                              style={{ fontSize: '11px', padding: '3px 8px', color: 'var(--accent, #6366f1)' }}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', padding: '3px 8px', color: 'var(--accent, #6366f1)' }}
                             >
-                              ↺ Restore
+                              <RotateCcw size={11} /> Restore
                             </button>
                             <button
                               type="button"
@@ -818,9 +884,9 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
                               onClick={() => handleDeleteIndividualBackup(item)}
                               disabled={isLoading}
                               title="Delete this backup"
-                              style={{ fontSize: '11px', padding: '3px 6px', color: 'var(--red, #ef4444)' }}
+                              style={{ display: 'inline-flex', alignItems: 'center', padding: '3px 6px', color: 'var(--red, #ef4444)' }}
                             >
-                              🗑️
+                              <Trash2 size={12} />
                             </button>
                           </div>
                         </div>
@@ -870,7 +936,7 @@ export const DriveSyncModal: React.FC<DriveSyncModalProps> = ({ isOpen, onClose 
             </button>
 
             <div style={{ padding: '10px 12px', background: 'rgba(59, 130, 246, 0.08)', borderRadius: '6px', fontSize: '11px', lineHeight: 1.4, color: 'var(--text-muted, #94a3b8)', display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
-              <span>🔒</span>
+              <Lock size={13} style={{ flexShrink: 0, marginTop: '2px', color: 'var(--kpi-cyan, #38bdf8)' }} />
               <span>
                 <strong>Zero-Setup &amp; Private:</strong> Budget Control uses the strict <code>drive.file</code> scope. It only has permission to create and edit its own <code>Budget Control</code> folder. It cannot see or access any other files in your Google Drive.
               </span>

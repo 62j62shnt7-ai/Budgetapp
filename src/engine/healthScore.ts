@@ -130,11 +130,13 @@ export function computeFinancialHealthScore(
   }
 
   // 2. Liquid Cash & Overall Runway (0 - 25 pts)
+  const isRealExpense = (e: CashEntry) =>
+    e.type === 'expense' && e.conversionType !== 'fx-sale' && !e.excludeFromForecast;
   const currentMonthExpenses = entries
-    .filter((e) => e.type === 'expense' && DateUtils.getMonthKey(e.date) === currentMonth)
+    .filter((e) => isRealExpense(e) && DateUtils.getMonthKey(e.date) === currentMonth)
     .reduce((sum, e) => sum + Number(e.amount || 0), 0);
 
-  const allMonthlyExpenses = groupByMonth(entries.filter((e) => e.type === 'expense'), (e) => Number(e.amount || 0));
+  const allMonthlyExpenses = groupByMonth(entries.filter(isRealExpense), (e) => Number(e.amount || 0));
   const expVals = Object.values(allMonthlyExpenses);
   const avgMonthlyExpense = expVals.length ? expVals.reduce((a, b) => a + b, 0) / expVals.length : (currentMonthExpenses || 1);
 

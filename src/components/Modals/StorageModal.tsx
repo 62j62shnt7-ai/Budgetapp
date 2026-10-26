@@ -3,6 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { formatMoney } from '../../engine/dateUtils';
 import type { StorageLocationType } from '../../types';
+import { Landmark, Banknote, Coins, X } from 'lucide-react';
 
 interface StorageModalProps {
   isOpen: boolean;
@@ -125,7 +126,7 @@ export const StorageModal: React.FC<StorageModalProps> = ({ isOpen, onClose }) =
         <div className="dialog-heading">
           <h3>Add Storage Holding / Reserve</h3>
           <button className="icon-button" type="button" aria-label="Close" onClick={onClose}>
-            x
+            <X size={16} />
           </button>
         </div>
 
@@ -138,58 +139,66 @@ export const StorageModal: React.FC<StorageModalProps> = ({ isOpen, onClose }) =
             <button
               type="button"
               className="chip-button"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
               onClick={() => applyPreset('HSBC USD Account', 'USD', 'currency:USD', 'bank', 'hsbc')}
             >
-              🏦 HSBC USD
+              <Landmark size={12} /> HSBC USD
             </button>
             <button
               type="button"
               className="chip-button"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
               onClick={() => applyPreset('HSBC EUR Account', 'EUR', 'currency:EUR', 'bank', 'hsbc')}
             >
-              🏦 HSBC EUR
+              <Landmark size={12} /> HSBC EUR
             </button>
             <button
               type="button"
               className="chip-button"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
               onClick={() => applyPreset('CIB USD Account', 'USD', 'currency:USD', 'bank', 'cib')}
             >
-              🏦 CIB USD
+              <Landmark size={12} /> CIB USD
             </button>
             <button
               type="button"
               className="chip-button"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
               onClick={() => applyPreset('CIB EUR Account', 'EUR', 'currency:EUR', 'bank', 'cib')}
             >
-              🏦 CIB EUR
+              <Landmark size={12} /> CIB EUR
             </button>
             <button
               type="button"
               className="chip-button"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
               onClick={() => applyPreset('USD Cash (Wallet / Safe)', 'USD', 'currency:USD', 'cash', 'cash')}
             >
-              💵 USD Cash
+              <Banknote size={12} /> USD Cash
             </button>
             <button
               type="button"
               className="chip-button"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
               onClick={() => applyPreset('EUR Cash (Wallet / Safe)', 'EUR', 'currency:EUR', 'cash', 'cash')}
             >
-              💵 EUR Cash
+              <Banknote size={12} /> EUR Cash
             </button>
             <button
               type="button"
               className="chip-button"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
               onClick={() => applyPreset('Gold 21k', 'grams', 'gold:Gold 21', 'vault', 'vault')}
             >
-              🪙 Gold 21k
+              <Coins size={12} /> Gold 21k
             </button>
             <button
               type="button"
               className="chip-button"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
               onClick={() => applyPreset('Gold 24k Bar', 'grams', 'gold:Gold 24', 'vault', 'vault')}
             >
-              🪙 Gold 24k
+              <Coins size={12} /> Gold 24k
             </button>
           </div>
         </div>
@@ -217,11 +226,11 @@ export const StorageModal: React.FC<StorageModalProps> = ({ isOpen, onClose }) =
                 setLocation(loc);
               }}
             >
-              <option value="bank:hsbc">🏦 HSBC Bank Account</option>
-              <option value="bank:cib">🏦 CIB Bank Account</option>
-              <option value="cash:cash">💵 Physical Cash / Wallet</option>
-              <option value="vault:vault">🔒 Physical Vault / Safe</option>
-              <option value="other:other">📁 Other Storage</option>
+              <option value="bank:hsbc">HSBC Bank Account</option>
+              <option value="bank:cib">CIB Bank Account</option>
+              <option value="cash:cash">Physical Cash / Wallet</option>
+              <option value="vault:vault">Physical Vault / Safe</option>
+              <option value="other:other">Other Storage</option>
             </select>
           </label>
 

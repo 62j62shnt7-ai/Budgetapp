@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import type { RatesData } from '../../types';
+import { X } from 'lucide-react';
 
 interface RateModalProps {
   isOpen: boolean;
@@ -90,8 +91,8 @@ export const RateModal: React.FC<RateModalProps> = ({ isOpen, rateType = 'curren
       <form onSubmit={handleSubmit} className="entry-form" id="rateForm">
         <div className="dialog-heading">
           <h3>Update {rateType === 'currency' ? 'Currency' : 'Gold'} Rate</h3>
-          <button className="icon-button" type="button" aria-label="Close" onClick={onClose}>
-            x
+          <button className="icon-button close-dialog-btn" type="button" aria-label="Close" onClick={onClose}>
+            <X size={16} />
           </button>
         </div>
 

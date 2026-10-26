@@ -3,7 +3,7 @@ import { Modal } from '../Common/Modal';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { getSyncEngine } from '../../services/syncEngine';
 import { formatMoney } from '../../engine/dateUtils';
-import { AlertTriangle, Download, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
+import { AlertTriangle, Download, ArrowUpRight, ArrowDownLeft, Laptop, Cloud } from 'lucide-react';
 
 export const SyncConflictModal: React.FC = () => {
   const syncConflict = useBudgetStore((state) => state.syncConflict);
@@ -78,8 +78,8 @@ export const SyncConflictModal: React.FC = () => {
               gap: '6px',
             }}
           >
-            <div style={{ fontWeight: 700, fontSize: '13px', color: 'var(--accent, #6366f1)' }}>
-              💻 This Device (Local)
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, fontSize: '13px', color: 'var(--accent, #6366f1)' }}>
+              <Laptop size={14} /> This Device (Local)
             </div>
             <div style={{ fontSize: '12px' }}>
               <strong>{diffSummary.localEntriesCount}</strong> transactions
@@ -109,8 +109,8 @@ export const SyncConflictModal: React.FC = () => {
               gap: '6px',
             }}
           >
-            <div style={{ fontWeight: 700, fontSize: '13px', color: 'var(--blue, #3b82f6)' }}>
-              ☁️ Google Drive (Cloud)
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, fontSize: '13px', color: 'var(--blue, #3b82f6)' }}>
+              <Cloud size={14} /> Google Drive (Cloud)
             </div>
             <div style={{ fontSize: '12px' }}>
               <strong>{diffSummary.remoteEntriesCount}</strong> transactions

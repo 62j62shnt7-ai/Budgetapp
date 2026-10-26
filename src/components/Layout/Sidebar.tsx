@@ -89,9 +89,23 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenDriveSync }) => {
         <div className="brand">
           <div
             className="brand-mark"
-            title="Budget Control"
+            title={sidebarCollapsed ? 'Expand sidebar (Ctrl+B)' : 'Budget Control'}
+            role={sidebarCollapsed ? 'button' : undefined}
+            tabIndex={sidebarCollapsed ? 0 : undefined}
+            aria-label={sidebarCollapsed ? 'Expand sidebar' : undefined}
             onClick={() => {
               if (sidebarCollapsed && typeof window !== 'undefined' && window.innerWidth > 980) {
+                toggleSidebar();
+              }
+            }}
+            onKeyDown={(e) => {
+              if (
+                sidebarCollapsed &&
+                (e.key === 'Enter' || e.key === ' ') &&
+                typeof window !== 'undefined' &&
+                window.innerWidth > 980
+              ) {
+                e.preventDefault();
                 toggleSidebar();
               }
             }}

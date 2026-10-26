@@ -4,7 +4,7 @@ import { useBudgetStore } from '../../store/useBudgetStore';
 import { formatMoney } from '../../engine/dateUtils';
 import { formatNativeCurrency, resolveRateSourceValue } from '../../engine/currency';
 import type { StorageAsset } from '../../types';
-import { Coins } from 'lucide-react';
+import { Coins, X } from 'lucide-react';
 
 interface StorageFxModalProps {
   isOpen: boolean;
@@ -109,8 +109,8 @@ export const StorageFxModal: React.FC<StorageFxModalProps> = ({
             <Coins size={18} color="var(--primary)" />
             <h3 style={{ margin: 0 }}>Exchange / Sell to EGP</h3>
           </div>
-          <button className="icon-button" type="button" aria-label="Close" onClick={onClose}>
-            x
+          <button className="icon-button close-dialog-btn" type="button" aria-label="Close" onClick={onClose}>
+            <X size={16} />
           </button>
         </div>
 
@@ -167,7 +167,7 @@ export const StorageFxModal: React.FC<StorageFxModalProps> = ({
           <select value={targetAccount} onChange={(e) => setTargetAccount(e.target.value)}>
             {Object.entries(accounts).map(([id, acc]) => (
               <option key={id} value={id}>
-                🏦 {acc.name} Operating (Current: {formatMoney(acc.balance)})
+                {acc.name} Operating (Current: {formatMoney(acc.balance)})
               </option>
             ))}
           </select>

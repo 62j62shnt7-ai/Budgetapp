@@ -342,8 +342,11 @@ export async function clearAllStorage(): Promise<void> {
 
 export const UNDO_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
+let undoPersistTimer: ReturnType<typeof setTimeout> | null = null;
+
 /**
  * Persist Undo / Redo history to IndexedDB so it survives page reloads.
+ * Updates memoryStore synchronously and debounces IndexedDB writes by 300ms.
  */
 export async function persistUndoHistoryToStorage(
   undoStack: UndoableAction[],
@@ -358,7 +361,13 @@ export async function persistUndoHistoryToStorage(
     memoryStore.set(UNDO_HISTORY_KEY, payload);
 
     if (isIndexedDBAvailable) {
-      await set(UNDO_HISTORY_KEY, payload);
+      if (undoPersistTimer) clearTimeout(undoPersistTimer);
+      undoPersistTimer = setTimeout(() => {
+        undoPersistTimer = null;
+        set(UNDO_HISTORY_KEY, payload).catch((err) => {
+          console.warn('[storageAdapter] Failed to persist undo history:', err);
+        });
+      }, 300);
     }
   } catch (err) {
     console.warn('[storageAdapter] Failed to persist undo history:', err);
@@ -370,6 +379,10 @@ export async function persistUndoHistoryToStorage(
  */
 export async function clearStoredUndoHistory(): Promise<void> {
   try {
+    if (undoPersistTimer) {
+      clearTimeout(undoPersistTimer);
+      undoPersistTimer = null;
+    }
     memoryStore.delete(UNDO_HISTORY_KEY);
     if (isIndexedDBAvailable) {
       await del(UNDO_HISTORY_KEY);

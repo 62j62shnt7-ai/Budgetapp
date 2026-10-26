@@ -1,5 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { Modal } from '../Common/Modal';
+import {
+  Trash2,
+  Plus,
+  RefreshCw,
+  Check,
+  Calendar,
+  TrendingUp,
+  CreditCard,
+  Briefcase,
+  FileText,
+  Landmark,
+  ArrowLeftRight,
+  Receipt,
+} from 'lucide-react';
 
 export interface AffectedRecordOption {
   id: string;
@@ -135,9 +149,48 @@ export const AffectedRecordsModal: React.FC<AffectedRecordsModalProps> = ({
   };
 
   const getHeaderIcon = () => {
-    if (isDelete) return '🗑️';
-    if (isAdd) return '➕';
-    return '🔄';
+    if (isDelete) return <Trash2 size={16} style={{ color: 'var(--color-danger, #f43f5e)' }} />;
+    if (isAdd) return <Plus size={16} style={{ color: 'var(--color-success, #10b981)' }} />;
+    return <RefreshCw size={16} style={{ color: 'var(--brand-primary, #6366f1)' }} />;
+  };
+
+  const renderOptionIcon = (icon?: string) => {
+    if (!icon) return null;
+    switch (icon) {
+      case 'calendar':
+      case '📅':
+        return <Calendar size={14} style={{ color: 'var(--kpi-cyan, #38bdf8)', flexShrink: 0 }} />;
+      case 'chart':
+      case '📊':
+        return <TrendingUp size={14} style={{ color: 'var(--brand-primary, #6366f1)', flexShrink: 0 }} />;
+      case 'credit-card':
+      case '💳':
+        return <CreditCard size={14} style={{ color: 'var(--kpi-indigo, #818cf8)', flexShrink: 0 }} />;
+      case 'refresh':
+      case '🔄':
+        return <RefreshCw size={14} style={{ color: 'var(--amber, #f59e0b)', flexShrink: 0 }} />;
+      case 'briefcase':
+      case '💼':
+        return <Briefcase size={14} style={{ color: 'var(--purple, #8b5cf6)', flexShrink: 0 }} />;
+      case 'file-text':
+      case '📑':
+      case '📝':
+        return <FileText size={14} style={{ color: 'var(--muted)', flexShrink: 0 }} />;
+      case 'landmark':
+      case '🏦':
+        return <Landmark size={14} style={{ color: 'var(--kpi-emerald, #34d399)', flexShrink: 0 }} />;
+      case 'fx':
+      case '💱':
+        return <ArrowLeftRight size={14} style={{ color: 'var(--kpi-gold, #fbbf24)', flexShrink: 0 }} />;
+      case 'receipt':
+      case '🧾':
+        return <Receipt size={14} style={{ color: 'var(--kpi-cyan, #38bdf8)', flexShrink: 0 }} />;
+      case 'trash':
+      case '🗑️':
+        return <Trash2 size={14} style={{ color: 'var(--color-danger, #f43f5e)', flexShrink: 0 }} />;
+      default:
+        return <FileText size={14} style={{ color: 'var(--muted)', flexShrink: 0 }} />;
+    }
   };
 
   const getAccentBg = () => {
@@ -317,12 +370,14 @@ export const AffectedRecordsModal: React.FC<AffectedRecordsModalProps> = ({
                     transition: 'all 0.15s ease',
                   }}
                 >
-                  {isChecked && '✓'}
+                  {isChecked && <Check size={12} strokeWidth={3} />}
                 </div>
 
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                    {opt.icon && <span style={{ fontSize: '14px' }}>{opt.icon}</span>}
+                    {opt.icon && (
+                      <span className="inline-icon-wrap">{renderOptionIcon(opt.icon)}</span>
+                    )}
                     <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-main, #f8fafc)' }}>
                       {opt.label}
                     </span>

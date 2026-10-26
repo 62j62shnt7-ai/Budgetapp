@@ -5,6 +5,7 @@ import { autoFetchLatestRates, computeSpreadPct } from '../../engine/currency';
 import { formatFullDateTime } from '../../engine/dateUtils';
 import type { RatesData } from '../../types';
 import { Edit2, Check, X, RefreshCw } from 'lucide-react';
+import { showAppNotice, requestAppConfirm } from '../Common/UndoToast';
 
 interface RatesViewProps {
   onOpenRateModal?: (type: 'currency' | 'gold') => void;
@@ -72,13 +73,18 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
       updateRates(updated, true);
 
       if (changes.length > 0) {
-        alert(`Updated Live Market Rates:\n\n${changes.join("\n")}`);
+        showAppNotice(`Updated live rates (${changes.length} changed)`, 'success');
       } else {
-        alert("Live market feed checked: All currency and gold rates are already up to date.");
+        showAppNotice('Live market feed checked: all currency & gold rates are up to date.', 'info');
       }
     } catch (err: unknown) {
       console.error("Live rates fetch failed:", err);
-      const manual = window.confirm("Couldn't fetch live rates (offline or rate service unavailable). Enter rates manually?");
+      const manual = await requestAppConfirm({
+        title: 'Live Rate Feed Unavailable',
+        message: "Couldn't fetch live rates (offline or rate service unavailable). Would you like to edit rates manually?",
+        confirmLabel: 'Edit Manually',
+        tone: 'warning',
+      });
       if (manual) handleStartEdit();
     } finally {
       setIsFetching(false);

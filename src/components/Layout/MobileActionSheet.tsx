@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { executeAppRefresh } from '../../utils/appRefresh';
 import { getSyncStatusPresentation } from '../../utils/syncPresentation';
+import { requestAppConfirm, showAppNotice } from '../Common/UndoToast';
 
 interface MobileActionSheetProps {
   isOpen: boolean;
@@ -229,9 +230,16 @@ export const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
                 className="ghost-button"
                 title="Clear undo history"
                 aria-label="Clear undo history"
-                onClick={() => {
-                  if (window.confirm(`Clear all ${undoStack.length} undo history steps? (Current budget remains saved)`)) {
+                onClick={async () => {
+                  const ok = await requestAppConfirm({
+                    title: 'Clear Undo History',
+                    message: `Clear all ${undoStack.length} undo history steps? (Current budget remains saved)`,
+                    confirmLabel: 'Clear History',
+                    tone: 'warning',
+                  });
+                  if (ok) {
                     clearUndoHistory();
+                    showAppNotice('Undo history cleared.', 'info');
                   }
                 }}
                 style={{

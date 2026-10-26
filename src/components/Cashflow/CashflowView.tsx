@@ -31,9 +31,20 @@ import {
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { formatNativeCurrency, getCurrencyRateOr } from '../../engine/currency';
 import { getEntryTags } from '../../engine/tags';
-import { Plus, Calendar } from 'lucide-react';
+import {
+  Plus,
+  Calendar,
+  Layers,
+  Banknote,
+  CreditCard,
+  AlertTriangle,
+  CheckCircle2,
+  Landmark,
+  Check,
+} from 'lucide-react';
 import { loadStorageSync, saveStorage } from '../../utils/storageAdapter';
 import { LedgerFilterBar } from '../Common/LedgerFilterBar';
+import { showAppNotice, requestAppConfirm } from '../Common/UndoToast';
 
 import type { CashEntry, Installment } from '../../types';
 import { ExactAmountDecisionModal } from '../Modals/ExactAmountDecisionModal';
@@ -867,26 +878,34 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
 
   const handlePopulateSalaryForecast = () => {
     const added = populateSalaryForecast(startMonth, quarters, salaryAnchorMonth);
-    if (typeof window !== 'undefined') {
-      window.alert(
-        added > 0
-          ? `Salary forecast populated with ${added} new entr${added === 1 ? 'y' : 'ies'}.`
-          : 'Salary forecast refreshed for the selected period.',
-      );
-    }
+    showAppNotice(
+      added > 0
+        ? `Salary forecast populated with ${added} new entr${added === 1 ? 'y' : 'ies'}.`
+        : 'Salary forecast refreshed for the selected period.',
+      'success',
+    );
   };
 
-  const handleClearSalaryForecast = (full: boolean) => {
+  const handleClearSalaryForecast = async (full: boolean) => {
     const scope = full
       ? 'all unactualized salary forecast entries'
       : `salary forecast entries from ${startMonth} for ${quarters} quarter${quarters === 1 ? '' : 's'}`;
-    if (typeof window !== 'undefined' && !window.confirm(`Clear ${scope}? Actualized salary history will be preserved.`)) return;
+    const confirmed = await requestAppConfirm({
+      title: 'Clear Salary Forecast',
+      message: `Clear ${scope}? Actualized salary history will be preserved.`,
+      confirmLabel: 'Clear Forecast',
+      tone: 'warning',
+    });
+    if (!confirmed) return;
     const removed = full
       ? clearSalaryForecast()
       : clearSalaryForecast(startMonth, quarters);
-    if (typeof window !== 'undefined') {
-      window.alert(removed > 0 ? `Cleared ${removed} salary forecast entr${removed === 1 ? 'y' : 'ies'}.` : 'No unactualized salary forecast entries matched this scope.');
-    }
+    showAppNotice(
+      removed > 0
+        ? `Cleared ${removed} salary forecast entr${removed === 1 ? 'y' : 'ies'}.`
+        : 'No unactualized salary forecast entries matched this scope.',
+      removed > 0 ? 'info' : 'warning',
+    );
   };
 
   return (
@@ -1269,6 +1288,9 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                         <span
                           className="source-pill"
                           style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
                             fontSize: '10px',
                             marginLeft: '4px',
                             padding: '1px 6px',
@@ -1279,7 +1301,8 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                           }}
                           title={`Scheduled tranche ${e.splitIndex} of ${e.splitTotalCount} (${formatMoney(e.amount)} of ${formatMoney(parentEntry.amount)})`}
                         >
-                          👻 Split {e.splitIndex}/{e.splitTotalCount}
+                          <Layers size={11} />
+                          <span>Split {e.splitIndex}/{e.splitTotalCount}</span>
                         </span>
                       )}
                       {ongoing && (
@@ -1357,13 +1380,13 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                         </button>
                       ))}
                       {isForeign && (
-                        <span className="source-pill" style={{ background: 'rgba(99, 102, 241, 0.12)', color: '#818cf8', fontWeight: 700, fontSize: '10px', marginLeft: '4px' }}>
-                          💵 {e.currency}
+                        <span className="source-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(99, 102, 241, 0.12)', color: 'var(--kpi-indigo, #818cf8)', fontWeight: 700, fontSize: '10px', marginLeft: '4px' }}>
+                          <Banknote size={11} /> {e.currency}
                         </span>
                       )}
                       {e.creditType && (
-                        <span className="source-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', color: '#818cf8', fontWeight: 600, fontSize: '10px', marginLeft: '4px' }}>
-                          💳 {e.creditType.toUpperCase()}
+                        <span className="source-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: 'var(--kpi-indigo, #818cf8)', fontWeight: 600, fontSize: '10px', marginLeft: '4px' }}>
+                          <CreditCard size={11} /> {e.creditType.toUpperCase()}
                         </span>
                       )}
                       {isCreditSettlement && (
@@ -1388,8 +1411,8 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                                 alert.shortfall - (alert.maxTransferableAmount || 0);
                               const transferAmt = alert.maxTransferableAmount || alert.shortfall;
                               const labelText = isPartial
-                                ? `⚠️ Remaining Shortfall: ${formatMoney(remainingShortfall)}`
-                                : `⚠️ Shortfall: ${formatMoney(alert.shortfall)}`;
+                                ? `Remaining Shortfall: ${formatMoney(remainingShortfall)}`
+                                : `Shortfall: ${formatMoney(alert.shortfall)}`;
 
                               return (
                                 <div
@@ -1431,8 +1454,9 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                                       : `Account ${alert.accountName} has ${formatMoney(alert.accountBalance)}. Shortfall: ${formatMoney(alert.shortfall)} (no account can cover).`
                                   }
                                 >
-                                  <span style={{ wordBreak: 'break-word' }}>
-                                    <strong>{labelText}</strong> ({alert.accountName})
+                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', wordBreak: 'break-word' }}>
+                                    <AlertTriangle size={12} style={{ flexShrink: 0 }} />
+                                    <span><strong>{labelText}</strong> ({alert.accountName})</span>
                                   </span>
                                   {canTransfer && onOpenTransferModal && (
                                     <span style={{ textDecoration: 'underline', fontWeight: 700, whiteSpace: 'nowrap' }}>
@@ -1457,8 +1481,9 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                                     boxSizing: 'border-box',
                                   }}
                                 >
-                                  <span style={{ wordBreak: 'break-word' }}>
-                                    🟢 {alert.accountName} funded ({formatMoney(alert.accountBalance)} avail)
+                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', wordBreak: 'break-word' }}>
+                                    <CheckCircle2 size={12} style={{ flexShrink: 0 }} />
+                                    <span>{alert.accountName} funded ({formatMoney(alert.accountBalance)} avail)</span>
                                   </span>
                                 </div>
                               );
@@ -1520,14 +1545,22 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                     </td>
                     <td className="cell-source">
                       {isCardPurchase ? (
-                        <span className="source-pill" style={{ color: '#818cf8', fontWeight: 600 }}>
-                          💳 Settles {DateUtils.formatDisplayDate(calculateCreditSettlementDate(e.date, e.creditType || e.account || ''))}
+                        <span className="source-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: 'var(--kpi-indigo, #818cf8)', fontWeight: 600 }}>
+                          <CreditCard size={11} /> Settles {DateUtils.formatDisplayDate(calculateCreditSettlementDate(e.date, e.creditType || e.account || ''))}
                         </span>
                       ) : isCreditSettlement || isCreditDueLumpSum(e) ? (
-                        <span className="source-pill credit-due-pill">🏛️ Credit Settlement</span>
+                        <span className="source-pill credit-due-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          <Landmark size={11} /> Credit Settlement
+                        </span>
                       ) : e.source && !['manual', 'expense', 'income', 'direct', 'starting balance', 'cash', 'default'].includes(e.source.toLowerCase()) ? (
-                        <span className={`source-pill ${e.source === 'loan' ? 'loan' : ''}`}>
-                          {e.source === 'recurring credit' ? '🏛️ Credit Settlement' : e.source === 'credit card' ? '💳 Credit Card' : e.source}
+                        <span className={`source-pill ${e.source === 'loan' ? 'loan' : ''}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          {e.source === 'recurring credit' ? (
+                            <><Landmark size={11} /> Credit Settlement</>
+                          ) : e.source === 'credit card' ? (
+                            <><CreditCard size={11} /> Credit Card</>
+                          ) : (
+                            e.source
+                          )}
                         </span>
                       ) : null}
                     </td>
@@ -1624,6 +1657,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                             <button
                               className="ghost-button finish-loan-btn"
                               type="button"
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                               title="Finish and close entry at current actual amount"
                               onClick={(ev) => {
                                 ev.stopPropagation();
@@ -1635,7 +1669,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                                 });
                               }}
                             >
-                              ✓ Finish
+                              <Check size={12} /> Finish
                             </button>
                           )}
                           {(() => {

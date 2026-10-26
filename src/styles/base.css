@@ -4931,7 +4931,7 @@ label {
   border-bottom: 1px solid var(--line);
 }
 
-.entry-form-modern input,
+.entry-form-modern input:not([type="checkbox"]):not([type="radio"]),
 .entry-form-modern select,
 .entry-form-modern textarea {
   width: 100%;

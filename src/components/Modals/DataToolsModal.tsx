@@ -5,6 +5,30 @@ import { executeAppRefresh } from '../../utils/appRefresh';
 import { detectRecurringCandidateGroups } from '../../utils/recurringDetector';
 import { DateUtils } from '../../engine/dateUtils';
 import { loadStorageSync, loadStorageAsync } from '../../utils/storageAdapter';
+import { showAppNotice, requestAppConfirm } from '../Common/UndoToast';
+import {
+  Settings,
+  X,
+  FileSpreadsheet,
+  RotateCcw,
+  Archive,
+  Tag,
+  RefreshCw,
+  Search,
+  Zap,
+  Trash2,
+  Eye,
+  Keyboard,
+  CreditCard,
+  Calendar,
+  Briefcase,
+  FileText,
+  Info,
+  Check,
+  AlertTriangle,
+  Link,
+  Banknote,
+} from 'lucide-react';
 
 interface DataToolsModalProps {
   isOpen: boolean;
@@ -109,7 +133,7 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
       const account = (parts[2] || '').toUpperCase();
       const month = parts.length >= 5 ? `${parts[3]}-${parts[4]}` : '';
       return {
-        icon: '💳',
+        icon: <CreditCard size={18} style={{ color: 'var(--kpi-indigo, #818cf8)' }} />,
         title: `${account} Credit Settlement`,
         subtitle: month ? `Cycle month: ${month}` : 'Credit card settlement forecast',
         badge: 'Credit Due',
@@ -119,7 +143,7 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
       const parts = id.split('-');
       const month = parts.length >= 4 ? `${parts[parts.length - 2]}-${parts[parts.length - 1]}` : '';
       return {
-        icon: '📅',
+        icon: <Calendar size={18} style={{ color: 'var(--kpi-cyan, #38bdf8)' }} />,
         title: 'Installment Payment',
         subtitle: month ? `Scheduled for ${month}` : 'Recurring installment forecast',
         badge: 'Installment',
@@ -127,14 +151,14 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
     }
     if (id.startsWith('salary-')) {
       return {
-        icon: '💼',
+        icon: <Briefcase size={18} style={{ color: 'var(--kpi-emerald, #34d399)' }} />,
         title: 'Salary Forecast Schedule',
         subtitle: 'Calculated salary schedule matrix projection',
         badge: 'Salary',
       };
     }
     return {
-      icon: '📝',
+      icon: <FileText size={18} style={{ color: 'var(--muted)' }} />,
       title: 'Dismissed Forecast Record',
       subtitle: `ID: ${id}`,
       badge: 'Forecast',
@@ -207,10 +231,13 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
         const ok = importJSON(content);
         if (ok) {
           const state = useBudgetStore.getState();
-          alert(`✓ Data restored successfully!\n\n• ${state.entries.length} cash entries\n• ${Object.keys(state.accounts).length} accounts\n• ${state.storageAssets.length} storage assets\n• ${state.installments.length} installments\n\n(A rollback snapshot was saved; you can click 'Undo last import' if needed.)`);
+          showAppNotice(
+            `Restored ${state.entries.length} entries, ${Object.keys(state.accounts).length} accounts, ${state.storageAssets.length} assets.`,
+            'success'
+          );
           onClose();
         } else {
-          alert('Failed to parse backup JSON file. Please ensure it is a valid Budget Control export.');
+          showAppNotice('Failed to parse backup JSON file. Ensure it is a valid Budget Control export.', 'danger');
         }
       }
       e.target.value = '';
@@ -228,15 +255,21 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
         style={{ display: 'block', zIndex: 1000, maxWidth: '720px', width: 'min(720px, 94vw)' }}
       >
         <div className="dialog-heading">
-          <h3>⚙️ Data Backup &amp; System Tools</h3>
+          <h3 style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+            <Settings size={17} style={{ color: 'var(--brand-primary, #6366f1)' }} />
+            <span>Data Backup &amp; System Tools</span>
+          </h3>
           <button className="icon-button" type="button" aria-label="Close" onClick={onClose}>
-            ✕
+            <X size={16} />
           </button>
         </div>
 
         <div className="dialog-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '12px 0' }}>
           <div className="data-tools-card" style={{ background: 'var(--surface-soft)', padding: '14px', borderRadius: '8px', border: '1px solid var(--line)' }}>
-            <h4 style={{ margin: '0 0 4px', fontSize: '14px' }}>📊 Data Portability &amp; Spreadsheets</h4>
+            <h4 style={{ display: 'flex', alignItems: 'center', gap: '6px', margin: '0 0 4px', fontSize: '14px' }}>
+              <FileSpreadsheet size={15} style={{ color: 'var(--kpi-cyan, #38bdf8)' }} />
+              <span>Data Portability &amp; Spreadsheets</span>
+            </h4>
             <p style={{ fontSize: '13px', color: 'var(--muted)', margin: '0 0 10px' }}>
               Export clean records for Microsoft Excel / Sheets, or create complete device backups.
             </p>
@@ -254,17 +287,21 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
                 <button
                   className="ghost-button"
                   type="button"
-                  style={{ borderColor: 'var(--amber)', color: 'var(--amber)' }}
-                  onClick={() => {
-                    if (window.confirm('Revert the last imported backup and restore previous data?')) {
-                      if (undoImport()) {
-                        alert('✓ Previous data restored from rollback snapshot.');
-                        onClose();
-                      }
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', borderColor: 'var(--amber)', color: 'var(--amber)' }}
+                  onClick={async () => {
+                    const ok = await requestAppConfirm({
+                      title: 'Undo Last Import',
+                      message: 'Revert the last imported backup and restore previous data?',
+                      confirmLabel: 'Revert Import',
+                      tone: 'warning',
+                    });
+                    if (ok && undoImport()) {
+                      showAppNotice('Previous data restored from rollback snapshot.', 'success');
+                      onClose();
                     }
                   }}
                 >
-                  ↩️ Undo last import
+                  <RotateCcw size={13} /> Undo last import
                 </button>
               )}
               <input
@@ -278,7 +315,10 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
           </div>
 
           <div className="data-tools-card" style={{ background: 'var(--surface-soft)', padding: '14px', borderRadius: '8px', border: '1px solid var(--line)' }}>
-            <h4 style={{ margin: '0 0 4px', fontSize: '14px' }}>📦 Storage Maintenance &amp; Archival</h4>
+            <h4 style={{ display: 'flex', alignItems: 'center', gap: '6px', margin: '0 0 4px', fontSize: '14px' }}>
+              <Archive size={15} style={{ color: 'var(--kpi-gold, #fbbf24)' }} />
+              <span>Storage Maintenance &amp; Archival</span>
+            </h4>
             <p style={{ fontSize: '13px', color: 'var(--muted)', margin: '0 0 10px' }}>
               Archive fully settled past entries to keep active calculations and memory fast.
             </p>
@@ -286,25 +326,26 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
               <button
                 className="ghost-button"
                 type="button"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
                 onClick={() => {
                   const count = archiveSettledEntries();
-                  setFeedbackMsg(count > 0 ? `✓ Archived ${count} settled entries to cold storage.` : 'ℹ️ No past settled entries need archiving.');
+                  setFeedbackMsg(count > 0 ? `Archived ${count} settled entries to cold storage.` : 'No past settled entries need archiving.');
                   setTimeout(() => setFeedbackMsg(''), 4500);
                 }}
               >
-                📦 Archive Settled Entries ({archivedEntries.length} currently archived)
+                <Archive size={13} /> Archive Settled Entries ({archivedEntries.length} currently archived)
               </button>
               <button
                 className="ghost-button"
                 type="button"
-                style={{ borderColor: 'var(--blue)', color: 'var(--blue)' }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', borderColor: 'var(--blue)', color: 'var(--blue)' }}
                 onClick={onAutoTagPrompt ? onAutoTagPrompt : () => {
                   const count = autoTagEntries();
-                  setFeedbackMsg(count > 0 ? `✓ Tagged ${count} untagged item(s).` : 'ℹ️ All entries and installments already tagged.');
+                  setFeedbackMsg(count > 0 ? `Tagged ${count} untagged item(s).` : 'All entries and installments already tagged.');
                   setTimeout(() => setFeedbackMsg(''), 4500);
                 }}
               >
-                🏷️ Auto-Tag Untagged Items
+                <Tag size={13} /> Auto-Tag Untagged Items
               </button>
             </div>
             {feedbackMsg && (
@@ -317,7 +358,10 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
           {/* Recurring Series Scanner & Detector */}
           <div className="data-tools-card" style={{ background: 'var(--surface-soft)', padding: '14px', borderRadius: '8px', border: '1px solid var(--line)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-              <h4 style={{ margin: 0, fontSize: '14px' }}>🔄 Recurring Series Scanner &amp; Detector</h4>
+              <h4 style={{ display: 'flex', alignItems: 'center', gap: '6px', margin: 0, fontSize: '14px' }}>
+                <RefreshCw size={14} style={{ color: 'var(--brand-primary, #6366f1)' }} />
+                <span>Recurring Series Scanner &amp; Detector</span>
+              </h4>
               <span style={{ fontSize: '12px', color: unlinkedRecurringCount > 0 ? 'var(--amber)' : 'var(--muted)', background: 'rgba(0,0,0,0.15)', padding: '2px 8px', borderRadius: '12px' }}>
                 {recurringGroups.length} pattern{recurringGroups.length === 1 ? '' : 's'}{unlinkedRecurringCount > 0 ? ` (${unlinkedRecurringCount} unlinked)` : ''}
               </span>
@@ -329,23 +373,23 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
               <button
                 className="ghost-button"
                 type="button"
-                style={{ borderColor: unlinkedRecurringCount > 0 ? 'var(--blue)' : undefined, color: unlinkedRecurringCount > 0 ? 'var(--blue)' : undefined }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', borderColor: unlinkedRecurringCount > 0 ? 'var(--blue)' : undefined, color: unlinkedRecurringCount > 0 ? 'var(--blue)' : undefined }}
                 onClick={() => setShowRecurringModal(true)}
               >
-                🔍 Scan Recurring Patterns ({recurringGroups.length})
+                <Search size={13} /> Scan Recurring Patterns ({recurringGroups.length})
               </button>
               {unlinkedRecurringCount > 0 && (
                 <button
                   className="ghost-button"
                   type="button"
-                  style={{ borderColor: 'var(--green)', color: 'var(--green)' }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', borderColor: 'var(--green)', color: 'var(--green)' }}
                   onClick={() => {
                     const res = autoLinkAllRecurringCandidates();
-                    setFeedbackMsg(`✓ Linked ${res.linkedGroupsCount} pattern(s) across ${res.modifiedEntriesCount} entries as recurring series.`);
+                    setFeedbackMsg(`Linked ${res.linkedGroupsCount} pattern(s) across ${res.modifiedEntriesCount} entries as recurring series.`);
                     setTimeout(() => setFeedbackMsg(''), 5000);
                   }}
                 >
-                  ⚡ Link All Detected ({unlinkedRecurringCount})
+                  <Zap size={13} /> Link All Detected ({unlinkedRecurringCount})
                 </button>
               )}
             </div>
@@ -354,7 +398,10 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
           {/* Dismissed / Deleted Forecasts Inspector */}
           <div className="data-tools-card" style={{ background: 'var(--surface-soft)', padding: '14px', borderRadius: '8px', border: '1px solid var(--line)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-              <h4 style={{ margin: 0, fontSize: '14px' }}>🗑️ Dismissed Forecasts &amp; Deleted Projections</h4>
+              <h4 style={{ display: 'flex', alignItems: 'center', gap: '6px', margin: 0, fontSize: '14px' }}>
+                <Trash2 size={14} style={{ color: 'var(--red)' }} />
+                <span>Dismissed Forecasts &amp; Deleted Projections</span>
+              </h4>
               <span style={{ fontSize: '12px', color: 'var(--muted)', background: 'rgba(0,0,0,0.15)', padding: '2px 8px', borderRadius: '12px' }}>
                 {deletedForecasts.length} dismissed
               </span>
@@ -366,30 +413,40 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
               <button
                 className="ghost-button"
                 type="button"
-                style={{ borderColor: deletedForecasts.length > 0 ? 'var(--amber)' : undefined, color: deletedForecasts.length > 0 ? 'var(--amber)' : undefined }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', borderColor: deletedForecasts.length > 0 ? 'var(--amber)' : undefined, color: deletedForecasts.length > 0 ? 'var(--amber)' : undefined }}
                 onClick={() => setShowDeletedModal(true)}
               >
-                👁️ View Dismissed Forecasts ({deletedForecasts.length})
+                <Eye size={13} /> View Dismissed Forecasts ({deletedForecasts.length})
               </button>
             </div>
           </div>
 
           <div className="data-tools-card" style={{ background: 'var(--surface-soft)', padding: '14px', borderRadius: '8px', border: '1px solid var(--line)' }}>
-            <h4 style={{ margin: '0 0 4px', fontSize: '14px' }}>🔄 App Lifecycle &amp; Reset</h4>
+            <h4 style={{ display: 'flex', alignItems: 'center', gap: '6px', margin: '0 0 4px', fontSize: '14px' }}>
+              <RefreshCw size={14} style={{ color: 'var(--kpi-emerald, #34d399)' }} />
+              <span>App Lifecycle &amp; Reset</span>
+            </h4>
             <p style={{ fontSize: '13px', color: 'var(--muted)', margin: '0 0 10px' }}>
               Reload the application or reset template records.
             </p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-              <button className="ghost-button" type="button" onClick={() => executeAppRefresh()}>
-                🔄 Refresh App
+              <button className="ghost-button" type="button" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }} onClick={() => executeAppRefresh()}>
+                <RefreshCw size={13} /> Refresh App
               </button>
               <button
                 className="ghost-button"
                 type="button"
                 style={{ color: 'var(--red)' }}
-                onClick={onResetPrompt || (() => {
-                  if (window.confirm('Reset all budget data? A backup will be saved first.')) {
+                onClick={onResetPrompt || (async () => {
+                  const ok = await requestAppConfirm({
+                    title: 'Reset All Budget Data',
+                    message: 'Reset all budget data? A rollback backup will be saved first.',
+                    confirmLabel: 'Reset Data',
+                    tone: 'danger',
+                  });
+                  if (ok) {
                     resetData();
+                    showAppNotice('Budget data reset. You can undo from Manage Data if needed.', 'info');
                     onClose();
                   }
                 })}
@@ -400,9 +457,16 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
                 <button
                   className="ghost-button"
                   type="button"
-                  onClick={() => {
-                    if (window.confirm('Undo the last reset and restore the previous data?')) {
-                      if (restoreResetBackup()) onClose();
+                  onClick={async () => {
+                    const ok = await requestAppConfirm({
+                      title: 'Undo Last Reset',
+                      message: 'Undo the last reset and restore the previous data?',
+                      confirmLabel: 'Restore Data',
+                      tone: 'warning',
+                    });
+                    if (ok && restoreResetBackup()) {
+                      showAppNotice('Restored previous data from pre-reset backup.', 'success');
+                      onClose();
                     }
                   }}
                 >
@@ -413,26 +477,35 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
                 <button
                   className="ghost-button"
                   type="button"
-                  style={{ color: 'var(--amber, #f59e0b)' }}
-                  onClick={() => {
-                    if (window.confirm(`Clear all ${undoStack.length} undo history steps? (Current budget remains saved)`)) {
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: 'var(--amber, #f59e0b)' }}
+                  onClick={async () => {
+                    const ok = await requestAppConfirm({
+                      title: 'Clear Undo History',
+                      message: `Clear all ${undoStack.length} undo history steps? (Current budget remains saved)`,
+                      confirmLabel: 'Clear History',
+                      tone: 'warning',
+                    });
+                    if (ok) {
+                      const count = undoStack.length;
                       clearUndoHistory();
-                      setFeedbackMsg(`✓ Cleared ${undoStack.length} undo history step(s).`);
+                      setFeedbackMsg(`Cleared ${count} undo history step(s).`);
                       setTimeout(() => setFeedbackMsg(''), 4000);
                     }
                   }}
                 >
-                  🧹 Clear Undo History ({undoStack.length})
+                  <Trash2 size={13} /> Clear Undo History ({undoStack.length})
                 </button>
               )}
             </div>
           </div>
 
           <div className="data-tools-shortcuts-box" style={{ padding: '10px 14px', borderRadius: '8px', background: 'var(--surface-soft)', border: '1px solid var(--line)' }}>
-            <strong style={{ fontSize: '12px' }}>⌨️ Quick Shortcuts:</strong>
+            <strong style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '12px' }}>
+              <Keyboard size={13} /> Quick Shortcuts:
+            </strong>
             <br />
             <span style={{ fontFamily: 'monospace', fontSize: '11px', color: 'var(--muted)' }}>
-              [E] Add Expense &nbsp;|&nbsp; [I] Add Income &nbsp;|&nbsp; [L] Take Loan &nbsp;|&nbsp; [Ctrl+B] Toggle Sidebar
+              [⌘K / Ctrl+K] Command Palette &nbsp;|&nbsp; [E] Add Expense &nbsp;|&nbsp; [I] Add Income &nbsp;|&nbsp; [L] Take Loan &nbsp;|&nbsp; [Ctrl+B] Toggle Sidebar
             </span>
           </div>
         </div>
@@ -454,16 +527,17 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
         >
           <div className="dialog-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-              🗑️ Dismissed Forecasts ({deletedForecasts.length})
+              <Trash2 size={16} style={{ color: 'var(--red)' }} /> Dismissed Forecasts ({deletedForecasts.length})
             </h3>
             <button className="icon-button" type="button" aria-label="Close" onClick={() => setShowDeletedModal(false)}>
-              ✕
+              <X size={16} />
             </button>
           </div>
 
           <div className="dialog-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '12px 0' }}>
-            <div style={{ background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.25)', borderRadius: '6px', padding: '10px 12px', fontSize: '12.5px', color: 'var(--ink)' }}>
-              ℹ️ When you delete an auto-calculated forecast (like a monthly credit card settlement due or an unmaterialized salary forecast date), it is recorded here so the projection engine knows not to regenerate it. Click <strong>Restore</strong> on any item to recalculate and display it again.
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.25)', borderRadius: '6px', padding: '10px 12px', fontSize: '12.5px', color: 'var(--ink)' }}>
+              <Info size={15} style={{ color: 'var(--kpi-cyan, #38bdf8)', flexShrink: 0, marginTop: '2px' }} />
+              <span>When you delete an auto-calculated forecast (like a monthly credit card settlement due or an unmaterialized salary forecast date), it is recorded here so the projection engine knows not to regenerate it. Click <strong>Restore</strong> on any item to recalculate and display it again.</span>
             </div>
 
             {deletedForecasts.length > 0 && (
@@ -480,8 +554,14 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
                   type="button"
                   className="ghost-button"
                   style={{ color: 'var(--red)', fontSize: '12px', padding: '6px 12px' }}
-                  onClick={() => {
-                    if (window.confirm('Clear all dismissed forecast records? Any applicable calculated projections will reappear in Cashflow & Forecasts.')) {
+                  onClick={async () => {
+                    const ok = await requestAppConfirm({
+                      title: 'Clear Dismissed Forecasts',
+                      message: 'Clear all dismissed forecast records? Any applicable calculated projections will reappear in Cashflow & Forecasts.',
+                      confirmLabel: 'Clear All',
+                      tone: 'danger',
+                    });
+                    if (ok) {
                       clearAllDeletedForecasts();
                     }
                   }}
@@ -494,7 +574,7 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
             <div style={{ maxHeight: '340px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', paddingRight: '4px' }}>
               {deletedForecasts.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '36px 16px', color: 'var(--muted)', fontSize: '13.5px' }}>
-                  ✨ No dismissed forecasts. All projection calculations are currently active.
+                  No dismissed forecasts. All projection calculations are currently active.
                 </div>
               ) : filteredDeletedForecasts.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '24px 16px', color: 'var(--muted)', fontSize: '13px' }}>
@@ -518,7 +598,7 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-                        <span style={{ fontSize: '20px' }}>{meta.icon}</span>
+                        <span className="inline-icon-wrap">{meta.icon}</span>
                         <div style={{ minWidth: 0 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <strong style={{ fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -537,11 +617,11 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
                       <button
                         type="button"
                         className="ghost-button"
-                        style={{ padding: '4px 10px', fontSize: '12px', color: 'var(--green)', borderColor: 'var(--green)', flexShrink: 0 }}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '4px 10px', fontSize: '12px', color: 'var(--green)', borderColor: 'var(--green)', flexShrink: 0 }}
                         onClick={() => restoreDeletedForecast(id)}
                         title="Restore this forecast so it can be recalculated and displayed"
                       >
-                        ↩️ Restore
+                        <RotateCcw size={12} /> Restore
                       </button>
                     </div>
                   );
@@ -568,16 +648,17 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
         >
           <div className="dialog-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-              🔄 Recurring Series Scanner ({recurringGroups.length})
+              <RefreshCw size={16} style={{ color: 'var(--brand-primary, #6366f1)' }} /> Recurring Series Scanner ({recurringGroups.length})
             </h3>
             <button className="icon-button" type="button" aria-label="Close" onClick={() => setShowRecurringModal(false)}>
-              ✕
+              <X size={16} />
             </button>
           </div>
 
           <div className="dialog-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '12px 0' }}>
-            <div style={{ background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.25)', borderRadius: '6px', padding: '10px 12px', fontSize: '12.5px', color: 'var(--ink)' }}>
-              ℹ️ Groups of 2 or more cash entries with the same name and amount are detected below. Flagging a group as a <strong>Recurring Series</strong> links them so future edits and deletions can apply across the entire series with accurate occurrence counts.
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.25)', borderRadius: '6px', padding: '10px 12px', fontSize: '12.5px', color: 'var(--ink)' }}>
+              <Info size={15} style={{ color: 'var(--kpi-cyan, #38bdf8)', flexShrink: 0, marginTop: '2px' }} />
+              <span>Groups of 2 or more cash entries with the same name and amount are detected below. Flagging a group as a <strong>Recurring Series</strong> links them so future edits and deletions can apply across the entire series with accurate occurrence counts.</span>
             </div>
 
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -593,14 +674,14 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
                 <button
                   type="button"
                   className="ghost-button"
-                  style={{ color: 'var(--green)', borderColor: 'var(--green)', fontSize: '12px', padding: '6px 12px', whiteSpace: 'nowrap' }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: 'var(--green)', borderColor: 'var(--green)', fontSize: '12px', padding: '6px 12px', whiteSpace: 'nowrap' }}
                   onClick={() => {
                     const res = autoLinkAllRecurringCandidates();
-                    setFeedbackMsg(`✓ Linked ${res.linkedGroupsCount} pattern(s) across ${res.modifiedEntriesCount} entries.`);
+                    setFeedbackMsg(`Linked ${res.linkedGroupsCount} pattern(s) across ${res.modifiedEntriesCount} entries.`);
                     setTimeout(() => setFeedbackMsg(''), 5000);
                   }}
                 >
-                  ⚡ Link All ({unlinkedRecurringCount})
+                  <Zap size={13} /> Link All ({unlinkedRecurringCount})
                 </button>
               )}
             </div>
@@ -608,7 +689,7 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
             <div style={{ maxHeight: '380px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px', paddingRight: '4px' }}>
               {recurringGroups.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '36px 16px', color: 'var(--muted)', fontSize: '13.5px' }}>
-                  ✨ No repeating name + amount patterns found across your entries.
+                  No repeating name + amount patterns found across your entries.
                 </div>
               ) : filteredRecurringGroups.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '24px 16px', color: 'var(--muted)', fontSize: '13px' }}>
@@ -631,7 +712,13 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
                     >
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-                          <span style={{ fontSize: '20px' }}>{group.type === 'income' ? '💰' : '🔄'}</span>
+                          <span className="inline-icon-wrap">
+                            {group.type === 'income' ? (
+                              <Banknote size={18} style={{ color: 'var(--green)' }} />
+                            ) : (
+                              <RefreshCw size={18} style={{ color: 'var(--brand-primary, #6366f1)' }} />
+                            )}
+                          </span>
                           <div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                               <strong style={{ fontSize: '13.5px' }}>{group.name}</strong>
@@ -643,6 +730,9 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
                               </span>
                               <span
                                 style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
                                   fontSize: '10px',
                                   padding: '1px 6px',
                                   borderRadius: '4px',
@@ -651,7 +741,11 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
                                   fontWeight: 500,
                                 }}
                               >
-                                {group.isFullyLinked ? '✓ Linked Series' : '⚠️ Unlinked Candidate'}
+                                {group.isFullyLinked ? (
+                                  <><Check size={10} /> Linked Series</>
+                                ) : (
+                                  <><AlertTriangle size={10} /> Unlinked Candidate</>
+                                )}
                               </span>
                             </div>
                             <div style={{ fontSize: '11.5px', color: 'var(--muted)', marginTop: '2px' }}>
@@ -678,13 +772,13 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
                           <button
                             type="button"
                             className="ghost-button"
-                            style={{ padding: '4px 10px', fontSize: '12px', color: 'var(--blue)', borderColor: 'var(--blue)', flexShrink: 0 }}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '4px 10px', fontSize: '12px', color: 'var(--blue)', borderColor: 'var(--blue)', flexShrink: 0 }}
                             onClick={() => {
                               linkRecurringSeries(group.entryIds);
                             }}
                             title="Flag and link these entries as a recurring series"
                           >
-                            🔗 Flag as Recurring
+                            <Link size={12} /> Flag as Recurring
                           </button>
                         )}
                       </div>
@@ -695,6 +789,9 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
                           <span
                             key={e.id}
                             style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
                               fontSize: '11px',
                               fontFamily: 'monospace',
                               padding: '2px 6px',
@@ -704,7 +801,7 @@ export const DataToolsModal: React.FC<DataToolsModalProps> = ({
                               border: '1px solid var(--line)',
                             }}
                           >
-                            📅 {e.date}
+                            <Calendar size={11} /> {e.date}
                           </span>
                         ))}
                       </div>

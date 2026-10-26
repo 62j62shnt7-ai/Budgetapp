@@ -13,7 +13,7 @@ import { buildInstallmentEntries } from '../../engine/salaryAndInstallments';
 import { isLoanInflow } from '../../engine/forecast';
 import { getEntryTags } from '../../engine/tags';
 import type { CashEntry } from '../../types';
-import { Lock, Unlock, Trash2, RotateCcw } from 'lucide-react';
+import { Lock, Unlock, Trash2, RotateCcw, CreditCard, Landmark, Banknote, Tag, Check, X } from 'lucide-react';
 import { HistorySummaryTab } from './HistorySummaryTab';
 import { HistoryAnalyticsSection } from './HistoryAnalyticsSection';
 import { AffectedRecordsModal } from '../Modals/AffectedRecordsModal';
@@ -800,25 +800,25 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                 {!isTargetingCardSwipes && !isTargetingSettlements && (
                   <>
                     {filteredCardSpends > 0 && (
-                      <span className="history-bracket-card-swipes" title="Credit card swipes">
-                        💳 ({formatMoney(filteredCardSpends)} card swipes)
+                      <span className="history-bracket-card-swipes" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }} title="Credit card swipes">
+                        <CreditCard size={12} /> ({formatMoney(filteredCardSpends)} card swipes)
                       </span>
                     )}
                     {filteredCredit > 0 && (
-                      <span className="history-bracket-settlements" title="Credit settlements paid">
-                        🏛️ ({formatMoney(filteredCredit)} settlements)
+                      <span className="history-bracket-settlements" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }} title="Credit settlements paid">
+                        <Landmark size={12} /> ({formatMoney(filteredCredit)} settlements)
                       </span>
                     )}
                   </>
                 )}
                 {isTargetingCardSwipes && (
-                  <span className="history-bracket-card-swipes" title="Credit card swipes">
-                    💳 (card swipes)
+                  <span className="history-bracket-card-swipes" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }} title="Credit card swipes">
+                    <CreditCard size={12} /> (card swipes)
                   </span>
                 )}
                 {isTargetingSettlements && (
-                  <span className="history-bracket-settlements" title="Credit settlements">
-                    🏛️ (settlements)
+                  <span className="history-bracket-settlements" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }} title="Credit settlements">
+                    <Landmark size={12} /> (settlements)
                   </span>
                 )}
               </strong>
@@ -882,8 +882,9 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
             </div>
 
             {isAdminUnlocked && (
-              <div style={{ background: 'rgba(217,142,43,0.12)', border: '1px solid rgba(217,142,43,0.35)', borderRadius: '6px', padding: '8px 12px', fontSize: '12.5px', color: 'var(--ink)', margin: '10px 0' }}>
-                🔓 <strong>Admin Mode Active:</strong> Add or remove tags directly, edit actuals, or click an entry to open full edit controls.
+              <div style={{ display: 'flex', alignItems: 'center', gap: '7px', background: 'rgba(217,142,43,0.12)', border: '1px solid rgba(217,142,43,0.35)', borderRadius: '6px', padding: '8px 12px', fontSize: '12.5px', color: 'var(--ink)', margin: '10px 0' }}>
+                <Unlock size={14} style={{ color: 'var(--amber)', flexShrink: 0 }} />
+                <span><strong>Admin Mode Active:</strong> Add or remove tags directly, edit actuals, or click an entry to open full edit controls.</span>
               </div>
             )}
 
@@ -1034,8 +1035,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                               {entry.category}
                             </strong>
                             {entry.currency && entry.currency !== 'EGP' && (
-                              <span className="source-pill" style={{ background: 'rgba(99, 102, 241, 0.12)', color: '#818cf8', fontWeight: 700, fontSize: '10px', marginLeft: '4px' }}>
-                                💵 {entry.currency}
+                              <span className="source-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(99, 102, 241, 0.12)', color: 'var(--kpi-indigo, #818cf8)', fontWeight: 700, fontSize: '10px', marginLeft: '4px' }}>
+                                <Banknote size={11} /> {entry.currency}
                               </span>
                             )}
                             {isAdminUnlocked ? (
@@ -1109,7 +1110,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                                       }}
                                       title="Save tag"
                                     >
-                                      ✓
+                                      <Check size={12} />
                                     </button>
                                     <button
                                       type="button"
@@ -1122,7 +1123,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                                       }}
                                       title="Cancel"
                                     >
-                                      ✕
+                                      <X size={12} />
                                     </button>
                                   </span>
                                 ) : (
@@ -1209,8 +1210,14 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                           </td>
                           <td className="cell-source" style={{ fontSize: '12px', color: 'var(--muted)' }}>
                             {entry.source && !['manual', 'expense', 'income', 'direct', 'starting balance', 'cash', 'default'].includes(entry.source.toLowerCase()) ? (
-                              <span className={`source-pill ${entry.source === 'loan' ? 'loan' : ''}`}>
-                                {entry.source === 'recurring credit' ? '🏛️ Credit Settlement' : entry.source === 'credit card' ? '💳 Credit Card' : entry.source}
+                              <span className={`source-pill ${entry.source === 'loan' ? 'loan' : ''}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                {entry.source === 'recurring credit' ? (
+                                  <><Landmark size={11} /> Credit Settlement</>
+                                ) : entry.source === 'credit card' ? (
+                                  <><CreditCard size={11} /> Credit Card</>
+                                ) : (
+                                  entry.source
+                                )}
                               </span>
                             ) : null}
                           </td>
@@ -1411,10 +1418,11 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                                               <button
                                                 type="button"
                                                 className={`history-tag-filter ${selectedTag.toLowerCase() === draw.tag.toLowerCase() ? 'active' : ''}`}
+                                                style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                                                 onClick={() => handleTagFilter(draw.tag as string)}
                                                 aria-pressed={selectedTag.toLowerCase() === draw.tag.toLowerCase()}
                                               >
-                                                🏷️ {draw.tag}
+                                                <Tag size={11} /> {draw.tag}
                                               </button>
                                             ) : '—'}
                                           </td>

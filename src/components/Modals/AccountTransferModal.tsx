@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { formatMoney } from '../../engine/dateUtils';
-import { ArrowRightLeft, AlertCircle } from 'lucide-react';
+import { ArrowRightLeft, AlertCircle, X } from 'lucide-react';
+import { requestAppConfirm, showAppNotice } from '../Common/UndoToast';
 
 export interface AccountTransferModalProps {
   isOpen: boolean;
@@ -84,7 +85,7 @@ export const AccountTransferModal: React.FC<AccountTransferModalProps> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
     const numAmt = Math.round(Number(amount));
@@ -104,10 +105,12 @@ export const AccountTransferModal: React.FC<AccountTransferModalProps> = ({
 
     const fromBalance = Number(fromAccObj.balance || 0);
     if (fromBalance < numAmt) {
-      // Soft warning / confirmation if transfer exceeds source balance
-      const proceed = window.confirm(
-        `Source account ${fromAccObj.name} has ${formatMoney(fromBalance)}, which is less than the transfer amount of ${formatMoney(numAmt)}. Do you still want to proceed?`
-      );
+      const proceed = await requestAppConfirm({
+        title: 'Insufficient Source Balance',
+        message: `Source account ${fromAccObj.name} has ${formatMoney(fromBalance)}, which is less than the transfer amount of ${formatMoney(numAmt)}. Do you still want to proceed?`,
+        confirmLabel: 'Transfer Anyway',
+        tone: 'warning',
+      });
       if (!proceed) return;
     }
 
@@ -117,6 +120,7 @@ export const AccountTransferModal: React.FC<AccountTransferModalProps> = ({
 
     const success = transferAccountFunds(fromAccount, toAccount, numAmt, note);
     if (success) {
+      showAppNotice(`Transferred ${formatMoney(numAmt)}: ${fromAccObj.name} → ${toAccObj.name}`, 'success');
       onClose();
     } else {
       setErrorMsg('Transfer failed. Please check inputs and try again.');
@@ -137,7 +141,7 @@ export const AccountTransferModal: React.FC<AccountTransferModalProps> = ({
             <h3 style={{ margin: 0 }}>Transfer Funds Between Accounts</h3>
           </div>
           <button className="icon-button" type="button" aria-label="Close" onClick={onClose}>
-            ✕
+            <X size={16} />
           </button>
         </div>
 

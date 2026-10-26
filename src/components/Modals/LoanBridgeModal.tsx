@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { DateUtils } from '../../engine/dateUtils';
+import { CreditCard, X } from 'lucide-react';
 
 interface LoanBridgeModalProps {
   isOpen: boolean;
@@ -102,9 +103,12 @@ export const LoanBridgeModal: React.FC<LoanBridgeModalProps> = ({ isOpen, onClos
     <dialog open className="native-dialog loan-dialog" onClick={(e) => e.target === e.currentTarget && onClose()} style={{ display: 'block', zIndex: 1000 }}>
       <form onSubmit={handleSubmit} className="entry-form entry-form-modern" id="loanBridgeForm">
         <div className="dialog-heading">
-          <h3>💳 Bridge Deficit with Loan</h3>
+          <h3 style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+            <CreditCard size={17} style={{ color: 'var(--teal, #06b6d4)' }} />
+            <span>Bridge Deficit with Loan</span>
+          </h3>
           <button className="icon-button" type="button" aria-label="Close" onClick={onClose}>
-            x
+            <X size={16} />
           </button>
         </div>
 

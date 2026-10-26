@@ -27,14 +27,14 @@ src/
 ├── components/               # Feature-based UI components
 │   ├── Accounts/             # AccountsView — bank/cash balances, CD maturity
 │   ├── Cashflow/             # CashflowView (largest view) + SalaryStructure/Installments/ExpenseMix sections
-│   ├── Common/               # Modal, ErrorBoundary, UndoToast, LedgerFilterBar, DriveReconnectBanner (shared primitives)
+│   ├── Common/               # Modal, ErrorBoundary, UndoToast (showAppNotice/requestAppConfirm), LedgerFilterBar, DriveReconnectBanner
 │   ├── Dashboard/            # DashboardView — net worth, health index, forecast chart
 │   ├── Deficits/             # DeficitsView — deficit timeline & remediation
 │   ├── Forecast/             # ForecastChart
 │   ├── History/              # HistoryView + HistorySummaryTab + HistoryAnalyticsSection
 │   ├── Jobs/                 # JobsView — project billing, logged days, payments
 │   ├── Layout/               # App shell: Sidebar, Topbar, BottomNav, MobileActionSheet
-│   ├── Modals/               # EntryModal, JobModals, DataToolsModal, DriveSyncModal, SyncConflictModal, Loan/Storage/Rate modals, AffectedRecordsModal
+│   ├── Modals/               # EntryModal, QuickAddModal (CommandPaletteModal), JobModals, DataToolsModal, DriveSyncModal, SyncConflictModal, Loan/Storage/Rate modals, AffectedRecordsModal
 │   ├── Rates/                # RatesView — currency & gold rates editor
 │   └── Storage/              # StorageView — physical assets & valuables
 ├── engine/                   # Pure financial math. NO React/JSX/Zustand imports.

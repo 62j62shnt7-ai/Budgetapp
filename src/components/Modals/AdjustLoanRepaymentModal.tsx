@@ -2,6 +2,7 @@ import React from 'react';
 import type { CashEntry, Installment } from '../../types';
 import { formatMoney } from '../../engine/dateUtils';
 import { Modal } from '../Common/Modal';
+import { CreditCard } from 'lucide-react';
 
 export type LinkedRepaymentInfo =
   | {
@@ -47,9 +48,12 @@ export const AdjustLoanRepaymentModal: React.FC<AdjustLoanRepaymentModalProps> =
     ? `Scale to ${formatMoney(linkedInfo.scaledAmount)}`
     : `Scale to ${formatMoney(linkedInfo.scaledAmount)}/mo`;
 
-  const modalTitle = isScaleUp
-    ? '💳 Scale Up Linked Loan Repayment?'
-    : '💳 Scale Down Linked Loan Repayment?';
+  const modalTitle = (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+      <CreditCard size={18} style={{ color: 'var(--kpi-indigo, #818cf8)' }} />
+      <span>{isScaleUp ? 'Scale Up Linked Loan Repayment?' : 'Scale Down Linked Loan Repayment?'}</span>
+    </span>
+  );
 
   const modalSubtitle = isScaleUp
     ? 'Since the drawn amount exceeds the planned loan facility, would you like to scale up your future scheduled repayment obligations to proportionally match what was borrowed?'

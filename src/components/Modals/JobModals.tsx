@@ -4,6 +4,7 @@ import { useBudgetStore } from '../../store/useBudgetStore';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { calculateJobFinancials, formatJobCurrency } from '../../engine/jobs';
 import type { JobItem, JobDayLog, JobExpense, JobPayment } from '../../types';
+import { Lightbulb, Banknote, ArrowLeftRight, Check, X } from 'lucide-react';
 
 // ==========================================
 // 1. Job Form Modal (Add / Edit Job)
@@ -99,8 +100,8 @@ export const JobFormModal: React.FC<JobFormModalProps> = ({ isOpen, jobToEdit, o
       <form onSubmit={handleSubmit} className="entry-form" id="jobForm" style={{ maxWidth: '100%' }}>
         <div className="dialog-heading">
           <h3>{jobToEdit ? 'Edit Part-Time Job' : 'Add Part-Time Job'}</h3>
-          <button className="icon-button" type="button" aria-label="Close" onClick={onClose}>
-            x
+          <button className="icon-button close-dialog-btn" type="button" aria-label="Close" onClick={onClose}>
+            <X size={16} />
           </button>
         </div>
 
@@ -286,8 +287,8 @@ export const JobLogDayModal: React.FC<JobLogDayModalProps> = ({ isOpen, jobId, o
       <form onSubmit={handleSubmit} className="entry-form" id="jobLogDayForm" style={{ maxWidth: '100%' }}>
         <div className="dialog-heading">
           <h3>Log Day / Shift Worked</h3>
-          <button className="icon-button" type="button" aria-label="Close" onClick={onClose}>
-            x
+          <button className="icon-button close-dialog-btn" type="button" aria-label="Close" onClick={onClose}>
+            <X size={16} />
           </button>
         </div>
         <p style={{ margin: '-4px 0 12px', fontSize: '13px', color: 'var(--muted)' }}>
@@ -411,8 +412,8 @@ export const JobExpenseModal: React.FC<JobExpenseModalProps> = ({ isOpen, jobId,
       <form onSubmit={handleSubmit} className="entry-form" id="jobExpenseForm" style={{ maxWidth: '100%' }}>
         <div className="dialog-heading">
           <h3>Log Job Expense</h3>
-          <button className="icon-button" type="button" aria-label="Close" onClick={onClose}>
-            x
+          <button className="icon-button close-dialog-btn" type="button" aria-label="Close" onClick={onClose}>
+            <X size={16} />
           </button>
         </div>
 
@@ -794,8 +795,8 @@ export const JobPaymentModal: React.FC<JobPaymentModalProps> = ({ isOpen, jobId,
       <form onSubmit={handleSubmit} className="entry-form" id="jobPaymentForm" style={{ maxWidth: '100%' }}>
         <div className="dialog-heading">
           <h3>Record Job Payment</h3>
-          <button className="icon-button" type="button" aria-label="Close" onClick={onClose}>
-            x
+          <button className="icon-button close-dialog-btn" type="button" aria-label="Close" onClick={onClose}>
+            <X size={16} />
           </button>
         </div>
 
@@ -860,8 +861,9 @@ export const JobPaymentModal: React.FC<JobPaymentModalProps> = ({ isOpen, jobId,
             onChange={(e) => handleAmountChange(e.target.value)}
           />
         </label>
-        <small style={{ display: 'block', color: 'var(--muted)', fontSize: '11px', marginTop: '-4px', marginBottom: '10px' }}>
-          💡 Enter partial amount (e.g. $500) or full balance. Remaining balance stays active in Forecast.
+        <small style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: 'var(--muted)', fontSize: '11px', marginTop: '-4px', marginBottom: '10px' }}>
+          <Lightbulb size={12} style={{ color: 'var(--amber)' }} />
+          <span>Enter partial amount (e.g. $500) or full balance. Remaining balance stays active in Forecast.</span>
         </small>
 
         {/* Currency / Settlement Choice */}
@@ -884,7 +886,9 @@ export const JobPaymentModal: React.FC<JobPaymentModalProps> = ({ isOpen, jobId,
                   cursor: 'pointer',
                 }}
               >
-                <div style={{ fontWeight: 700, fontSize: '13px' }}>💵 Keep in {job.currency}</div>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 700, fontSize: '13px' }}>
+                  <Banknote size={14} style={{ color: 'var(--primary, #3b82f6)' }} /> Keep in {job.currency}
+                </div>
                 <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '2px' }}>
                   Storage Reserves (Bank/Cash)
                 </div>
@@ -903,7 +907,9 @@ export const JobPaymentModal: React.FC<JobPaymentModalProps> = ({ isOpen, jobId,
                   cursor: 'pointer',
                 }}
               >
-                <div style={{ fontWeight: 700, fontSize: '13px' }}>💱 Convert to EGP</div>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 700, fontSize: '13px' }}>
+                  <ArrowLeftRight size={14} style={{ color: 'var(--green, #16a34a)' }} /> Convert to EGP
+                </div>
                 <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '2px' }}>
                   Operating Bank Account
                 </div>
@@ -918,22 +924,23 @@ export const JobPaymentModal: React.FC<JobPaymentModalProps> = ({ isOpen, jobId,
             <label style={{ marginTop: 0 }}>
               Foreign Storage Destination &amp; Location
               <select value={foreignDestination} onChange={(e) => setForeignDestination(e.target.value)}>
-                <option value="storage:hsbc_usd">🏦 HSBC USD Account (Foreign Bank)</option>
-                <option value="storage:cash_usd">💵 USD Cash in Hand (Physical Cash)</option>
+                <option value="storage:hsbc_usd">HSBC USD Account (Foreign Bank)</option>
+                <option value="storage:cash_usd">USD Cash in Hand (Physical Cash)</option>
                 {job.currency?.toUpperCase() === 'EUR' && (
-                  <option value="storage:hsbc_eur">🏦 HSBC EUR Account (Foreign Bank)</option>
+                  <option value="storage:hsbc_eur">HSBC EUR Account (Foreign Bank)</option>
                 )}
                 {storageAssets
                   .filter((a) => a.unit.toUpperCase() === (job.currency || 'USD').toUpperCase())
                   .map((a) => (
                     <option key={a.id} value={`storage:existing-${a.id}`}>
-                      📁 {a.name} ({a.quantity} {a.unit}) · {a.locationType === 'cash' ? 'Cash' : 'Bank'}
+                      {a.name} ({a.quantity} {a.unit}) · {a.locationType === 'cash' ? 'Cash' : 'Bank'}
                     </option>
                   ))}
               </select>
             </label>
-            <small style={{ color: 'var(--muted)', fontSize: '11.5px', display: 'block', marginTop: '4px' }}>
-              ✓ Adds directly to your {job.currency} balance in the Storage tab without inflating liquid EGP accounts.
+            <small style={{ color: 'var(--muted)', fontSize: '11.5px', display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
+              <Check size={12} style={{ color: 'var(--green)' }} />
+              <span>Adds directly to your {job.currency} balance in the Storage tab without inflating liquid EGP accounts.</span>
             </small>
           </div>
         )}
@@ -970,13 +977,14 @@ export const JobPaymentModal: React.FC<JobPaymentModalProps> = ({ isOpen, jobId,
               <select value={selectedEgpAccount} onChange={(e) => setSelectedEgpAccount(e.target.value)}>
                 {Object.entries(accounts).map(([id, a]) => (
                   <option key={id} value={id}>
-                    🏦 {a.name} (Current Bal: {formatMoney(a.balance || 0)})
+                    {a.name} (Current Bal: {formatMoney(a.balance || 0)})
                   </option>
                 ))}
               </select>
             </label>
-            <small style={{ color: 'var(--muted)', fontSize: '11.5px', display: 'block', marginTop: '4px' }}>
-              ✓ Automatically credits {formatMoney(Number(customEgpAmount) || 0)} into {accounts[selectedEgpAccount]?.name || 'Operating Account'}.
+            <small style={{ color: 'var(--muted)', fontSize: '11.5px', display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
+              <Check size={12} style={{ color: 'var(--green)' }} />
+              <span>Automatically credits {formatMoney(Number(customEgpAmount) || 0)} into {accounts[selectedEgpAccount]?.name || 'Operating Account'}.</span>
             </small>
           </div>
         )}
@@ -1173,8 +1181,8 @@ export const JobForecastModal: React.FC<JobForecastModalProps> = ({ isOpen, jobI
       <form onSubmit={handleSubmit} className="entry-form" id="jobForecastForm" style={{ maxWidth: '100%' }}>
         <div className="dialog-heading">
           <h3>Schedule Invoiced Income in Forecast</h3>
-          <button className="icon-button" type="button" aria-label="Close" onClick={onClose}>
-            x
+          <button className="icon-button close-dialog-btn" type="button" aria-label="Close" onClick={onClose}>
+            <X size={16} />
           </button>
         </div>
 
@@ -1210,14 +1218,14 @@ export const JobForecastModal: React.FC<JobForecastModalProps> = ({ isOpen, jobI
           <select value={destination} onChange={(e) => setDestination(e.target.value)}>
             {isForeign && (
               <optgroup label="Foreign Currency Reserves (Storage Tab)">
-                <option value="storage:hsbc_usd">🏦 HSBC USD Sub-Account</option>
-                <option value="storage:hsbc_eur">🏦 HSBC EUR Sub-Account</option>
-                <option value="storage:cash_usd">💵 USD Cash in Hand</option>
+                <option value="storage:hsbc_usd">HSBC USD Sub-Account</option>
+                <option value="storage:hsbc_eur">HSBC EUR Sub-Account</option>
+                <option value="storage:cash_usd">USD Cash in Hand</option>
                 {storageAssets
                   .filter((a) => a.unit.toUpperCase() === (job.currency || 'USD').toUpperCase())
                   .map((a) => (
                     <option key={a.id} value={`storage:existing-${a.id}`}>
-                      📁 {a.name} ({a.quantity} {a.unit})
+                      {a.name} ({a.quantity} {a.unit})
                     </option>
                   ))}
               </optgroup>
@@ -1225,7 +1233,7 @@ export const JobForecastModal: React.FC<JobForecastModalProps> = ({ isOpen, jobI
             <optgroup label="Bank Operating (Convert to EGP)">
               {Object.entries(accounts).map(([id, a]) => (
                 <option key={id} value={`account:${id}`}>
-                  🏦 {a.name} Operating
+                  {a.name} Operating
                 </option>
               ))}
             </optgroup>

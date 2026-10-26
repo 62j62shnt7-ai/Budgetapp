@@ -12,16 +12,19 @@ import {
   RotateCcw,
   Database, 
   CreditCard, 
-  Plus
+  Plus,
+  Search,
 } from 'lucide-react';
 
 import { executeAppRefresh } from '../../utils/appRefresh';
+import { requestAppConfirm, showAppNotice } from '../Common/UndoToast';
 
 interface TopbarProps {
   onOpenEntryModal: (type: 'expense' | 'income') => void;
   onOpenLoanModal: () => void;
   onOpenDataTools: () => void;
   onOpenDriveSync: () => void;
+  onOpenCommandPalette?: () => void;
 }
 
 const tabTitles: Record<ViewTab, string> = {
@@ -40,6 +43,7 @@ export const Topbar: React.FC<TopbarProps> = ({
   onOpenLoanModal,
   onOpenDataTools,
   onOpenDriveSync,
+  onOpenCommandPalette,
 }) => {
   const {
     theme,
@@ -159,11 +163,18 @@ export const Topbar: React.FC<TopbarProps> = ({
               aria-label={`Undo last action (${undoStack.length})`}
               title={`Undo: ${undoStack[0]?.label}. Right-click to clear history.`}
               onClick={() => undo()}
-              onContextMenu={(e) => {
+              onContextMenu={async (e) => {
                 if (undoStack.length > 0) {
                   e.preventDefault();
-                  if (window.confirm(`Clear all ${undoStack.length} undo history steps?`)) {
+                  const ok = await requestAppConfirm({
+                    title: 'Clear Undo History',
+                    message: `Clear all ${undoStack.length} undo history steps?`,
+                    confirmLabel: 'Clear History',
+                    tone: 'warning',
+                  });
+                  if (ok) {
                     clearUndoHistory();
+                    showAppNotice('Undo history cleared.', 'info');
                   }
                 }
               }}
@@ -196,6 +207,21 @@ export const Topbar: React.FC<TopbarProps> = ({
         {/* Desktop-only comprehensive toolbar */}
         <div className="top-actions desktop-top-actions">
           <div className="top-actions-cluster top-actions-utilities">
+            {onOpenCommandPalette && (
+              <button
+                className="ghost-button topbar-cmd-btn"
+                id="topbarCommandPaletteBtn"
+                type="button"
+                aria-label="Open Command Palette (Ctrl+K)"
+                title="Command Palette & Quick Search (⌘K / Ctrl+K)"
+                onClick={onOpenCommandPalette}
+              >
+                <Search size={14} />
+                <span className="topbar-btn-label">Command</span>
+                <kbd className="kbd-badge">⌘K</kbd>
+              </button>
+            )}
+
             <button
               className="ghost-button topbar-undo-btn"
               id="topbarUndoBtn"
@@ -204,11 +230,18 @@ export const Topbar: React.FC<TopbarProps> = ({
               aria-label={undoStack[0] ? `Undo: ${undoStack[0].label} (${undoStack.length} steps available)` : 'Nothing to undo'}
               title={undoStack[0] ? `Undo: ${undoStack[0].label} (${undoStack.length} steps available, max 30). Right-click to clear.` : 'Nothing to undo'}
               onClick={() => undo()}
-              onContextMenu={(e) => {
+              onContextMenu={async (e) => {
                 if (undoStack.length > 0) {
                   e.preventDefault();
-                  if (window.confirm(`Clear all ${undoStack.length} undo history steps? (Your current budget data remains saved)`)) {
+                  const ok = await requestAppConfirm({
+                    title: 'Clear Undo History',
+                    message: `Clear all ${undoStack.length} undo history steps? (Your current budget data remains saved)`,
+                    confirmLabel: 'Clear History',
+                    tone: 'warning',
+                  });
+                  if (ok) {
                     clearUndoHistory();
+                    showAppNotice('Undo history cleared.', 'info');
                   }
                 }
               }}
@@ -313,20 +346,24 @@ export const Topbar: React.FC<TopbarProps> = ({
               className="ghost-button topbar-income-button"
               id="addIncome"
               type="button"
+              title="Add Income (Shortcut: I)"
               onClick={() => onOpenEntryModal('income')}
             >
               <Plus size={15} />
               <span className="topbar-btn-label">Income</span>
+              <kbd className="kbd-badge kbd-subtle">I</kbd>
             </button>
 
             <button
               className="primary-button topbar-expense-button"
               id="addEntry"
               type="button"
+              title="Add Expense (Shortcut: E)"
               onClick={() => onOpenEntryModal('expense')}
             >
               <Plus size={15} />
               <span className="topbar-btn-label">Expense</span>
+              <kbd className="kbd-badge kbd-on-primary">E</kbd>
             </button>
           </div>
         </div>

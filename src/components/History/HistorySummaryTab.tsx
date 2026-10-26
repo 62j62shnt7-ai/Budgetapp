@@ -1,5 +1,6 @@
 import React from 'react';
 import { formatMoney } from '../../engine/dateUtils';
+import { CreditCard, Landmark } from 'lucide-react';
 
 interface MonthlySummaryRow {
   month: string;
@@ -47,13 +48,13 @@ export const HistorySummaryTab: React.FC<HistorySummaryTabProps> = ({
           <strong id="historyLifetimeExpenses" style={{ color: 'var(--red)', display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '8px', lineHeight: 1.2 }}>
             <span style={{ color: 'var(--red)', fontSize: '26px', fontWeight: 800 }}>{formatMoney(totalLifetimeExpenses)}</span>
             {totalLifetimeCardSpends > 0 && (
-              <span className="history-bracket-card-swipes" title="Credit card swipes">
-                💳 ({formatMoney(totalLifetimeCardSpends)} card swipes)
+              <span className="history-bracket-card-swipes" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }} title="Credit card swipes">
+                <CreditCard size={12} /> ({formatMoney(totalLifetimeCardSpends)} card swipes)
               </span>
             )}
             {totalLifetimeCredit > 0 && (
-              <span className="history-bracket-settlements" title="Credit settlements paid">
-                🏛️ ({formatMoney(totalLifetimeCredit)} settlements)
+              <span className="history-bracket-settlements" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }} title="Credit settlements paid">
+                <Landmark size={12} /> ({formatMoney(totalLifetimeCredit)} settlements)
               </span>
             )}
           </strong>
@@ -137,13 +138,13 @@ export const HistorySummaryTab: React.FC<HistorySummaryTabProps> = ({
                         <div className="summary-mobile-metric-val" style={{ display: 'inline-flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>
                           <span style={{ color: 'var(--red)', fontWeight: 800 }}>-{formatMoney(row.expenses)}</span>
                           {!!row.cardSpends && row.cardSpends > 0 && (
-                            <span className="history-bracket-card-swipes" title="Credit card swipes during this month">
-                              💳 ({formatMoney(row.cardSpends)} swipes)
+                            <span className="history-bracket-card-swipes" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }} title="Credit card swipes during this month">
+                              <CreditCard size={11} /> ({formatMoney(row.cardSpends)} swipes)
                             </span>
                           )}
                           {!!row.creditSettled && row.creditSettled > 0 && (
-                            <span className="history-bracket-settlements" title="Credit settlements paid during this month">
-                              🏛️ ({formatMoney(row.creditSettled)} settlements)
+                            <span className="history-bracket-settlements" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }} title="Credit settlements paid during this month">
+                              <Landmark size={11} /> ({formatMoney(row.creditSettled)} settlements)
                             </span>
                           )}
                         </div>

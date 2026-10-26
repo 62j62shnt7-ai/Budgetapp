@@ -1,6 +1,7 @@
 import React, { Component, type ReactNode } from 'react';
 import { DateUtils } from '../../engine/dateUtils';
 import { exportAllFromStorage, clearAllStorage } from '../../utils/storageAdapter';
+import { AlertTriangle, Save, RefreshCw, Trash2 } from 'lucide-react';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -92,7 +93,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-              <span style={{ fontSize: '32px' }}>⚠️</span>
+              <AlertTriangle size={28} style={{ color: 'var(--amber, #f59e0b)', flexShrink: 0 }} />
               <div>
                 <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 700 }}>Something went wrong</h2>
                 <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'var(--muted, #94a3b8)' }}>
@@ -109,23 +110,27 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
               <button
                 type="button"
                 className="primary-button"
-                style={{ width: '100%', justifyContent: 'center', padding: '12px' }}
+                style={{ width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px' }}
                 onClick={this.handleExportEmergencyBackup}
               >
-                💾 Export Emergency Backup (JSON)
+                <Save size={15} /> Export Emergency Backup (JSON)
               </button>
               <button
                 type="button"
                 className="ghost-button"
-                style={{ width: '100%', justifyContent: 'center', padding: '12px' }}
+                style={{ width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px' }}
                 onClick={() => window.location.reload()}
               >
-                🔄 Reload Application
+                <RefreshCw size={15} /> Reload Application
               </button>
               <button
                 type="button"
                 style={{
                   width: '100%',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
                   background: 'transparent',
                   color: '#f43f5e',
                   border: '1px solid rgba(244, 63, 94, 0.3)',
@@ -136,7 +141,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 }}
                 onClick={this.handleResetStorage}
               >
-                🗑️ Reset Corrupted Data & Start Fresh
+                <Trash2 size={14} /> Reset Corrupted Data &amp; Start Fresh
               </button>
             </div>
 

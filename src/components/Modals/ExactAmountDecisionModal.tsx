@@ -4,6 +4,7 @@ import { formatMoney } from '../../engine/dateUtils';
 import { formatNativeCurrency, resolveCurrencyRate } from '../../engine/currency';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { Modal } from '../Common/Modal';
+import { CreditCard, Banknote, Clock, CheckCircle2 } from 'lucide-react';
 
 export interface LinkedRepaymentOption {
   name: string;
@@ -57,17 +58,27 @@ export const ExactAmountDecisionModal: React.FC<ExactAmountDecisionModalProps> =
   const displayPlannedEgp = isForeign ? Math.round(nativePlanned * fxRate) : plannedAmount;
   const displayRemainingEgp = isForeign ? Math.round(nativeRemaining * fxRate) : Math.max(0, plannedAmount - actualAmount);
 
-  const title = isLoanInflowEntry
+  const titleText = isLoanInflowEntry
     ? isPartial
-      ? '💳 Partial Loan Draw'
-      : '💳 Full Loan Facility Drawn'
+      ? 'Partial Loan Draw'
+      : 'Full Loan Facility Drawn'
     : isIncome
     ? isPartial
-      ? '💰 Partial Income Received'
-      : '💰 Full Income Received'
+      ? 'Partial Income Received'
+      : 'Full Income Received'
     : isPartial
-    ? '⏳ Partial Expense Recorded'
-    : '✓ Full Budget Reached';
+    ? 'Partial Expense Recorded'
+    : 'Full Budget Reached';
+
+  const titleIcon = isLoanInflowEntry ? (
+    <CreditCard size={18} style={{ color: 'var(--kpi-indigo, #818cf8)', flexShrink: 0 }} />
+  ) : isIncome ? (
+    <Banknote size={18} style={{ color: 'var(--green)', flexShrink: 0 }} />
+  ) : isPartial ? (
+    <Clock size={18} style={{ color: 'var(--amber)', flexShrink: 0 }} />
+  ) : (
+    <CheckCircle2 size={18} style={{ color: 'var(--green)', flexShrink: 0 }} />
+  );
 
   const subtitle = isLoanInflowEntry
     ? isPartial
@@ -100,7 +111,12 @@ export const ExactAmountDecisionModal: React.FC<ExactAmountDecisionModalProps> =
       onClose={onKeep}
       id="exactAmountDecisionDialog"
       maxWidth="480px"
-      title={<span id="exactAmountDecisionTitle">{title}</span>}
+      title={
+        <span id="exactAmountDecisionTitle" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+          {titleIcon}
+          <span>{titleText}</span>
+        </span>
+      }
       subtitle={<span id="exactAmountDecisionSubtitle">{subtitle}</span>}
     >
       <div className="entry-form entry-form-modern" style={{ padding: '4px 0 0' }}>
@@ -172,8 +188,9 @@ export const ExactAmountDecisionModal: React.FC<ExactAmountDecisionModalProps> =
               marginBottom: '18px',
             }}
           >
-            <div style={{ fontWeight: 600, marginBottom: '4px', color: 'var(--text-primary)' }}>
-              💳 Linked Repayment: {linkedRepayment.name}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, marginBottom: '4px', color: 'var(--text-primary)' }}>
+              <CreditCard size={14} style={{ color: 'var(--blue, #2563eb)' }} />
+              <span>Linked Repayment: {linkedRepayment.name}</span>
             </div>
             <p style={{ margin: '0 0 10px', fontSize: '12px', color: 'var(--muted)', lineHeight: '1.4' }}>
               This loan facility has a linked repayment scheduled. Choose whether to scale repayment obligations to proportionally match the drawn amount:

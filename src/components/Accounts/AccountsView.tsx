@@ -3,7 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { formatMoney } from '../../engine/dateUtils';
 import { formatNativeCurrency, inferAssetLocation, storageValue } from '../../engine/currency';
-import { ArrowRightLeft, Coins } from 'lucide-react';
+import { ArrowRightLeft, Coins, Landmark, Banknote } from 'lucide-react';
 import { StorageTransferModal } from '../Modals/StorageTransferModal';
 import { StorageFxModal } from '../Modals/StorageFxModal';
 
@@ -125,7 +125,9 @@ export const AccountsView: React.FC = () => {
                 <div key={id} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <div className="list-row account-row-card">
                     <div className="account-info">
-                      <span className="account-badge">🏦</span>
+                      <span className="account-badge" aria-hidden="true">
+                        <Landmark size={18} style={{ color: 'var(--brand-primary, #6366f1)' }} />
+                      </span>
                       <div>
                         <strong
                           className="account-title history-summary-clickable-row"
@@ -233,8 +235,8 @@ export const AccountsView: React.FC = () => {
                   gap: '6px',
                 }}
               >
-                <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase' }}>
-                  💵 Physical Cash Foreign Reserves
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11.5px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase' }}>
+                  <Banknote size={13} style={{ color: 'var(--green)' }} /> Physical Cash Foreign Reserves
                 </span>
                 {cashForeignAssets.map((fAsset) => (
                   <div

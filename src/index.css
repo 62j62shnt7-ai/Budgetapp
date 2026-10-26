@@ -32,6 +32,13 @@
   --color-warning-bg: rgba(245, 158, 11, 0.12);
   --color-cyan: #06b6d4;
   --color-cyan-bg: rgba(6, 182, 212, 0.12);
+
+  /* Theme-Safe Semantic KPI Accents (Dark Mode) */
+  --kpi-cyan: #38bdf8;
+  --kpi-gold: #fbbf24;
+  --kpi-emerald: #34d399;
+  --kpi-indigo: #818cf8;
+  --kpi-sky: #60a5fa;
   
   --font-main: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-heading: 'Outfit', sans-serif;
@@ -141,6 +148,13 @@
   --text-main: #0f172a;
   --text-muted: #475569;
   --text-dim: #64748b;
+
+  /* Theme-Safe Semantic KPI Accents (Light Mode High Contrast) */
+  --kpi-cyan: #0284c7;
+  --kpi-gold: #b45309;
+  --kpi-emerald: #059669;
+  --kpi-indigo: #4f46e5;
+  --kpi-sky: #2563eb;
   
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
@@ -4321,8 +4335,17 @@ input[type="date"]::-webkit-date-and-time-value {
     border-radius: 18px !important;
     box-sizing: border-box !important;
     overflow-y: auto !important;
+    overflow-x: hidden !important;
     overscroll-behavior: contain !important;
-    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--border-subtle) !important;
+    background: var(--bg-surface, #0a0a0c) !important;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.75), 0 0 0 1px var(--border-subtle, rgba(255, 255, 255, 0.1)) !important;
+  }
+
+  [data-theme="light"] dialog.native-dialog,
+  [data-theme="light"] dialog.modern-top-layer-dialog,
+  [data-theme="light"] dialog[open] {
+    background: var(--surface, #ffffff) !important;
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18), 0 0 0 1px var(--line, rgba(0, 0, 0, 0.08)) !important;
   }
 
   /* Specific desktop widths for wider tool & sync dialogs */
@@ -4334,60 +4357,112 @@ input[type="date"]::-webkit-date-and-time-value {
     width: min(720px, calc(100vw - 48px)) !important;
   }
 
+  dialog.native-dialog .entry-form,
+  dialog.native-dialog .entry-form-modern,
+  dialog.native-dialog .dialog-shell,
   dialog.native-dialog form,
+  dialog.modern-top-layer-dialog .entry-form,
+  dialog.modern-top-layer-dialog .entry-form-modern,
+  dialog.modern-top-layer-dialog .dialog-shell,
   dialog.modern-top-layer-dialog form {
     display: flex !important;
     flex-direction: column !important;
-    gap: 12px !important;
+    gap: 14px !important;
     width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
   }
 
   dialog.native-dialog .dialog-heading,
-  dialog.modern-top-layer-dialog .dialog-heading {
+  dialog.modern-top-layer-dialog .dialog-heading,
+  .entry-form-modern .dialog-heading {
+    position: sticky !important;
+    top: -24px !important;
+    z-index: 20 !important;
     display: flex !important;
     justify-content: space-between !important;
     align-items: center !important;
-    margin-bottom: 8px !important;
+    margin: -24px -24px 6px -24px !important;
+    padding: 20px 24px 16px 24px !important;
+    background: var(--bg-surface, #0a0a0c) !important;
+    border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08)) !important;
+    box-sizing: border-box !important;
+  }
+
+  [data-theme="light"] dialog.native-dialog .dialog-heading,
+  [data-theme="light"] dialog.modern-top-layer-dialog .dialog-heading,
+  [data-theme="light"] .entry-form-modern .dialog-heading {
+    background: var(--surface, #ffffff) !important;
+    border-bottom-color: var(--line, rgba(0, 0, 0, 0.08)) !important;
   }
 
   dialog.native-dialog .dialog-heading h3,
-  dialog.modern-top-layer-dialog .dialog-heading h3 {
-    font-size: 1.15rem !important;
+  dialog.modern-top-layer-dialog .dialog-heading h3,
+  .entry-form-modern .dialog-heading h3 {
+    font-size: 1.2rem !important;
     font-weight: 700 !important;
+    letter-spacing: -0.015em !important;
+    color: var(--ink) !important;
+    margin: 0 !important;
+    line-height: 1.3 !important;
+  }
+
+  dialog.native-dialog .dialog-heading .icon-button,
+  dialog.native-dialog .close-dialog-btn,
+  dialog.modern-top-layer-dialog .dialog-heading .icon-button,
+  dialog.modern-top-layer-dialog .close-dialog-btn {
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    min-height: 34px !important;
+    padding: 0 !important;
+    border-radius: 10px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0 !important;
   }
 
   dialog.native-dialog .dialog-actions,
   dialog.modern-top-layer-dialog .dialog-actions {
     position: sticky !important;
     bottom: -24px !important;
-    background: var(--bg-surface) !important;
-    padding: 14px 0 0 !important;
-    margin: 16px -24px -24px !important;
-    padding-left: 24px !important;
-    padding-right: 24px !important;
-    padding-bottom: 24px !important;
-    border-top: 1px solid var(--border-subtle) !important;
+    background: var(--bg-surface, #0a0a0c) !important;
+    margin: 8px -24px -24px -24px !important;
+    padding: 16px 24px 20px 24px !important;
+    border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08)) !important;
     display: flex !important;
     justify-content: flex-end !important;
     align-items: center !important;
     gap: 10px !important;
-    z-index: 10 !important;
+    z-index: 20 !important;
+  }
+
+  [data-theme="light"] dialog.native-dialog .dialog-actions,
+  [data-theme="light"] dialog.modern-top-layer-dialog .dialog-actions {
+    background: var(--surface, #ffffff) !important;
+    border-top-color: var(--line, rgba(0, 0, 0, 0.08)) !important;
   }
 
   dialog.native-dialog .dialog-actions button,
   dialog.modern-top-layer-dialog .dialog-actions button {
     width: auto !important;
-    min-width: 105px !important;
+    min-width: 110px !important;
     flex: 0 0 auto !important;
-    min-height: 38px !important;
+    min-height: 40px !important;
+    border-radius: 10px !important;
+    font-size: 13.5px !important;
+    font-weight: 600 !important;
   }
 
   .check-row {
-    display: inline-flex !important;
+    display: flex !important;
     flex-direction: row !important;
     align-items: center !important;
-    gap: 8px !important;
-    width: auto !important;
+    justify-content: flex-start !important;
+    gap: 10px !important;
+    width: 100% !important;
   }
 
   /* --- Cashflow View Desktop Enhancements --- */
@@ -6347,3 +6422,475 @@ input[type="date"]::-webkit-date-and-time-value {
   border-bottom: 1px solid var(--border-subtle);
   padding-bottom: 8px;
 }
+
+/* ==========================================================================
+   Frontier UI Polish: View Transitions, Surface Elevation & Command Palette
+   ========================================================================== */
+
+@keyframes viewFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.view {
+  animation: viewFadeIn 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .view {
+    animation: none;
+  }
+}
+
+/* 3-Tier Surface Elevation & Proportional Allocation Rows */
+.panel.panel-recessed {
+  background: var(--surface-sunken, #050507);
+  border-color: var(--glass-border-subtle, rgba(255, 255, 255, 0.05));
+}
+
+[data-theme="light"] .panel.panel-recessed {
+  background: #f8fafc;
+  border-color: rgba(15, 23, 42, 0.07);
+}
+
+.allocation-row {
+  position: relative;
+  background-image: linear-gradient(
+    90deg,
+    var(--alloc-color, rgba(99, 102, 241, 0.12)) var(--alloc-pct, 0%),
+    transparent var(--alloc-pct, 0%)
+  );
+  transition: background-color 0.16s ease, transform 0.16s ease;
+}
+
+.empty-state-subtle {
+  margin: 0;
+  padding: 18px 14px;
+  border-radius: 10px;
+  border: 1px dashed var(--border-subtle);
+  color: var(--muted);
+  font-size: 12.5px;
+  text-align: center;
+}
+
+/* Keyboard Shortcut Badges (<kbd>) */
+.kbd-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 5px;
+  min-width: 18px;
+  height: 18px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  border-radius: 4px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  border: 1px solid var(--border-subtle);
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+  user-select: none;
+}
+
+.kbd-badge.kbd-subtle {
+  opacity: 0.75;
+  margin-left: 2px;
+}
+
+.kbd-badge.kbd-on-primary {
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.28);
+  box-shadow: none;
+  margin-left: 2px;
+}
+
+.topbar-cmd-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+@media (max-width: 1280px) {
+  .kbd-badge.kbd-subtle,
+  .kbd-badge.kbd-on-primary {
+    display: none;
+  }
+}
+
+/* Global Command Palette (⌘K / Ctrl+K) */
+.command-palette-dialog .dialog-shell {
+  padding: 0;
+  overflow: hidden;
+}
+
+.command-palette-dialog .dialog-body-content {
+  padding: 0;
+}
+
+.command-palette-shell {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: min(520px, 80vh);
+}
+
+.command-palette-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface);
+}
+
+.command-palette-search-icon {
+  color: var(--brand-primary, #6366f1);
+  flex-shrink: 0;
+}
+
+.command-palette-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font-size: 14.5px;
+  font-weight: 500;
+  outline: none;
+  min-width: 0;
+}
+
+.command-palette-input::placeholder {
+  color: var(--text-dim, #94a3b8);
+}
+
+.command-palette-results {
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.command-palette-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.command-palette-group-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim, #94a3b8);
+  padding: 4px 10px 3px;
+}
+
+.command-palette-item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 9px 11px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.command-palette-item.is-active,
+.command-palette-item:hover {
+  background: var(--sidebar-active-bg, rgba(99, 102, 241, 0.14));
+  border-color: var(--sidebar-active-border, rgba(99, 102, 241, 0.28));
+}
+
+.command-palette-item-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.command-palette-item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+
+.command-palette-item-text strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.command-palette-item-text small {
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.command-palette-enter-hint {
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  flex-shrink: 0;
+}
+
+.command-palette-item.is-active .command-palette-enter-hint {
+  opacity: 0.85;
+}
+
+.command-palette-empty {
+  padding: 28px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* Non-Blocking App Notice Toasts & Confirmations */
+.undo-toast-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.app-notice-toast .app-notice-message {
+  max-width: 340px;
+  white-space: normal;
+  line-height: 1.35;
+}
+
+.app-notice-toast.tone-success {
+  border-color: rgba(16, 185, 129, 0.35);
+}
+
+.app-notice-toast.tone-warning {
+  border-color: rgba(245, 158, 11, 0.38);
+}
+
+.app-notice-toast.tone-danger {
+  border-color: rgba(244, 63, 94, 0.4);
+}
+
+.confirm-dialog-message {
+  margin: 4px 0 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text-muted, var(--muted));
+}
+
+.btn-confirm-danger {
+  background: var(--red, #f43f5e) !important;
+  border-color: var(--red, #f43f5e) !important;
+  color: #ffffff !important;
+}
+
+.btn-confirm-warning {
+  background: var(--amber, #f59e0b) !important;
+  border-color: var(--amber, #f59e0b) !important;
+  color: #000000 !important;
+}
+
+/* Compact Ledger Filter Bar */
+.ledger-filters-bar {
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.ledger-filters-bar .history-filter-field .field-label-text {
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  margin-bottom: 3px;
+}
+
+.ledger-filters-bar select,
+.ledger-filters-bar input[type="search"] {
+  min-height: 34px;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  font-size: 12.5px;
+}
+
+/* Global Optical Icon-to-Text Alignment & Screen Reader Utilities */
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+.inline-icon-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.inline-icon-wrap svg,
+.dashboard-remediation-chip svg,
+.credit-funding-card-pill svg,
+.source-pill svg,
+.chip-button svg,
+.subnav-tab svg,
+.primary-button svg,
+.ghost-button svg {
+  display: block;
+  flex-shrink: 0;
+}
+
+.dashboard-remediation-chip {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  line-height: 1.25 !important;
+  padding: 5px 10px !important;
+  border-radius: 7px !important;
+}
+
+.dashboard-remediation-chip > span {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* ==========================================================================
+   Modal Form Controls, Option Cards & Checkbox Alignment
+   ========================================================================== */
+dialog input[type="checkbox"],
+dialog input[type="radio"],
+.entry-form input[type="checkbox"],
+.entry-form input[type="radio"],
+.entry-form-modern input[type="checkbox"],
+.entry-form-modern input[type="radio"],
+.check-row input[type="checkbox"],
+.check-row input[type="radio"] {
+  width: 18px !important;
+  height: 18px !important;
+  min-width: 18px !important;
+  min-height: 18px !important;
+  max-width: 18px !important;
+  flex: 0 0 18px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  cursor: pointer;
+  accent-color: var(--brand-primary, #6366f1);
+}
+
+dialog label.check-row,
+.entry-form label.check-row,
+.entry-form-modern label.check-row,
+dialog label:has(> input[type="checkbox"]),
+dialog label:has(> input[type="radio"]) {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 10px !important;
+  width: 100% !important;
+  margin: 0 !important;
+  font-size: 13.5px !important;
+  font-weight: 600 !important;
+  color: var(--ink) !important;
+  line-height: 1.35 !important;
+  text-align: left !important;
+  cursor: pointer;
+}
+
+dialog label.check-row > span,
+.entry-form-modern label.check-row > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+
+dialog label:not(.check-row):not(.checkbox-label):not(.gist-sync-checkbox):not(:has(input[type="checkbox"])):not(:has(input[type="radio"])),
+.entry-form label:not(.check-row):not(.checkbox-label):not(.gist-sync-checkbox):not(:has(input[type="checkbox"])):not(:has(input[type="radio"])) {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-muted, #cbd5e1);
+  text-align: left;
+}
+
+[data-theme="light"] dialog label:not(.check-row):not(.checkbox-label):not(.gist-sync-checkbox):not(:has(input[type="checkbox"])):not(:has(input[type="radio"])),
+[data-theme="light"] .entry-form label:not(.check-row):not(.checkbox-label):not(.gist-sync-checkbox):not(:has(input[type="checkbox"])):not(:has(input[type="radio"])) {
+  color: var(--muted, #475569);
+}
+
+dialog input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+dialog select,
+.entry-form input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+.entry-form select {
+  height: 42px;
+  min-height: 42px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+  background-color: var(--bg-surface-elevated, #121316);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.25;
+  box-sizing: border-box;
+}
+
+[data-theme="light"] dialog input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+[data-theme="light"] dialog select,
+[data-theme="light"] .entry-form input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+[data-theme="light"] .entry-form select {
+  background-color: var(--surface-soft, #f8fafc);
+  border-color: var(--line, rgba(0, 0, 0, 0.12));
+}
+
+.entry-option-card {
+  padding: 12px 14px;
+  background: var(--bg-surface-elevated, rgba(255, 255, 255, 0.03));
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+[data-theme="light"] .entry-option-card {
+  background: var(--surface-soft, #f8fafc);
+  border-color: var(--line, rgba(0, 0, 0, 0.08));
+}
+
+.entry-option-card:hover {
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+
+

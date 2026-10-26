@@ -292,7 +292,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
               className="job-filter-select"
               aria-label="Filter projects by currency"
             >
-              <option value="all">🌐 All Currencies</option>
+              <option value="all">All Currencies</option>
               <option value="USD">USD ($)</option>
               <option value="EUR">EUR (€)</option>
               <option value="EGP">EGP (Local)</option>
@@ -307,8 +307,8 @@ export const JobsView: React.FC<JobsViewProps> = ({
               className="job-filter-select"
               aria-label="Sort projects by date"
             >
-              <option value="newest">📅 Newest Date</option>
-              <option value="oldest">📅 Oldest Date</option>
+              <option value="newest">Newest Date</option>
+              <option value="oldest">Oldest Date</option>
             </select>
           </div>
         </div>
@@ -827,7 +827,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
               id: 'shift',
               label: 'Remove Shift',
               sublabel: 'Deduct shift units from total days and recalculate project invoice.',
-              icon: '⏱️',
+              icon: 'calendar',
               required: true,
               defaultChecked: true,
             },
@@ -851,7 +851,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
               id: 'expense',
               label: 'Remove Expense',
               sublabel: 'Remove expense from project billing totals.',
-              icon: '🧾',
+              icon: 'receipt',
               required: true,
               defaultChecked: true,
             },
@@ -874,7 +874,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
               id: 'job',
               label: `Job Tracker (${deletePaymentTarget.job.title || deletePaymentTarget.job.client})`,
               sublabel: 'Remove payment from this job and recalculate remaining balance & status.',
-              icon: '💼',
+              icon: 'briefcase',
               defaultChecked: true,
             },
             ...(deletePaymentTarget.payment.entryId
@@ -883,7 +883,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
                     id: 'cashflow',
                     label: 'Cash Flow & Forecast Actuals',
                     sublabel: 'Deduct this payment from the linked Forecast / Cashflow entry actuals.',
-                    icon: '📊',
+                    icon: 'chart',
                     defaultChecked: true,
                   },
                 ]
@@ -924,7 +924,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
                   id: 'storage',
                   label: matchingStorage ? `Storage: ${assetName}` : `Bank Account: ${assetName}`,
                   sublabel: `Revert / deduct ${formatJobCurrency(deletePaymentTarget.payment.amount, deletePaymentTarget.payment.currency || deletePaymentTarget.job.currency)} from ${assetName}${currentQtyDesc}.`,
-                  icon: '🏦',
+                  icon: 'landmark',
                   defaultChecked: true,
                 },
               ];
@@ -964,7 +964,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
               id: 'job',
               label: 'Job Tracker Record',
               sublabel: 'Permanently remove this job from the Job Tracker.',
-              icon: '💼',
+              icon: 'briefcase',
               defaultChecked: true,
             },
             ...((deleteJobTarget.payments && deleteJobTarget.payments.length > 0) || deleteJobTarget.forecastEntryId
@@ -973,7 +973,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
                     id: 'cashEntries',
                     label: 'Linked Cash Flow & History Records',
                     sublabel: 'Delete all associated income records and forecast projections from Cash Flow & History.',
-                    icon: '🗑️',
+                    icon: 'trash',
                     defaultChecked: false,
                   },
                 ]

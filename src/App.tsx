@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { STORAGE_KEYS, useBudgetStore } from './store/useBudgetStore';
 import { useAppUpdateStatus } from './hooks/useAppUpdateStatus';
@@ -7,15 +7,15 @@ import { Topbar } from './components/Layout/Topbar';
 import { Sidebar } from './components/Layout/Sidebar';
 import { BottomNav } from './components/Layout/BottomNav';
 
-// 8 Views
+// Primary View (eager) + Secondary Views (lazy-loaded)
 import { DashboardView } from './components/Dashboard/DashboardView';
-import { DeficitsView } from './components/Deficits/DeficitsView';
-import { CashflowView } from './components/Cashflow/CashflowView';
-import { HistoryView } from './components/History/HistoryView';
-import { AccountsView } from './components/Accounts/AccountsView';
-import { StorageView } from './components/Storage/StorageView';
-import { JobsView } from './components/Jobs/JobsView';
-import { RatesView } from './components/Rates/RatesView';
+const DeficitsView = lazy(() => import('./components/Deficits/DeficitsView').then((m) => ({ default: m.DeficitsView })));
+const CashflowView = lazy(() => import('./components/Cashflow/CashflowView').then((m) => ({ default: m.CashflowView })));
+const HistoryView = lazy(() => import('./components/History/HistoryView').then((m) => ({ default: m.HistoryView })));
+const AccountsView = lazy(() => import('./components/Accounts/AccountsView').then((m) => ({ default: m.AccountsView })));
+const StorageView = lazy(() => import('./components/Storage/StorageView').then((m) => ({ default: m.StorageView })));
+const JobsView = lazy(() => import('./components/Jobs/JobsView').then((m) => ({ default: m.JobsView })));
+const RatesView = lazy(() => import('./components/Rates/RatesView').then((m) => ({ default: m.RatesView })));
 
 // Modals
 import { EntryModal } from './components/Modals/EntryModal';
@@ -30,12 +30,12 @@ import {
   JobForecastModal,
 } from './components/Modals/JobModals';
 import { RateModal } from './components/Modals/RateModal';
-import { DriveSyncModal } from './components/Modals/DriveSyncModal';
+const DriveSyncModal = lazy(() => import('./components/Modals/DriveSyncModal').then((m) => ({ default: m.DriveSyncModal })));
 import { SyncConflictModal } from './components/Modals/SyncConflictModal';
-import { DataToolsModal } from './components/Modals/DataToolsModal';
+const DataToolsModal = lazy(() => import('./components/Modals/DataToolsModal').then((m) => ({ default: m.DataToolsModal })));
 import { DeductAccountModal } from './components/Modals/DeductAccountModal';
 import { AccountTransferModal } from './components/Modals/AccountTransferModal';
-import { QuickAddModal } from './components/Modals/QuickAddModal';
+import { QuickAddModal, CommandPaletteModal } from './components/Modals/QuickAddModal';
 import { MobileActionSheet } from './components/Layout/MobileActionSheet';
 import { UndoToast } from './components/Common/UndoToast';
 import { DriveReconnectBanner } from './components/Common/DriveReconnectBanner';
@@ -72,7 +72,6 @@ export const App: React.FC = () => {
     }))
   );
 
-  const [tabConflictDetected, setTabConflictDetected] = useState(false);
   useHashRouting();
 
   // Modals state
@@ -84,6 +83,7 @@ export const App: React.FC = () => {
 
   const [loanModalOpen, setLoanModalOpen] = useState(false);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [storageModalOpen, setStorageModalOpen] = useState(false);
   const [installmentModalOpen, setInstallmentModalOpen] = useState(false);
   const [installmentToEdit, setInstallmentToEdit] = useState<Installment | null>(null);
@@ -367,29 +367,38 @@ export const App: React.FC = () => {
         return;
       }
 
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setCommandPaletteOpen((prev) => !prev);
+        return;
+      }
+
       // Don't trigger if user is typing in an input/textarea
       const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
       if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
       // Ignore auto-repeat and never fire app shortcuts while a modal is open.
       if (e.repeat) return;
-      if (document.querySelector('dialog.native-dialog[open]')) return;
+      if (document.querySelector('dialog[open]') || quickAddOpen || commandPaletteOpen) return;
 
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
         e.preventDefault();
         toggleSidebar();
-      } else if (e.key.toLowerCase() === 'e') {
+      } else if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === 'e') {
         e.preventDefault();
         setEntryModalType('expense');
         setEntryToEdit(null);
         setEntryModalOpen(true);
-      } else if (e.key.toLowerCase() === 'i') {
+      } else if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === 'i') {
         e.preventDefault();
         setEntryModalType('income');
         setEntryToEdit(null);
         setEntryModalOpen(true);
-      } else if (e.key.toLowerCase() === 'l') {
+      } else if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === 'l') {
         e.preventDefault();
         setLoanModalOpen(true);
+      } else if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === 't') {
+        e.preventDefault();
+        handleOpenTransferModal();
       } else if (e.key === '/') {
         e.preventDefault();
         if (activeTab === 'history') {
@@ -410,7 +419,7 @@ export const App: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [toggleSidebar, closeMobileSidebar, activeTab]);
+  }, [toggleSidebar, closeMobileSidebar, activeTab, quickAddOpen, commandPaletteOpen]);
 
   const handleOpenEntryModal = (type: 'expense' | 'income') => {
     setEntryModalType(type);
@@ -516,55 +525,6 @@ export const App: React.FC = () => {
 
   return (
     <>
-      {tabConflictDetected && (
-        <div style={{
-          background: 'var(--amber, #f59e0b)',
-          color: '#000',
-          padding: '8px 16px',
-          textAlign: 'center',
-          fontSize: '13px',
-          fontWeight: 600,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '12px',
-          zIndex: 9999,
-          position: 'sticky',
-          top: 0,
-        }}>
-          <span>⚠️ Data was updated in another browser tab.</span>
-          <button
-            type="button"
-            style={{
-              background: '#000',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '4px',
-              padding: '4px 10px',
-              fontSize: '12px',
-              cursor: 'pointer',
-              fontWeight: 600,
-            }}
-            onClick={() => window.location.reload()}
-          >
-            Reload to Sync
-          </button>
-          <button
-            type="button"
-            style={{
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: 'bold',
-            }}
-            onClick={() => setTabConflictDetected(false)}
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
       <Sidebar onOpenDriveSync={() => setDriveSyncOpen(true)} />
       <main className="app-shell has-bottom-nav">
         <Topbar
@@ -572,15 +532,30 @@ export const App: React.FC = () => {
           onOpenLoanModal={() => setLoanModalOpen(true)}
           onOpenDataTools={() => setDataToolsOpen(true)}
           onOpenDriveSync={() => setDriveSyncOpen(true)}
+          onOpenCommandPalette={() => setCommandPaletteOpen(true)}
         />
         <DriveReconnectBanner onOpenDriveSync={() => setDriveSyncOpen(true)} />
-        {renderActiveView()}
+        <Suspense fallback={null}>
+          {renderActiveView()}
+        </Suspense>
       </main>
 
       {/* Mobile Bottom Navigation Bar */}
       <BottomNav
         onOpenMobileMenu={() => setActionSheetOpen(true)}
         onOpenQuickAdd={() => setQuickAddOpen(true)}
+      />
+
+      {/* Global Command Palette (⌘K / Ctrl+K) */}
+      <CommandPaletteModal
+        isOpen={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        onOpenExpense={() => handleOpenEntryModal('expense')}
+        onOpenIncome={() => handleOpenEntryModal('income')}
+        onOpenTransfer={() => handleOpenTransferModal()}
+        onOpenLoan={() => setLoanModalOpen(true)}
+        onOpenDataTools={() => setDataToolsOpen(true)}
+        onOpenDriveSync={() => setDriveSyncOpen(true)}
       />
 
       {/* Quick Add Bottom Sheet */}
@@ -667,17 +642,22 @@ export const App: React.FC = () => {
         onClose={() => setRateModalOpen(false)}
       />
 
-      <DriveSyncModal
-        isOpen={driveSyncOpen}
-        onClose={() => setDriveSyncOpen(false)}
-      />
+      <Suspense fallback={null}>
+        {driveSyncOpen && (
+          <DriveSyncModal
+            isOpen={driveSyncOpen}
+            onClose={() => setDriveSyncOpen(false)}
+          />
+        )}
+        {dataToolsOpen && (
+          <DataToolsModal
+            isOpen={dataToolsOpen}
+            onClose={() => setDataToolsOpen(false)}
+          />
+        )}
+      </Suspense>
 
       <SyncConflictModal />
-
-      <DataToolsModal
-        isOpen={dataToolsOpen}
-        onClose={() => setDataToolsOpen(false)}
-      />
 
       <DeductAccountModal
         isOpen={deductModalOpen}

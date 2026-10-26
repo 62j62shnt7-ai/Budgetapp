@@ -336,12 +336,6 @@ export function saveStoredDriveToken(token: string, expiresInSeconds: number): v
   const expiry = Date.now() + Math.max(0, (expiresInSeconds - 60) * 1000);
   saveStorage(GDRIVE_TOKEN_KEY, token);
   saveStorage(GDRIVE_TOKEN_EXPIRY_KEY, expiry);
-  if (typeof localStorage !== 'undefined') {
-    try {
-      localStorage.setItem(GDRIVE_TOKEN_KEY, token);
-      localStorage.setItem(GDRIVE_TOKEN_EXPIRY_KEY, String(expiry));
-    } catch {}
-  }
   scheduleProactiveTokenRefresh(expiresInSeconds);
 }
 
