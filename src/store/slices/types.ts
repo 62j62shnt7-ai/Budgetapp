@@ -208,7 +208,7 @@ export interface SyncSlice {
 
   // Storage Lifecycle
   isStorageReady: boolean;
-  initStorage: () => Promise<void>;
+  initStorage: (force?: boolean) => Promise<void>;
 }
 
 export type BudgetStoreState = UISlice &

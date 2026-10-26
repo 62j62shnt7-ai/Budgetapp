@@ -361,7 +361,7 @@ export class SyncEngine {
       } else if (isRevisionConflict || isTimestampMismatch) {
         // True Divergence Conflict!
         console.warn('[syncEngine] True conflict detected! Remote changed while local had unsynced edits.');
-        await this.performPush(state, startMutationCount, false);
+        await this.performPush(state, startMutationCount, false, 0, true);
         return;
       }
 
@@ -380,7 +380,7 @@ export class SyncEngine {
     }
   }
 
-  private async performPush(state: BudgetStoreState, startMutationCount: number, forceOverwrite: boolean, retryCount = 0): Promise<void> {
+  private async performPush(state: BudgetStoreState, startMutationCount: number, forceOverwrite: boolean, retryCount = 0, isConflict = false): Promise<void> {
     const freshState = this.getState();
     const rawExport = freshState.exportJSON();
     const parsed = JSON.parse(rawExport);
@@ -399,7 +399,7 @@ export class SyncEngine {
 
     const res: GoogleDriveSyncResult = await uploadBudgetToDrive(payloadObj, {
       isUserEdit: true,
-      expectedModifiedTime: forceOverwrite ? undefined : (freshState.lastDriveSyncTime || undefined),
+      expectedModifiedTime: forceOverwrite ? undefined : (isConflict ? (freshState.lastDriveSyncTime || 'diverged-remote-detected') : (freshState.lastDriveSyncTime || undefined)),
       forceOverwrite,
       localHash: contentHash,
     });
@@ -583,7 +583,7 @@ export class SyncEngine {
 
     beginRemoteApply();
     try {
-      await this.getState().initStorage();
+      await this.getState().initStorage(true);
     } finally {
       endRemoteApply();
     }

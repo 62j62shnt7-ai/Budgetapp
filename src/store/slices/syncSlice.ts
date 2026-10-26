@@ -302,33 +302,35 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => {
     }
     if (!backup) return false;
     try {
-      const restored: BudgetFinancialSnapshot = {
-        salaryPattern: (backup.salaryPattern as SalaryPayment[]) || defaultSalaryPattern,
-        salaryAnchorMonth: (backup.salaryAnchorMonth as string) || DateUtils.currentYearMonth(),
-        entries: (backup.cashEntries as CashEntry[]) || [],
-        installments: (backup.installments as Installment[]) || [],
-        storageAssets: (backup.storageAssets as StorageAsset[]) || [],
-        accounts: withoutCashAccount((backup.accountBalances as Record<string, AccountBalance>) || defaultAccounts),
-        partTimeJobs: (backup.partTimeJobs as JobItem[]) || [],
-        rates: (backup.ratesData as RatesData) || defaultRates,
-        creditDues: (backup.creditDues as Record<string, Record<string, number>>) || {},
-        creditDueMonths: (backup.creditDueMonths as Record<string, string[]>) || {},
-        entryActuals: (backup.entryActuals as Record<string, number>) || {},
-        entryActualDates: (backup.entryActualDates as Record<string, string>) || {},
-        deletedForecasts: (backup.deletedForecasts as string[]) || [],
-        creditSettlementOverrides: (backup.creditSettlementOverrides as Record<string, CreditSettlementOverride>) || {},
-        archivedEntries: (backup.archivedEntries as CashEntry[]) || [],
-      };
-      persistFinancialSnapshot(restored);
-      void removeStorage(STORAGE_KEYS.resetBackup);
-      if (typeof localStorage !== 'undefined') {
-        try {
-          localStorage.removeItem(STORAGE_KEYS.resetBackup);
-        } catch {}
-      }
-      set(restored);
-      scheduleAutoDriveSync(get);
-      return true;
+      return get().runTransaction('Restore Reset Backup', () => {
+        const restored: BudgetFinancialSnapshot = {
+          salaryPattern: (backup.salaryPattern as SalaryPayment[]) || defaultSalaryPattern,
+          salaryAnchorMonth: (backup.salaryAnchorMonth as string) || DateUtils.currentYearMonth(),
+          entries: upgradeLoadedEntries((backup.cashEntries as CashEntry[]) || []),
+          installments: (backup.installments as Installment[]) || [],
+          storageAssets: (backup.storageAssets as StorageAsset[]) || [],
+          accounts: withoutCashAccount((backup.accountBalances as Record<string, AccountBalance>) || defaultAccounts),
+          partTimeJobs: (backup.partTimeJobs as JobItem[]) || [],
+          rates: (backup.ratesData as RatesData) || defaultRates,
+          creditDues: (backup.creditDues as Record<string, Record<string, number>>) || {},
+          creditDueMonths: (backup.creditDueMonths as Record<string, string[]>) || {},
+          entryActuals: (backup.entryActuals as Record<string, number>) || {},
+          entryActualDates: (backup.entryActualDates as Record<string, string>) || {},
+          deletedForecasts: (backup.deletedForecasts as string[]) || [],
+          creditSettlementOverrides: (backup.creditSettlementOverrides as Record<string, CreditSettlementOverride>) || {},
+          archivedEntries: upgradeLoadedEntries((backup.archivedEntries as CashEntry[]) || []),
+        };
+        persistFinancialSnapshot(restored);
+        void removeStorage(STORAGE_KEYS.resetBackup);
+        if (typeof localStorage !== 'undefined') {
+          try {
+            localStorage.removeItem(STORAGE_KEYS.resetBackup);
+          } catch {}
+        }
+        set(restored);
+        scheduleAutoDriveSync(get);
+        return true;
+      });
     } catch (error) {
       console.error('Failed to restore reset backup:', error);
       return false;
@@ -347,33 +349,35 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => {
     }
     if (!backup) return false;
     try {
-      const restored: BudgetFinancialSnapshot = {
-        salaryPattern: (backup.salaryPattern as SalaryPayment[]) || defaultSalaryPattern,
-        salaryAnchorMonth: (backup.salaryAnchorMonth as string) || DateUtils.currentYearMonth(),
-        entries: (backup.entries as CashEntry[]) || [],
-        installments: (backup.installments as Installment[]) || [],
-        storageAssets: (backup.storageAssets as StorageAsset[]) || [],
-        accounts: withoutCashAccount((backup.accounts as Record<string, AccountBalance>) || defaultAccounts),
-        partTimeJobs: (backup.partTimeJobs as JobItem[]) || [],
-        rates: (backup.rates as RatesData) || defaultRates,
-        creditDues: (backup.creditDues as Record<string, Record<string, number>>) || {},
-        creditDueMonths: (backup.creditDueMonths as Record<string, string[]>) || {},
-        entryActuals: (backup.entryActuals as Record<string, number>) || {},
-        entryActualDates: (backup.entryActualDates as Record<string, string>) || {},
-        deletedForecasts: (backup.deletedForecasts as string[]) || [],
-        creditSettlementOverrides: (backup.creditSettlementOverrides as Record<string, CreditSettlementOverride>) || {},
-        archivedEntries: (backup.archivedEntries as CashEntry[]) || [],
-      };
-      persistFinancialSnapshot(restored);
-      void removeStorage(STORAGE_KEYS.importUndoBackup);
-      if (typeof localStorage !== 'undefined') {
-        try {
-          localStorage.removeItem(STORAGE_KEYS.importUndoBackup);
-        } catch {}
-      }
-      set(restored);
-      scheduleAutoDriveSync(get);
-      return true;
+      return get().runTransaction('Undo Data Import', () => {
+        const restored: BudgetFinancialSnapshot = {
+          salaryPattern: (backup.salaryPattern as SalaryPayment[]) || defaultSalaryPattern,
+          salaryAnchorMonth: (backup.salaryAnchorMonth as string) || DateUtils.currentYearMonth(),
+          entries: upgradeLoadedEntries((backup.entries as CashEntry[]) || []),
+          installments: (backup.installments as Installment[]) || [],
+          storageAssets: (backup.storageAssets as StorageAsset[]) || [],
+          accounts: withoutCashAccount((backup.accounts as Record<string, AccountBalance>) || defaultAccounts),
+          partTimeJobs: (backup.partTimeJobs as JobItem[]) || [],
+          rates: (backup.rates as RatesData) || defaultRates,
+          creditDues: (backup.creditDues as Record<string, Record<string, number>>) || {},
+          creditDueMonths: (backup.creditDueMonths as Record<string, string[]>) || {},
+          entryActuals: (backup.entryActuals as Record<string, number>) || {},
+          entryActualDates: (backup.entryActualDates as Record<string, string>) || {},
+          deletedForecasts: (backup.deletedForecasts as string[]) || [],
+          creditSettlementOverrides: (backup.creditSettlementOverrides as Record<string, CreditSettlementOverride>) || {},
+          archivedEntries: upgradeLoadedEntries((backup.archivedEntries as CashEntry[]) || []),
+        };
+        persistFinancialSnapshot(restored);
+        void removeStorage(STORAGE_KEYS.importUndoBackup);
+        if (typeof localStorage !== 'undefined') {
+          try {
+            localStorage.removeItem(STORAGE_KEYS.importUndoBackup);
+          } catch {}
+        }
+        set(restored);
+        scheduleAutoDriveSync(get);
+        return true;
+      });
     } catch (err) {
       console.error('Failed to undo import:', err);
       return false;
@@ -381,13 +385,15 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => {
   },
 
   isStorageReady: false,
-  initStorage: async () => {
-    if (get().isStorageReady) return;
-    if (initStoragePromise) return initStoragePromise;
+  initStorage: async (force = false) => {
+    if (get().isStorageReady && !force) return;
+    if (initStoragePromise && !force) return initStoragePromise;
 
     const promise = (async () => {
       try {
-        await migrateFromLocalStorageIfNeeded(STORAGE_KEYS);
+        if (!get().isStorageReady) {
+          await migrateFromLocalStorageIfNeeded(STORAGE_KEYS);
+        }
         const keysToLoad = Object.values(STORAGE_KEYS);
         const [storedData, undoData] = await Promise.all([
           loadAllFromIndexedDB(keysToLoad),

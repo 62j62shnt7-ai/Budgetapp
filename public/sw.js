@@ -65,7 +65,11 @@ self.addEventListener('fetch', (event) => {
         .catch(async () => {
           const cached = await caches.match(event.request);
           if (cached) return cached;
-          const fallback = await caches.match('/');
+          const scope = self.registration?.scope || '/';
+          const fallback =
+            (await caches.match(scope)) ||
+            (await caches.match(`${scope}index.html`)) ||
+            (await caches.match('/'));
           if (fallback) return fallback;
           return new Response('Offline - Budget Control', {
             status: 503,

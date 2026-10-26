@@ -30,6 +30,15 @@ import type { CreditDueFundingAlert } from '../../types';
 
 import { useForecastCandidates } from '../../hooks/useForecastCandidates';
 
+const RatesLastUpdatedBadge: React.FC<{ lastFetched?: string | null }> = ({ lastFetched }) => {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setTick((t) => t + 1), 30000);
+    return () => clearInterval(timer);
+  }, []);
+  return <>{formatLastUpdated(lastFetched || undefined)}</>;
+};
+
 interface DashboardViewProps {
   onOpenTransferModal?: (from?: string, to?: string, amount?: number, reason?: string) => void;
 }
@@ -77,16 +86,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
     hasDeficit,
   } = useForecastCandidates(forecastRangeMonths);
 
-
-  // Periodic ticker so relative timestamps ("Just now", "5m ago") stay fresh in real-time
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    const timer = setInterval(() => setTick((t) => t + 1), 30000);
-    return () => clearInterval(timer);
-  }, []);
-
   // Financial calculations
-  const storageTotal = computeTotalStorageValue(storageAssets, rates);
+  const storageTotal = React.useMemo(() => computeTotalStorageValue(storageAssets, rates), [storageAssets, rates]);
   const netWorth = totalCash + storageTotal;
 
   const storageChange = (() => {
@@ -879,7 +880,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
                 }}
                 title={`Last pulled: ${new Date(rates.lastFetched).toLocaleString()}`}
               >
-                {formatLastUpdated(rates.lastFetched)}
+                <RatesLastUpdatedBadge lastFetched={rates.lastFetched} />
               </span>
             )}
           </div>

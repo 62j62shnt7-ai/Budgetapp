@@ -155,6 +155,7 @@ export const App: React.FC = () => {
       STORAGE_KEYS.storage,
       STORAGE_KEYS.accounts,
       STORAGE_KEYS.partTimeJobs,
+      STORAGE_KEYS.rates,
       STORAGE_KEYS.creditDues,
       STORAGE_KEYS.creditDueMonths,
       STORAGE_KEYS.creditSettlementOverrides,
@@ -194,6 +195,8 @@ export const App: React.FC = () => {
     const RATES_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
     let lastBackgroundCheckTime = 0;
     let lastRatesFetchTime = 0;
+    let hasPendingInteractionListener = false;
+    let cleanupPendingInteraction: (() => void) | null = null;
 
     const fetchRates = async (force = false) => {
       if (!navigator.onLine) return;
@@ -226,15 +229,24 @@ export const App: React.FC = () => {
       if (driveUser && !driveToken) {
         // Pre-warm GIS client for immediate synchronous activation on user gesture
         void preWarmGisTokenClient();
-        const onFirstInteraction = () => {
-          window.removeEventListener('click', onFirstInteraction, true);
-          window.removeEventListener('keydown', onFirstInteraction, true);
-          if (!getStoredDriveToken()) {
-            requestSilentTokenOnUserGesture();
-          }
-        };
-        window.addEventListener('click', onFirstInteraction, { capture: true, once: true });
-        window.addEventListener('keydown', onFirstInteraction, { capture: true, once: true });
+        if (!hasPendingInteractionListener) {
+          hasPendingInteractionListener = true;
+          const onFirstInteraction = () => {
+            hasPendingInteractionListener = false;
+            cleanupPendingInteraction = null;
+            window.removeEventListener('click', onFirstInteraction, true);
+            window.removeEventListener('keydown', onFirstInteraction, true);
+            if (!getStoredDriveToken()) {
+              requestSilentTokenOnUserGesture();
+            }
+          };
+          cleanupPendingInteraction = () => {
+            window.removeEventListener('click', onFirstInteraction, true);
+            window.removeEventListener('keydown', onFirstInteraction, true);
+          };
+          window.addEventListener('click', onFirstInteraction, { capture: true, once: true });
+          window.addEventListener('keydown', onFirstInteraction, { capture: true, once: true });
+        }
 
         const state = useBudgetStore.getState();
         if (state.driveSyncStatus !== 'expired') {
@@ -303,20 +315,30 @@ export const App: React.FC = () => {
       }
     };
 
+    const onPageUnload = () => {
+      flushPendingDriveSyncNow(() => useBudgetStore.getState());
+    };
+
     window.addEventListener('budget-drive-token-refreshed', onTokenRefreshed);
     window.addEventListener('budget-drive-token-failed', onTokenFailed);
     window.addEventListener('online', onOnline);
-    window.addEventListener('pagehide', () => flushPendingDriveSyncNow(() => useBudgetStore.getState()));
-    window.addEventListener('beforeunload', () => flushPendingDriveSyncNow(() => useBudgetStore.getState()));
+    window.addEventListener('pagehide', onPageUnload);
+    window.addEventListener('beforeunload', onPageUnload);
     window.addEventListener('focus', onTabReactivated);
     document.addEventListener('visibilitychange', onVisibilityChange);
 
     return () => {
       isMounted = false;
       clearInterval(pollInterval);
+      if (cleanupPendingInteraction) {
+        cleanupPendingInteraction();
+        cleanupPendingInteraction = null;
+      }
       window.removeEventListener('budget-drive-token-refreshed', onTokenRefreshed);
       window.removeEventListener('budget-drive-token-failed', onTokenFailed);
       window.removeEventListener('online', onOnline);
+      window.removeEventListener('pagehide', onPageUnload);
+      window.removeEventListener('beforeunload', onPageUnload);
       window.removeEventListener('focus', onTabReactivated);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
