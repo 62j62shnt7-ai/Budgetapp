@@ -11,7 +11,7 @@ import type {
 } from '../types';
 import { DateUtils } from './dateUtils';
 import { inferTag } from './tags';
-import { defaultRates as currencyDefaultRates, inferAssetLocation, normalizeCurrencyCode } from './currency';
+import { defaultRates as currencyDefaultRates, getEffectiveEgpAmount, inferAssetLocation, normalizeCurrencyCode } from './currency';
 
 export interface MigratedBudgetDataset {
   schemaVersion: string;
@@ -165,16 +165,24 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
   const rawEntries = data.cashEntries || data.entries || data.items || parsed.cashEntries || parsed.entries || [];
   const entries: CashEntry[] = (Array.isArray(rawEntries) ? rawEntries : []).map((rawItem: unknown, idx: number) => {
     const e = (rawItem && typeof rawItem === 'object' ? rawItem : {}) as Record<string, unknown>;
+    const currency = normalizeCurrencyCode(typeof e.currency === 'string' ? e.currency : undefined) || 'EGP';
+    const rawAmount = parseMoneyValue(e.amount) ?? 0;
+    const origAmount = parseMoneyValue(e.originalAmount);
+    const fxRateAtEntry = parseMoneyValue(e.fxRateAtEntry);
+    const amount =
+      currency !== 'EGP' && origAmount !== undefined
+        ? getEffectiveEgpAmount({ amount: rawAmount, originalAmount: origAmount, currency, fxRateAtEntry })
+        : rawAmount;
     return {
       ...(e as unknown as Partial<CashEntry>),
       id: typeof e.id === 'string' && e.id ? e.id : `entry-${Date.now()}-${idx}`,
       date: typeof e.date === 'string' && e.date.length >= 10 ? e.date.slice(0, 10) : DateUtils.todayString(),
-      amount: parseMoneyValue(e.amount) ?? 0,
+      amount,
       type: (e.type === 'income' ? 'income' : 'expense') as 'income' | 'expense',
       category: typeof e.category === 'string' ? e.category : 'General',
       account: e.account === 'cash' ? 'cib' : (typeof e.account === 'string' ? e.account : 'cib'),
       tag: typeof e.tag === 'string' ? e.tag : (inferTag(e as unknown as CashEntry) || ''),
-      currency: normalizeCurrencyCode(typeof e.currency === 'string' ? e.currency : undefined) || 'EGP',
+      currency,
       actualAmount: parseMoneyValue(e.actualAmount),
       actualDate: typeof e.actualDate === 'string' ? e.actualDate.slice(0, 10) : undefined,
       splitCount: typeof e.splitCount === 'number' ? e.splitCount : undefined,
@@ -187,16 +195,24 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
   const rawArchived = data.archivedEntries || parsed.archivedEntries || [];
   const archivedEntries: CashEntry[] = (Array.isArray(rawArchived) ? rawArchived : []).map((rawItem: unknown, idx: number) => {
     const e = (rawItem && typeof rawItem === 'object' ? rawItem : {}) as Record<string, unknown>;
+    const currency = normalizeCurrencyCode(typeof e.currency === 'string' ? e.currency : undefined) || 'EGP';
+    const rawAmount = parseMoneyValue(e.amount) ?? 0;
+    const origAmount = parseMoneyValue(e.originalAmount);
+    const fxRateAtEntry = parseMoneyValue(e.fxRateAtEntry);
+    const amount =
+      currency !== 'EGP' && origAmount !== undefined
+        ? getEffectiveEgpAmount({ amount: rawAmount, originalAmount: origAmount, currency, fxRateAtEntry })
+        : rawAmount;
     return {
       ...(e as unknown as Partial<CashEntry>),
       id: typeof e.id === 'string' && e.id ? e.id : `archived-${Date.now()}-${idx}`,
       date: typeof e.date === 'string' && e.date.length >= 10 ? e.date.slice(0, 10) : DateUtils.todayString(),
-      amount: parseMoneyValue(e.amount) ?? 0,
+      amount,
       type: (e.type === 'income' ? 'income' : 'expense') as 'income' | 'expense',
       category: typeof e.category === 'string' ? e.category : 'General',
       account: e.account === 'cash' ? 'cib' : (typeof e.account === 'string' ? e.account : 'cib'),
-      currency: normalizeCurrencyCode(typeof e.currency === 'string' ? e.currency : undefined) || 'EGP',
-      actualAmount: parseMoneyValue(e.actualAmount) ?? parseMoneyValue(e.amount) ?? 0,
+      currency,
+      actualAmount: parseMoneyValue(e.actualAmount) ?? amount,
       archivedAt: typeof e.archivedAt === 'string' ? e.archivedAt : new Date().toISOString(),
     };
   });

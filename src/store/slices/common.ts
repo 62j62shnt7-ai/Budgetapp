@@ -6,7 +6,7 @@ import type {
   BudgetFinancialSnapshot,
   UndoableAction,
 } from '../../types';
-import { getCurrencyRateOr } from '../../engine/currency';
+import { getCurrencyRateOr, getEffectiveEgpAmount, normalizeCurrencyCode } from '../../engine/currency';
 import { inferTag } from '../../engine/tags';
 import { isCreditCardExpense } from '../../engine/creditCards';
 import { isLoanInflow } from '../../engine/forecast';
@@ -454,9 +454,21 @@ export function upgradeLoadedEntries(rawEntries: CashEntry[]): CashEntry[] {
       nextDraws = undefined;
     }
 
-    if (tag !== entry.tag || nextAccount !== entry.account || nextDraws !== entry.draws) {
+    const normCurrency = normalizeCurrencyCode(entry.currency) || 'EGP';
+    const nextAmount =
+      normCurrency !== 'EGP' && entry.originalAmount !== undefined && entry.originalAmount !== null
+        ? getEffectiveEgpAmount(entry)
+        : entry.amount;
+
+    if (
+      tag !== entry.tag ||
+      nextAccount !== entry.account ||
+      nextDraws !== entry.draws ||
+      nextAmount !== entry.amount
+    ) {
       return {
         ...entry,
+        amount: nextAmount,
         tag,
         account: nextAccount,
         draws: nextDraws,

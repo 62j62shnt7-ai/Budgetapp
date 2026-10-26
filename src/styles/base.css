@@ -66,27 +66,18 @@
   --table-hover-bg: rgba(255, 255, 255, 0.03);
 }
 
-* {
-  box-sizing: border-box;
-}
-
 body {
   margin: 0;
-  min-height: 100vh;
   display: grid;
   grid-template-columns: 260px 1fr;
   color: var(--ink);
   background: var(--bg);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   transition: background-color 0.25s ease, color 0.25s ease, grid-template-columns 0.22s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
 }
 
-#root {
-  display: contents;
-}
-
 /* Ambient Subtle Lighting Background Layer */
+
 body::before {
   content: "";
   position: fixed;
@@ -112,6 +103,7 @@ body::before {
 }
 
 /* High-Precision Tabular Numerics for Financial Alignments */
+
 .metric strong,
 .summary-block strong,
 .number,
@@ -369,19 +361,8 @@ body.sidebar-collapsed .sidebar-open-btn {
 
 .nav-item {
   width: 100%;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  padding: 10px 14px;
-  color: var(--muted);
   background: transparent;
   text-align: left;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 14px;
-  font-weight: 500;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   position: relative;
 }
 
@@ -395,8 +376,6 @@ body.sidebar-collapsed .sidebar-open-btn {
 }
 
 .nav-item:hover {
-  color: var(--ink);
-  background: var(--sidebar-item-hover-bg, rgba(255, 255, 255, 0.06));
   transform: translateX(2px);
 }
 
@@ -406,8 +385,6 @@ body.sidebar-collapsed .sidebar-open-btn {
 }
 
 .nav-item.active {
-  color: var(--sidebar-active-color, #818cf8);
-  background: var(--sidebar-active-bg, rgba(99, 102, 241, 0.15));
   border: 1px solid var(--sidebar-active-border, rgba(99, 102, 241, 0.3));
   box-shadow: inset 0 1px 1px 0 rgba(255, 255, 255, 0.15), 0 4px 14px rgba(0, 0, 0, 0.2);
 }
@@ -475,7 +452,6 @@ body.sidebar-collapsed .sidebar-open-btn {
 }
 
 .app-shell {
-  min-width: 0;
   padding: 24px;
 }
 
@@ -544,7 +520,6 @@ body.sidebar-collapsed .sidebar-open-btn {
   color: #ffffff;
   background: linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%);
   border: 1px solid rgba(255, 255, 255, 0.2);
-  box-shadow: inset 0 1px 1px 0 rgba(255, 255, 255, 0.25), 0 4px 14px rgba(59, 130, 246, 0.3);
 }
 
 .primary-button:hover {
@@ -686,13 +661,6 @@ body.sidebar-collapsed .sidebar-open-btn {
   }
 }
 
-.metrics-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
-  margin-bottom: 18px;
-}
-
 .cashflow-view {
   padding-top: 12px;
 }
@@ -766,16 +734,6 @@ body.sidebar-collapsed .sidebar-open-btn {
   -webkit-backdrop-filter: var(--glass-blur);
   box-shadow: var(--glass-rim), var(--glass-shadow);
   transition: background-color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.metric {
-  padding: 18px;
-}
-
-.metric:hover {
-  transform: translateY(-3px);
-  box-shadow: var(--glass-rim), 0 18px 36px -6px rgba(0, 0, 0, 0.12);
-  border-color: rgba(99, 102, 241, 0.3);
 }
 
 [data-theme="dark"] .metric:hover {
@@ -855,10 +813,6 @@ body.sidebar-collapsed .sidebar-open-btn {
 }
 
 .panel-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 14px;
   margin-bottom: 16px;
   min-width: 0;
 }
@@ -876,6 +830,7 @@ body.sidebar-collapsed .sidebar-open-btn {
 }
 
 /* Progress bar components for Category Caps & Savings Goals */
+
 .progress-container {
   display: grid;
   gap: 6px;
@@ -901,7 +856,6 @@ body.sidebar-collapsed .sidebar-open-btn {
   height: 100%;
   border-radius: 999px;
   background: var(--green);
-  transition: width 0.3s ease, background-color 0.3s ease;
 }
 
 .progress-bar-fill.amber {
@@ -1658,11 +1612,6 @@ tr.history-admin-row:hover {
   border-radius: 12px;
 }
 
-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
 th,
 td {
   padding: 12px 10px;
@@ -1670,14 +1619,6 @@ td {
   text-align: left;
   vertical-align: middle;
   white-space: nowrap;
-}
-
-th {
-  color: var(--muted);
-  font-size: 11.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-weight: 700;
 }
 
 @media (min-width: 769px) {
@@ -1927,6 +1868,7 @@ input:focus {
   background: #d1fae5;
   border-color: #a7f3d0;
 }
+
 [data-theme="dark"] .subcat-tag-pill.subcat-food {
   color: #6ee7b7;
   background: #064e3b;
@@ -1938,6 +1880,7 @@ input:focus {
   background: #fef3c7;
   border-color: #fde68a;
 }
+
 [data-theme="dark"] .subcat-tag-pill.subcat-bills {
   color: #fcd34d;
   background: #78350f;
@@ -1948,11 +1891,13 @@ input:focus {
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
 }
+
 .subcat-tag-pill[data-tag-filter-click]:hover {
   transform: translateY(-1px);
   filter: brightness(0.95);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
 }
+
 [data-theme="dark"] .subcat-tag-pill[data-tag-filter-click]:hover {
   filter: brightness(1.25);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
@@ -2935,10 +2880,6 @@ label {
     gap: 12px;
   }
 
-  .job-kpi-card {
-    padding: 14px 16px;
-  }
-
   .jobs-expanded-details {
     display: flex;
     flex-direction: column;
@@ -3003,19 +2944,19 @@ label {
     border-top: 1px dashed var(--line);
   }
 
-  @media (max-width: 1050px) {
+@media (max-width: 1050px) {
     .jobs-expanded-details {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }
 
-  @media (max-width: 900px) {
+@media (max-width: 900px) {
     .jobs-expanded-details {
       grid-template-columns: 1fr;
     }
   }
 
-  @media (max-width: 680px) {
+@media (max-width: 680px) {
     .jobs-toolbar {
       align-items: stretch !important;
       padding: 10px !important;
@@ -3074,6 +3015,7 @@ label {
 }
 
 /* --- Gist Cloud Sync Pill & Styles --- */
+
 .sync-pill {
   display: inline-flex;
   align-items: center;
@@ -3128,6 +3070,7 @@ label {
 }
 
 /* --- Financial Health & Smart Insights --- */
+
 .dashboard-advisory-grid {
   grid-template-columns: 1fr 1.6fr;
 }
@@ -3495,15 +3438,14 @@ label {
 }
 
 /* Sub-navigation Tabs */
+
 .subnav-tabs {
-  display: inline-flex;
   background: var(--glass-bg-soft);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   padding: 4px;
   border-radius: 12px;
   border: 1px solid var(--glass-border-subtle);
-  gap: 4px;
 }
 
 .subnav-tab {
@@ -3709,6 +3651,7 @@ label {
 /* ==========================================================================
    Forecast Line Chart & Trajectory Styles
    ========================================================================== */
+
 .panel-full-width {
   grid-column: 1 / -1;
   width: 100%;
@@ -3886,6 +3829,7 @@ label {
 }
 
 /* KPI Summary Cards */
+
 .forecast-kpi-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -3939,6 +3883,7 @@ label {
 }
 
 /* SVG Chart Container & Tooltip */
+
 .forecast-chart-container {
   position: relative;
   width: 100%;
@@ -4048,6 +3993,7 @@ label {
 }
 
 /* "Can I Spend X?" Simulator Styles */
+
 .forecast-sim-bar {
   display: flex;
   flex-wrap: wrap;
@@ -4165,201 +4111,23 @@ label {
     grid-template-columns: 1fr;
   }
 
-  .forecast-line-heading {
-    flex-direction: column;
-    align-items: flex-start;
-  }
   .forecast-toolbar {
-    width: 100%;
     justify-content: space-between;
   }
+
   .forecast-sim-bar {
-    flex-direction: column;
     align-items: stretch;
   }
-  .forecast-kpi-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
+
   .forecast-line-svg-wrap {
     height: 320px;
   }
 }
 
 /* --- Credit Due Dual-Month Metric Card Styles --- */
-.credit-dual-metric {
-  position: relative;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  border-radius: 14px !important;
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  padding: 16px 18px !important;
-}
-
-.credit-dual-metric.cib-metric-card {
-  background: linear-gradient(155deg, rgba(6, 182, 212, 0.12) 0%, rgba(18, 18, 24, 0.85) 50%, rgba(10, 10, 14, 0.95) 100%) !important;
-  border: 1px solid rgba(6, 182, 212, 0.25) !important;
-}
-
-.credit-dual-metric.cib-metric-card:hover {
-  border-color: rgba(6, 182, 212, 0.5) !important;
-  box-shadow: var(--glass-rim), 0 16px 36px -6px rgba(6, 182, 212, 0.22) !important;
-  transform: translateY(-2px);
-}
-
-.credit-dual-metric.hsbc-metric-card {
-  background: linear-gradient(155deg, rgba(244, 63, 94, 0.12) 0%, rgba(24, 18, 22, 0.85) 50%, rgba(14, 10, 12, 0.95) 100%) !important;
-  border: 1px solid rgba(244, 63, 94, 0.25) !important;
-}
-
-.credit-dual-metric.hsbc-metric-card:hover {
-  border-color: rgba(244, 63, 94, 0.5) !important;
-  box-shadow: var(--glass-rim), 0 16px 36px -6px rgba(244, 63, 94, 0.22) !important;
-  transform: translateY(-2px);
-}
-
-.credit-dual-metric .metric-header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-}
-
-.credit-card-title {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--ink);
-  letter-spacing: -0.01em;
-}
-
-.credit-card-icon.cib {
-  color: #06b6d4;
-  filter: drop-shadow(0 0 6px rgba(6, 182, 212, 0.4));
-}
-
-.credit-card-icon.hsbc {
-  color: #f43f5e;
-  filter: drop-shadow(0 0 6px rgba(244, 63, 94, 0.4));
-}
-
-.credit-metric-badge {
-  display: inline-flex;
-  align-items: center;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 3px 9px;
-  border-radius: 20px;
-  background: rgba(56, 189, 248, 0.12);
-  color: #38bdf8;
-  border: 1px solid rgba(56, 189, 248, 0.25);
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-}
-
-.credit-metric-badge.urgent {
-  background: rgba(244, 63, 94, 0.16) !important;
-  color: #fb7185 !important;
-  border-color: rgba(244, 63, 94, 0.35) !important;
-  box-shadow: 0 0 10px rgba(244, 63, 94, 0.2);
-}
-
-.credit-metric-badge.settled {
-  background: rgba(16, 185, 129, 0.14) !important;
-  color: #34d399 !important;
-  border-color: rgba(16, 185, 129, 0.3) !important;
-}
-
-.credit-amount-hero {
-  margin: 6px 0 10px;
-  display: flex;
-  flex-direction: column;
-}
-
-.credit-amount-value {
-  font-size: 1.85rem !important;
-  line-height: 1.15;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-}
-
-.credit-amount-sublabel {
-  font-size: 11.5px;
-  color: var(--muted);
-  font-weight: 500;
-  margin-top: 3px;
-}
-
-.credit-sub-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-top: 4px;
-  padding-top: 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.credit-sub-item {
-  display: flex;
-  flex-direction: column;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 9px;
-  padding: 6px 10px;
-  min-width: 0;
-  transition: background 0.2s ease, border-color 0.2s ease;
-}
-
-.credit-sub-item.is-due {
-  background: rgba(244, 63, 94, 0.06);
-  border-color: rgba(244, 63, 94, 0.2);
-}
-
-.credit-sub-item.is-settled {
-  background: rgba(16, 185, 129, 0.04);
-  border-color: rgba(16, 185, 129, 0.16);
-}
-
-.credit-sub-item.upcoming {
-  background: rgba(245, 158, 11, 0.04);
-  border-color: rgba(245, 158, 11, 0.16);
-}
-
-.credit-sub-label {
-  font-size: 9.5px !important;
-  font-weight: 700 !important;
-  color: var(--muted) !important;
-  text-transform: uppercase !important;
-  letter-spacing: 0.04em !important;
-  margin-bottom: 2px;
-}
-
-.credit-sub-val {
-  font-size: 12.5px !important;
-  font-weight: 700 !important;
-  font-variant-numeric: tabular-nums !important;
-  color: var(--ink);
-  white-space: nowrap !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-}
-
-.credit-sub-item.is-due .credit-sub-val {
-  color: #fb7185 !important;
-}
-
-.credit-sub-item.is-settled .credit-sub-val {
-  color: #34d399 !important;
-}
-
-.credit-sub-item.upcoming .credit-sub-val {
-  color: #fbbf24 !important;
-}
 
 /* --- Collapsible Panel Styles --- */
+
 .collapsible-panel .collapse-toggle-btn {
   width: 28px;
   height: 28px;
@@ -4428,152 +4196,14 @@ label {
    ========================================================================== */
 
 @media (max-width: 768px) {
-  .mobile-cell-label,
-  .mobile-cell-sublabel {
-    display: none;
-  }
-
-  .history-admin-input-wrap {
-    display: inline-flex;
-    align-items: center;
-    justify-content: flex-end;
-  }
-
-  .table-wrap.responsive-cards {
-    overflow: visible;
-  }
-
-  .table-wrap.responsive-cards table {
-    display: block;
-    width: 100%;
-    border-collapse: separate;
-  }
-
-  .table-wrap.responsive-cards thead {
-    display: none;
-  }
-
-  .table-wrap.responsive-cards tbody {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    width: 100%;
-  }
-
   .table-wrap.responsive-cards tr:not(.history-draws-subrow) {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    row-gap: 8px;
-    column-gap: 12px;
-    padding: 14px 16px;
-    background: var(--glass-bg, var(--surface));
     backdrop-filter: var(--glass-blur);
     -webkit-backdrop-filter: var(--glass-blur);
-    border: 1px solid var(--glass-border, var(--line));
-    border-radius: 16px;
-    box-shadow: var(--glass-rim), 0 2px 10px rgba(0, 0, 0, 0.04);
-    box-sizing: border-box;
-    width: 100%;
-    align-items: center;
-    position: relative;
-    transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
-                box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1),
-                border-color 0.18s cubic-bezier(0.16, 1, 0.3, 1),
-                background-color 0.18s cubic-bezier(0.16, 1, 0.3, 1);
-    -webkit-tap-highlight-color: transparent;
   }
 
   /* Fix desktop row highlight quirk in mobile card view */
-  .table-wrap.responsive-cards tr:hover td,
-  .table-wrap.responsive-cards tr:focus td,
-  .table-wrap.responsive-cards tr:active td,
-  .table-wrap.responsive-cards .history-entry-editable:hover td,
-  .table-wrap.responsive-cards .history-entry-editable:focus-visible td {
-    background: transparent !important;
-  }
-
-  .table-wrap.responsive-cards tr:not(.history-draws-subrow):hover {
-    background: var(--surface-soft, var(--bg-surface-hover));
-    border-color: var(--line-strong, var(--line));
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
-    transform: translateY(-1px);
-  }
-
-  .table-wrap.responsive-cards tr:not(.history-draws-subrow):active {
-    transform: scale(0.985);
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
-  }
-
-  .table-wrap.responsive-cards tr.history-entry-editable {
-    cursor: pointer;
-  }
-
-  .table-wrap.responsive-cards tr.history-entry-editable:hover,
-  .table-wrap.responsive-cards tr.history-entry-editable:focus-visible {
-    background: color-mix(in srgb, var(--amber) 6%, var(--surface));
-    border-color: color-mix(in srgb, var(--amber) 45%, var(--line));
-    box-shadow: 0 4px 16px color-mix(in srgb, var(--amber) 14%, transparent);
-    outline: none;
-  }
-
-  .table-wrap.responsive-cards tr.history-entry-editable:focus-visible {
-    box-shadow: 0 0 0 2px var(--amber), 0 4px 16px color-mix(in srgb, var(--amber) 18%, transparent);
-  }
-
-  .table-wrap.responsive-cards td {
-    padding: 0 !important;
-    border: none !important;
-    min-width: 0;
-    background: transparent !important;
-    white-space: normal;
-  }
-
-  .table-wrap.responsive-cards tr td:first-child,
-  .table-wrap.responsive-cards .cell-date {
-    box-shadow: none !important;
-  }
-
-  .table-wrap.responsive-cards tr.loan-entry-row {
-    border-left: 4px solid var(--amber) !important;
-  }
-
-  .table-wrap.responsive-cards tr.recovery-entry-row {
-    border-left: 4px solid var(--green) !important;
-  }
-
-  .table-wrap.responsive-cards tr.deficit-entry-row,
-  .table-wrap.responsive-cards tr.danger-row {
-    border-left: 4px solid var(--red) !important;
-  }
 
   /* Row 1: Category on left, Amount/Forecast on right */
-  .table-wrap.responsive-cards .cell-category {
-    grid-column: 1;
-    grid-row: 1;
-    font-weight: 700;
-    font-size: 15px;
-    color: var(--ink);
-    min-width: 0;
-    max-width: 100%;
-    word-break: break-word;
-    overflow-wrap: break-word;
-    white-space: normal;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .table-wrap.responsive-cards .cell-category strong {
-    font-weight: 700;
-    font-size: 15px;
-    word-break: break-word;
-    overflow-wrap: break-word;
-    white-space: normal;
-    min-width: 0;
-    max-width: 100%;
-    box-sizing: border-box;
-  }
 
   .table-wrap.responsive-cards .cell-amount,
   .table-wrap.responsive-cards .cell-planned {
@@ -4590,47 +4220,11 @@ label {
   }
 
   /* Row 2: Date on left, Type Pill on right */
-  .table-wrap.responsive-cards .cell-date {
-    grid-column: 1;
-    grid-row: 2;
-    font-size: 12.5px;
-    color: var(--muted);
-    font-weight: 500;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-
-  .table-wrap.responsive-cards .cell-type {
-    grid-column: 2;
-    grid-row: 2;
-    text-align: right;
-    justify-self: end;
-  }
 
   /* Row 3: Account on left, Source on right */
-  .table-wrap.responsive-cards .cell-account {
-    grid-column: 1;
-    grid-row: 3;
-    font-size: 11.5px;
-    color: var(--muted);
-    font-weight: 600;
-    text-transform: uppercase;
-    display: flex;
-    align-items: center;
-  }
-
-  .table-wrap.responsive-cards .cell-source {
-    grid-column: 2;
-    grid-row: 3;
-    text-align: right;
-    justify-self: end;
-    font-size: 11.5px;
-    color: var(--muted);
-  }
 
   /* Row 4: Actual Execution */
+
   .table-wrap.responsive-cards .cell-actual {
     grid-column: 1;
     grid-row: 4;
@@ -4645,63 +4239,19 @@ label {
     gap: 6px;
   }
 
-  .table-wrap.responsive-cards .mobile-cell-label {
-    display: inline !important;
-    font-size: 11px !important;
-    font-weight: 600 !important;
-    color: var(--muted) !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.04em !important;
-    margin-right: 4px !important;
-  }
-
-  .table-wrap.responsive-cards .history-admin-input-wrap {
-    display: flex !important;
-    align-items: center !important;
-    gap: 6px !important;
-    width: 100% !important;
-  }
-
-  .table-wrap.responsive-cards .history-admin-input {
-    max-width: 120px !important;
-    min-height: 32px !important;
-    padding: 4px 8px !important;
-    font-size: 13px !important;
-    border-radius: 8px !important;
-  }
-
   /* Row 5: Variance Pill (History Table) */
-  .table-wrap.responsive-cards .cell-variance {
-    grid-column: 1;
-    grid-row: 5;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding-top: 2px;
-  }
 
   /* Row 4 & 5 Right Column: Action Row */
+
   .table-wrap.responsive-cards .cell-actions {
-    grid-column: 2;
-    grid-row: 4 / span 2;
-    display: flex;
-    justify-content: flex-end;
-    align-items: center;
-    gap: 6px;
-    border-top: 1px dashed var(--line) !important;
-    padding-top: 10px !important;
-    margin-top: 2px;
     justify-self: end;
     align-self: center;
   }
 
   /* Opening Balance rows on mobile: hide redundant empty actual/actions footer */
-  .table-wrap.responsive-cards tr.opening-balance-row .cell-actual,
-  .table-wrap.responsive-cards tr.opening-balance-row .cell-actions {
-    display: none !important;
-  }
 
   /* Cashflow inline tags, credit badges & summaries */
+
   .table-wrap.responsive-cards .cashflow-tag-pill {
     display: inline-flex;
     align-items: center;
@@ -4713,19 +4263,6 @@ label {
     border-radius: 999px;
     margin: 2px 2px 0 0;
     vertical-align: middle;
-  }
-
-  .table-wrap.responsive-cards .credit-due-summary {
-    font-size: 11px;
-    color: var(--muted);
-    margin-top: 4px;
-    width: 100%;
-    max-width: 100%;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px 8px;
-    align-items: center;
-    white-space: normal;
   }
 
   .credit-funding-shortfall-tag {
@@ -4746,92 +4283,20 @@ label {
     overflow-wrap: break-word;
   }
 
-  .table-wrap.responsive-cards .credit-funding-shortfall-tag {
-    display: inline-flex !important;
-    flex-wrap: wrap !important;
-    align-items: center !important;
-    gap: 4px 8px !important;
-    max-width: 100% !important;
-    box-sizing: border-box !important;
-    white-space: normal !important;
-    word-break: break-word !important;
-    overflow-wrap: break-word !important;
-    padding: 3px 8px !important;
-    border-radius: 6px !important;
-  }
-
-  .table-wrap.responsive-cards .credit-funding-shortfall-tag span {
-    white-space: normal !important;
-    word-break: break-word !important;
-    overflow-wrap: break-word !important;
-  }
-
   /* Cashflow Actual Spend Cell & Notes */
-  .table-wrap.responsive-cards .actual-cell-wrapper {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    width: 100%;
-  }
-
-  .table-wrap.responsive-cards .inline-actual-input {
-    width: 100%;
-    max-width: 150px;
-    min-height: 34px;
-    padding: 4px 10px;
-    font-size: 13px;
-    border-radius: 8px;
-  }
 
   .table-wrap.responsive-cards .actual-spend-note {
-    font-size: 11px;
-    font-weight: 500;
-    color: var(--muted);
-    line-height: 1.35;
-    margin-top: 2px;
     white-space: normal;
-    word-break: break-word;
   }
 
   /* Subspends Accordion Row */
-  .table-wrap.responsive-cards tr.history-draws-subrow {
-    display: block;
-    background: var(--surface-soft);
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    padding: 12px 14px;
-    margin-top: -6px;
-    margin-bottom: 6px;
-    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.02);
-  }
-
-  .table-wrap.responsive-cards tr.history-draws-subrow td.cell-draws-details {
-    display: block;
-    width: 100%;
-    padding: 0 !important;
-  }
 
   /* Installment Summary Cards in Cashflow */
-  .installment-summary-card {
-    border-radius: 14px;
-    padding: 12px 14px;
-    background: var(--surface-soft);
-    border: 1px solid var(--line);
-    margin-bottom: 8px;
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
-  }
 }
 
 /* ==========================================================================
    Part-Time Jobs & Invoicing Revamp
    ========================================================================== */
-
-.jobs-kpis-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
-  margin-bottom: 20px;
-}
 
 .glass-panel {
   background: var(--glass-bg);
@@ -4844,37 +4309,8 @@ label {
   transition: all 0.2s ease;
 }
 
-.job-kpi-card {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.job-kpi-label {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--muted);
-}
-
-.job-kpi-val {
-  font-size: 24px;
-  font-weight: 800;
-  color: var(--ink);
-  font-variant-numeric: tabular-nums;
-  line-height: 1.2;
-}
-
-.job-kpi-sub {
-  font-size: 12px;
-  color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 /* History, modal, and cross-device polish */
+
 .history-main-tabs {
   width: fit-content;
   max-width: 100%;
@@ -5034,12 +4470,9 @@ label {
 }
 
 /* Jobs density and detail layout */
+
 .jobs-kpis-grid {
   align-items: stretch;
-}
-
-.jobs-toolbar {
-  border: 1px solid var(--border-subtle, var(--line));
 }
 
 .jobs-filters-group {
@@ -5061,23 +4494,6 @@ label {
 
 .jobs-progress {
   padding: 12px 0 0;
-  border-top: 1px solid var(--border-subtle, var(--line));
-}
-
-.jobs-expanded-details {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border-subtle, var(--line));
-}
-
-.jobs-detail-actions {
-  display: flex;
-  justify-content: flex-end;
-  padding-top: 12px;
-  border-top: 1px dashed var(--border-subtle, var(--line));
 }
 
 @media (max-width: 680px) {
@@ -5101,8 +4517,11 @@ label {
 }
 
 .text-green { color: var(--green) !important; }
+
 .text-blue { color: var(--blue) !important; }
+
 .text-amber { color: var(--amber) !important; }
+
 .text-red { color: var(--red) !important; }
 
 .history-entry-editable {
@@ -5120,45 +4539,6 @@ label {
 }
 
 /* Jobs Filter Toolbar */
-.jobs-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 14px;
-  margin-bottom: 20px;
-  padding: 14px 18px;
-}
-
-.jobs-filters-group {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.job-filter-pill {
-  background: var(--surface-soft);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 6px 14px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--muted);
-  cursor: pointer;
-  transition: all 0.18s ease;
-}
-
-.job-filter-pill:hover {
-  background: var(--surface);
-  color: var(--ink);
-}
-
-.job-filter-pill.is-active {
-  background: var(--ink);
-  color: var(--bg);
-  border-color: var(--ink);
-}
 
 [data-theme="dark"] .job-filter-pill.is-active {
   background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%) !important;
@@ -5167,24 +4547,7 @@ label {
   box-shadow: 0 2px 8px rgba(79, 70, 229, 0.4);
 }
 
-.job-filter-select {
-  background: var(--surface-soft);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 6px 12px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ink);
-  cursor: pointer;
-  outline: none;
-}
-
 /* Jobs Stream & Cards */
-.jobs-stream {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
 
 .job-card {
   background: var(--glass-bg);
@@ -5326,6 +4689,7 @@ select.job-status-select option {
 }
 
 /* Payment Progress Bar */
+
 .job-progress-wrap {
   margin: -4px 0 14px 0;
 }
@@ -5366,21 +4730,12 @@ select.job-status-select option {
   background: linear-gradient(90deg, var(--green), #2db575);
 }
 
-.job-currency-badge {
-  font-size: 12px;
-  font-weight: 800;
-  padding: 2px 8px;
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.05);
-  color: var(--ink);
-  border: 1px solid var(--line);
-}
-
 [data-theme="dark"] .job-currency-badge {
   background: rgba(255, 255, 255, 0.08);
 }
 
 /* Job Summary Financial Bar */
+
 .job-summary-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -5459,6 +4814,7 @@ select.job-status-select option {
 }
 
 /* Actions & Footer */
+
 .job-card-actions {
   display: flex;
   justify-content: space-between;
@@ -5496,6 +4852,7 @@ select.job-status-select option {
 }
 
 /* Collapsible Details Drawer */
+
 .job-drawer {
   margin-top: 14px;
   padding-top: 14px;
@@ -5576,6 +4933,7 @@ select.job-status-select option {
 }
 
 /* --- Credit Settlement Recalculate & Source Badge Styles --- */
+
 .recalc-credit-container {
   margin-top: -6px;
   margin-bottom: 12px;
@@ -5639,6 +4997,7 @@ select.job-status-select option {
 }
 
 /* Credit Swipes & Settlement Bracket Badges */
+
 .history-bracket-card-swipes {
   display: inline-flex;
   align-items: center;
@@ -5799,11 +5158,6 @@ select.job-status-select option {
 }
 
 .dashboard-remediation-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 10px;
-  border-radius: 6px;
   font-size: 11.5px;
   font-weight: 600;
   background: rgba(255, 255, 255, 0.05);
@@ -5875,5 +5229,3 @@ select.job-status-select option {
 .split-ghost-row:hover {
   background: rgba(99, 102, 241, 0.08) !important;
 }
-
-
