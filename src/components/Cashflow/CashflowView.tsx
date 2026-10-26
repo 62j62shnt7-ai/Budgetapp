@@ -1639,7 +1639,10 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                         </div>
                       )}
                     </td>
-                    <td className="number cashflow-table-running-balance" data-label="Balance After">
+                    <td
+                      className={`number cashflow-table-running-balance${entryRunningBalanceMap.get(e.id) === undefined ? ' running-balance-empty' : ''}`}
+                      data-label="Balance After"
+                    >
                       {(() => {
                         const bal = entryRunningBalanceMap.get(e.id);
                         if (bal === undefined) return '—';

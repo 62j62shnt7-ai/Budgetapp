@@ -1,5 +1,5 @@
 import React from 'react';
-import { formatMoney } from '../../engine/dateUtils';
+import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { CreditCard, Landmark } from 'lucide-react';
 
 interface MonthlySummaryRow {
@@ -120,7 +120,7 @@ export const HistorySummaryTab: React.FC<HistorySummaryTabProps> = ({
                     >
                       <td className="cell-month-name">
                         <div className="summary-card-header">
-                          <span className="summary-card-month-title">{row.month}</span>
+                          <span className="summary-card-month-title">{DateUtils.formatDisplayDate(row.month)}</span>
                           <span className={`variance-pill ${rateBadgeClass} summary-card-savings-pill`}>{row.savingsRate}% Savings</span>
                           {onSelectMonth && (
                             <span className="history-row-action-hint" aria-hidden="true">

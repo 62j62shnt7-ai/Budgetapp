@@ -74,6 +74,9 @@ async function run() {
         account: 'hsbc',
         type: 'income',
         amount: 5000,
+        actualAmount: 5000,
+        actualDate: '2026-10-30',
+        tag: 'Family Groceries',
       },
     ];
     localStorage.setItem('budget-control-cash-entries', JSON.stringify(entries));
@@ -146,6 +149,63 @@ async function run() {
     assert.strictEqual(st.overflows, false, `Shortfall tag overflows card boundary: ${st.text}`);
   }
   console.log('✓ Test 4 Passed: Shortfall tag wraps and does not overflow or clip!');
+
+  // Test 5: Running balance cell placement & visibility on mobile cards
+  const runningBalCheck = await page.evaluate(() => {
+    const openingBalCell = document.querySelector('tr.opening-balance-row .cashflow-table-running-balance');
+    const loanRow = document.querySelector('tr[id="cashflow-row-entry-loan"]');
+    const loanBalRect = loanRow?.querySelector('.cashflow-table-running-balance')?.getBoundingClientRect();
+    const loanActRect = loanRow?.querySelector('.cell-actions')?.getBoundingClientRect();
+    return {
+      openingDisplay: openingBalCell ? window.getComputedStyle(openingBalCell).display : 'none',
+      loanBalY: loanBalRect?.y ?? 0,
+      loanActionsY: loanActRect?.y ?? 0,
+    };
+  });
+  assert.strictEqual(runningBalCheck.openingDisplay, 'none', 'Opening balance row must hide empty running balance cell on mobile');
+  assert.ok(
+    runningBalCheck.loanBalY < runningBalCheck.loanActionsY,
+    `Running balance (y=${runningBalCheck.loanBalY}) must appear above actions row (y=${runningBalCheck.loanActionsY})`
+  );
+  console.log('✓ Test 5 Passed: Running balance cell is labelled above actions and hidden when empty!');
+
+  // Test 6: Multi-word tag pills stay single-line and compact
+  const tagPillCheck = await page.evaluate(() => {
+    const pills = Array.from(document.querySelectorAll('#cashflow .history-tag-filter'));
+    return pills.map((p) => {
+      const cs = window.getComputedStyle(p);
+      const r = p.getBoundingClientRect();
+      return { text: p.innerText.trim(), whiteSpace: cs.whiteSpace, height: r.height };
+    });
+  });
+  assert.ok(tagPillCheck.length > 0, 'Expected at least one tag pill in Cashflow');
+  for (const pill of tagPillCheck) {
+    assert.strictEqual(pill.whiteSpace, 'nowrap', `Tag pill "${pill.text}" must use white-space: nowrap`);
+    assert.ok(pill.height <= 28, `Tag pill "${pill.text}" height (${pill.height}px) must stay compact single-line`);
+  }
+  console.log('✓ Test 6 Passed: Multi-word tag pills stay single-line and do not burst pill borders!');
+
+  // Test 7: History Admin Mode tag chips and icon buttons have proportional heights
+  await page.locator('.mobile-bottom-nav button:has-text("History")').click();
+  await page.waitForTimeout(300);
+  await page.locator('#history .subnav-tab:has-text("Transactions")').click();
+  await page.waitForTimeout(300);
+  await page.locator('button:has-text("Admin Mode:")').click();
+  await page.waitForTimeout(300);
+
+  const historyAdminCheck = await page.evaluate(() => {
+    const row = document.querySelector('#historyTransactionsPane tr.history-entry-editable');
+    const chip = row?.querySelector('.history-admin-tag-chip')?.getBoundingClientRect();
+    const btns = Array.from(row?.querySelectorAll('.cell-actions .icon-button') || []).map((b) => b.getBoundingClientRect());
+    return {
+      chipHeight: chip?.height ?? 0,
+      btnHeights: btns.map((b) => Math.round(b.height)),
+    };
+  });
+  assert.ok(historyAdminCheck.chipHeight > 0 && historyAdminCheck.chipHeight <= 26, `Admin tag chip height (${historyAdminCheck.chipHeight}px) must be compact`);
+  assert.strictEqual(historyAdminCheck.btnHeights.length, 2, 'Expected 2 action icon buttons in History Admin Mode');
+  assert.strictEqual(historyAdminCheck.btnHeights[0], historyAdminCheck.btnHeights[1], 'Revert and Delete icon buttons must have matching heights');
+  console.log('✓ Test 7 Passed: History Admin Mode tag chips and action icon buttons have balanced proportions!');
 
   await page.screenshot({ path: 'test/screenshots/mobile-cashflow-fixed.png', fullPage: true });
 

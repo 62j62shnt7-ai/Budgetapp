@@ -3120,19 +3120,30 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     display: inline-flex !important;
     align-items: center !important;
     gap: 2px !important;
-    height: 22px !important;
+    height: auto !important;
     min-height: 22px !important;
-    padding: 1px 8px !important;
+    max-width: 100% !important;
+    padding: 2px 8px !important;
     font-size: 10.5px !important;
     font-weight: 600 !important;
+    line-height: 1.25 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
     border-radius: 999px !important;
     background: var(--surface-soft) !important;
     border: 1px solid var(--line) !important;
     color: var(--muted) !important;
-    margin: 0 2px 0 0 !important;
+    margin: 2px 3px 0 0 !important;
     vertical-align: middle !important;
     cursor: pointer !important;
+    flex-shrink: 0 !important;
     transition: background 0.15s ease, color 0.15s ease !important;
+  }
+
+  .history-tag-filter svg,
+  .table-wrap.responsive-cards .cashflow-tag-pill svg {
+    flex-shrink: 0 !important;
   }
 
   .history-tag-filter.active {
@@ -3142,58 +3153,76 @@ dialog.modern-top-layer-dialog .dialog-actions button {
   }
 
   .history-admin-tag-chip {
-    display: inline-flex;
-    align-items: center;
-    margin-top: 2px;
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    background: var(--surface-soft, rgba(0, 0, 0, 0.03));
-    overflow: hidden;
-    transition: all 0.15s ease;
-    vertical-align: middle;
+    display: inline-flex !important;
+    align-items: center !important;
+    margin: 2px 3px 0 0 !important;
+    height: 22px !important;
+    min-height: 22px !important;
+    max-width: 100% !important;
+    white-space: nowrap !important;
+    border: 1px solid var(--line) !important;
+    border-radius: 999px !important;
+    background: var(--surface-soft, rgba(0, 0, 0, 0.03)) !important;
+    overflow: hidden !important;
+    transition: all 0.15s ease !important;
+    vertical-align: middle !important;
   }
 
   .history-admin-tag-chip .history-admin-tag-filter-btn {
-    background: none;
-    border: none;
-    padding: 2px 5px 2px 7px;
-    color: var(--muted);
-    font: inherit;
-    font-size: 11px;
-    font-weight: 500;
-    cursor: pointer;
+    background: none !important;
+    border: none !important;
+    height: 20px !important;
+    min-height: 20px !important;
+    padding: 0 5px 0 8px !important;
+    color: var(--muted) !important;
+    font: inherit !important;
+    font-size: 10.5px !important;
+    font-weight: 600 !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    border-radius: 0 !important;
+    cursor: pointer !important;
   }
 
   .history-admin-tag-chip .history-admin-tag-remove-btn {
-    background: none;
-    border: none;
-    padding: 2px 6px 2px 2px;
-    color: var(--muted);
-    font: inherit;
-    font-size: 12px;
-    font-weight: 700;
-    line-height: 1;
-    cursor: pointer;
+    background: none !important;
+    border: none !important;
+    height: 20px !important;
+    min-height: 20px !important;
+    padding: 0 7px 0 2px !important;
+    color: var(--muted) !important;
+    font: inherit !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    line-height: 1 !important;
+    border-radius: 0 !important;
+    cursor: pointer !important;
   }
 
   .history-admin-tag-chip .history-admin-tag-remove-btn:hover {
-    color: var(--red, #ef4444);
+    color: var(--red, #ef4444) !important;
   }
 
   .history-admin-add-tag-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-    margin-top: 2px;
-    padding: 2px 7px;
-    border: 1px dashed var(--line);
-    border-radius: 999px;
-    background: transparent;
-    color: var(--muted);
-    font: inherit;
-    font-size: 11px;
-    font-weight: 600;
-    cursor: pointer;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 2px !important;
+    margin: 2px 3px 0 0 !important;
+    height: 22px !important;
+    min-height: 22px !important;
+    padding: 0 8px !important;
+    white-space: nowrap !important;
+    border: 1px dashed var(--line) !important;
+    border-radius: 999px !important;
+    background: transparent !important;
+    color: var(--muted) !important;
+    font: inherit !important;
+    font-size: 10.5px !important;
+    font-weight: 600 !important;
+    line-height: 1 !important;
+    cursor: pointer !important;
   }
 
   .history-admin-add-tag-form {
@@ -3201,6 +3230,17 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     align-items: center;
     gap: 3px;
     margin-top: 2px;
+  }
+
+  .history-admin-add-tag-form .icon-button {
+    width: 24px !important;
+    height: 24px !important;
+    min-width: 24px !important;
+    min-height: 24px !important;
+    padding: 0 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
   }
 
   .history-admin-add-tag-input {
@@ -3310,16 +3350,59 @@ dialog.modern-top-layer-dialog .dialog-actions button {
   .table-wrap.responsive-cards .history-admin-input-wrap {
     display: flex !important;
     align-items: center !important;
-    gap: 6px !important;
+    justify-content: space-between !important;
+    gap: 8px !important;
     width: 100% !important;
   }
 
   .table-wrap.responsive-cards .history-admin-input {
-    max-width: 130px !important;
+    max-width: 150px !important;
     min-height: 34px !important;
-    padding: 4px 8px !important;
-    font-size: 13px !important;
+    padding: 4px 10px !important;
+    font-size: 13.5px !important;
+    font-weight: 700 !important;
+    text-align: right !important;
     border-radius: 8px !important;
+  }
+
+  /* History Admin Mode: full-width category & actual input row so column 1 is never crushed */
+
+  .history-view .table-wrap.responsive-cards tr.history-entry-editable .cell-category {
+    grid-column: 1 / -1 !important;
+    grid-row: 1 !important;
+  }
+
+  .history-view .table-wrap.responsive-cards tr.history-entry-editable .cell-actual {
+    grid-column: 1 / -1 !important;
+    grid-row: 4 !important;
+    justify-self: stretch !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    padding-top: 8px !important;
+    padding-left: 0 !important;
+    margin-top: 2px !important;
+    border-top: 1px dashed var(--line) !important;
+  }
+
+  .history-view .table-wrap.responsive-cards tr.history-entry-editable .cell-planned {
+    grid-column: 1 !important;
+    grid-row: 5 !important;
+    border-top: none !important;
+    padding-top: 4px !important;
+    margin-top: 0 !important;
+  }
+
+  .history-view .table-wrap.responsive-cards tr.history-entry-editable .cell-variance {
+    grid-column: 1 !important;
+    grid-row: 6 !important;
+  }
+
+  .history-view .table-wrap.responsive-cards tr.history-entry-editable .cell-actions {
+    grid-column: 2 !important;
+    grid-row: 5 / span 2 !important;
+    border-top: none !important;
+    padding-top: 4px !important;
+    margin-top: 0 !important;
   }
 
   /* Row 5: Variance Pill (History) & Action Buttons */
@@ -3386,6 +3469,18 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     font-size: 14px !important;
   }
 
+  .history-summary-table-wrap.responsive-cards .cell-summary-expenses {
+    align-items: flex-start !important;
+  }
+
+  .history-summary-table-wrap.responsive-cards .cell-summary-expenses .summary-mobile-metric-val {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-end !important;
+    gap: 3px !important;
+    text-align: right !important;
+  }
+
   .history-summary-table-wrap.responsive-cards .summary-mobile-metric-label {
     display: inline-block !important;
     font-size: 12px !important;
@@ -3438,9 +3533,38 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     width: auto !important;
   }
 
-  .cashflow-view .table-wrap.responsive-cards .cell-actions {
+  .cashflow-view .table-wrap.responsive-cards .cashflow-table-running-balance {
     grid-column: 1 / -1 !important;
     grid-row: 5 !important;
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    width: 100% !important;
+    padding-top: 8px !important;
+    margin-top: 2px !important;
+    border-top: 1px dashed var(--line) !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    font-variant-numeric: tabular-nums !important;
+  }
+
+  .cashflow-view .table-wrap.responsive-cards .cashflow-table-running-balance::before {
+    content: attr(data-label) ':';
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .cashflow-view .table-wrap.responsive-cards .cashflow-table-running-balance.running-balance-empty,
+  .table-wrap.responsive-cards tr.opening-balance-row .cashflow-table-running-balance {
+    display: none !important;
+  }
+
+  .cashflow-view .table-wrap.responsive-cards .cell-actions {
+    grid-column: 1 / -1 !important;
+    grid-row: 6 !important;
   }
 
   /* Row 2: Date & Subspends button on left, Type Pill on right */
@@ -3522,10 +3646,12 @@ dialog.modern-top-layer-dialog .dialog-actions button {
   }
 
   .table-wrap.responsive-cards .cell-source {
-    grid-column: 2 !important;
+    grid-column: 1 / -1 !important;
     grid-row: 3 !important;
     text-align: right !important;
     justify-self: end !important;
+    width: auto !important;
+    max-width: calc(100% - 85px) !important;
     font-size: 11px !important;
     color: var(--muted) !important;
     display: flex !important;
@@ -3541,6 +3667,17 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     font-size: 10px !important;
     font-weight: 600 !important;
     color: var(--muted) !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+    white-space: nowrap !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .table-wrap.responsive-cards .source-pill svg {
+    flex-shrink: 0 !important;
   }
 
   .table-wrap.responsive-cards .cell-actions-wrapper {
@@ -3586,8 +3723,8 @@ dialog.modern-top-layer-dialog .dialog-actions button {
   }
 
   .table-wrap.responsive-cards .delete-button {
-    min-height: 44px !important;
-    padding: 8px 14px !important;
+    min-height: 40px !important;
+    padding: 7px 14px !important;
     font-size: 13px !important;
     font-weight: 600 !important;
     border-radius: 8px !important;
@@ -3597,20 +3734,37 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     touch-action: manipulation !important;
   }
 
+  .table-wrap.responsive-cards .cell-actions .icon-button {
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    min-height: 36px !important;
+    padding: 0 !important;
+    border-radius: 8px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0 !important;
+  }
+
   /* Subspends button in History Cards */
 
   .history-draws-toggle-btn {
     display: inline-flex !important;
     align-items: center !important;
-    padding: 6px 12px !important;
-    font-size: 12px !important;
+    gap: 4px !important;
+    padding: 3px 9px !important;
+    font-size: 11px !important;
     font-weight: 600 !important;
-    border-radius: 8px !important;
+    line-height: 1.2 !important;
+    white-space: nowrap !important;
+    border-radius: 999px !important;
     background: var(--surface-soft) !important;
     border: 1px solid var(--line) !important;
     color: var(--muted) !important;
-    min-height: 44px !important;
-    margin-top: 4px !important;
+    height: auto !important;
+    min-height: 24px !important;
+    margin-top: 0 !important;
     touch-action: manipulation !important;
   }
 
@@ -3703,6 +3857,53 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     display: block !important;
     width: 100% !important;
     padding: 0 !important;
+  }
+
+  .table-wrap.responsive-cards tr.history-draws-subrow .history-subspends-table-wrap tbody {
+    gap: 8px !important;
+  }
+
+  .table-wrap.responsive-cards tr.history-draws-subrow tr.history-subspend-item-row {
+    padding: 9px 12px !important;
+    border-radius: 10px !important;
+    row-gap: 5px !important;
+    column-gap: 8px !important;
+    align-items: center !important;
+  }
+
+  .table-wrap.responsive-cards tr.history-draws-subrow tr.history-subspend-item-row td.subspend-cell-date {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    color: var(--ink) !important;
+  }
+
+  .table-wrap.responsive-cards tr.history-draws-subrow tr.history-subspend-item-row td.subspend-cell-amount {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    text-align: right !important;
+    justify-self: end !important;
+    font-variant-numeric: tabular-nums !important;
+  }
+
+  .table-wrap.responsive-cards tr.history-draws-subrow tr.history-subspend-item-row td.subspend-cell-tag {
+    grid-column: 1 !important;
+    grid-row: 2 !important;
+    display: flex !important;
+    align-items: center !important;
+    font-size: 11px !important;
+    color: var(--muted) !important;
+  }
+
+  .table-wrap.responsive-cards tr.history-draws-subrow tr.history-subspend-item-row td.subspend-cell-account {
+    grid-column: 2 !important;
+    grid-row: 2 !important;
+    justify-self: end !important;
+    display: flex !important;
+    align-items: center !important;
   }
 
   /* Installment Summary Cards in Cashflow */

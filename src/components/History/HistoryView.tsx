@@ -1395,11 +1395,11 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                           <tr className="history-draws-subrow">
                             <td colSpan={9} className="cell-draws-details" style={{ padding: '0 16px 12px 36px', background: 'var(--surface-subtle, rgba(0,0,0,0.02))' }}>
                               <div style={{ marginTop: '8px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', marginBottom: '8px', fontSize: '12px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '12px', marginBottom: '8px', fontSize: '12px' }}>
                                   <span>Breakdown of {entry.draws?.length} payment tranches for {entry.category || 'Expense'}</span>
-                                  <strong>Total spent: {formatMoney(actual)}</strong>
+                                  <strong style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>Total spent: {formatMoney(actual)}</strong>
                                 </div>
-                                <div className="table-wrap compact">
+                                <div className="table-wrap compact history-subspends-table-wrap">
                                   <table>
                                     <thead>
                                       <tr>
@@ -1411,9 +1411,9 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                                     </thead>
                                     <tbody>
                                       {entry.draws?.map((draw, index) => (
-                                        <tr key={`${entryId}-draw-${index}`}>
-                                          <td>{DateUtils.formatDisplayDate(draw.date)}</td>
-                                          <td>
+                                        <tr key={`${entryId}-draw-${index}`} className="history-subspend-item-row">
+                                          <td className="subspend-cell-date">{DateUtils.formatDisplayDate(draw.date)}</td>
+                                          <td className="subspend-cell-tag">
                                             {draw.tag ? (
                                               <button
                                                 type="button"
@@ -1426,7 +1426,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                                               </button>
                                             ) : '—'}
                                           </td>
-                                          <td>
+                                          <td className="subspend-cell-account">
                                             <span
                                               className="account-pill history-summary-clickable-row"
                                               style={{
@@ -1448,7 +1448,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                                               {(draw.account || entry.account || 'cash').toUpperCase()}
                                             </span>
                                           </td>
-                                          <td className="number">{formatMoney(Number(draw.amount) || 0)}</td>
+                                          <td className="number subspend-cell-amount">{formatMoney(Number(draw.amount) || 0)}</td>
                                         </tr>
                                       ))}
                                     </tbody>
