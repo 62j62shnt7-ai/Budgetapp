@@ -133,6 +133,7 @@ export const createJobsSlice: SliceCreator<JobsSlice> = (set, get) => ({
           currency: payment.currency || targetJob.currency || 'USD',
           amount: Number(payment.amount) || 0,
           isEgpAmount: false,
+          fxRate: payment.egpAmount && payment.amount ? payment.egpAmount / payment.amount : undefined,
         });
       }
     });
@@ -164,7 +165,7 @@ export const createJobsSlice: SliceCreator<JobsSlice> = (set, get) => ({
 
       let updatedPayments = [...(targetJob.payments || [])];
       if (entry?.draws && entry.draws.length > 0) {
-        updatedPayments = entry.draws.map((d, idx) => {
+        updatedPayments = [...updatedPayments.filter((payment) => payment.entryId !== entryId), ...entry.draws.map((d, idx) => {
           const existingP = targetJob.payments?.find((p) => p.id === d.id);
           const dEgp = Number(d.amount) || 0;
           const dNative = isForeign ? (fxRate > 0 ? Math.round((dEgp / fxRate) * 100) / 100 : dEgp) : dEgp;
@@ -180,7 +181,7 @@ export const createJobsSlice: SliceCreator<JobsSlice> = (set, get) => ({
             syncToBudget: true,
             paymentNote: d.note || existingP?.paymentNote || 'Tranche payment via Cashflow',
           };
-        });
+        })];
       } else {
         const existingPayment = targetJob.payments?.find((p) => p.entryId === entryId);
         if (existingPayment) {

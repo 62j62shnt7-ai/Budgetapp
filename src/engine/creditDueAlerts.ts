@@ -92,12 +92,12 @@ export function getCreditDueFundingAlerts(
     let isFundedByProjectedIncome = false;
 
     if (candidateEntries.length > 0 && settlementDate >= today) {
-      // Filter entries affecting this account between today and settlementDate (excluding this settlement entry)
+      // Filter entries affecting this account through settlementDate, including overdue entries (excluding this settlement entry)
       const relevantEntries = candidateEntries
         .filter((cand) => {
           if (!cand || cand.id === entry.id || !cand.date) return false;
           const candAcc = (cand.account || '').toLowerCase().trim();
-          return candAcc === accountKey && cand.date >= today && cand.date <= settlementDate;
+          return candAcc === accountKey && cand.date <= settlementDate;
         })
         .sort((a, b) => {
           if (a.date !== b.date) return a.date.localeCompare(b.date);

@@ -56,6 +56,7 @@ const migrationRes = await migrateFromLocalStorageIfNeeded({ test: 'budget-contr
 // In Node environment without window.indexedDB, it returns gracefully without throwing
 assert.ok(typeof migrationRes.migrated === 'boolean');
 assert.ok(typeof migrationRes.count === 'number');
+assert.notStrictEqual(globalThis.localStorage.getItem('budget-control-test-mig'), null, 'Legacy data must survive without IndexedDB');
 console.log('✓ Test 3 passed!');
 
 // Test 4: Undo history persistence & restore functions
@@ -398,3 +399,40 @@ assert.strictEqual(useBudgetStore.getState().hasUnsyncedChanges, false);
 console.log('✓ Test 17 passed!');
 
 console.log('🌟 ALL STORAGE & CLOUD ADAPTER TESTS PASSED! 🌟');
+
+// Failed durable fallback writes must be observable while memory remains recoverable.
+const originalSetItem = globalThis.localStorage.setItem;
+globalThis.localStorage.setItem = () => { throw new Error('Injected quota error'); };
+await assert.rejects(saveStorageAsync('failed-save', { recoverable: true }), /quota/);
+assert.deepStrictEqual(loadStorageSync('failed-save', null), { recoverable: true });
+globalThis.localStorage.setItem = originalSetItem;
+
+const validRatesBefore = useBudgetStore.getState().rates;
+saveStorage(STORAGE_KEYS.rates, {});
+await useBudgetStore.getState().initStorage(true);
+assert.deepStrictEqual(useBudgetStore.getState().rates, validRatesBefore, 'Malformed hydrated rates must not replace usable state');
+
+{
+ const {onPersistenceChange, retryFailedStorageWrites} = await import('../src/utils/storageAdapter.ts');
+ await retryFailedStorageWrites();
+ const original = globalThis.localStorage.setItem;
+ let notifications = 0;
+ const unsubscribe = onPersistenceChange(() => {
+   notifications++;
+   saveStorage('listener-dirty-flag', true);
+ });
+ globalThis.localStorage.setItem = () => { throw new Error('Injected immediate failure'); };
+ saveStorage('trigger-status-failure', true);
+ await new Promise(resolve => setTimeout(resolve, 10));
+ assert.equal(notifications, 1, 'Repeated write failures must not recursively notify listeners');
+ unsubscribe();
+ globalThis.localStorage.setItem = original;
+ await retryFailedStorageWrites();
+}
+
+{
+ const {removeStorage}=await import('../src/utils/storageAdapter.ts');
+ await saveStorageAsync('fallback-delete',123);
+ await removeStorage('fallback-delete');
+ assert.equal(localStorage.getItem('fallback-delete'),null,'Deleted fallback values must not reappear on restart');
+}

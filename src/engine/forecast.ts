@@ -25,8 +25,6 @@ export function getEntryActualAmount(
     if (parts.length >= 4) {
       // id is installment-{instId}-{year}-{month}
       const instId = parts.slice(1, parts.length - 2).join('-');
-      const yStr = parts[parts.length - 2];
-      const mStr = parts[parts.length - 1];
       const escapedId = instId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const legacyPattern = new RegExp(`^installment-${escapedId}-(\\d+)$`);
       for (const [key, val] of Object.entries(entryActuals || {})) {
@@ -34,11 +32,7 @@ export function getEntryActualAmount(
         if (match && val !== undefined && val !== null) {
           // If installment has note/occurrence matching this year and month
           const legacyIdx = parseInt(match[1], 10);
-          if (entry.note && (entry.note.includes(`(${legacyIdx + 1}/`) || entry.note.includes(`(${legacyIdx}/`))) {
-            rawValue = val;
-            break;
-          }
-          if (entry.date && (entry.date.startsWith(`${yStr}-${mStr}`) || entry.date.startsWith(`${yStr}-${mStr.padStart(2, '0')}`))) {
+          if (entry.note && entry.note.includes(`(${legacyIdx + 1}/`)) {
             rawValue = val;
             break;
           }
@@ -399,7 +393,9 @@ export function getForecastCandidateEntries(
   deletedForecasts: string[]
 ): CashEntry[] {
   const nonLumpCashEntries = cashEntries.filter((entry) => !isCreditDueLumpSum(entry));
-  const all = [...nonLumpCashEntries, ...installmentEntries, ...creditDueEntries];
+  const materializedIds = new Set(nonLumpCashEntries.map((entry) => entry.id));
+  const generatedInstallments = installmentEntries.filter((entry) => !materializedIds.has(entry.id));
+  const all = [...nonLumpCashEntries, ...generatedInstallments, ...creditDueEntries];
   const deletedSet = new Set(deletedForecasts || []);
   return all.filter((entry) => !deletedSet.has(getEntryId(entry)) && !entry.excludeFromForecast);
 }

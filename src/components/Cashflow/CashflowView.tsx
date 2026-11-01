@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import {
+  mergeSalaryForecast,
   buildSalaryEntries,
   buildInstallmentEntries,
   calculateInstallmentProgress,
@@ -513,8 +514,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     allCandidate,
     forecastRows,
   } = React.useMemo(() => {
-    const hasMaterialized = entries.some((e) => e.source === 'salary');
-    const salary = hasMaterialized ? [] : buildSalaryEntries(salaryPattern, startMonth, quarters, salaryAnchorMonth);
+    const salary = mergeSalaryForecast(buildSalaryEntries(salaryPattern, startMonth, quarters, salaryAnchorMonth), entries, archivedEntries, DateUtils.todayString());
     const installment = buildInstallmentEntries(installments);
     const credit = buildCreditDueEntries({
       accounts,

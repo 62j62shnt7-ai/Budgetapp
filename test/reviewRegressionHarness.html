@@ -1,0 +1,13 @@
+<html><body><button id="opener">Open</button><div id="root"></div><script type="module">
+import React from '/node_modules/.vite/deps/react.js';
+import ReactDOM from '/node_modules/.vite/deps/react-dom_client.js';
+import {DeductAccountModal} from '/src/components/Modals/DeductAccountModal.tsx';
+import {EntryModal} from '/src/components/Modals/EntryModal.tsx';
+import {useBudgetStore} from '/src/store/useBudgetStore.ts';
+const root=ReactDOM.createRoot(document.getElementById('root'));
+await useBudgetStore.getState().initStorage();
+window.store=useBudgetStore;
+window.openDeduct=(account)=>{useBudgetStore.setState({accounts:{cib:{name:'CIB',balance:1000},hsbc:{name:'HSBC',balance:2000}},storageAssets:[]});root.render(React.createElement(DeductAccountModal,{isOpen:true,entry:{id:'credit-settlement-cib-2026-11',date:'2026-11-15',amount:100,account,type:'expense',category:'CIB Credit Due'},actualAmount:100,onClose:()=>root.render(null)}));};
+window.openEntry=()=>{const entry={id:'fx-edit',date:'2026-10-01',actualDate:'2026-10-01',type:'income',category:'Work',account:'cib',currency:'USD',originalAmount:100,fxRateAtEntry:50,amount:5000,actualAmount:5000};useBudgetStore.setState({entries:[entry],entryActuals:{'fx-edit':5000},rates:{currencies:[{name:'USD',sell:60,buy:60}],gold:[]}});root.render(React.createElement(EntryModal,{isOpen:true,entryToEdit:entry,onClose:()=>root.render(null)}));};
+window.ready=true;
+</script></body></html>

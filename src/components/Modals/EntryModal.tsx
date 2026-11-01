@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { inferTag, useBudgetStore } from '../../store/useBudgetStore';
 import { calculateCreditSettlementDate, getCreditCycleHint, isCreditCardExpense } from '../../engine/creditCards';
-import { getCurrencyRateOr, formatNativeCurrency, getAccountNativeCurrency, convertAmountBetweenCurrencies } from '../../engine/currency';
+import { normalizeCurrencyCode, getCurrencyRateOr, formatNativeCurrency, getAccountNativeCurrency, convertAmountBetweenCurrencies } from '../../engine/currency';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { getEntryActualAmount, isLoanInflow, findLinkedLoanRepayment, calculateLoanRepaymentScale } from '../../engine/forecast';
 import type { CashEntry, EntryDraw, PlannedSplit } from '../../types';
@@ -379,8 +379,12 @@ export const EntryModal: React.FC<EntryModalProps> = ({
 
   // Currency conversion calculation note
   const numericAmount = Number(amount) || 0;
-  const fxRate = getCurrencyRateOr(rates, currency, 1);
-  const egpEquivalent = Math.round(numericAmount * fxRate);
+  const sameHistoricalCurrency = entryToEdit && normalizeCurrencyCode(entryToEdit.currency || 'EGP') === normalizeCurrencyCode(currency);
+  const historicalRate = sameHistoricalCurrency
+    ? entryToEdit.fxRateAtEntry || (entryToEdit.originalAmount ? entryToEdit.amount / entryToEdit.originalAmount : undefined)
+    : undefined;
+  const fxRate = historicalRate || getCurrencyRateOr(rates, currency, 1);
+  const egpEquivalent = Math.round(numericAmount * fxRate * 100) / 100;
 
   const accountNativeCurrency = getAccountNativeCurrency(account, storageAssets);
   const accountCurrencyRate = getCurrencyRateOr(rates, accountNativeCurrency, 1);
@@ -438,7 +442,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
     const previousActual = entryToEdit ? getEntryActualAmount(entryToEdit, entryActuals) : 0;
     const resolvedActual = isCardExpense
       ? egpEquivalent
-      : (actualAmount ? Math.round(Number(actualAmount) * fxRate) : undefined);
+      : (actualAmount ? (sameHistoricalCurrency && Number(actualAmount) === Math.round(previousActual / fxRate * 100) / 100 ? previousActual : Math.round(Number(actualAmount) * fxRate * 100) / 100) : undefined);
     const resolvedActualDate = isCardExpense
       ? date
       : actualAmount
@@ -1036,7 +1040,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
                 </small>
               ) : currency !== 'EGP' ? (
                 <small style={{ color: 'var(--muted)', fontSize: '12px', margin: '-4px 0 0', display: 'block' }}>
-                  Actual in EGP: ≈ {formatMoney(Math.round(Number(actualAmount) * fxRate))}
+                  Actual in EGP: ≈ {formatMoney(Math.round(Number(actualAmount) * fxRate * 100) / 100)}
                 </small>
               ) : null
             )}
@@ -1295,7 +1299,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
                 const currentActualEgp = getEntryActualAmount(activeEntry || entryToEdit, entryActuals);
                 const inputActual = Number(actualAmount) || 0;
                 const finalActualEgp = currency !== 'EGP'
-                  ? Math.round(inputActual * fxRate) || currentActualEgp
+                  ? Math.round(inputActual * fxRate * 100) / 100 || currentActualEgp
                   : inputActual || currentActualEgp;
 
                 const targetEntry = activeEntry || entryToEdit;

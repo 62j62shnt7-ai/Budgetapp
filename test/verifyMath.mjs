@@ -39,7 +39,7 @@ import {
   getActiveForecastEntries,
   simulateSpend,
 } from '../src/engine/forecast.ts';
-import { computeSpreadPct, computeAssetEgpValue, defaultRates, autoFetchLatestRates, getAccountNativeCurrency, convertAmountBetweenCurrencies, getCurrencyRate, getCurrencyRateOr, normalizeCurrencyCode } from '../src/engine/currency.ts';
+import { getEffectiveEgpAmount, computeSpreadPct, computeAssetEgpValue, defaultRates, autoFetchLatestRates, getAccountNativeCurrency, convertAmountBetweenCurrencies, getCurrencyRate, getCurrencyRateOr, normalizeCurrencyCode } from '../src/engine/currency.ts';
 import { computeFinancialHealthScore, analyzeSettledMonths } from '../src/engine/healthScore.ts';
 import { DateUtils } from '../src/engine/dateUtils.ts';
 import { calculateJobFinancials } from '../src/engine/jobs.ts';
@@ -101,6 +101,14 @@ assert.ok(cibSwipeDue, 'Credit card swipe must roll into next cycle settlement')
 assert.strictEqual(cibSwipeDue.amount, 2500, 'Settlement amount must equal swiped actual amount');
 assert.strictEqual(cibSwipeDue.cardSpendTotal, 2500, 'Card spend total must equal swiped actual amount');
 console.log('✓ Credit card swipe actual amount & settlement aggregation verified');
+
+const movedSettlement = buildCreditDueEntries({
+  accounts: { cib: { name: 'CIB', balance: 1000, maturityDay: 15 } }, creditDues: {}, archivedEntries: [], entryActuals: {},
+  cashEntries: [{ id: 'moved-swipe', date: '2026-10-01', amount: 1000, type: 'expense', category: 'Shopping', account: 'CIB Credit', creditType: 'cib_card' }],
+  creditSettlementOverrides: { 'credit-settlement-cib-2026-11': { amount: 1000, date: '2026-12-01' } },
+});
+assert.strictEqual(movedSettlement.reduce((sum, due) => sum + due.amount, 0), 1000, 'Moved settlement must not create another statement');
+assert.strictEqual(movedSettlement[0].date, '2026-12-01');
 
 // 3. Authoritative Statement Overrides & Variance
 const sampleCardEntries = [
@@ -207,6 +215,7 @@ const mockActuals = {
   'installment-macbook-2026-01': 5000,
   'installment-macbook-1': 5000, // legacy index-based format for month 2
 };
+assert.strictEqual(getEntryActualAmount(builtInsts[1], { 'installment-macbook-0': 5000 }), 0, 'Legacy first payment must not pay the second occurrence');
 assert.strictEqual(getEntryActualAmount(builtInsts[0], mockActuals), 5000, 'Direct date ID lookup');
 assert.strictEqual(getEntryActualAmount(builtInsts[1], mockActuals), 5000, 'Fallback to legacy index ID lookup');
 console.log('✓ Date-stable installment IDs and legacy backward compatibility verified');
@@ -1039,7 +1048,7 @@ const healthLedger = [
 ];
 
 // July's plan was 20,000 but 25,000 was actually spent.
-const healthActuals = { 'h-jul-exp': 25000 };
+const healthActuals = { 'h-jun-sal': 20000, 'h-jun-exp': 12000, 'h-jul-sal': 20000, 'h-jul-exp': 25000 };
 
 const settled = analyzeSettledMonths({
   historyEntries: healthLedger,
@@ -1395,6 +1404,13 @@ console.log('✓ Settlement clear: reverts to single planned due (overdue) and r
       type: 'expense',
     },
   ];
+
+  const overdueFunding = getCreditDueFundingAlerts({
+    creditDueEntries: [{ id: 'due', date: '2026-11-03', category: 'CIB Credit Due', account: 'cib', amount: 1000, type: 'expense' }],
+    accounts: { cib: { name: 'CIB', balance: 1000 } }, entryActuals: {}, today: '2026-11-01',
+    candidateEntries: [{ id: 'overdue', date: '2026-10-30', category: 'Installment', account: 'cib', amount: 900, type: 'expense' }],
+  });
+  assert.strictEqual(overdueFunding[0].shortfall, 900, 'Overdue obligations reduce funds available for the card');
 
   // Test 1: Today is 2026-10-10 (5 days before CIB settlement on Oct 15)
   // CIB balance: 2,500; CIB due: 15,000 -> Shortfall: 12,500. Proximity <= 7 days -> approaching_shortfall
@@ -2156,6 +2172,88 @@ console.log('✓ Settlement clear: reverts to single planned due (overdue) and r
   console.log('✓ Forecast split schedules (even splits, uneven tranches, FIFO consumption, and unified keepOngoing) verified');
 }
 
+
+assert.strictEqual(getEffectiveEgpAmount({ currency: 'USD', originalAmount: 1.01, fxRateAtEntry: 50.25 }), 50.75, 'Currency conversion retains piastres');
+
+{
+  const entry = { id: 'job-remnant', date: '2026-11-01', category: 'Job', account: 'cib', type: 'income', amount: 800, currency: 'EGP', draws: [{ id: 'new-draw', date: '2026-11-01', amount: 100, account: 'cib' }] };
+  const job = { id: 'job-retain', title: 'Job', type: 'lumpsum', currency: 'EGP', lumpSumAmount: 1000, forecastEntryId: entry.id, payments: [{ id: 'previous-payment', amount: 200, currency: 'EGP', date: '2026-10-01', entryId: 'earlier-entry' }] };
+  useBudgetStore.setState({ entries: [entry], archivedEntries: [], partTimeJobs: [job] });
+  useBudgetStore.getState().settleJobForecastPayment(entry.id, 100);
+  const updated = useBudgetStore.getState().partTimeJobs[0];
+  assert.strictEqual(calculateJobFinancials(updated, useBudgetStore.getState().rates).remainingBalance, 700, 'New tranche must retain earlier payment');
+}
+
+{
+  useBudgetStore.setState({
+    accounts: { cib: { name: 'CIB', balance: 5000 } }, storageAssets: [],
+    rates: { currencies: [{ name: 'USD', buy: 60, sell: 60 }], gold: [] },
+    partTimeJobs: [{ id: 'fx-job', title: 'FX', type: 'lumpsum', currency: 'USD', lumpSumAmount: 100, payments: [{ id: 'fx-pay', date: '2026-10-01', amount: 100, currency: 'USD', egpAmount: 5000, settlementAccount: 'cib' }] }],
+  });
+  useBudgetStore.getState().deleteJobPayment('partTime', 'fx-job', 'fx-pay', { revertStorage: true });
+  assert.strictEqual(useBudgetStore.getState().accounts.cib.balance, 0, 'Payment reversal uses recorded EGP credit');
+}
+
+{
+  const historyEntries = [
+    { id: 'manual-card', date: '2026-09-01', actualDate: '2026-09-01', amount: 1000, actualAmount: 1000, type: 'expense', category: 'Food', account: 'CIB Credit', creditType: 'cib_card' },
+    { id: 'manual-due', date: '2026-10-15', actualDate: '2026-10-15', amount: 1000, actualAmount: 1000, type: 'expense', category: 'CIB Credit Due', account: 'cib', creditType: 'cib' },
+  ];
+  const months = analyzeSettledMonths({ historyEntries, today: '2026-11-01' });
+  assert.strictEqual(months.reduce((sum, month) => sum + month.realizedExpense, 0), 1000, 'Manual settlement must not double count card purchase');
+}
+
+{
+  const { getForecastCandidateEntries } = await import('../src/engine/forecast.ts');
+  const generated = buildInstallmentEntries([{ id: 'merge', name: 'Loan', startMonth: '2026-01', totalMonths: 2, amount: 100, day: 1 }]);
+  const edited = { ...generated[0], amount: 120 };
+  const result = getForecastCandidateEntries([edited], generated, [], []);
+  assert.strictEqual(result.length, 2, 'Materialized installment replaces only its own generated occurrence');
+  assert.strictEqual(result.find(row => row.id === edited.id).amount, 120);
+}
+
+{
+  const historyEntries = [
+    { id: 'unpaid-salary', date: '2026-10-01', amount: 20000, type: 'income', category: 'Salary', account: 'cib' },
+    { id: 'paid-income', date: '2026-09-30', actualDate: '2026-10-02', actualAmount: 1000, amount: 1000, type: 'income', category: 'Work', account: 'cib' },
+    { id: 'paid-expense', date: '2026-10-05', actualDate: '2026-10-05', actualAmount: 500, amount: 500, type: 'expense', category: 'Food', account: 'cib' },
+  ];
+  const months = analyzeSettledMonths({ historyEntries, today: '2026-11-01' });
+  assert.strictEqual(months.find(row => row.month === '2026-10').realizedIncome, 1000, 'Only recorded income, in its actual month, is realized');
+  assert.strictEqual(months.find(row => row.month === '2026-09')?.realizedIncome ?? 0, 0, 'Income is not realized in its scheduled month');
+}
+
 console.log('\n=================================================================');
 console.log('🌟 100% OF ENGINE, STORE, AND BUSINESS LOGIC TESTS PASSED! 🌟');
 console.log('=================================================================');
+
+{
+ const {mergeSalaryForecast} = await import('../src/engine/salaryAndInstallments.ts');
+ const generated=[{id:'salary-2026-11-15-0',date:'2026-11-15',type:'income',source:'salary',category:'Salary',amount:20500,account:'hsbc'},{id:'salary-2026-10-15-0',date:'2026-10-15',type:'income',source:'salary',category:'Salary',amount:32000,account:'hsbc'}];
+ const saved=[{...generated[0],id:'legacy-uuid',amount:21000}];
+ assert.deepStrictEqual(mergeSalaryForecast(generated,saved,[], '2026-11-01'),[]);
+ assert.equal(saved[0].amount,21000);
+}
+
+{
+ const {mergeSalaryForecast} = await import('../src/engine/salaryAndInstallments.ts');
+ const pattern=[{monthOffset:0,day:15,amount:32000},{monthOffset:0,day:30,amount:16500},{monthOffset:1,day:15,amount:20500},{monthOffset:1,day:30,amount:16500},{monthOffset:2,day:15,amount:20500},{monthOffset:2,day:30,amount:21000}];
+ const generated=buildSalaryEntries(pattern,'2026-11',12,'2026-07');
+ const schedule=generated.filter(row=>row.date<='2028-08-30').map((row,index)=>({...row,id:`legacy-salary-${index}`}));
+ const before=structuredClone(schedule);
+ assert.deepStrictEqual(mergeSalaryForecast(generated,schedule,[], '2026-11-01'),[], 'Legacy saved schedule must not gain another year');
+ schedule[0].amount+=500;
+ assert.equal(mergeSalaryForecast(generated,schedule,[], '2026-11-01').length,0,'Editing legacy amount must retain horizon and suppress its generated duplicate');
+ assert.equal(schedule.slice(1).reduce((sum,row)=>sum+row.amount,0),before.slice(1).reduce((sum,row)=>sum+row.amount,0));
+ const singleEdit={...generated[0],amount:12345};
+ assert.equal(mergeSalaryForecast(generated,[singleEdit],[], '2026-11-01').length,generated.length-1,'One materialized virtual edit must preserve all other virtual occurrences');
+ const archived=[{...schedule[0],actualAmount:schedule[0].amount}];
+ assert.deepStrictEqual(mergeSalaryForecast(generated,schedule.slice(1),archived,'2026-11-01'),[],'Archiving paid occurrence must preserve schedule horizon');
+ assert.equal(archived[0].actualAmount,schedule[0].amount);
+}
+
+{
+ const rows=analyzeSettledMonths({historyEntries:[{id:'legacy-manual-settlement',date:'2026-07-29',type:'expense',category:'HSBC Credit Due',account:'hsbc',creditType:'hsbc',amount:3351.66,actualAmount:3352}],today:'2026-11-01'});
+ assert.equal(rows[0].plannedExpense,3351.66,'Manual settlement plan must retain its recorded piastres');
+ assert.equal(rows[0].realizedExpense,3352,'Recorded settlement payment must remain unchanged');
+}

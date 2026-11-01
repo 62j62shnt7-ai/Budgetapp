@@ -103,67 +103,60 @@ export async function loadStorageAsync<T>(key: string, fallback: T): Promise<T> 
 /**
  * Asynchronous, non-blocking write to IndexedDB & memoryStore.
  */
+const pendingWrites = new Set<Promise<void>>();
+const failedWrites = new Map<string, unknown>();
+let lastReportedPersistenceFailure = false;
+const persistenceListeners = new Set<() => void>();
+export function getPersistenceError(): boolean { return failedWrites.size > 0; }
+export function onPersistenceChange(listener: () => void): () => void {
+  persistenceListeners.add(listener);
+  return () => { persistenceListeners.delete(listener); };
+}
+async function durableWrite(values: Array<[string, unknown]>): Promise<void> {
+  try {
+    if (isIndexedDBAvailable) await setMany(values);
+    else if (typeof localStorage !== 'undefined') {
+      for (const [key, value] of values) localStorage.setItem(key, JSON.stringify(value));
+    } else throw new Error('Persistent storage is unavailable');
+    for (const [key] of values) failedWrites.delete(key);
+  } catch (error) {
+    for (const [key, value] of values) failedWrites.set(key, value);
+    throw error;
+  } finally {
+    // Notify only on status transitions, outside the write stack. A listener may
+    // itself persist dirty state; repeated failures must not re-enter it.
+    const failed = failedWrites.size > 0;
+    if (failed !== lastReportedPersistenceFailure) {
+      lastReportedPersistenceFailure = failed;
+      queueMicrotask(() => persistenceListeners.forEach(listener => listener()));
+    }
+  }
+}
+export async function flushStorageWrites(): Promise<void> {
+  while (pendingWrites.size) await Promise.allSettled(pendingWrites);
+  if (failedWrites.size) throw new Error('Budget changes have not been saved to this device');
+}
+export async function retryFailedStorageWrites(): Promise<void> {
+  await saveStorageBatchAsync([...failedWrites.keys()].map(key => [key, memoryStore.get(key)]));
+}
 export async function saveStorageAsync<T>(key: string, value: T): Promise<void> {
-  memoryStore.set(key, value);
-  notifyStorageChange(key);
-
-  if (isIndexedDBAvailable) {
-    try {
-      await set(key, value);
-    } catch (err) {
-      console.error(`[storageAdapter] IndexedDB set error for ${key}:`, err);
-    }
-  }
+  return saveStorageBatchAsync([[key, value]]);
 }
-
-/**
- * Direct non-blocking save to IndexedDB & memoryStore.
- */
 export function saveStorage<T>(key: string, value: T): void {
-  memoryStore.set(key, value);
-  notifyStorageChange(key, value);
-
-  if (isIndexedDBAvailable) {
-    set(key, value).catch((err) => {
-      console.error(`[storageAdapter] Async saveStorage failed for ${key}:`, err);
-    });
-  }
+  saveStorageBatch([[key, value]]);
 }
-
-/**
- * Atomic batch save to IndexedDB & memoryStore in a single readwrite transaction.
- */
-export function saveStorageBatch(entries: Array<[string, unknown]>): void {
-  if (!entries || entries.length === 0) return;
-  for (const [key, value] of entries) {
-    memoryStore.set(key, value);
-  }
-  notifyStorageChange('__batch__', entries.map(([k]) => k));
-
-  if (isIndexedDBAvailable) {
-    setMany(entries).catch((err) => {
-      console.error('[storageAdapter] Async saveStorageBatch failed:', err);
-    });
-  }
+export function saveStorageBatch(values: Array<[string, unknown]>): void {
+  void saveStorageBatchAsync(values).catch(() => { /* Exposed through persistence status and recovery. */ });
 }
-
-/**
- * Async atomic batch save to IndexedDB & memoryStore.
- */
-export async function saveStorageBatchAsync(entries: Array<[string, unknown]>): Promise<void> {
-  if (!entries || entries.length === 0) return;
-  for (const [key, value] of entries) {
-    memoryStore.set(key, value);
-  }
-  notifyStorageChange('__batch__', entries.map(([k]) => k));
-
-  if (isIndexedDBAvailable) {
-    try {
-      await setMany(entries);
-    } catch (err) {
-      console.error('[storageAdapter] Async saveStorageBatchAsync failed:', err);
-    }
-  }
+export async function saveStorageBatchAsync(values: Array<[string, unknown]>): Promise<void> {
+  if (!values.length) return;
+  for (const [key, value] of values) memoryStore.set(key, value);
+  const write = durableWrite(values);
+  pendingWrites.add(write);
+  try {
+    await write;
+    notifyStorageChange('__batch__', values.map(([key]) => key));
+  } finally { pendingWrites.delete(write); }
 }
 
 /**
@@ -171,6 +164,7 @@ export async function saveStorageBatchAsync(entries: Array<[string, unknown]>): 
  */
 export async function removeStorage(key: string): Promise<void> {
   memoryStore.delete(key);
+  failedWrites.delete(key);
   notifyStorageChange(key);
 
   if (isIndexedDBAvailable) {
@@ -179,6 +173,8 @@ export async function removeStorage(key: string): Promise<void> {
     } catch (err) {
       console.error(`[storageAdapter] del error for ${key}:`, err);
     }
+  } else if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem(key);
   }
 }
 
@@ -228,7 +224,7 @@ export async function migrateFromLocalStorageIfNeeded(
     memoryStore.set(MIGRATED_FLAG_KEY, true);
 
     // Clean up localStorage to free up legacy space and enforce IndexedDB single source of truth
-    if (typeof localStorage !== 'undefined') {
+    if (isIndexedDBAvailable && typeof localStorage !== 'undefined') {
       try {
         for (const key of Object.values(allStorageKeys)) {
           localStorage.removeItem(key);

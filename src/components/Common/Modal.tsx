@@ -50,6 +50,10 @@ export const Modal: React.FC<ModalProps> = ({
     }
   }, [isOpen]);
 
+  useEffect(() => () => {
+    previousActiveElement.current?.focus();
+  }, []);
+
   // Light-dismiss backdrop click fallback for browsers without closedby support
   const handleBackdropClick = (e: React.MouseEvent<HTMLDialogElement>) => {
     const dialog = dialogRef.current;
@@ -76,6 +80,16 @@ export const Modal: React.FC<ModalProps> = ({
       className={`native-dialog modern-top-layer-dialog ${className}`}
       style={{ maxWidth }}
       {...{ closedby: 'any' }}
+      onKeyDown={(event) => {
+        if (event.key !== 'Tab') return;
+        const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex="0"]'))
+          .filter(element => element.getClientRects().length > 0);
+        const first = controls[0];
+        const last = controls[controls.length - 1];
+        if (!first) { event.preventDefault(); return; }
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }}
       onClick={handleBackdropClick}
       onCancel={(e) => {
         e.preventDefault();

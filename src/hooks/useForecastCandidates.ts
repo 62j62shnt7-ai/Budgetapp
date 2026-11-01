@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../store/useBudgetStore';
 import { DateUtils } from '../engine/dateUtils';
-import { buildSalaryEntries, buildInstallmentEntries } from '../engine/salaryAndInstallments';
+import { mergeSalaryForecast, buildSalaryEntries, buildInstallmentEntries } from '../engine/salaryAndInstallments';
 import { buildCreditDueEntries } from '../engine/creditCards';
 import { getActiveForecastEntries, calculateForecast, getDeficitPeriods, type DailyDeficitPeriod } from '../engine/forecast';
 import type { CashEntry, MonthlyForecast } from '../types';
@@ -57,10 +57,9 @@ export function useForecastCandidates(forecastRangeMonths: number = 12): Forecas
       ...DateUtils.parseYearMonth(DateUtils.addMonths(currentYm, Math.max(0, forecastRangeMonths - 1))),
       DateUtils.getLastDayOfMonth(...DateUtils.parseYearMonth(DateUtils.addMonths(currentYm, Math.max(0, forecastRangeMonths - 1))))
     );
-    const hasMaterializedSalary = (entries || []).some((entry) => entry.source === 'salary');
-    const salaryEntries = hasMaterializedSalary
-      ? []
-      : buildSalaryEntries(salaryPattern || [], currentYm, Math.ceil(forecastRangeMonths / 3), salaryAnchorMonth);
+    const salaryEntries = mergeSalaryForecast(
+      buildSalaryEntries(salaryPattern || [], currentYm, Math.ceil(forecastRangeMonths / 3), salaryAnchorMonth),
+      entries || [], archivedEntries || [], DateUtils.todayString());
 
     const installmentEntries = buildInstallmentEntries(installments || []);
     const creditDueEntries = buildCreditDueEntries({

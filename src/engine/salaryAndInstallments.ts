@@ -320,3 +320,36 @@ export function summarizeActiveInstallments(
 }
 
 
+
+/** Upgrade zero-based legacy indices using the plan's original schedule. */
+export function migrateInstallmentOccurrenceKeys<T>(plans: Installment[], values: Record<string, T>): Record<string, T> {
+  const result = { ...values };
+  for (const plan of plans) {
+    const [year, month] = DateUtils.parseYearMonth(plan.startMonth);
+    const prefix = `installment-${plan.id}-`;
+    for (const key of Object.keys(values)) {
+      if (!key.startsWith(prefix)) continue;
+      const suffix = key.slice(prefix.length);
+      if (!/^\d+$/.test(suffix)) continue;
+      const index = Number(suffix);
+      const absolute = year * 12 + month - 1 + index * Math.max(1, Number(plan.frequency) || 1);
+      const stable = getInstallmentDateId(plan.id, Math.floor(absolute / 12), absolute % 12 + 1);
+      if (result[stable] === undefined) result[stable] = values[key];
+      delete result[key];
+    }
+  }
+  return result;
+}
+
+/** Generated rows fill gaps only; stored and historical salary occurrences own their dates. */
+export function mergeSalaryForecast(generated: CashEntry[], saved: CashEntry[], archived: CashEntry[], today: string): CashEntry[] {
+  const ledger = [...saved, ...archived];
+  const isSalary = (entry: CashEntry) => entry.type === 'income' && (entry.source === 'salary' || entry.category.trim().toLowerCase() === 'salary');
+  // Bulk-generated legacy schedules were explicitly saved with arbitrary IDs.
+  // A dated virtual ID, in contrast, represents an individual edited occurrence.
+  const legacySchedule = saved.filter(entry => isSalary(entry) && !/^salary-\d{4}-\d{1,2}-\d{1,2}-\d+$/.test(entry.id));
+  const scheduleEnd = legacySchedule.length ? legacySchedule.reduce((end, entry) => entry.date > end ? entry.date : end, '') : undefined;
+  const ids = new Set(ledger.map(entry => entry.id));
+  const salaryDates = new Set(ledger.filter(entry => entry.type === 'income' && (entry.source === 'salary' || entry.category.trim().toLowerCase() === 'salary')).map(entry => `${entry.date}|${(entry.account || 'hsbc').toLowerCase()}`));
+  return generated.filter(entry => entry.date >= today && (!scheduleEnd || entry.date <= scheduleEnd) && !ids.has(entry.id) && !salaryDates.has(`${entry.date}|${(entry.account || 'hsbc').toLowerCase()}`));
+}

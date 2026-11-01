@@ -96,7 +96,7 @@ export function getEffectiveEgpAmount(
   const isForeign = Boolean(entry.currency && normalizeCurrencyCode(entry.currency) !== 'EGP');
   if (isForeign && entry.originalAmount !== undefined && entry.originalAmount !== null) {
     const fxRate = entry.fxRateAtEntry || getCurrencyRateOr(rates, entry.currency, 48.5);
-    return Math.round(Number(entry.originalAmount) * fxRate);
+    return Math.round(Number(entry.originalAmount) * fxRate * 100) / 100;
   }
   return Number(entry.amount || 0);
 }

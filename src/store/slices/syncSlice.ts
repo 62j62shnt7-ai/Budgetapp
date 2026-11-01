@@ -10,6 +10,8 @@ import type {
   CreditSettlementOverride,
   SyncConflictPayload,
 } from '../../types';
+import { showAppNotice } from '../../components/Common/UndoToast';
+import { migrateInstallmentOccurrenceKeys } from '../../engine/salaryAndInstallments';
 import { DateUtils } from '../../engine/dateUtils';
 import { defaultRates, inferAssetLocation } from '../../engine/currency';
 import { migrateBackupPayload } from '../../engine/migration';
@@ -69,8 +71,8 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => {
     setSyncConflict: (conflict: SyncConflictPayload | null) => set({ syncConflict: conflict }),
 
     setHasUnsyncedChanges: (hasChanges: boolean) => {
-      saveStorage(STORAGE_KEYS.hasUnsyncedChanges, hasChanges);
       set({ hasUnsyncedChanges: hasChanges });
+      saveStorage(STORAGE_KEYS.hasUnsyncedChanges, hasChanges);
     },
 
     setDriveUser: (user: GoogleDriveUser | null) => {
@@ -400,6 +402,22 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => {
           restoreUndoHistoryFromStorage(),
         ]);
 
+        const record = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value));
+        const finite = (value: unknown) => typeof value === 'number' && Number.isFinite(value);
+        const checks: Array<[string, (value: unknown) => boolean]> = [
+          ...[STORAGE_KEYS.entries, STORAGE_KEYS.archivedEntries].map(key => [key, (value: unknown) => Array.isArray(value) && value.every(item => record(item) && typeof item.id === 'string' && typeof item.date === 'string' && finite(item.amount) && (item.type === 'income' || item.type === 'expense'))] as [string, (value: unknown) => boolean]),
+          [STORAGE_KEYS.accounts, value => record(value) && Object.values(value).every(item => record(item) && typeof item.name === 'string' && finite(item.balance))],
+          [STORAGE_KEYS.rates, value => record(value) && ['currencies', 'gold'].every(key => Array.isArray(value[key]) && value[key].every((item: unknown) => record(item) && typeof item.name === 'string' && finite(item.buy) && finite(item.sell)))],
+          [STORAGE_KEYS.installments, value => Array.isArray(value) && value.every(item => record(item) && typeof item.id === 'string' && typeof item.startMonth === 'string' && finite(item.amount))],
+          [STORAGE_KEYS.partTimeJobs, value => Array.isArray(value) && value.every(item => record(item) && typeof item.id === 'string' && typeof item.title === 'string' && (!item.payments || (Array.isArray(item.payments) && item.payments.every(payment => record(payment) && finite(payment.amount)))))],
+        ];
+        for (const [key, validate] of checks) {
+          if (storedData[key] !== undefined && !validate(storedData[key])) {
+            showAppNotice(`Stored budget data is invalid (${key}). The source has been retained for recovery. Export a recovery backup before making edits.`, 'danger');
+            throw new Error(`Invalid stored budget data: ${key}`);
+          }
+        }
+
         const updates: Partial<BudgetStoreState> = { isStorageReady: true };
 
         if (storedData && Object.keys(storedData).length > 0) {
@@ -488,6 +506,12 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => {
             }
           }
         }
+
+        const plans = updates.installments || get().installments;
+        updates.entryActuals = migrateInstallmentOccurrenceKeys(plans, updates.entryActuals || get().entryActuals);
+        updates.entryActualDates = migrateInstallmentOccurrenceKeys(plans, updates.entryActualDates || get().entryActualDates);
+        if (JSON.stringify(updates.entryActuals) !== JSON.stringify(storedData[STORAGE_KEYS.entryActuals] || {})) saveStorage(STORAGE_KEYS.entryActuals, updates.entryActuals);
+        if (JSON.stringify(updates.entryActualDates) !== JSON.stringify(storedData[STORAGE_KEYS.entryActualDates] || {})) saveStorage(STORAGE_KEYS.entryActualDates, updates.entryActualDates);
 
         if (undoData) {
           updates.undoStack = undoData.undoStack;

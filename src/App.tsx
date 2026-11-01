@@ -50,7 +50,7 @@ import {
 } from './services/googleDriveClient';
 import { getSyncEngine } from './services/syncEngine';
 import { flushPendingDriveSyncNow } from './store/slices/common';
-import { onStorageChange } from './utils/storageAdapter';
+import { getPersistenceError, onPersistenceChange, retryFailedStorageWrites, onStorageChange } from './utils/storageAdapter';
 import type { CashEntry, JobItem, Installment } from './types';
 
 export const App: React.FC = () => {
@@ -107,6 +107,12 @@ export const App: React.FC = () => {
   // Sync & Tools
   const [driveSyncOpen, setDriveSyncOpen] = useState(false);
   const [dataToolsOpen, setDataToolsOpen] = useState(false);
+  const [unsaved, setUnsaved] = useState(getPersistenceError);
+  useEffect(() => onPersistenceChange(() => {
+    const failed = getPersistenceError();
+    setUnsaved(failed);
+    if (failed && !useBudgetStore.getState().hasUnsyncedChanges) useBudgetStore.getState().setHasUnsyncedChanges(true);
+  }), []);
 
   // Deduct prompt modal
   const [deductModalOpen, setDeductModalOpen] = useState(false);
@@ -525,6 +531,10 @@ export const App: React.FC = () => {
 
   return (
     <>
+      {unsaved && <div role="alert">Changes are not saved to this device. Keep this page open.
+        <button type="button" onClick={() => { void retryFailedStorageWrites().catch(() => {}); }}>Retry saving</button>
+        <button type="button" onClick={() => setDataToolsOpen(true)}>Export recovery backup</button>
+      </div>}
       <Sidebar onOpenDriveSync={() => setDriveSyncOpen(true)} />
       <main className="app-shell has-bottom-nav">
         <Topbar

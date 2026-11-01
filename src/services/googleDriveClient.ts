@@ -939,13 +939,26 @@ export async function uploadBudgetToDrive(
         };
       }
 
+      // Bind the write to the exact metadata version read immediately before it.
+      const versionRes = await fetchWithAuth(`https://www.googleapis.com/drive/v2/files/${existingFile.id}?fields=id,modifiedDate,etag`);
+      if (!versionRes.ok) throw new Error('Unable to read remote write precondition');
+      const version = await versionRes.json() as { modifiedDate?: string; etag?: string };
+      const writeEtag = version.etag;
+      if (!options?.forceOverwrite && options?.expectedModifiedTime && version.modifiedDate !== options.expectedModifiedTime) {
+        return { success: false, conflict: true, fileId: existingFile.id, remoteModifiedTime: version.modifiedDate };
+      }
+      if (!writeEtag || writeEtag.startsWith('W/')) throw new Error('Google Drive did not provide a strong write precondition; upload was stopped to protect remote edits.');
+
       // Overwrite existing file content directly
-      const updateRes = await fetchWithAuth(`https://www.googleapis.com/upload/drive/v3/files/${existingFile.id}?uploadType=media&fields=id,modifiedTime`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+      const updateRes = await fetchWithAuth(`https://www.googleapis.com/upload/drive/v2/files/${existingFile.id}?uploadType=media&fields=id,modifiedDate`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'If-Match': writeEtag },
         body: content,
       });
 
+      if (updateRes.status === 412) {
+        return { success: false, conflict: true, fileId: existingFile.id, error: 'Remote changed during upload.' };
+      }
       if (!updateRes.ok) {
         throw new Error(`Failed to update budget file in Google Drive: ${updateRes.statusText}`);
       }
@@ -955,9 +968,9 @@ export async function uploadBudgetToDrive(
         void createEditSnapshotIfNeeded(payload, folderId);
       }
 
-      const updatedData = (await updateRes.json()) as { id: string; modifiedTime?: string };
+      const updatedData = (await updateRes.json()) as { id: string; modifiedTime?: string; modifiedDate?: string };
       cachedLiveFileId = updatedData.id;
-      let verifiedModifiedTime = updatedData.modifiedTime;
+      let verifiedModifiedTime = updatedData.modifiedDate || updatedData.modifiedTime;
       if (!verifiedModifiedTime) {
         try {
           const metaRes = await fetchWithAuth(`https://www.googleapis.com/drive/v3/files/${updatedData.id}?fields=id,modifiedTime`);

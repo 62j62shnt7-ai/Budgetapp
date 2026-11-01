@@ -25,7 +25,7 @@ import {
   localMutationCounter,
   setSuppressAutoSync,
 } from '../store/slices/common';
-import { loadStorageSync, saveStorageAsync } from '../utils/storageAdapter';
+import { flushStorageWrites, loadStorageSync, saveStorageAsync } from '../utils/storageAdapter';
 import type { BudgetStoreState } from '../store/slices/types';
 import type { SyncConflictPayload, SyncMetadata } from '../types';
 
@@ -386,12 +386,13 @@ export class SyncEngine {
     const parsed = JSON.parse(rawExport);
     const contentHash = computeContentHash(parsed.data);
 
+    const uploadedRevision = getLocalSyncRevision();
     const payloadObj = {
       ...parsed,
       version: '2.2',
       sync: {
         deviceId: getOrCreateDeviceId(),
-        revision: getLocalSyncRevision(),
+        revision: uploadedRevision,
         baseRevision: getSyncBaseRevision(),
         contentHash,
       },
@@ -405,17 +406,18 @@ export class SyncEngine {
     });
 
     if (res.success) {
+      await flushStorageWrites();
       if (localMutationCounter === startMutationCount) {
         markSynced(this.getState, {
           modifiedTime: res.modifiedTime,
-          revision: getLocalSyncRevision(),
+          revision: uploadedRevision,
           contentHash,
         });
       } else {
         // User edited while upload was in flight -> retain dirty status, advance base revision & schedule next cycle
         saveStorage(STORAGE_KEYS.lastDriveSync, res.modifiedTime || '');
         state.setDriveSyncTime?.(res.modifiedTime || null);
-        setSyncBaseRevision(getLocalSyncRevision());
+        setSyncBaseRevision(uploadedRevision);
         saveStorage(STORAGE_KEYS.syncContentHash, contentHash);
         this.schedule(false);
       }
@@ -452,7 +454,15 @@ export class SyncEngine {
   }
 
   private async performPull(state: BudgetStoreState, forcePull: boolean): Promise<void> {
+    const startMutations = localMutationCounter;
+    const wasDirty = this.getState().hasUnsyncedChanges;
+    const changedDuringPull = () => localMutationCounter !== startMutations || (this.getState().hasUnsyncedChanges && !wasDirty);
     const remoteRes = await downloadBudgetFromDrive();
+    if (changedDuringPull()) {
+      this.getState().setDriveSyncStatus('scheduled');
+      this.schedule(false);
+      return;
+    }
     if (!remoteRes.success) {
       if (remoteRes.error?.includes("No 'budget-data.json' found")) {
         state.setDriveSyncStatus('synced');
@@ -471,9 +481,6 @@ export class SyncEngine {
       state.setDriveSyncStatus('synced');
       return;
     }
-
-    const startMutations = localMutationCounter;
-    const wasDirty = state.hasUnsyncedChanges;
 
     // Sanity Guard Check (Phase 2): Check for blank remote clobbering populated local
     const rawRemoteData = (remotePayload.data || remotePayload) as Record<string, unknown>;
@@ -495,7 +502,7 @@ export class SyncEngine {
     }
 
     // 0.5: Re-check local mutation counter before applying download
-    if (localMutationCounter !== startMutations || (state.hasUnsyncedChanges && !wasDirty)) {
+    if (changedDuringPull()) {
       console.warn('[syncEngine] Local was mutated during download; aborting pull to preserve edit.');
       this.schedule(false);
       return;
@@ -503,12 +510,23 @@ export class SyncEngine {
 
     // 0.6: Save local rolling backup before applying remote
     await saveLocalPreImportBackup(state);
+    if (changedDuringPull()) {
+      this.getState().setDriveSyncStatus('scheduled');
+      this.schedule(false);
+      return;
+    }
 
     // Apply remote
     beginRemoteApply();
     try {
       const ok = state.importJSON(JSON.stringify(remotePayload), { isRemoteSync: true });
       if (ok) {
+        try { await flushStorageWrites(); }
+        catch (error) { this.getState().setHasUnsyncedChanges(true); throw error; }
+        if (changedDuringPull()) {
+          this.getState().setHasUnsyncedChanges(true);
+          return;
+        }
         const rawSync = (remotePayload.sync || rawRemoteData.sync) as Partial<SyncMetadata> | undefined;
         markSynced(this.getState, {
           modifiedTime: remoteModified,
@@ -551,13 +569,24 @@ export class SyncEngine {
     if (resolution === 'keep_mine') {
       // Overwrite cloud with local
       await this.sync('resolve_keep_mine', { forcePush: true });
-      state.setSyncConflict(null);
+      if (this.getState().driveSyncStatus === 'synced' && !this.getState().hasUnsyncedChanges) state.setSyncConflict(null);
     } else if (resolution === 'take_theirs') {
-      // Overwrite local with cloud
+      // Preserve local edits during the awaited backup as well.
+      const startVersion = localMutationCounter;
+      const localBackup = state.exportJSON();
       await saveLocalPreImportBackup(state);
+      if (localMutationCounter !== startVersion) return;
       beginRemoteApply();
       try {
-        state.importJSON(conflict.remotePayload, { isRemoteSync: true });
+        if (!state.importJSON(conflict.remotePayload, { isRemoteSync: true })) {
+          state.setDriveSyncStatus('conflict');
+          return;
+        }
+        await flushStorageWrites();
+        if (localMutationCounter !== startVersion) {
+          this.getState().setHasUnsyncedChanges(true);
+          return;
+        }
         const parsedRemote = JSON.parse(conflict.remotePayload);
         const rawSync = (parsedRemote.sync || parsedRemote.data?.sync) as Partial<SyncMetadata> | undefined;
         markSynced(this.getState, {
@@ -565,6 +594,15 @@ export class SyncEngine {
           revision: rawSync?.revision,
           contentHash: rawSync?.contentHash,
         });
+      } catch {
+        if (localMutationCounter === startVersion) {
+          // Restore the recoverable local budget; retain the unresolved conflict.
+          const restore = this.getState().importJSON;
+          restore(localBackup, { isRemoteSync: true });
+        }
+        this.getState().setHasUnsyncedChanges(true);
+        state.setDriveSyncStatus('conflict');
+        return;
       } finally {
         endRemoteApply();
       }

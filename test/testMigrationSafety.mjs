@@ -90,16 +90,12 @@ const archivedSeparated = migrateBackupPayload({
 assert.strictEqual(archivedSeparated.archivedEntries[0].actualAmount, 5000, 'Separator-formatted archived actuals import');
 console.log('✓ Archived entry actuals are preserved and separator-formatted values parsed');
 
-// --- Wrong-shaped payload must not replace the ledger ----------------------
-assert.throws(
-  () => migrateBackupPayload({
-    version: '2.1',
-    accountBalances: { cib: { balance: 100 } },
-    salaryPattern: [{ day: 15, amount: 1 }],
-  }),
-  /no transactions could be read/,
-  'A populated but unrecognised payload must not import as empty'
-);
+// Reject emergency dumps until their storage keys can be decoded safely.
+assert.throws(() => migrateBackupPayload({ storageDump: { 'budget-control-entries': [{ id: 'x' }] } }), /storageDump/i);
+const accountsOnly = migrateBackupPayload({ version: '2.1', accountBalances: { cib: { name: 'CIB', balance: 100 } }, entries: [] });
+assert.strictEqual(accountsOnly.accounts.cib.balance, 100, 'Account-only backups remain valid');
+assert.throws(() => migrateBackupPayload({ version: '2.1', entries: { broken: true } }), /recogn/i);
+assert.throws(() => migrateBackupPayload({ version: '2.1', salaryPattern: { broken: true } }), /recogn/i);
 console.log('✓ Populated but unrecognised payloads are rejected instead of wiping data');
 
 // --- A genuinely empty backup is still valid -------------------------------
@@ -109,3 +105,8 @@ assert.deepStrictEqual(empty.archivedEntries, []);
 console.log('✓ A genuinely empty backup still imports cleanly');
 
 console.log('\n🌟 ALL BACKUP MIGRATION & IMPORT-SAFETY TESTS PASSED! 🌟');
+
+const legacyInstallments = migrateBackupPayload({ version: '2.2', entries: [], installments: [{ id: 'quarter', name: 'Quarter', amount: 100, totalMonths: 3, startMonth: '2026-01', frequency: 3, day: 1 }], entryActuals: { 'installment-quarter-1': 100 } });
+assert.strictEqual(legacyInstallments.entryActuals['installment-quarter-2026-04'], 100);
+assert.strictEqual(legacyInstallments.entryActuals['installment-quarter-2026-01'], undefined);
+assert.throws(() => migrateBackupPayload({version:'2.2', accountBalances:{cib:{broken:true}}}), /account/i, 'Malformed account-only backup must not replace balances with defaults');

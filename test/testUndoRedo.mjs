@@ -15,6 +15,7 @@ if (typeof globalThis.localStorage === 'undefined') {
 
 import { useBudgetStore, STORAGE_KEYS } from '../src/store/useBudgetStore.ts';
 import { loadStorageSync } from '../src/utils/storageAdapter.ts';
+import { localMutationCounter } from '../src/store/slices/common.ts';
 import { buildCreditDueEntries } from '../src/engine/creditCards.ts';
 
 console.log('--- Starting Undo/Redo System Tests ---');
@@ -44,15 +45,19 @@ assert.strictEqual(state.entries.some(e => e.id === testEntryId), true, 'Entry s
 assert.ok(state.undoToast?.label.includes('Expense: Groceries'), 'Toast should have descriptive label');
 
 // Execute Undo
+const beforeUndoVersion = localMutationCounter;
 useBudgetStore.getState().undo();
 state = useBudgetStore.getState();
+assert.ok(localMutationCounter > beforeUndoVersion, 'Undo must advance the sync mutation version');
 assert.strictEqual(state.undoStack.length, 0, 'undoStack should be 0 after undo');
 assert.strictEqual(state.redoStack.length, 1, 'redoStack should have 1 item after undo');
 assert.strictEqual(state.entries.some(e => e.id === testEntryId), false, 'Entry should be removed after undo');
 
 // Execute Redo
+const beforeRedoVersion = localMutationCounter;
 useBudgetStore.getState().redo();
 state = useBudgetStore.getState();
+assert.ok(localMutationCounter > beforeRedoVersion, 'Redo must advance the sync mutation version');
 assert.strictEqual(state.undoStack.length, 1, 'undoStack should have 1 item after redo');
 assert.strictEqual(state.redoStack.length, 0, 'redoStack should be 0 after redo');
 assert.strictEqual(state.entries.some(e => e.id === testEntryId), true, 'Entry should be restored after redo');

@@ -235,7 +235,7 @@ export function buildCreditDueEntries(params: {
 
     allExpenses.forEach((entry) => {
       if (isCardExpenseForAccount(entry, accountKey)) {
-        const sMonth = getCreditSettlementMonth(entry, creditSettlementOverrides, entryActualDates);
+        const sMonth = getCreditSettlementMonth(entry, undefined, entryActualDates);
         if (sMonth) settlementMonths.add(sMonth);
       } else if (isLumpCreditDueForAccount(entry, accountKey)) {
         const sMonth = DateUtils.getMonthKey(entry.date);
@@ -269,7 +269,7 @@ export function buildCreditDueEntries(params: {
       const cardExpenses = allExpenses.filter(
         (entry) =>
           isCardExpenseForAccount(entry, accountKey) &&
-          getCreditSettlementMonth(entry, creditSettlementOverrides, entryActualDates) === monthKey
+          getCreditSettlementMonth(entry, undefined, entryActualDates) === monthKey
       );
       const cardSpendTotal = cardExpenses.reduce((sum, e) => {
         const act = getActual(e);

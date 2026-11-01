@@ -9,6 +9,7 @@ import {
   scheduleAutoDriveSync,
   setHasPendingUserEdit,
   setLastLocalMutationTimestamp,
+  incrementLocalMutationCounter,
   MAX_UNDO_DEPTH,
   setIsTransactionRunning,
   transactionDepth,
@@ -87,6 +88,7 @@ export const createUndoSlice: SliceCreator<UndoSlice> = (set, get) => ({
 
     const now = Date.now();
     setHasPendingUserEdit(true);
+    incrementLocalMutationCounter();
     setLastLocalMutationTimestamp(now);
     saveStorage(STORAGE_KEYS.lastLocalModified, String(now));
 
@@ -131,6 +133,7 @@ export const createUndoSlice: SliceCreator<UndoSlice> = (set, get) => ({
 
     const now = Date.now();
     setHasPendingUserEdit(true);
+    incrementLocalMutationCounter();
     setLastLocalMutationTimestamp(now);
     saveStorage(STORAGE_KEYS.lastLocalModified, String(now));
 

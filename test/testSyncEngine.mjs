@@ -31,6 +31,7 @@ import {
   listLocalPreImportBackups,
 } from '../src/services/syncEngine.ts';
 import {
+  uploadBudgetToDrive,
   saveStoredDriveToken,
   saveStoredDriveUser,
   saveStoredDriveAutoSync,
@@ -102,8 +103,9 @@ const mockDrive = new MockDriveServer();
 // Install global fetch mock
 const originalFetch = globalThis.fetch;
 globalThis.fetch = async (input, init = {}) => {
-  const url = typeof input === 'string' ? input : input.url;
-  const method = (init.method || 'GET').toUpperCase();
+  const requestedUrl = typeof input === 'string' ? input : input.url;
+  const url = requestedUrl.replace('/drive/v2/', '/drive/v3/');
+  const method = init.method === 'PUT' ? 'PATCH' : (init.method || 'GET').toUpperCase();
   const headers = init.headers || {};
 
   // Check injected failures
@@ -187,7 +189,7 @@ globalThis.fetch = async (input, init = {}) => {
     const fileId = matchId ? matchId[1] : '';
     const file = mockDrive.files.get(fileId);
     if (!file) return new Response('Not found', { status: 404 });
-    return new Response(JSON.stringify(file), { status: 200 });
+    return new Response(JSON.stringify({ ...file, modifiedDate: file.modifiedTime, etag: computeContentHash(file.content) }), { status: 200 });
   }
 
   // Drive file create (multipart or simple)
@@ -225,18 +227,14 @@ globalThis.fetch = async (input, init = {}) => {
   }
 
   // Drive file patch/update
+  if (requestedUrl.includes('/upload/drive/v2/')) assert.strictEqual(init.method, 'PUT', 'Conditional v2 uploads use PUT');
   if (url.includes('drive/v3/files/') && method === 'PATCH') {
     const matchId = url.match(/\/files\/([^?]+)/);
     const fileId = matchId ? matchId[1] : '';
     const file = mockDrive.files.get(fileId);
     if (!file) return new Response('Not found', { status: 404 });
-
-    const ifMatch = headers['If-Match'] || (headers.get ? headers.get('If-Match') : null);
-    if (ifMatch && ifMatch !== file.modifiedTime) {
-      return new Response(JSON.stringify({ error: { code: 412, message: 'Precondition Failed' } }), {
-        status: 412,
-      });
-    }
+    const expectedEtag = headers['If-Match'] || (headers.get ? headers.get('If-Match') : null);
+    if (url.includes('/upload/') && expectedEtag !== computeContentHash(file.content)) return new Response('', { status: 412 });
 
     const bodyStr = typeof init.body === 'string' ? init.body : '';
     let content = bodyStr;
@@ -340,6 +338,31 @@ console.log('✓ Scenario 1 passed: Two-device conflict detected & snapshots pre
 // Start poll download, mutate local mid-flight -> import is aborted, edit survives
 // ----------------------------------------------------------------------------
 console.log('Test 2: Edit during download mid-flight check...');
+
+useBudgetStore.getState().setSyncConflict(null);
+useBudgetStore.setState({ hasUnsyncedChanges: false, lastDriveSyncTime: '2020-01-01T00:00:00.000Z' });
+const normalFetch = globalThis.fetch;
+let releaseDownload;
+let signalDownload;
+const downloadStarted = new Promise(resolve => { signalDownload = resolve; });
+const downloadGate = new Promise(resolve => { releaseDownload = resolve; });
+globalThis.fetch = async (input, init) => {
+  const url = typeof input === 'string' ? input : input.url;
+  if (url.includes('alt=media')) {
+    signalDownload();
+    await downloadGate;
+  }
+  return normalFetch(input, init);
+};
+const pendingPull = engine.sync('gated_pull', { forcePull: true });
+await downloadStarted;
+const gatedId = useBudgetStore.getState().addEntry({ date: '2026-10-05', amount: 17, category: 'Gated edit', type: 'expense', account: 'cib' });
+releaseDownload();
+await pendingPull;
+globalThis.fetch = normalFetch;
+assert.ok(useBudgetStore.getState().entries.some(entry => entry.id === gatedId), 'Edit during download must survive');
+assert.strictEqual(useBudgetStore.getState().hasUnsyncedChanges, true, 'Edit during download must stay dirty');
+
 useBudgetStore.getState().setSyncConflict(null);
 useBudgetStore.setState({ hasUnsyncedChanges: false, lastDriveSyncTime: '2026-09-01T00:00:00.000Z' });
 
@@ -522,6 +545,64 @@ const backups = await listLocalPreImportBackups();
 assert.ok(Array.isArray(backups), 'Backups must return an array');
 assert.ok(backups.length >= 1 && backups.length <= 5, 'Backups capped at 5 rolling items');
 console.log(`✓ Scenario 10 passed: Local rolling backups verified (${backups.length} stored).`);
+
+// Gate the actual media PATCH, then undo/redo while that exact payload is pending.
+useBudgetStore.getState().setSyncConflict(null);
+useBudgetStore.getState().addEntry({ date: '2026-11-01', category: 'Gated undo', amount: 42, type: 'expense', account: 'cib' });
+for (const operation of ['undo', 'redo']) {
+  const ungatedFetch = globalThis.fetch;
+  let release;
+  let started;
+  const gate = new Promise(resolve => { release = resolve; });
+  const waiting = new Promise(resolve => { started = resolve; });
+  globalThis.fetch = async (input, init = {}) => {
+    const url = typeof input === 'string' ? input : input.url;
+    if (url.includes('/upload/') && (init.method === 'PATCH' || init.method === 'PUT')) { started(); await gate; }
+    return ungatedFetch(input, init);
+  };
+  const uploading = engine.sync(`gated_${operation}`, { forcePush: true });
+  await waiting;
+  assert.strictEqual(useBudgetStore.getState()[operation](), true);
+  release();
+  await uploading;
+  globalThis.fetch = ungatedFetch;
+  assert.strictEqual(useBudgetStore.getState().hasUnsyncedChanges, true, `${operation} during upload must stay dirty`);
+}
+
+const beforeOverlap = mockDrive.getFile('budget-data.json');
+const overlapFetch = globalThis.fetch;
+let releaseOverlap;
+let signalOverlap;
+let patchesWaiting = 0;
+const overlapGate = new Promise(resolve => { releaseOverlap = resolve; });
+const bothWaiting = new Promise(resolve => { signalOverlap = resolve; });
+globalThis.fetch = async (input, init = {}) => {
+  const url = typeof input === 'string' ? input : input.url;
+  if (url.includes('/upload/') && (init.method === 'PATCH' || init.method === 'PUT')) {
+    if (++patchesWaiting === 2) signalOverlap();
+    await overlapGate;
+  }
+  return overlapFetch(input, init);
+};
+const overlapOptions = { expectedModifiedTime: beforeOverlap.modifiedTime };
+const writes = [
+  uploadBudgetToDrive({ version: '2.2', data: { cashEntries: [{ id: 'writer-a' }] } }, overlapOptions),
+  uploadBudgetToDrive({ version: '2.2', data: { cashEntries: [{ id: 'writer-b' }] } }, overlapOptions),
+];
+await bothWaiting;
+releaseOverlap();
+const overlapResults = await Promise.all(writes);
+globalThis.fetch = overlapFetch;
+assert.strictEqual(overlapResults.filter(result => result.success).length, 1, 'Only one overlapping writer may succeed');
+assert.strictEqual(overlapResults.filter(result => result.conflict).length, 1, 'Stale overlapping writer receives a conflict');
+
+const rejectedConflict = { localPayload: useBudgetStore.getState().exportJSON(), remotePayload: JSON.stringify({ version: '999.0', data: {} }), remoteModifiedTime: 'future', diffSummary: {} };
+useBudgetStore.setState({ syncConflict: rejectedConflict, driveSyncStatus: 'conflict', hasUnsyncedChanges: true });
+const entriesBeforeRejectedImport = useBudgetStore.getState().entries;
+await engine.resolveConflict('take_theirs');
+assert.strictEqual(useBudgetStore.getState().syncConflict, rejectedConflict, 'Rejected remote import must retain conflict');
+assert.strictEqual(useBudgetStore.getState().hasUnsyncedChanges, true, 'Rejected remote import must remain dirty');
+assert.strictEqual(useBudgetStore.getState().entries, entriesBeforeRejectedImport, 'Rejected remote import must preserve local entries');
 
 // Clean up mock fetch
 globalThis.fetch = originalFetch;

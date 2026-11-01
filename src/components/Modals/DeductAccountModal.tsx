@@ -4,7 +4,9 @@ import { useBudgetStore } from '../../store/useBudgetStore';
 import { formatMoney } from '../../engine/dateUtils';
 import { getCurrencyRateOr, formatNativeCurrency, getAccountNativeCurrency, convertAmountBetweenCurrencies, normalizeCurrencyCode } from '../../engine/currency';
 import type { CashEntry } from '../../types';
-import { Banknote, ArrowLeftRight, X } from 'lucide-react';
+import { Modal } from '../Common/Modal';
+import { resolveSettlementAccountKey } from '../../engine/creditDueAlerts';
+import { Banknote, ArrowLeftRight } from 'lucide-react';
 
 interface DeductAccountModalProps {
   isOpen: boolean;
@@ -127,9 +129,7 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
       let defaultAccId = 'hsbc';
 
       if (isSettlement) {
-        const parsedKey = (entry.id.split('-')[2] || entry.account || '').toLowerCase();
-        const matched = Object.keys(accounts).find((k) => k.toLowerCase() === parsedKey);
-        defaultAccId = matched || (accounts[entry.account || ''] ? entry.account! : (accounts['hsbc'] ? 'hsbc' : accounts['cib'] ? 'cib' : Object.keys(accounts)[0] || 'hsbc'));
+        defaultAccId = resolveSettlementAccountKey(entry, accounts);
       } else {
         const entryAccClean = (entry.account || '').trim();
         const entryAccLower = entryAccClean.toLowerCase();
@@ -173,6 +173,7 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
         }
       }
 
+      setSelectedAccountId(defaultAccId);
       setTag(entry.tag || entry.subcategory || '');
       setCustomFxRate(String(defaultRate));
       setCustomEgpAmount(String(actualAmount));
@@ -303,19 +304,8 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
   };
 
   return (
-    <dialog
-      open
-      className="native-dialog"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-      style={{ display: 'block', zIndex: 1000, maxWidth: '580px', width: 'min(580px, 94vw)' }}
-    >
-      <div className="dialog-heading">
-        <h3>{isIncome ? `Deposit to ${targetAccountLabel}` : `Deduct from ${targetAccountLabel}`}</h3>
-        <button className="icon-button close-dialog-btn" type="button" aria-label="Close" onClick={onClose}>
-          <X size={16} />
-        </button>
-      </div>
-
+    <Modal isOpen={isOpen} onClose={onClose} maxWidth="580px"
+      title={isIncome ? `Deposit to ${targetAccountLabel}` : `Deduct from ${targetAccountLabel}`}>
       <p style={{ margin: '12px 0 8px', fontSize: '14px', lineHeight: '1.5' }}>
         {isIncome ? (
           <>
@@ -505,6 +495,6 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
           {isIncome ? `Deposit to ${targetAccountLabel} & Save` : `Deduct from ${targetAccountLabel} & Save`}
         </button>
       </div>
-    </dialog>
+    </Modal>
   );
 };

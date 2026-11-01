@@ -96,6 +96,11 @@ test/                         # See section 4 — wired individually into npm sc
 * **Determinism:** engine functions must not read the ambient clock. Pass `today`/`todayString` in as an optional trailing parameter (see `computeFinancialHealthScore` and `analyzeSettledMonths`) rather than calling `new Date()` inside. Network access also does not belong here; `autoFetchLatestRates` in `currency.ts` is the one historical exception.
 * **Money rounding:** round to piastres (`Math.round(v * 100) / 100`) at every accumulation step, and never mix whole-EGP rounding with piastre rounding for the same quantity.
 * **Credit Settlement Netting in Historical Analysis:** `analyzeSettledMonths` in `healthScore.ts` must only count the uncovered excess delta (`uncoveredMap.get(entry.id)`) for lump credit settlement entries to avoid double-counting card purchases already accounted for in their swipe months.
+* Historical health counts recorded actuals and draws in their actual months; scheduled amounts remain plans. Credit statement IDs retain their original cycle when a payment date is overridden.
+* Backup import rejects unsupported emergency `storageDump` exports; it accepts valid empty and account-only backups.
+* Persistence failures retain recoverable in-memory values, expose an unsaved banner with retry/export, and prevent sync acknowledgement. Without IndexedDB, writes use localStorage and legacy keys are retained.
+* Hydration validates financial collections before replacing state and preserves invalid stored sources for recovery. Legacy installment index actuals/dates migrate using the plan start month and frequency.
+* Drive updates read the v2 JSON `etag` field and use v2 media PUT with `If-Match`; missing preconditions stop uploads, and HTTP 412 enters conflict handling. Live Drive enforcement remains separate from mocked coverage.
 * **Installment Frequency Amortization:** In `salaryAndInstallments.ts`, `monthlyAmount` must divide the installment amount by `frequency` (`Math.round((amount / freq) * 100) / 100`) so multi-month obligations (quarterly, semi-annual) amortize accurately without distorting monthly burn rates.
 * When updating calculation logic, verify engine math immediately:
   ```bash
@@ -156,6 +161,7 @@ Additional suites that exist but are **not** part of `npm test` — run them whe
 
 | Command | Covers |
 | --- | --- |
+| `node test/testReviewBrowser.mjs` | Targeted synthetic regressions; requires Vite on localhost:5174 (external requests blocked) |
 | `npm run test:ui` | Playwright visual/UI audit against a Vite dev server (spawns its own if port 5173 is free) |
 | `npx tsx test/universalAuditRunner.mjs` | Universal domain audit runner against live real-world payload (`test/audit_user_data.json`) |
 | `npx tsx test/testCreditSettlementModal.mjs` | Credit settlement modal |
@@ -179,3 +185,7 @@ To prevent API rate-limit errors and token exhaustion:
 * **Compact Command Output:** Run targeted test files (e.g. `npx tsx test/verifyMath.mjs`) during iteration rather than full verbose audit suites unless performing the final pre-flight check. Avoid unneeded directory or file tree dumps.
 * **Incremental Context:** Prefer reading only files directly implicated by the task. Re-use existing directory structure maps from this file instead of re-listing repository folders.
 
+
+* Salary forecast merging: legacy saved salary schedules (arbitrary IDs) define their own end date. Dated virtual salary IDs represent individual overrides and must not truncate the generated schedule. Archived occurrences prevent regeneration without changing payments or balances.
+
+* Cross-tab hydration persists legacy actual-key migration only when values change. Persistence status listeners fire asynchronously on status transitions, and localStorage fallback deletion removes the durable key.

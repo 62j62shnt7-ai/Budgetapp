@@ -1,3 +1,4 @@
+import { migrateInstallmentOccurrenceKeys } from './salaryAndInstallments';
 import type {
   CreditSettlementOverride,
   CashEntry,
@@ -56,13 +57,6 @@ const defaultRates: RatesData = currencyDefaultRates;
 /** Major schema version this migration pipeline produces and understands. */
 export const CURRENT_SCHEMA_MAJOR = '2';
 export const CURRENT_SCHEMA_VERSION = `${CURRENT_SCHEMA_MAJOR}.2`;
-
-/** Payload keys that carry real financial data (used to tell an empty backup from a wrong-shaped file). */
-const FINANCIAL_PAYLOAD_KEYS = [
-  'entries', 'cashEntries', 'items', 'archivedEntries', 'accountBalances', 'accounts',
-  'salaryPattern', 'installments', 'rates', 'ratesData', 'storageAssets', 'storage',
-  'asfJobs', 'irqJobs', 'partTimeJobs', 'entryActuals', 'creditDues',
-] as const;
 
 /**
  * Parse a stored money value.
@@ -161,6 +155,16 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
     );
   }
 
+  if ('storageDump' in parsed || 'storageDump' in data) {
+    throw new Error('Emergency storageDump backups are not supported by this importer. Nothing was imported.');
+  }
+  for (const key of ['cashEntries', 'entries', 'items', 'archivedEntries', 'salaryPattern', 'installments', 'storageAssets', 'storage', 'partTimeJobs']) {
+    const value = data[key] ?? parsed[key];
+    if (value !== undefined && !Array.isArray(value)) {
+      throw new Error(`Unrecognised backup format: ${key} must be an array. Nothing was imported.`);
+    }
+  }
+
   // 1. Cash Entries
   const rawEntries = data.cashEntries || data.entries || data.items || parsed.cashEntries || parsed.entries || [];
   const entries: CashEntry[] = (Array.isArray(rawEntries) ? rawEntries : []).map((rawItem: unknown, idx: number) => {
@@ -219,6 +223,7 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
 
   // 3. Accounts
   const rawAccounts = data.accountBalances || data.accounts || parsed.accountBalances || parsed.accounts;
+  if (rawAccounts !== undefined && (rawAccounts === null || typeof rawAccounts !== 'object' || Array.isArray(rawAccounts))) throw new Error('Invalid account balances in backup');
   let accounts: Record<string, AccountBalance> = defaultAccounts;
   if (rawAccounts && typeof rawAccounts === 'object') {
     const accMap: Record<string, AccountBalance> = {};
@@ -226,6 +231,9 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
       const kLower = k.toLowerCase().trim();
       if (kLower === 'cash' || kLower.includes('credit')) continue; // omit legacy cash pool & credit card pseudo-accounts
       const accRecord = v && typeof v === 'object' ? (v as Record<string, unknown>) : null;
+      if (typeof v === 'number' ? !Number.isFinite(v) : !accRecord || parseMoneyValue(accRecord.balance) === undefined) {
+        throw new Error(`Invalid account balance for ${k}. Nothing was imported.`);
+      }
       if (accRecord && 'balance' in accRecord) {
         accMap[k] = {
           name: typeof accRecord.name === 'string' ? accRecord.name : k.toUpperCase(),
@@ -413,22 +421,6 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
     }
   }
 
-  // Reject a payload that clearly carried data but produced nothing usable.
-  // Without this, a wrong-shaped or truncated file replaces the user's whole
-  // ledger with empty/default values while the import still reports success.
-  const payloadLooksPopulated = FINANCIAL_PAYLOAD_KEYS.some((key) => {
-    const value = (data as Record<string, unknown>)[key] ?? (parsed as Record<string, unknown>)[key];
-    if (Array.isArray(value)) return value.length > 0;
-    if (value && typeof value === 'object') return Object.keys(value).length > 0;
-    return false;
-  });
-  if (entries.length === 0 && archivedEntries.length === 0 && payloadLooksPopulated) {
-    throw new Error(
-      'This file contains budget data in a shape this build does not recognise, so no transactions could be read. ' +
-      'Nothing was imported. Check that you selected a Budget Control JSON backup.'
-    );
-  }
-
   const rawSync = (parsed.sync && typeof parsed.sync === 'object' ? parsed.sync : data.sync) as Record<string, unknown> | undefined;
   const sync: Partial<SyncMetadata> | undefined = rawSync ? {
     deviceId: typeof rawSync.deviceId === 'string' ? rawSync.deviceId : undefined,
@@ -451,8 +443,8 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
     rates,
     storageAssets,
     partTimeJobs,
-    entryActuals,
-    entryActualDates,
+    entryActuals: migrateInstallmentOccurrenceKeys(installments, entryActuals),
+    entryActualDates: migrateInstallmentOccurrenceKeys(installments, entryActualDates),
     creditDues,
     creditDueMonths,
     creditSettlementOverrides,

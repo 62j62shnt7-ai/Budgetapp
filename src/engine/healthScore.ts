@@ -9,7 +9,7 @@
 // ==========================================================================
 import { DateUtils } from './dateUtils';
 import { groupByMonth, getEntryActualAmount, isLoanInflow } from './forecast';
-import { computeSettlementUncovered } from './creditCards';
+import { computeSettlementUncovered, isCreditDueLumpSum } from './creditCards';
 import type {
   CashEntry,
   CreditSettlementOverride,
@@ -313,13 +313,9 @@ export function analyzeSettledMonths(params: {
 
   const realizedAmount = (entry: CashEntry) => {
     const actual = getEntryActualAmount(entry, entryActuals);
-    if (actual > 0) return actual;
-    return Math.max(0, Math.round((Number(entry.amount) || 0) * 100) / 100);
+    return Math.max(0, actual);
   };
-  const isCreditDueLump = (entry: CashEntry) =>
-    Boolean(entry.isCreditSettlement) ||
-    entry.source === 'recurring credit' ||
-    (entry.id || '').startsWith('credit-settlement-');
+  const isCreditDueLump = (entry: CashEntry) => isCreditDueLumpSum(entry) || Boolean(entry.isCreditSettlement) || entry.source === 'recurring credit';
 
   // Compute uncovered settlement portions so payments are netted against card swipes
   const uncoveredMap = computeSettlementUncovered(
@@ -349,6 +345,8 @@ export function analyzeSettledMonths(params: {
   countableEntries.forEach((entry) => {
     const plannedMonth = DateUtils.getMonthKey(entry.date);
     if (plannedMonth && plannedMonth < currentMonth) monthCandidates.add(plannedMonth);
+    const actualMonth = DateUtils.getMonthKey(entryActualDates[entry.id] || entry.actualDate || entry.date);
+    if (actualMonth && actualMonth < currentMonth && realizedAmount(entry) > 0) monthCandidates.add(actualMonth);
     if (Array.isArray(entry.draws) && entry.draws.length > 0) {
       entry.draws.forEach((draw) => {
         const drawMonth = DateUtils.getMonthKey(draw.date || entry.actualDate || entry.date);
@@ -367,23 +365,15 @@ export function analyzeSettledMonths(params: {
     if (isCreditDueLump(entry)) {
       const uncovered = uncoveredMap.get(entry.id);
       if (uncovered !== undefined) {
-        return DateUtils.getMonthKey(entry.date) === month ? Math.max(0, uncovered) : 0;
+        return DateUtils.getMonthKey(entryActualDates[entry.id] || entry.actualDate || entry.date) === month ? Math.max(0, uncovered) : 0;
       }
     }
     if (Array.isArray(entry.draws) && entry.draws.length > 0) {
-      const drawsSum = entry.draws.reduce((sum, d) => sum + Math.max(0, Math.round((Number(d.amount) || 0) * 100) / 100), 0);
-      if (drawsSum > 0) {
-        const hasCrossMonthDraws = entry.draws.some(
-          (d) => DateUtils.getMonthKey(d.date || entry.actualDate || entry.date) !== DateUtils.getMonthKey(entry.date)
-        );
-        if (hasCrossMonthDraws) {
-          return entry.draws
-            .filter((d) => DateUtils.getMonthKey(d.date || entry.actualDate || entry.date) === month)
-            .reduce((sum, d) => sum + Math.max(0, Math.round((Number(d.amount) || 0) * 100) / 100), 0);
-        }
-      }
+      return entry.draws
+        .filter((d) => DateUtils.getMonthKey(d.date || entry.actualDate || entry.date) === month)
+        .reduce((sum, d) => Math.round((sum + Math.max(0, Number(d.amount) || 0)) * 100) / 100, 0);
     }
-    return DateUtils.getMonthKey(entry.date) === month ? realizedAmount(entry) : 0;
+    return DateUtils.getMonthKey(entryActualDates[entry.id] || entry.actualDate || entry.date) === month ? realizedAmount(entry) : 0;
   };
 
   return settledMonths.map((month) => {
@@ -392,7 +382,7 @@ export function analyzeSettledMonths(params: {
     const plannedExpense = expenseEntries.reduce((sum, entry) => {
       if (isCreditDueLump(entry)) {
         const uncovered = uncoveredMap.get(entry.id);
-        const uncoveredVal = uncovered !== undefined ? uncovered : (Number(entry.amount) || 0);
+        const uncoveredVal = uncovered !== undefined ? Math.min(Number(entry.amount) || 0, uncovered) : (Number(entry.amount) || 0);
         return sum + Math.max(0, uncoveredVal);
       }
       return sum + Math.max(0, Number(entry.amount) || 0);
