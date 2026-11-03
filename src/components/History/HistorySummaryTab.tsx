@@ -38,15 +38,15 @@ export const HistorySummaryTab: React.FC<HistorySummaryTabProps> = ({
       <div className="metrics-grid history-summary-grid" id="historyLifetimeSummary" style={{ marginBottom: '18px' }}>
         <article className="metric history-metric">
           <span>Lifetime Income</span>
-          <strong id="historyLifetimeIncome" style={{ color: 'var(--green)', fontSize: '26px', fontWeight: 800, lineHeight: 1.2 }}>
+          <strong id="historyLifetimeIncome" className="history-primary-value" style={{ color: 'var(--green)' }}>
             {formatMoney(totalLifetimeIncome)}
           </strong>
           <small>Total realized income</small>
         </article>
         <article className="metric history-metric">
           <span>Lifetime Expenses</span>
-          <strong id="historyLifetimeExpenses" style={{ color: 'var(--red)', display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '8px', lineHeight: 1.2 }}>
-            <span style={{ color: 'var(--red)', fontSize: '26px', fontWeight: 800 }}>{formatMoney(totalLifetimeExpenses)}</span>
+          <strong id="historyLifetimeExpenses" className="history-primary-value history-expense-summary" style={{ color: 'var(--red)' }}>
+            <span className="history-primary-amount">{formatMoney(totalLifetimeExpenses)}</span>
             {totalLifetimeCardSpends > 0 && (
               <span className="history-bracket-card-swipes" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }} title="Credit card swipes">
                 <CreditCard size={12} /> ({formatMoney(totalLifetimeCardSpends)} card swipes)
@@ -62,7 +62,7 @@ export const HistorySummaryTab: React.FC<HistorySummaryTabProps> = ({
         </article>
         <article className="metric history-metric">
           <span>Lifetime Net</span>
-          <strong id="historyLifetimeNet" style={{ color: lifetimeNet >= 0 ? 'var(--green)' : 'var(--red)', fontSize: '26px', fontWeight: 800, lineHeight: 1.2 }}>
+          <strong id="historyLifetimeNet" className="history-primary-value" style={{ color: lifetimeNet >= 0 ? 'var(--green)' : 'var(--red)' }}>
             {lifetimeNet >= 0 ? '+' : ''}{formatMoney(lifetimeNet)}
           </strong>
           <small>Realized cash surplus</small>

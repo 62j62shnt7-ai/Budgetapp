@@ -181,7 +181,10 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenStorageModal }) 
   };
 
   return (
-    <section className="view" id="storage" style={{ display: 'block' }}>
+    <section className="view storage-phase-three" id="storage" style={{ display: 'block' }}>
+      <div className="view-page-intro">
+        <div><p className="eyebrow">Reserves</p><h2>Stored assets</h2><p>Review valuables and foreign currency using your current saved rates.</p></div>
+      </div>
       <div className="content-grid">
         {/* Assets Cards Grid Panel */}
         <section className="panel">

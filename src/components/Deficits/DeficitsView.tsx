@@ -98,7 +98,14 @@ export const DeficitsView: React.FC<DeficitsViewProps> = ({
     : 'Balance stays positive';
 
   return (
-    <section className="view" id="deficits" style={{ display: 'block' }}>
+    <section className="view deficits-phase-two" id="deficits" style={{ display: 'block' }}>
+      <div className="view-page-intro">
+        <div>
+          <p className="eyebrow">Planning</p>
+          <h2>Forecast safety</h2>
+          <p>See upcoming cash pressure, overdue items, and credit dues that need funding.</p>
+        </div>
+      </div>
       <div className="metrics-grid" style={{ marginBottom: '18px' }}>
         <article
           className="metric history-summary-clickable-row"

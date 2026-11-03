@@ -94,7 +94,10 @@ export const RatesView: React.FC<RatesViewProps> = ({ onOpenRateModal }) => {
   const current = isEditing && draftRates ? draftRates : rates;
 
   return (
-    <section className="view" id="rates" style={{ display: 'block' }}>
+    <section className="view rates-phase-three" id="rates" style={{ display: 'block' }}>
+      <div className="view-page-intro">
+        <div><p className="eyebrow">Valuation inputs</p><h2>Currency and gold rates</h2><p>Maintain the rates used to value your foreign currency and gold reserves.</p></div>
+      </div>
       {/* Unified Rates Action Bar */}
       <div className="panel" style={{ marginBottom: '16px' }}>
         <div className="panel-heading rates-panel-heading">

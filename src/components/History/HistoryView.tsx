@@ -698,7 +698,14 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
   const totalAnalyticsAmount = sortedGroups.reduce((s, g) => s + g[1].total, 0);
 
   return (
-    <section className="view history-view" id="history" style={{ display: 'block' }}>
+    <section className="view history-view history-phase-two" id="history" style={{ display: 'block' }}>
+      <div className="view-page-intro">
+        <div>
+          <p className="eyebrow">Recorded activity</p>
+          <h2>History and trends</h2>
+          <p>See how actual income and spending have changed over time.</p>
+        </div>
+      </div>
       {/* Subnav Tabs */}
       <div className="subnav-tabs history-main-tabs" role="tablist" aria-label="History tabs" style={{ marginBottom: '20px' }}>
         <button
@@ -790,13 +797,13 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
           <div className="metrics-grid history-summary-grid" id="historyFilteredSummary" style={{ marginBottom: '18px' }}>
             <article className="metric history-metric">
               <span>Filtered Income</span>
-              <strong style={{ color: 'var(--green)', fontSize: '26px', fontWeight: 800, lineHeight: 1.2 }}>{formatMoney(filteredIncome)}</strong>
+              <strong className="history-primary-value" style={{ color: 'var(--green)' }}>{formatMoney(filteredIncome)}</strong>
               <small>Total for selected criteria</small>
             </article>
             <article className="metric history-metric">
               <span>Filtered Expenses</span>
-              <strong style={{ color: 'var(--red)', display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '8px', lineHeight: 1.2 }}>
-                <span style={{ color: 'var(--red)', fontSize: '26px', fontWeight: 800 }}>{formatMoney(filteredDisplayExpenses)}</span>
+              <strong className="history-primary-value history-expense-summary" style={{ color: 'var(--red)' }}>
+                <span className="history-primary-amount">{formatMoney(filteredDisplayExpenses)}</span>
                 {!isTargetingCardSwipes && !isTargetingSettlements && (
                   <>
                     {filteredCardSpends > 0 && (
@@ -826,7 +833,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
             </article>
             <article className="metric history-metric">
               <span>Filtered Net</span>
-              <strong style={{ color: filteredNet >= 0 ? 'var(--green)' : 'var(--red)', fontSize: '26px', fontWeight: 800, lineHeight: 1.2 }}>
+              <strong className="history-primary-value" style={{ color: filteredNet >= 0 ? 'var(--green)' : 'var(--red)' }}>
                 {filteredNet >= 0 ? '+' : ''}{formatMoney(filteredNet)}
               </strong>
               <small>Income minus expenses</small>

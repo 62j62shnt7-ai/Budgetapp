@@ -599,7 +599,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenTransferModa
   const remediationAdvice = remediationData?.legacyText || '';
 
   return (
-    <section className="view dashboard-view" id="dashboard" style={{ display: 'block' }}>
+    <section className="view dashboard-view dashboard-phase-one" id="dashboard" style={{ display: 'block' }}>
+      <div className="view-page-intro">
+        <div>
+          <p className="eyebrow">Overview</p>
+          <h2>Your financial picture</h2>
+          <p>Balances, forecasts, and upcoming obligations in one place.</p>
+        </div>
+      </div>
       {/* Consolidated Dashboard Action Center */}
       {(criticalFundingAlerts.length > 0 || deficits.hasDeficit) && (() => {
         const hasUncoveredFunding = criticalFundingAlerts.some((a) => !a.canBeCoveredByTransfer);

@@ -209,7 +209,10 @@ export const JobsView: React.FC<JobsViewProps> = ({
   };
 
   return (
-    <section className="view" id="jobs" style={{ display: 'block' }}>
+    <section className="view jobs-phase-three" id="jobs" style={{ display: 'block' }}>
+      <div className="view-page-intro">
+        <div><p className="eyebrow">Work and billing</p><h2>Jobs and projects</h2><p>Follow project billing, logged work, payments, and outstanding balances.</p></div>
+      </div>
       {/* Top Metrics Cards */}
       <div className="jobs-kpis-grid">
         <div className="job-kpi-card glass-panel jobs-kpi-pending">

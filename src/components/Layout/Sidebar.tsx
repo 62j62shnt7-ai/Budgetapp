@@ -89,33 +89,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenDriveSync }) => {
         <div className="brand">
           <div
             className="brand-mark"
-            title={sidebarCollapsed ? 'Expand sidebar (Ctrl+B)' : 'Budget Control'}
-            role={sidebarCollapsed ? 'button' : undefined}
-            tabIndex={sidebarCollapsed ? 0 : undefined}
-            aria-label={sidebarCollapsed ? 'Expand sidebar' : undefined}
-            onClick={() => {
-              if (sidebarCollapsed && typeof window !== 'undefined' && window.innerWidth > 980) {
-                toggleSidebar();
-              }
-            }}
-            onKeyDown={(e) => {
-              if (
-                sidebarCollapsed &&
-                (e.key === 'Enter' || e.key === ' ') &&
-                typeof window !== 'undefined' &&
-                window.innerWidth > 980
-              ) {
-                e.preventDefault();
-                toggleSidebar();
-              }
-            }}
-            style={{ cursor: sidebarCollapsed ? 'pointer' : 'default' }}
+            title="Budget Control"
           >
             BC
           </div>
           <div className="brand-details" style={{ flex: 1, minWidth: 0 }}>
             <h1>Budget Control</h1>
-            <p>Cash, jobs, storage</p>
           </div>
           <button
             className="sidebar-toggle-btn"
@@ -149,25 +128,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenDriveSync }) => {
         </nav>
 
         {onOpenDriveSync && (
-          <div style={{ marginTop: 'auto', padding: '10px 12px', borderTop: '1px solid var(--border-color, rgba(255,255,255,0.08))' }}>
+          <div className="sidebar-sync-footer">
             <button
               type="button"
-              className="ghost-button"
+              className="ghost-button sidebar-sync-button"
               onClick={onOpenDriveSync}
               title={`Google Drive: ${syncLabel}${driveUser ? ` (${driveUser.email})` : ''}`}
-              style={{
-                width: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                gap: sidebarCollapsed ? '0' : '10px',
-                justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
-                padding: sidebarCollapsed ? '8px 0' : '8px 10px',
-                borderRadius: '8px',
-                border: '1px solid var(--border-color, rgba(255,255,255,0.08))',
-                background: 'var(--surface-soft, rgba(255,255,255,0.03))',
-                cursor: 'pointer',
-                fontSize: '12px',
-              }}
             >
               <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Cloud size={17} color={isExpired ? '#ef4444' : isConnected ? 'var(--blue, #3b82f6)' : 'var(--muted)'} />

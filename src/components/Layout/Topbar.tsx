@@ -4,7 +4,6 @@ import { useBudgetStore, type ViewTab } from '../../store/useBudgetStore';
 import { useAppUpdateStatus } from '../../hooks/useAppUpdateStatus';
 import { getSyncStatusPresentation } from '../../utils/syncPresentation';
 import { 
-  Menu, 
   Sun, 
   Moon, 
   Cloud, 
@@ -49,7 +48,6 @@ export const Topbar: React.FC<TopbarProps> = ({
     theme,
     setTheme,
     activeTab,
-    toggleSidebar,
     driveUser,
     driveAutoSync,
     driveSyncStatus,
@@ -64,7 +62,6 @@ export const Topbar: React.FC<TopbarProps> = ({
       theme: state.theme,
       setTheme: state.setTheme,
       activeTab: state.activeTab,
-      toggleSidebar: state.toggleSidebar,
       driveUser: state.driveUser,
       driveAutoSync: state.driveAutoSync,
       driveSyncStatus: state.driveSyncStatus,
@@ -93,17 +90,7 @@ export const Topbar: React.FC<TopbarProps> = ({
   return (
     <>
       <header className="topbar">
-        <div className="topbar-title-group" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <button
-            className="ghost-button icon-button sidebar-open-btn"
-            id="sidebarExpandBtn"
-            type="button"
-            aria-label="Open navigation"
-            title="Toggle Sidebar (Ctrl+B)"
-            onClick={toggleSidebar}
-          >
-            <Menu size={18} />
-          </button>
+        <div className="topbar-title-group">
           <div>
             <p className="eyebrow" style={{ margin: 0, fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase' }}>
               Personal budget
@@ -116,45 +103,30 @@ export const Topbar: React.FC<TopbarProps> = ({
 
         {/* Mobile-only compact actions (single-row) */}
         <div className="top-actions-mobile">
-          {/* Mobile Cloud Sync / Reconnect Button */}
-          {isExpired ? (
-            <button
-              className="ghost-button mobile-reconnect-btn"
-              id="mobileDriveReconnectBtn"
-              type="button"
-              aria-label="Reconnect Google Drive"
-              title="Google Drive session expired. Tap to reconnect."
-              onClick={onOpenDriveSync}
-            >
-              <RotateCw size={13} />
-              <span>Reconnect</span>
-            </button>
-          ) : (
-            <button
-              className="ghost-button icon-button mobile-sync-btn"
-              id="mobileDriveSyncBtn"
-              type="button"
-              aria-label={`Google Drive Sync: ${syncLabel}`}
-              title={`Google Drive Sync: ${syncLabel}${driveUser ? ` (${driveUser.email})` : ''}`}
-              onClick={onOpenDriveSync}
-              style={{ position: 'relative' }}
-            >
-              <Cloud size={17} color={isConnected ? 'var(--blue, #3b82f6)' : 'var(--muted)'} />
-              <span
-                style={{
-                  position: 'absolute',
-                  bottom: '2px',
-                  right: '2px',
-                  width: '7px',
-                  height: '7px',
-                  borderRadius: '50%',
-                  background: dotColor,
-                  border: '1.5px solid var(--surface, #1e293b)',
-                }}
-              />
-            </button>
-          )}
-
+          <button
+            className={`ghost-button icon-button mobile-sync-btn ${isExpired ? 'mobile-reconnect-btn' : ''}`}
+            id="mobileDriveSyncBtn"
+            type="button"
+            aria-label={`Google Drive Sync: ${syncLabel}`}
+            title={`Google Drive Sync: ${syncLabel}${driveUser ? ` (${driveUser.email})` : ''}`}
+            onClick={onOpenDriveSync}
+            style={{ position: 'relative' }}
+          >
+            {isExpired ? <RotateCw size={16} /> : <Cloud size={17} color={isConnected ? 'var(--blue, #3b82f6)' : 'var(--muted)'} />}
+            <span
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                bottom: '2px',
+                right: '2px',
+                width: '7px',
+                height: '7px',
+                borderRadius: '50%',
+                background: dotColor,
+                border: '1.5px solid var(--surface, #1e293b)',
+              }}
+            />
+          </button>
           {undoStack.length > 0 && (
             <button
               className="ghost-button icon-button mobile-undo-btn"
@@ -275,6 +247,7 @@ export const Topbar: React.FC<TopbarProps> = ({
               type="button"
               aria-pressed={theme === 'dark'}
               aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+              title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
             >
               {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
@@ -350,7 +323,7 @@ export const Topbar: React.FC<TopbarProps> = ({
               onClick={() => onOpenEntryModal('income')}
             >
               <Plus size={15} />
-              <span className="topbar-btn-label">Income</span>
+              <span className="topbar-btn-label">Inc</span>
               <kbd className="kbd-badge kbd-subtle">I</kbd>
             </button>
 
@@ -362,7 +335,7 @@ export const Topbar: React.FC<TopbarProps> = ({
               onClick={() => onOpenEntryModal('expense')}
             >
               <Plus size={15} />
-              <span className="topbar-btn-label">Expense</span>
+              <span className="topbar-btn-label">Exp</span>
               <kbd className="kbd-badge kbd-on-primary">E</kbd>
             </button>
           </div>
