@@ -910,13 +910,6 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
 
   return (
     <section className="view cashflow-view cashflow-phase-two" id="cashflow" style={{ display: 'block' }}>
-      <div className="view-page-intro">
-        <div>
-          <p className="eyebrow">Planning</p>
-          <h2>Cash flow plan</h2>
-          <p>Review your forecast, then adjust salary, installments, and scheduled entries.</p>
-        </div>
-      </div>
       {/* Subnav Tabs: Forecast Ledger vs Plan Setup */}
       <div className="subnav-tabs cashflow-view-subnav" role="tablist" aria-label="Cashflow navigation tabs">
         <button

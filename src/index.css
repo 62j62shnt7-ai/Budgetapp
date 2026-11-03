@@ -7366,7 +7366,7 @@ dialog select,
 }
 
 .dashboard-phase-one {
-  padding: 22px clamp(16px, 2.4vw, 36px) 40px;
+  padding: 8px clamp(16px, 2.4vw, 36px) 40px;
 }
 
 .dashboard-phase-one .dashboard-action-center,
@@ -7455,37 +7455,6 @@ dialog select,
 }
 
 /* Phase 2: planning and history workspace layouts */
-.view-page-intro {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 20px;
-  margin: 6px 0 16px;
-}
-
-.view-page-intro > div {
-  min-width: 0;
-  width: 100%;
-}
-
-.view-page-intro .eyebrow {
-  display: none;
-}
-
-.view-page-intro h2 {
-  color: var(--text-main);
-  font-family: var(--font-heading);
-  margin: 0;
-  font-size: 21px;
-  font-weight: 600;
-  letter-spacing: -0.2px;
-  line-height: 1.3;
-}
-
-.view-page-intro p:last-child {
-  display: none;
-}
-
 .deficits-phase-two .metrics-grid,
 .cashflow-phase-two .cashflow-summary-grid,
 .history-phase-two .history-summary-grid {
@@ -7578,14 +7547,6 @@ dialog select,
 }
 
 @media (max-width: 640px) {
-  .view-page-intro {
-    margin: 3px 0 17px;
-  }
-
-  .view-page-intro p:last-child {
-    font-size: 12px;
-  }
-
   .deficits-phase-two .metric,
   .cashflow-phase-two .cashflow-metric,
   .history-phase-two .history-metric {
@@ -7933,4 +7894,25 @@ dialog.modern-top-layer-dialog :focus-visible,
   .desktop-top-actions .top-actions-cluster {
     gap: 2px !important;
   }
+}
+
+/* Keep the shared topbar aligned while reducing padding inside Dashboard. */
+@media (min-width: 981px) {
+  .app-shell {
+    padding: 16px;
+  }
+}
+
+.dashboard-phase-one {
+  padding: 4px 12px 28px;
+}
+
+.dashboard-phase-one .dashboard-kpi-row,
+.dashboard-phase-one .dashboard-credit-cards-row {
+  margin-top: 12px;
+  margin-bottom: 12px;
+}
+
+.dashboard-phase-one .dashboard-summary-grid {
+  margin-top: 12px !important;
 }

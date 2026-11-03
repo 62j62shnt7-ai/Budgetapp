@@ -113,9 +113,6 @@ export const AccountsView: React.FC = () => {
 
   return (
     <section className="view accounts-phase-three" id="accounts" style={{ display: 'block' }}>
-      <div className="view-page-intro">
-        <div><p className="eyebrow">Liquidity</p><h2>Accounts and obligations</h2><p>Track available balances, credit dues, and transfers between your accounts.</p></div>
-      </div>
       <div className="content-grid">
         {/* Account Settings Panel */}
         <section className="panel">

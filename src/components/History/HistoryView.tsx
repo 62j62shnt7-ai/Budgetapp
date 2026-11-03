@@ -699,13 +699,6 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
 
   return (
     <section className="view history-view history-phase-two" id="history" style={{ display: 'block' }}>
-      <div className="view-page-intro">
-        <div>
-          <p className="eyebrow">Recorded activity</p>
-          <h2>History and trends</h2>
-          <p>See how actual income and spending have changed over time.</p>
-        </div>
-      </div>
       {/* Subnav Tabs */}
       <div className="subnav-tabs history-main-tabs" role="tablist" aria-label="History tabs" style={{ marginBottom: '20px' }}>
         <button
