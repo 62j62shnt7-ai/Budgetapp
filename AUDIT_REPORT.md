@@ -1,5 +1,7 @@
 # Budget Control v2 — Master Verification & Logic Audit Report
 
+> **Historical report — scope clarified November 6, 2026:** Results, file/line references, and certification below describe the October 17 audit, not verification of current HEAD (`9ace497`). Current architecture and test commands are documented in [AGENTS.md](AGENTS.md). Subsequent changes include financial forecast/history fixes, validated hydration and recoverable persistence with localStorage fallback, Drive v2 ETag/`If-Match` updates, and the migrated UI with shared Topbar titles and compact dashboard spacing. Live Drive concurrency enforcement and current UI accessibility require separate verification; historical pass claims do not establish them.
+
 **Date:** 2026-10-17  
 **Auditor:** Principal Financial Systems Architect & Lead Verification Agent  
 **Repository:** Budget Control v2 (`c:\Users\xear0\Desktop\my repos\Budgetapp`)  

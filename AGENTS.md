@@ -20,7 +20,7 @@ This file provides context and operational rules for AI agents working in this r
 ---
 
 ## 2. Directory Structure Map
-Verified against the repository. `src/` contains 56 `.ts`/`.tsx` files; the largest modules are listed with their approximate size so you can judge whether to read one in full.
+Verified against the repository. `src/` contains 74 `.ts`/`.tsx` files at commit `9ace497`; the map groups components by feature.
 
 ```
 src/
@@ -79,7 +79,8 @@ src/
     ├── affectedRecords.ts    # Linked-record discovery & cascading delete/clear option builders
     ├── appRefresh.ts         # Service-worker cache purge / update refresh
     ├── recurringDetector.ts  # Recurring-series detection, link/unlink
-    └── storageAdapter.ts     # High-capacity IndexedDB bridge (idb-keyval), auto-migration & persistent undo/redo
+    ├── storageAdapter.ts     # IndexedDB bridge, localStorage fallback, auto-migration & persistent undo/redo
+    └── syncPresentation.ts   # Shared sync status labels, pill classes & connection state
 public/                       # PWA assets: manifest.webmanifest, sw.js, 404.html, icons
 test/                         # See section 4 — wired individually into npm scripts
 ```
@@ -117,11 +118,11 @@ test/                         # See section 4 — wired individually into npm sc
   ```
 * When adding or updating state actions:
   1. Define the action in `src/types/index.ts` first if modifying payload shapes.
-  2. Implement state mutations immutably in `useBudgetStore.ts`.
+  2. Implement state mutations immutably in the appropriate `src/store/slices/` module.
   3. Ensure persistence and migration handling remain backward compatible.
   4. Wrap multi-step mutations in `runTransaction(label, fn)` so undo/redo reverts them atomically.
   5. Persist through `saveStorage`/`persistFinancialSnapshot`. Never call bare `localStorage.setItem` inside an action: an unguarded `QuotaExceededError` escapes the transaction body and is caught by `runTransaction`'s rollback, silently reverting a legitimate edit.
-* **`loadStorage` does not validate shapes.** A key holding `"null"` or the wrong type parses successfully and the `as T` cast hides it, so the value reaches render code and throws. Validate with `Array.isArray`/`typeof` when adding a new persisted key.
+* **`loadStorage` validates fallback shapes** through `validateFallbackShape` in `common.ts`, including financial collection guards. Keep validation current when adding persisted keys; a generic `as T` cast alone does not validate stored data.
 * Modals: `Modal` (via `showModal()`) renders in the top layer and hides plain `<dialog open>` elements. Never open two modals simultaneously; queue the follow-up (see `pendingDeductRef` in `CashflowView.tsx`) and open it after the first closes. **Always build new dialogs on `Common/Modal`** — a plain `<dialog open>` is not in the top layer, so any `Modal` opened later paints over it and its buttons become unclickable, no `zIndex` can fix that.
 
 ### C. TypeScript & Type Safety
@@ -130,6 +131,7 @@ test/                         # See section 4 — wired individually into npm sc
 * Run `npx tsc -b` before finalizing changes to guarantee 0 compiler errors.
 
 ### D. Styling & UI Conventions
+* Current UI (through `9ace497`) uses shared page titles in `Layout/Topbar.tsx`; avoid reintroducing duplicate page headers in individual views. Per-view workspace overrides and compact dashboard spacing live near the end of `src/index.css`. Reuse current tokens such as `--bg-surface`, `--border-subtle`, and `--font-heading` after verifying their definitions.
 * Design tokens are split across the two stylesheets: the block in `src/styles/base.css` establishes the base palette, and `src/index.css` adds the live theme tokens plus `data-theme` overrides. Read the token before inventing a value:
   ```bash
   grep -n -- "--accent\b\|--glass-bg\b\|--border-color\b" src/index.css src/styles/base.css
@@ -157,6 +159,8 @@ To avoid breaking runtime errors and maintain test parity:
 2. **Type Check:** `npm run typecheck`
 3. **Lint Check:** `npm run lint`
 
+`npm test` includes math, migration safety, user JSON, affected records, undo/redo, loan scaling, storage adapter, and sync engine suites.
+
 Additional suites that exist but are **not** part of `npm test` — run them when you touch their area:
 
 | Command | Covers |
@@ -166,13 +170,12 @@ Additional suites that exist but are **not** part of `npm test` — run them whe
 | `npx tsx test/universalAuditRunner.mjs` | Universal domain audit runner against live real-world payload (`test/audit_user_data.json`) |
 | `npx tsx test/testCreditSettlementModal.mjs` | Credit settlement modal |
 | `node test/test-jobs-playwright.mjs` | Jobs flows via Playwright |
-| `npx tsx test/testSyncEngine.mjs` | Google Drive sync engine & 10 hardening scenarios |
 | `npm run score` | `healthReport.mjs` — health-score report |
 
 Notes:
 * `npm run build` runs `npm test`, `npm run typecheck`, then `vite build`. CI (`.github/workflows/deploy.yml`) runs `lint` + `build` only, so the Playwright suites are **not** gated.
 * `playwright.config.ts` matches `*.spec.*` files and imports `@playwright/test`, which is not installed — `npx playwright test` therefore fails. The browser suites under `test/` are standalone scripts meant to be run with `npx tsx` / `node`, as in the table above.
-* All `test/*.mjs` files import TypeScript sources directly, so they must be run through `tsx` (or Node's type stripping); plain `node test/verifyMath.mjs` fails to resolve the extensionless `.ts` imports.
+* Engine/store `.mjs` suites that import TypeScript sources use `tsx`; standalone browser scripts can use `node` as shown above. Plain `node test/verifyMath.mjs` fails to resolve extensionless `.ts` imports.
 
 ---
 

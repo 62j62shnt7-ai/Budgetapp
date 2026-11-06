@@ -50,17 +50,19 @@ Budget Control v2 is a local-first, privacy-focused financial management web app
 - **Admin Edit Mode:** Unlockable administrative table controls to quickly edit historical records, adjust actuals, or remove erroneous entries.
 
 ### 🔒 8. High-Capacity IndexedDB Storage, Hardened Google Drive Sync & Undo History
-- **High-Capacity IndexedDB Architecture:** Unlimited local-first persistence via `storageAdapter` (IndexedDB / `idb-keyval`), automatically migrating legacy data and overcoming browser `localStorage` quota restrictions.
+- **High-Capacity IndexedDB Architecture:** High-capacity local-first persistence via `storageAdapter` (IndexedDB / `idb-keyval`), automatically migrating legacy data and overcoming browser `localStorage` quota restrictions.
+- **Recoverable Persistence Failures:** An unsaved banner offers retry/export when writes fail, and sync acknowledgement waits for durable persistence. Without IndexedDB, storage falls back to localStorage.
 - **Persistent Undo / Redo Engine:** 30-depth undo/redo history persisted across page refreshes and browser restarts, with an automatic 24-hour TTL and transaction rollbacks.
 - **Hardened Google Drive Cloud Sync:** Enterprise-grade background sync with single mutex lock, 4-row OCC (revision + base + device tags), atomic IDB batching, rolling local snapshots, and interactive conflict resolution modal.
 - **Autonomous Cloudflare OAuth Proxy:** Secure PKCE token exchange and auto-refresh via `workers/drive-auth-proxy` with cross-origin isolation.
-- **Full Data Portability:** Instant JSON backup export/import (fully backward-compatible with legacy formats) and Excel CSV export with sensitive credential redaction.
+- **Full Data Portability:** Instant JSON backup export/import (supporting legacy formats through migration; unsupported emergency `storageDump` exports are rejected) and Excel CSV export with sensitive credential redaction.
 - **PWA Ready with Instant Cache Purge:** Progressive Web App support with service worker cache purging and one-click app updating.
 
-### 🎨 9. Universal Theme System (OLED Dark & High-Contrast Light)
+### 🎨 9. Theme System & Responsive Workspace
 - **Zero-Flash Theme Bootloader:** Synchronous inline `<script>` in `<head>` applies active theme and updates `<meta name="theme-color">` before initial paint, eliminating white/dark flashes.
-- **True OLED Dark Mode:** Deep pitch-black background optimized for OLED/AMOLED mobile and desktop displays.
-- **High-Contrast Light Mode:** Fully tokenized design system (`--card-salary-bg`, `--summary-bg`, `--dialog-bg`, `--input-bg`, `--sidebar-*`) passing WCAG AA contrast standards across all 8 feature views, tables, KPI headers, and interactive dialogs.
+- **Dark Mode:** Dark slate surfaces and tokenized borders across mobile and desktop layouts.
+- **High-Contrast Light Mode:** Fully tokenized design system (`--card-salary-bg`, `--summary-bg`, `--dialog-bg`, `--input-bg`, `--sidebar-*`) with light-theme overrides across all 8 feature views, tables, KPI headers, and interactive dialogs.
+- **Current Workspace Layout:** Shared page titles in Topbar, compact sidebar navigation, tighter dashboard spacing, and per-view workspace styling in `src/index.css` (through commit `9ace497`).
 - **Single-Click Theme Toggle:** Easily toggle between Dark and Light mode from Topbar or Mobile Navigation.
 
 ---
@@ -81,10 +83,10 @@ Budget Control v2 is a local-first, privacy-focused financial management web app
 ## 🛠️ Technology Stack
 
 - **Framework:** [React 19](https://react.dev/) + [Vite 8](https://vite.dev/)
-- **Language:** [TypeScript 5](https://www.typescriptlang.org/) (Strict typing across domain models and calculations)
+- **Language:** [TypeScript 6](https://www.typescriptlang.org/) (Strict typing across domain models and calculations)
 - **State Management:** [Zustand 5](https://zustand-demo.pmnd.rs/) partitioned into domain slices (`src/store/slices/`)
 - **Storage Adapter:** [idb-keyval](https://github.com/jakearchibald/idb-keyval) (IndexedDB bridge with automatic migration and persistent 24h undo/redo)
-- **Cloud Sync:** Autonomous Google Drive REST API v3 + GitHub Gist API
+- **Cloud Sync:** Google Drive REST API v3 for discovery/creation and v2 conditional media updates (`If-Match`); legacy Gist compatibility remains in the store
 - **Icons:** [Lucide React](https://lucide.dev/)
 - **Testing & Tooling:** [TSX](https://github.com/privatenumber/tsx) (Fast TypeScript test runner) & [Oxlint](https://oxc.rs/)
 
@@ -93,7 +95,7 @@ Budget Control v2 is a local-first, privacy-focused financial management web app
 ## 🚀 Getting Started
 
 ### Prerequisites
-- [Node.js](https://nodejs.org/) (version 18+ recommended)
+- [Node.js](https://nodejs.org/) (22.12+ recommended, matching the Node 22 CI line; Vite supports Node 20.19+ or 22.12+)
 - `npm` or `pnpm`
 
 ### Installation
@@ -157,9 +159,12 @@ To build for production with full type-checking and automated test verification:
 npm run build
 ```
 
-For detailed architectural and audit deliverables, see:
-- [`UNIVERSAL_LOGIC_AUDIT.md`](UNIVERSAL_LOGIC_AUDIT.md) — Comprehensive Universal Domain & Business Logic Audit Report
-- [`AUDIT_REPORT.md`](AUDIT_REPORT.md) — Master Verification & Defect Ledger Report
+The default `npm test` command includes math, migration safety, user JSON, affected records, undo/redo, loan scaling, storage adapter, and sync engine suites. Browser suites run separately with `npm run test:ui`; they are not included in CI. Run `npm run typecheck` and `npm run lint` before submitting changes.
+
+For architectural guidance and historical audit deliverables, see:
+- [`AGENTS.md`](AGENTS.md) — Current architecture, contribution rules, and verification commands
+- [`UNIVERSAL_LOGIC_AUDIT.md`](UNIVERSAL_LOGIC_AUDIT.md) — Historical domain audit (October 17, 2026)
+- [`AUDIT_REPORT.md`](AUDIT_REPORT.md) — Historical verification and defect ledger (October 17, 2026)
 
 ---
 
@@ -188,7 +193,8 @@ Budgetapp/
 │   │   ├── healthScore.ts
 │   │   ├── jobs.ts
 │   │   ├── migration.ts
-│   │   └── salaryAndInstallments.ts
+│   │   ├── salaryAndInstallments.ts
+│   │   └── tags.ts
 │   ├── hooks/              # Shared React hooks (forecast candidates, update status, hash routing)
 │   ├── services/           # External service clients (Google Drive REST API bridge)
 │   ├── store/
@@ -202,7 +208,8 @@ Budgetapp/
 │       ├── affectedRecords.ts # Linked entity discovery & cascading options
 │       ├── appRefresh.ts    # Service Worker cache purge & update utilities
 │       ├── recurringDetector.ts # Recurring candidate grouping & series linking
-│       └── storageAdapter.ts # High-capacity IndexedDB bridge with persistent undo/redo
+│       ├── storageAdapter.ts # IndexedDB bridge, localStorage fallback & persistent undo/redo
+│       └── syncPresentation.ts # Shared sync status labels and presentation
 ├── public/                 # Static PWA assets (manifest, service worker, 404)
 ├── test/
 │   ├── audit_user_data.json # Full real-world backup test payload
