@@ -41,3 +41,6 @@ test/*_user_data.json
 # Local environment files
 .env.*
 !.env.example
+
+# Standalone local site workspace
+/sites/budget-control-demo/
