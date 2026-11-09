@@ -37,3 +37,7 @@ test/*_user_data.json
 
 # Local agent config
 .agents/
+
+# Local environment files
+.env.*
+!.env.example
