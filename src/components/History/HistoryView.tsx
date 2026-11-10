@@ -762,6 +762,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
               </span>
             </div>
             <LedgerFilterBar
+              showMonthChips={false}
               selectedMonth={selectedMonth}
               onMonthChange={setSelectedMonth}
               orderedMonths={orderedMonths}

@@ -26,6 +26,7 @@ export interface LedgerFilterBarProps {
   dateTo?: string;
   onClearDateRange?: () => void;
   extraFilters?: React.ReactNode;
+  showMonthChips?: boolean;
 }
 
 export const LedgerFilterBar: React.FC<LedgerFilterBarProps> = ({
@@ -52,11 +53,12 @@ export const LedgerFilterBar: React.FC<LedgerFilterBarProps> = ({
   dateTo,
   onClearDateRange,
   extraFilters,
+  showMonthChips = true,
 }) => {
   return (
     <div className="ledger-filter-wrapper">
       {/* Month quick selection chips */}
-      {orderedMonths.length > 0 && (
+      {showMonthChips && orderedMonths.length > 0 && (
         <div className="ledger-month-chips" role="tablist" aria-label="Filter by month">
           <button
             type="button"

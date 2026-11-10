@@ -1138,6 +1138,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
 
             {/* Unified LedgerFilterBar */}
             <LedgerFilterBar
+              showMonthChips={false}
               selectedMonth={selectedMonth}
               onMonthChange={setSelectedMonth}
               orderedMonths={orderedMonths}
