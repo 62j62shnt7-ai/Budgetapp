@@ -12,6 +12,8 @@ import type {
   UndoableAction,
   UndoToastState,
   CreditSettlementOverride,
+  InstaPayFeeConfig,
+  InstaPayRefund,
 } from '../../types';
 import type { GoogleDriveUser } from '../../services/googleDriveClient';
 import type { SyncConflictPayload } from '../../types';
@@ -171,6 +173,19 @@ export interface RatesSlice {
   ) => string | undefined;
 }
 
+export interface InstaPayFeesSlice {
+  instapayFeeConfig: InstaPayFeeConfig;
+  updateInstaPayFeeConfig: (config: InstaPayFeeConfig) => void;
+  recordInstaPayDeduction: (input: {
+    entryId: string;
+    principalAmount: number;
+    accountKey: string;
+    date: string;
+    tag?: string;
+  }) => { feeAmount: number; totalDeducted: number };
+  refundInstaPayPayments: (input: { entryId: string; refunds: InstaPayRefund[] }) => number;
+}
+
 export interface SyncSlice {
   // Google Drive Cloud Sync & Admin
   driveUser: GoogleDriveUser | null;
@@ -217,6 +232,7 @@ export type BudgetStoreState = UISlice &
   AccountsSlice &
   JobsSlice &
   RatesSlice &
+  InstaPayFeesSlice &
   SyncSlice;
 
 export type SliceCreator<T> = StateCreator<BudgetStoreState, [], [], T>;

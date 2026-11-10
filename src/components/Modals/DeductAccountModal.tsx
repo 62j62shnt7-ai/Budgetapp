@@ -3,15 +3,18 @@ import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { formatMoney } from '../../engine/dateUtils';
 import { getCurrencyRateOr, formatNativeCurrency, getAccountNativeCurrency, convertAmountBetweenCurrencies, normalizeCurrencyCode } from '../../engine/currency';
-import type { CashEntry } from '../../types';
+import type { CashEntry, InstaPayRefund } from '../../types';
 import { Modal } from '../Common/Modal';
 import { resolveSettlementAccountKey } from '../../engine/creditDueAlerts';
+import { calculateInstaPayFee } from '../../engine/instapayFees';
+import { isCreditCardExpense } from '../../engine/creditCards';
 import { Banknote, ArrowLeftRight } from 'lucide-react';
 
 interface DeductAccountModalProps {
   isOpen: boolean;
   entry: CashEntry | null;
   actualAmount: number;
+  refunds?: InstaPayRefund[];
   onClose: () => void;
 }
 
@@ -19,6 +22,7 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
   isOpen,
   entry,
   actualAmount,
+  refunds,
   onClose,
 }) => {
   const {
@@ -34,6 +38,9 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
     updateEntry,
     runTransaction,
     creditSettlementOverrides,
+    instapayFeeConfig,
+    recordInstaPayDeduction,
+    refundInstaPayPayments,
   } = useBudgetStore(
     useShallow((state) => ({
       accounts: state.accounts,
@@ -48,6 +55,9 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
       updateEntry: state.updateEntry,
       runTransaction: state.runTransaction,
       creditSettlementOverrides: state.creditSettlementOverrides,
+      instapayFeeConfig: state.instapayFeeConfig,
+      recordInstaPayDeduction: state.recordInstaPayDeduction,
+      refundInstaPayPayments: state.refundInstaPayPayments,
     }))
   );
 
@@ -57,8 +67,10 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
   const [foreignDestination, setForeignDestination] = useState<string>('');
   const [customFxRate, setCustomFxRate] = useState<string>('');
   const [customEgpAmount, setCustomEgpAmount] = useState<string>('');
+  const [includeInstaPayFee, setIncludeInstaPayFee] = useState(false);
 
   const isIncome = entry?.type === 'income';
+  const isInstaPayRefund = actualAmount < 0 && Boolean(refunds?.length);
   const currency = normalizeCurrencyCode(entry?.currency) || 'EGP';
   const isForeign = currency !== 'EGP';
   const defaultRate = entry?.fxRateAtEntry || getCurrencyRateOr(rates, currency, 48.5);
@@ -177,10 +189,23 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
       setTag(entry.tag || entry.subcategory || '');
       setCustomFxRate(String(defaultRate));
       setCustomEgpAmount(String(actualAmount));
+      setIncludeInstaPayFee(false);
     }
   }
 
   if (!isOpen || !entry) return null;
+
+  const isSettlementEntry = entry.id.startsWith('credit-settlement-');
+  const canUseInstaPay = !isIncome
+    && !isForeign
+    && !isSettlementEntry
+    && !isCreditCardExpense(entry)
+    && actualAmount > 0
+    && Boolean(accounts[selectedAccountId]);
+  const instapayFeeAmount = canUseInstaPay && includeInstaPayFee
+    ? calculateInstaPayFee(actualAmount, instapayFeeConfig)
+    : 0;
+  const bankDeductionTotal = Math.round(((Number(customEgpAmount) || actualAmount) + instapayFeeAmount) * 100) / 100;
 
   const handleForeignAmountChange = (val: string) => {
     setCustomFxRate(val);
@@ -190,6 +215,10 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
 
   const handleSaveWithoutDeposit = () => {
     const trimmedTag = tag.trim();
+    if (isInstaPayRefund) {
+      onClose();
+      return;
+    }
     const isSettlement = entry.id.startsWith('credit-settlement-');
     const override = isSettlement ? creditSettlementOverrides[entry.id] : undefined;
     const currentEntry =
@@ -225,6 +254,22 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
 
   const handleDepositAndSave = () => {
     if (!entry) return;
+    if (isInstaPayRefund && refunds) {
+      refundInstaPayPayments({ entryId: entry.id, refunds });
+      onClose();
+      return;
+    }
+    if (canUseInstaPay && includeInstaPayFee) {
+      recordInstaPayDeduction({
+        entryId: entry.id,
+        principalAmount: actualAmount,
+        accountKey: selectedAccountId,
+        date: entry.actualDate || entry.date,
+        tag: tag.trim() || undefined,
+      });
+      onClose();
+      return;
+    }
     runTransaction(`${isIncome ? 'Deposit' : 'Deduct'} Account: ${entry.category || 'Entry'}`, () => {
       const trimmedTag = tag.trim();
       let accountName = '';
@@ -305,7 +350,7 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} maxWidth="580px"
-      title={isIncome ? `Deposit to ${targetAccountLabel}` : `Deduct from ${targetAccountLabel}`}>
+      title={isInstaPayRefund ? 'Refund InstaPay Payment' : isIncome ? `Deposit to ${targetAccountLabel}` : `Deduct from ${targetAccountLabel}`}>
       <p style={{ margin: '12px 0 8px', fontSize: '14px', lineHeight: '1.5' }}>
         {isIncome ? (
           <>
@@ -323,14 +368,14 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
                   formatNativeCurrency(targetAssetDeductAmount, currency)
                 )
               ) : (
-                formatMoney(Number(customEgpAmount) || actualAmount)
+                formatMoney(isInstaPayRefund ? Math.abs(actualAmount) : Number(customEgpAmount) || actualAmount)
               )}
             </strong>{' '}
             for <em>{entry.category}</em> into <strong>{targetAccountLabel}</strong>?
           </>
         ) : (
           <>
-            Deduct{' '}
+            {isInstaPayRefund ? 'Refund' : 'Deduct'}{' '}
             <strong>
               {isForeign && settlementMode === 'foreign' ? (
                 targetStorageAsset && targetAssetUnit !== currency ? (
@@ -344,13 +389,45 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
                   formatNativeCurrency(targetAssetDeductAmount, currency)
                 )
               ) : (
-                formatMoney(Number(customEgpAmount) || actualAmount)
+                formatMoney(isInstaPayRefund ? Math.abs(actualAmount) : Number(customEgpAmount) || actualAmount)
               )}
             </strong>{' '}
-            for <em>{entry.category}</em> from <strong>{targetAccountLabel}</strong>?
+            for <em>{entry.category}</em> from <strong>{isInstaPayRefund ? 'the original bank account(s)' : targetAccountLabel}</strong>?
           </>
         )}
       </p>
+
+      {isInstaPayRefund && (
+        <div role="status" style={{ background: 'var(--surface-soft)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--line)', marginBottom: '12px', fontSize: '13px' }}>
+          {refunds?.map((refund) => (
+            <div key={refund.accountKey} style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+              <span>{accounts[refund.accountKey]?.name || refund.accountKey.toUpperCase()} refund</span>
+              <strong>{formatMoney(refund.principalAmount + refund.feeAmount)} (fee {formatMoney(refund.feeAmount)})</strong>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!isInstaPayRefund && canUseInstaPay && (
+        <div style={{ background: 'var(--surface-soft)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--line)', marginBottom: '12px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              aria-label="Include InstaPay transfer fee"
+              checked={includeInstaPayFee}
+              onChange={(event) => setIncludeInstaPayFee(event.target.checked)}
+            />
+            <span>Include InstaPay transfer fee</span>
+          </label>
+          {includeInstaPayFee && (
+            <div role="status" style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '3px 12px', marginTop: '8px', fontSize: '12px' }}>
+              <span>Expense payment</span><strong>{formatMoney(actualAmount)}</strong>
+              <span>InstaPay fee</span><strong>{formatMoney(instapayFeeAmount)}</strong>
+              <span style={{ fontWeight: 700 }}>Bank deduction</span><strong>{formatMoney(bankDeductionTotal)}</strong>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Decision: Keep in Foreign Currency vs Convert to EGP */}
       {isForeign && (
@@ -432,7 +509,7 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
       )}
 
       {/* 2. Operating Account Destination */}
-      {((!isForeign) || settlementMode === 'convert_egp') && (
+      {!isInstaPayRefund && ((!isForeign) || settlementMode === 'convert_egp') && (
         <div style={{ background: 'var(--surface-soft)', padding: '12px', borderRadius: '8px', border: '1px solid var(--line)', marginBottom: '12px' }}>
           {isForeign && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
@@ -471,7 +548,7 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
         </div>
       )}
 
-      <label style={{ marginTop: '4px' }}>
+      {!isInstaPayRefund && <label style={{ marginTop: '4px' }}>
         <span>Subcategory / Tag <small style={{ color: 'var(--muted)', fontSize: '12px' }}>(Optional)</small></span>
         <input
           type="text"
@@ -480,7 +557,7 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
           value={tag}
           onChange={(e) => setTag(e.target.value)}
         />
-      </label>
+      </label>}
       <datalist id="deductTagSuggestions">
         {tagSuggestions.map((s) => (
           <option key={s} value={s} />
@@ -489,10 +566,10 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
 
       <div className="dialog-actions" style={{ marginTop: '18px', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
         <button className="ghost-button" type="button" onClick={handleSaveWithoutDeposit}>
-          Don't {isIncome ? 'deposit' : 'deduct'}
+          {isInstaPayRefund ? 'Keep Bank Balance' : `Don't ${isIncome ? 'deposit' : 'deduct'}`}
         </button>
         <button className="primary-button" type="button" onClick={handleDepositAndSave}>
-          {isIncome ? `Deposit to ${targetAccountLabel} & Save` : `Deduct from ${targetAccountLabel} & Save`}
+          {isInstaPayRefund ? 'Refund & Save' : isIncome ? `Deposit to ${targetAccountLabel} & Save` : `Deduct from ${targetAccountLabel} & Save`}
         </button>
       </div>
     </Modal>

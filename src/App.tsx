@@ -51,7 +51,7 @@ import {
 import { getSyncEngine } from './services/syncEngine';
 import { flushPendingDriveSyncNow } from './store/slices/common';
 import { getPersistenceError, onPersistenceChange, retryFailedStorageWrites, onStorageChange } from './utils/storageAdapter';
-import type { CashEntry, JobItem, Installment } from './types';
+import type { CashEntry, InstaPayRefund, JobItem, Installment } from './types';
 
 export const App: React.FC = () => {
   const { 
@@ -118,6 +118,7 @@ export const App: React.FC = () => {
   const [deductModalOpen, setDeductModalOpen] = useState(false);
   const [deductEntry, setDeductEntry] = useState<CashEntry | null>(null);
   const [deductActualAmount, setDeductActualAmount] = useState<number>(0);
+  const [deductRefunds, setDeductRefunds] = useState<InstaPayRefund[] | undefined>();
 
   // Account Transfer modal
   const [transferModalOpen, setTransferModalOpen] = useState(false);
@@ -165,6 +166,7 @@ export const App: React.FC = () => {
       STORAGE_KEYS.creditDues,
       STORAGE_KEYS.creditDueMonths,
       STORAGE_KEYS.creditSettlementOverrides,
+      STORAGE_KEYS.instapayFeeConfig,
       STORAGE_KEYS.entryActuals,
       STORAGE_KEYS.entryActualDates,
       STORAGE_KEYS.deletedForecasts,
@@ -463,9 +465,10 @@ export const App: React.FC = () => {
     setRateModalOpen(true);
   };
 
-  const handleDeductPrompt = (entry: CashEntry, actualAmount: number) => {
+  const handleDeductPrompt = (entry: CashEntry, actualAmount: number, refunds?: InstaPayRefund[]) => {
     setDeductEntry(entry);
     setDeductActualAmount(actualAmount);
+    setDeductRefunds(refunds);
     setDeductModalOpen(true);
   };
 
@@ -666,7 +669,8 @@ export const App: React.FC = () => {
         isOpen={deductModalOpen}
         entry={deductEntry}
         actualAmount={deductActualAmount}
-        onClose={() => setDeductModalOpen(false)}
+        refunds={deductRefunds}
+        onClose={() => { setDeductModalOpen(false); setDeductRefunds(undefined); }}
       />
 
       <AccountTransferModal

@@ -38,13 +38,31 @@ for (const bad of ['3.0', '99.1', '10']) {
 // Current major and pre-versioning legacy payloads (no version field) still import.
 assert.strictEqual(
   migrateBackupPayload({ version: '2.0', entries: [{ id: 'a', date: '2026-01-01', amount: 10, type: 'expense' }] }).schemaVersion,
-  '2.2',
+  '2.3',
   'Current major version imports'
 );
 assert.strictEqual(
   migrateBackupPayload({ entries: [{ id: 'b', date: '2026-01-01', amount: 10, type: 'expense' }] }).schemaVersion,
-  '2.2',
+  '2.3',
   'Unversioned legacy payload still imports'
+);
+const legacyFeeConfig = migrateBackupPayload({ version: '2.2', entries: [] });
+assert.deepStrictEqual(legacyFeeConfig.instapayFeeConfig, { rate: 0.001, minimum: 0.5, maximum: 20, currency: 'EGP' }, 'older backups receive the default fee rule');
+const legacyNoFee = migrateBackupPayload({ version: '2.2', entries: [{ id: 'old-payment', date: '2026-01-01', amount: 100, actualAmount: 100, type: 'expense', draws: [{ date: '2026-01-01', amount: 100 }] }] });
+assert.equal(legacyNoFee.entries[0].draws[0].instapayFeeAmount, undefined, 'legacy draw imports as a zero-fee historical payment');
+const malformedFee = migrateBackupPayload({ version: '2.2', entries: [{ id: 'valid-entry', date: '2026-01-01', amount: 100, type: 'expense', draws: [{ date: '2026-01-01', amount: 100, paymentMethod: 'instapay', instapayFeeAmount: -5 }] }] });
+assert.equal(malformedFee.entries[0].id, 'valid-entry', 'invalid fee metadata does not discard a valid expense');
+assert.equal(malformedFee.entries[0].draws[0].instapayFeeAmount, undefined, 'negative imported fee value is safely discarded');
+const customFeeConfig = { rate: 0.002, minimum: 1, maximum: 40, currency: 'EGP' };
+assert.deepStrictEqual(
+  migrateBackupPayload({ version: '2.2', entries: [], instapayFeeConfig: customFeeConfig }).instapayFeeConfig,
+  customFeeConfig,
+  'configured fee rule survives backup migration'
+);
+assert.deepStrictEqual(
+  migrateBackupPayload({ version: '2.2', entries: [], instapayFeeConfig: { rate: -1 } }).instapayFeeConfig,
+  legacyFeeConfig.instapayFeeConfig,
+  'invalid legacy fee rules safely fall back to defaults'
 );
 console.log('✓ Unknown schema major versions are rejected; legacy payloads still import');
 

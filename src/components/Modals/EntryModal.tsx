@@ -5,7 +5,8 @@ import { calculateCreditSettlementDate, getCreditCycleHint, isCreditCardExpense 
 import { normalizeCurrencyCode, getCurrencyRateOr, formatNativeCurrency, getAccountNativeCurrency, convertAmountBetweenCurrencies } from '../../engine/currency';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { getEntryActualAmount, isLoanInflow, findLinkedLoanRepayment, calculateLoanRepaymentScale } from '../../engine/forecast';
-import type { CashEntry, EntryDraw, PlannedSplit } from '../../types';
+import { buildInstaPayRefunds } from '../../engine/instapayFees';
+import type { CashEntry, EntryDraw, InstaPayRefund, PlannedSplit } from '../../types';
 import { AffectedRecordsModal, type AffectedPartyOption } from './AffectedRecordsModal';
 import {
   X,
@@ -27,7 +28,7 @@ interface EntryModalProps {
   initialType?: 'expense' | 'income';
   entryToEdit?: CashEntry | null;
   onClose: () => void;
-  onDeductPrompt?: (entry: CashEntry, actualAmount: number) => void;
+  onDeductPrompt?: (entry: CashEntry, actualAmount: number, refunds?: InstaPayRefund[]) => void;
 }
 
 export const EntryModal: React.FC<EntryModalProps> = ({
@@ -485,7 +486,10 @@ export const EntryModal: React.FC<EntryModalProps> = ({
             note: statementNote.trim() || undefined,
           });
         } else {
-          updateEntry(entryToEdit.id, baseEntry, seriesEditMode);
+          const entryFields = { ...baseEntry };
+          delete entryFields.actualAmount;
+          delete entryFields.actualDate;
+          updateEntry(entryToEdit.id, newActual === previousActual ? baseEntry : entryFields, seriesEditMode);
         }
         if (newActual > 0 && (newActual !== previousActual || entryToEdit.id.startsWith('credit-settlement-'))) {
           recordActual(entryToEdit.id, newActual, resolvedActualDate || date, {
@@ -498,7 +502,11 @@ export const EntryModal: React.FC<EntryModalProps> = ({
         }
       });
       if (shouldPromptDeduct && newActual !== previousActual && onDeductPrompt) {
-        onDeductPrompt({ ...baseEntry, id: entryToEdit.id }, newActual - previousActual);
+        const originalDraws = entryToEdit.draws || [];
+        const refunds = newActual < previousActual && originalDraws.some((draw) => draw.paymentMethod === 'instapay')
+          ? buildInstaPayRefunds(originalDraws, previousActual - newActual, entryToEdit.account || chosenAccount)
+          : undefined;
+        onDeductPrompt({ ...baseEntry, id: entryToEdit.id, draws: originalDraws }, newActual - previousActual, refunds);
       }
     } else {
       const newActual = resolvedActual ?? 0;

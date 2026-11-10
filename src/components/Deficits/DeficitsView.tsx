@@ -11,11 +11,11 @@ import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { AlertCircle, Clock, CheckCircle, CreditCard } from 'lucide-react';
 import { useForecastCandidates } from '../../hooks/useForecastCandidates';
 import { getCreditDueFundingAlerts } from '../../engine/creditDueAlerts';
-import type { CashEntry } from '../../types';
+import type { CashEntry, InstaPayRefund } from '../../types';
 
 interface DeficitsViewProps {
   onBridgeDeficit?: () => void;
-  onDeductPrompt?: (entry: CashEntry, actualAmount: number) => void;
+  onDeductPrompt?: (entry: CashEntry, actualAmount: number, refunds?: InstaPayRefund[]) => void;
   onOpenTransferModal?: (from?: string, to?: string, amount?: number, reason?: string) => void;
 }
 

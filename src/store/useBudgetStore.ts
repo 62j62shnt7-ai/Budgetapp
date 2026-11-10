@@ -17,6 +17,7 @@ import { createEntriesSlice } from './slices/entriesSlice';
 import { createAccountsSlice } from './slices/accountsSlice';
 import { createJobsSlice } from './slices/jobsSlice';
 import { createRatesSlice } from './slices/ratesSlice';
+import { createInstaPayFeesSlice } from './slices/instapayFeesSlice';
 import { createSyncSlice } from './slices/syncSlice';
 
 import { getSyncEngine } from '../services/syncEngine';
@@ -31,6 +32,7 @@ export const useBudgetStore = create<BudgetStoreState>((set, get, api) => ({
   ...createAccountsSlice(set, get, api),
   ...createJobsSlice(set, get, api),
   ...createRatesSlice(set, get, api),
+  ...createInstaPayFeesSlice(set, get, api),
   ...createSyncSlice(set, get, api),
 }));
 
@@ -52,6 +54,7 @@ const syncedDataKeys: Array<keyof BudgetStoreState> = [
   'creditDues',
   'creditDueMonths',
   'creditSettlementOverrides',
+  'instapayFeeConfig',
   'salaryAnchorMonth',
 ];
 

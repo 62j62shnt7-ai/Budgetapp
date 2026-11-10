@@ -4,6 +4,20 @@
 
 export type EntryType = 'income' | 'expense';
 
+export interface InstaPayFeeConfig {
+  /** Decimal rate; 0.001 means 0.1%. */
+  rate: number;
+  minimum: number;
+  maximum: number;
+  currency: 'EGP';
+}
+
+export interface InstaPayRefund {
+  accountKey: string;
+  principalAmount: number;
+  feeAmount: number;
+}
+
 export interface PlannedSplit {
   id?: string;
   date: string; // YYYY-MM-DD
@@ -20,6 +34,13 @@ export interface EntryDraw {
   account?: string;
   /** Storage asset this draw was paid from/into (foreign holdings / vault). */
   storageAssetId?: string;
+  /** Fee charged for this actual bank transfer, kept separate from principal. */
+  paymentMethod?: 'instapay';
+  instapayFeeAmount?: number;
+  /** Principal amount used as the fee calculation basis. */
+  instapayFeeBaseAmount?: number;
+  /** Immutable tariff snapshot used when this payment was recorded. */
+  instapayFeeRule?: InstaPayFeeConfig;
 }
 
 export interface CreditSettlementOverride {
@@ -361,6 +382,7 @@ export interface BudgetFinancialSnapshot {
   creditDueMonths: Record<string, string[]>;
   creditSettlementOverrides: Record<string, CreditSettlementOverride>;
   salaryAnchorMonth: string;
+  instapayFeeConfig: InstaPayFeeConfig;
 }
 
 export interface UndoableAction {

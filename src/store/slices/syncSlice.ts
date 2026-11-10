@@ -14,7 +14,8 @@ import { showAppNotice } from '../../components/Common/UndoToast';
 import { migrateInstallmentOccurrenceKeys } from '../../engine/salaryAndInstallments';
 import { DateUtils } from '../../engine/dateUtils';
 import { defaultRates, inferAssetLocation } from '../../engine/currency';
-import { migrateBackupPayload } from '../../engine/migration';
+import { migrateBackupPayload, CURRENT_SCHEMA_VERSION } from '../../engine/migration';
+import { DEFAULT_INSTAPAY_FEE_CONFIG, normalizeInstaPayFeeConfig } from '../../engine/instapayFees';
 import {
   migrateFromLocalStorageIfNeeded,
   loadAllFromIndexedDB,
@@ -142,11 +143,12 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => {
       creditSettlementOverrides: state.creditSettlementOverrides,
       salaryAnchorMonth: state.salaryAnchorMonth,
       archivedEntries: state.archivedEntries,
+      instapayFeeConfig: state.instapayFeeConfig,
     };
     const contentHash = computeContentHash(dataObj);
     const payload = {
       app: 'budget-control',
-      version: '2.2',
+      version: CURRENT_SCHEMA_VERSION,
       exportedAt: new Date().toISOString(),
       seedVersion: 'blank-template-v2',
       sync: {
@@ -194,6 +196,7 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => {
         entryActuals: migrated.entryActuals,
         entryActualDates: migrated.entryActualDates,
         deletedForecasts: migrated.deletedForecasts,
+        instapayFeeConfig: migrated.instapayFeeConfig,
       };
       persistFinancialSnapshot(atomicPayload);
 
@@ -218,6 +221,7 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => {
           entryActuals: migrated.entryActuals,
           entryActualDates: migrated.entryActualDates,
           deletedForecasts: migrated.deletedForecasts,
+          instapayFeeConfig: migrated.instapayFeeConfig,
           redoStack: [],
           undoToast: null,
           ...(isRemoteSync ? { hasUnsyncedChanges: false } : {}),
@@ -259,6 +263,7 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => {
         deletedForecasts: state.deletedForecasts,
         creditSettlementOverrides: state.creditSettlementOverrides,
         archivedEntries: state.archivedEntries,
+        instapayFeeConfig: state.instapayFeeConfig,
       };
       saveStorage(STORAGE_KEYS.resetBackup, backupPayload);
       const emptyEntries: CashEntry[] = [];
@@ -284,6 +289,7 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => {
         entryActuals: {},
         entryActualDates: {},
         deletedForecasts: [],
+        instapayFeeConfig: { ...DEFAULT_INSTAPAY_FEE_CONFIG },
       };
       persistFinancialSnapshot(resetSnapshot);
       set(resetSnapshot);
@@ -321,6 +327,7 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => {
           deletedForecasts: (backup.deletedForecasts as string[]) || [],
           creditSettlementOverrides: (backup.creditSettlementOverrides as Record<string, CreditSettlementOverride>) || {},
           archivedEntries: upgradeLoadedEntries((backup.archivedEntries as CashEntry[]) || []),
+          instapayFeeConfig: normalizeInstaPayFeeConfig(backup.instapayFeeConfig),
         };
         persistFinancialSnapshot(restored);
         void removeStorage(STORAGE_KEYS.resetBackup);
@@ -368,6 +375,7 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => {
           deletedForecasts: (backup.deletedForecasts as string[]) || [],
           creditSettlementOverrides: (backup.creditSettlementOverrides as Record<string, CreditSettlementOverride>) || {},
           archivedEntries: upgradeLoadedEntries((backup.archivedEntries as CashEntry[]) || []),
+          instapayFeeConfig: normalizeInstaPayFeeConfig(backup.instapayFeeConfig),
         };
         persistFinancialSnapshot(restored);
         void removeStorage(STORAGE_KEYS.importUndoBackup);
@@ -458,6 +466,9 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => {
           }
           if (storedData[STORAGE_KEYS.entryActualDates]) {
             updates.entryActualDates = storedData[STORAGE_KEYS.entryActualDates] as Record<string, string>;
+          }
+          if (storedData[STORAGE_KEYS.instapayFeeConfig] !== undefined) {
+            updates.instapayFeeConfig = normalizeInstaPayFeeConfig(storedData[STORAGE_KEYS.instapayFeeConfig]);
           }
           if (storedData[STORAGE_KEYS.creditDues]) {
             updates.creditDues = storedData[STORAGE_KEYS.creditDues] as Record<string, Record<string, number>>;

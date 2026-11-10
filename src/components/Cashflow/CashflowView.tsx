@@ -47,7 +47,7 @@ import { loadStorageSync, saveStorage } from '../../utils/storageAdapter';
 import { LedgerFilterBar } from '../Common/LedgerFilterBar';
 import { showAppNotice, requestAppConfirm } from '../Common/UndoToast';
 
-import type { CashEntry, Installment } from '../../types';
+import type { CashEntry, InstaPayRefund, Installment } from '../../types';
 import { ExactAmountDecisionModal } from '../Modals/ExactAmountDecisionModal';
 import { AdjustLoanRepaymentModal, type LinkedRepaymentInfo } from '../Modals/AdjustLoanRepaymentModal';
 import { AffectedRecordsModal } from '../Modals/AffectedRecordsModal';
@@ -65,7 +65,7 @@ import type { CreditDueFundingAlert } from '../../types';
 interface CashflowViewProps {
   onOpenEntryModal: (type: 'expense' | 'income') => void;
   onEditEntry?: (entry: CashEntry) => void;
-  onDeductPrompt?: (entry: CashEntry, actualAmount: number) => void;
+  onDeductPrompt?: (entry: CashEntry, actualAmount: number, refunds?: InstaPayRefund[]) => void;
   onOpenTransferModal?: (from?: string, to?: string, amount?: number, reason?: string) => void;
   onOpenInstallmentModal: (inst?: Installment) => void;
 }

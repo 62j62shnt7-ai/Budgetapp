@@ -1,11 +1,13 @@
 import type {
   AccountBalance,
   CashEntry,
+  EntryDraw,
   RatesData,
   SalaryPayment,
   BudgetFinancialSnapshot,
   UndoableAction,
 } from '../../types';
+import { normalizeInstaPayFeeConfig } from '../../engine/instapayFees';
 import { getCurrencyRateOr, getEffectiveEgpAmount, normalizeCurrencyCode } from '../../engine/currency';
 import { inferTag } from '../../engine/tags';
 import { isCreditCardExpense } from '../../engine/creditCards';
@@ -44,6 +46,7 @@ export const STORAGE_KEYS = {
   creditDues: 'budget-control-credit-dues',
   creditDueMonths: 'budget-control-credit-due-months',
   creditSettlementOverrides: 'budget-control-credit-settlement-overrides',
+  instapayFeeConfig: 'budget-control-instapay-fee-config',
   salaryAnchor: 'budget-control-salary-anchor',
   forecastStartMonth: 'budget-control-forecast-start-month',
   forecastQuarters: 'budget-control-forecast-quarters',
@@ -108,6 +111,9 @@ function validateFallbackShape<T>(key: string, parsed: unknown, fallback: T): T 
     if (key === STORAGE_KEYS.accounts) {
       const accs = parsed as Record<string, unknown>;
       if (Object.keys(accs).length === 0) return fallback;
+    }
+    if (key === STORAGE_KEYS.instapayFeeConfig) {
+      return normalizeInstaPayFeeConfig(parsed) as T;
     }
     return parsed as T;
   }
@@ -363,6 +369,7 @@ export function captureFinancialSnapshot(state: BudgetStoreState): BudgetFinanci
     creditDueMonths: state.creditDueMonths,
     creditSettlementOverrides: state.creditSettlementOverrides,
     salaryAnchorMonth: state.salaryAnchorMonth,
+    instapayFeeConfig: normalizeInstaPayFeeConfig(state.instapayFeeConfig),
   });
 }
 
@@ -383,6 +390,7 @@ export function persistFinancialSnapshot(snapshot: BudgetFinancialSnapshot): voi
     [STORAGE_KEYS.creditDueMonths, snapshot.creditDueMonths],
     [STORAGE_KEYS.creditSettlementOverrides, snapshot.creditSettlementOverrides],
     [STORAGE_KEYS.salaryAnchor, snapshot.salaryAnchorMonth],
+    [STORAGE_KEYS.instapayFeeConfig, snapshot.instapayFeeConfig],
   ]);
 }
 
@@ -437,7 +445,24 @@ export function upgradeLoadedEntries(rawEntries: CashEntry[]): CashEntry[] {
     const isCardSwipe = isCreditCardExpense(entry);
     const isLoan = isLoanInflow(entry);
     let nextAccount = entry.account;
-    let nextDraws = entry.draws;
+    let nextDraws = Array.isArray(entry.draws)
+      ? entry.draws.map((draw): EntryDraw => {
+        if (draw.instapayFeeAmount === undefined) return draw;
+        const fee = Number(draw.instapayFeeAmount);
+        if (!Number.isFinite(fee) || fee < 0) {
+          const { paymentMethod: _paymentMethod, instapayFeeAmount: _fee, instapayFeeBaseAmount: _base, instapayFeeRule: _rule, ...legacyDraw } = draw;
+          return legacyDraw;
+        }
+        const baseAmount = Number(draw.instapayFeeBaseAmount);
+        return {
+          ...draw,
+          instapayFeeAmount: Math.round(fee * 100) / 100,
+          instapayFeeBaseAmount: Number.isFinite(baseAmount) && baseAmount >= 0
+            ? Math.round(baseAmount * 100) / 100
+            : Math.round((Number(draw.amount) || 0) * 100) / 100,
+        };
+      })
+      : entry.draws;
 
     if (isCardSwipe) {
       const accLower = (entry.account || '').toLowerCase().trim();
@@ -450,7 +475,9 @@ export function upgradeLoadedEntries(rawEntries: CashEntry[]): CashEntry[] {
     // Strip single auto-generated 1-click draw on any regular entry;
     // single 1-time payments should not have a draws array.
     // Loan inflow facilities are preserved as they represent facility drawdown tranches.
-    if (Array.isArray(entry.draws) && entry.draws.length === 1 && !isLoan) {
+    const hasInstaPayFeeDraw = Array.isArray(nextDraws)
+      && nextDraws.some((draw) => draw.paymentMethod === 'instapay' || draw.instapayFeeAmount !== undefined);
+    if (Array.isArray(nextDraws) && nextDraws.length === 1 && !isLoan && !hasInstaPayFeeDraw) {
       nextDraws = undefined;
     }
 

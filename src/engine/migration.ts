@@ -2,6 +2,7 @@ import { migrateInstallmentOccurrenceKeys } from './salaryAndInstallments';
 import type {
   CreditSettlementOverride,
   CashEntry,
+  EntryDraw,
   AccountBalance,
   SalaryPayment,
   Installment,
@@ -9,7 +10,9 @@ import type {
   StorageAsset,
   JobItem,
   SyncMetadata,
+  InstaPayFeeConfig,
 } from '../types';
+import { DEFAULT_INSTAPAY_FEE_CONFIG, isValidInstaPayFeeConfig, normalizeInstaPayFeeConfig } from './instapayFees';
 import { DateUtils } from './dateUtils';
 import { inferTag } from './tags';
 import { defaultRates as currencyDefaultRates, getEffectiveEgpAmount, inferAssetLocation, normalizeCurrencyCode } from './currency';
@@ -34,6 +37,7 @@ export interface MigratedBudgetDataset {
   creditDueMonths: Record<string, string[]>;
   creditSettlementOverrides: Record<string, CreditSettlementOverride>;
   deletedForecasts: string[];
+  instapayFeeConfig: InstaPayFeeConfig;
 }
 
 const defaultAccounts: Record<string, AccountBalance> = {
@@ -56,7 +60,7 @@ const defaultRates: RatesData = currencyDefaultRates;
 
 /** Major schema version this migration pipeline produces and understands. */
 export const CURRENT_SCHEMA_MAJOR = '2';
-export const CURRENT_SCHEMA_VERSION = `${CURRENT_SCHEMA_MAJOR}.2`;
+export const CURRENT_SCHEMA_VERSION = `${CURRENT_SCHEMA_MAJOR}.3`;
 
 /**
  * Parse a stored money value.
@@ -74,6 +78,34 @@ export function parseMoneyValue(value: unknown): number | undefined {
   if (!cleaned) return undefined;
   const parsed = Number(cleaned);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function normalizeImportedDraws(raw: unknown): EntryDraw[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  return raw.map((item) => {
+    const source = item && typeof item === 'object' ? item as Record<string, unknown> : {};
+    const amount = parseMoneyValue(source.amount) ?? 0;
+    const draw = { ...source, amount } as unknown as EntryDraw;
+    const fee = parseMoneyValue(source.instapayFeeAmount);
+    if (fee === undefined || fee < 0) {
+      delete draw.instapayFeeAmount;
+      delete draw.instapayFeeBaseAmount;
+      delete draw.instapayFeeRule;
+      delete draw.paymentMethod;
+      return draw;
+    }
+    draw.instapayFeeAmount = Math.round(fee * 100) / 100;
+    const baseAmount = parseMoneyValue(source.instapayFeeBaseAmount);
+    draw.instapayFeeBaseAmount = baseAmount !== undefined && baseAmount >= 0
+      ? Math.round(baseAmount * 100) / 100
+      : Math.round(amount * 100) / 100;
+    if (isValidInstaPayFeeConfig(source.instapayFeeRule)) {
+      draw.instapayFeeRule = normalizeInstaPayFeeConfig(source.instapayFeeRule);
+    } else {
+      delete draw.instapayFeeRule;
+    }
+    return draw;
+  });
 }
 
 /** Parse a count/quantity, treating blank values as `0`. */
@@ -110,6 +142,7 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
       account: e.account === 'cash' ? 'cib' : (e.account || 'cib'),
       tag: e.tag || inferTag(e) || '',
       actualAmount: e.actualAmount !== undefined && e.actualAmount !== '' ? Number(e.actualAmount) : undefined,
+      draws: normalizeImportedDraws(e.draws),
     }));
 
     return {
@@ -130,6 +163,7 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
       creditDueMonths: {},
       creditSettlementOverrides: {},
       deletedForecasts: [],
+      instapayFeeConfig: { ...DEFAULT_INSTAPAY_FEE_CONFIG },
     };
   }
 
@@ -189,6 +223,7 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
       currency,
       actualAmount: parseMoneyValue(e.actualAmount),
       actualDate: typeof e.actualDate === 'string' ? e.actualDate.slice(0, 10) : undefined,
+      draws: normalizeImportedDraws(e.draws),
       splitCount: typeof e.splitCount === 'number' ? e.splitCount : undefined,
       splitIntervalDays: typeof e.splitIntervalDays === 'number' ? e.splitIntervalDays : undefined,
       plannedSplits: Array.isArray(e.plannedSplits) ? e.plannedSplits : undefined,
@@ -449,5 +484,6 @@ export function migrateBackupPayload(raw: unknown): MigratedBudgetDataset {
     creditDueMonths,
     creditSettlementOverrides,
     deletedForecasts,
+    instapayFeeConfig: normalizeInstaPayFeeConfig(data.instapayFeeConfig ?? parsed.instapayFeeConfig ?? DEFAULT_INSTAPAY_FEE_CONFIG),
   };
 }

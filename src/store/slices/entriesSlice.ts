@@ -10,6 +10,7 @@ import { DateUtils } from '../../engine/dateUtils';
 import { inferTag } from '../../engine/tags';
 import { isOngoingEntry, isLoanInflow } from '../../engine/forecast';
 import { calculateJobFinancials } from '../../engine/jobs';
+import { calculateInstaPayFee } from '../../engine/instapayFees';
 import {
   isLumpCreditDueForAccount,
   isCreditSettlementRow,
@@ -34,6 +35,23 @@ import {
   revertStorageOrAccountBalance,
 } from './common';
 import type { SliceCreator, EntriesSlice } from './types';
+
+const drawBankDeduction = (draw: EntryDraw): number =>
+  Math.round(((Number(draw.amount) || 0) + (Number(draw.instapayFeeAmount) || 0)) * 100) / 100;
+
+const reduceDrawPrincipal = (draw: EntryDraw, amount: number): EntryDraw => {
+  const oldAmount = Math.max(0, Number(draw.amount) || 0);
+  const nextAmount = Math.max(0, Math.round(amount * 100) / 100);
+  if (oldAmount <= 0 || draw.instapayFeeAmount === undefined) {
+    return {
+      ...draw,
+      amount: nextAmount,
+      ...(draw.paymentMethod === 'instapay' ? { instapayFeeBaseAmount: nextAmount } : {}),
+    };
+  }
+  const nextFee = Math.round((Number(draw.instapayFeeAmount) || 0) * nextAmount / oldAmount * 100) / 100;
+  return { ...draw, amount: nextAmount, instapayFeeAmount: nextFee, instapayFeeBaseAmount: nextAmount };
+};
 
 export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
   entries: upgradeLoadedEntries(loadStorage<CashEntry[]>(STORAGE_KEYS.entries, [])),
@@ -447,7 +465,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
                 revertStorageOrAccountBalance(get, {
                   account: drawAcc,
                   currency: 'EGP',
-                  amount: Number(d.amount) || 0,
+                  amount: drawBankDeduction(d),
                   isEgpAmount: true,
                   entryType: 'expense',
                 });
@@ -473,7 +491,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
                   assetId: d.storageAssetId || options.storageAssetId,
                   account: d.account || target.account,
                   currency: target.currency,
-                  amount: Number(d.amount) || 0,
+                  amount: drawBankDeduction(d),
                   isEgpAmount: true,
                   fxRate: target.fxRateAtEntry,
                   entryType: target.type,
@@ -648,7 +666,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
                   adjustedDraws.push(d);
                   needed -= dAmt;
                 } else {
-                  adjustedDraws.push({ ...d, amount: Math.round(needed * 100) / 100 });
+                  adjustedDraws.push(reduceDrawPrincipal(d, needed));
                   needed = 0;
                   break;
                 }
@@ -659,7 +677,8 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
         }
 
         // If draws has <= 1 item and is not a loan facility or split entry, strip the redundant draws array
-        if (draws.length <= 1 && !isLoan && !isSplit && !entry.keepOngoing) {
+        const hasInstaPayDraw = draws.some((draw) => draw.paymentMethod === 'instapay' || draw.instapayFeeAmount !== undefined);
+        if (draws.length <= 1 && !isLoan && !isSplit && !entry.keepOngoing && !hasInstaPayDraw) {
           draws = [];
         }
 
@@ -722,7 +741,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
                     adjustedDraws.push(d);
                     needed -= dAmt;
                   } else {
-                    adjustedDraws.push({ ...d, amount: Math.round(needed * 100) / 100 });
+                    adjustedDraws.push(reduceDrawPrincipal(d, needed));
                     needed = 0;
                     break;
                   }
@@ -732,7 +751,8 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
             }
           }
 
-          if (draws.length <= 1 && !isLoan && !isSplit && !entry.keepOngoing) {
+          const hasInstaPayDraw = draws.some((draw) => draw.paymentMethod === 'instapay' || draw.instapayFeeAmount !== undefined);
+          if (draws.length <= 1 && !isLoan && !isSplit && !entry.keepOngoing && !hasInstaPayDraw) {
             draws = [];
           }
 
@@ -810,7 +830,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
                 revertStorageOrAccountBalance(get, {
                   account: drawAcc,
                   currency: 'EGP',
-                  amount: Number(d.amount) || 0,
+                  amount: drawBankDeduction(d),
                   isEgpAmount: true,
                   entryType: 'expense',
                 });
@@ -1013,7 +1033,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
                 assetId: d.storageAssetId || options.storageAssetId,
                 account: d.account || target.account,
                 currency: target.currency || 'EGP',
-                amount: Number(d.amount) || 0,
+                amount: drawBankDeduction(d),
                 isEgpAmount: true,
                 fxRate: target.fxRateAtEntry,
                 entryType: target.type,
@@ -1156,6 +1176,37 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
       if (drawIndex >= 0 && drawIndex < newDraws.length) {
         newDraws[drawIndex] = { ...newDraws[drawIndex], ...draw };
       }
+      const previousDraw = entry.draws?.[drawIndex];
+      const updatedDraw = newDraws[drawIndex];
+      if (previousDraw?.paymentMethod === 'instapay' && updatedDraw) {
+        const fee = updatedDraw.instapayFeeRule
+          ? calculateInstaPayFee(updatedDraw.amount, updatedDraw.instapayFeeRule)
+          : (Number(updatedDraw.instapayFeeAmount) || 0);
+        newDraws[drawIndex] = {
+          ...updatedDraw,
+          instapayFeeAmount: fee,
+          instapayFeeBaseAmount: updatedDraw.amount,
+        };
+        const fromAccountKey = previousDraw.account || entry.account;
+        const toAccountKey = newDraws[drawIndex].account || fromAccountKey;
+        const nextAccounts = { ...get().accounts };
+        const oldDeduction = drawBankDeduction(previousDraw);
+        const newDeduction = drawBankDeduction(newDraws[drawIndex]);
+        if (nextAccounts[fromAccountKey]) {
+          nextAccounts[fromAccountKey] = {
+            ...nextAccounts[fromAccountKey],
+            balance: Math.round((Number(nextAccounts[fromAccountKey].balance || 0) + oldDeduction) * 100) / 100,
+          };
+        }
+        if (nextAccounts[toAccountKey]) {
+          nextAccounts[toAccountKey] = {
+            ...nextAccounts[toAccountKey],
+            balance: Math.round((Number(nextAccounts[toAccountKey].balance || 0) - newDeduction) * 100) / 100,
+          };
+        }
+        saveStorage(STORAGE_KEYS.accounts, nextAccounts);
+        set({ accounts: nextAccounts });
+      }
       const totalAmount = newDraws.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
       const validDates = newDraws.map((d) => d.date).filter(Boolean).sort();
       const lastDate = validDates.length > 0 ? validDates[validDates.length - 1] : entry.date || DateUtils.todayString();
@@ -1228,7 +1279,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
             assetId: options.storageAssetId || deletedDraw.storageAssetId,
             account: deletedDraw.account || existingOverride.account || settlementAcc,
             currency: 'EGP',
-            amount: deletedDraw.amount,
+            amount: drawBankDeduction(deletedDraw),
             isEgpAmount: true,
             entryType: 'expense',
           });
@@ -1295,7 +1346,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
           assetId: options.storageAssetId || deletedDraw.storageAssetId,
           account: deletedDraw.account || entry.account,
           currency: entry.currency || 'EGP',
-          amount: deletedDraw.amount,
+          amount: drawBankDeduction(deletedDraw),
           isEgpAmount: true,
           fxRate: entry.fxRateAtEntry,
           entryType: entry.type,

@@ -8,6 +8,7 @@ interface MonthlySummaryRow {
   expenses: number;
   cardSpends?: number;
   creditSettled?: number;
+  instapayFees?: number;
   net: number;
   savingsRate: number;
 }
@@ -17,6 +18,7 @@ interface HistorySummaryTabProps {
   totalLifetimeExpenses: number;
   totalLifetimeCardSpends?: number;
   totalLifetimeCredit?: number;
+  totalLifetimeInstaPayFees?: number;
   lifetimeNet: number;
   lifetimeSavingsRate: number;
   monthlySummaryRows: MonthlySummaryRow[];
@@ -28,6 +30,7 @@ export const HistorySummaryTab: React.FC<HistorySummaryTabProps> = ({
   totalLifetimeExpenses,
   totalLifetimeCardSpends = 0,
   totalLifetimeCredit = 0,
+  totalLifetimeInstaPayFees = 0,
   lifetimeNet,
   lifetimeSavingsRate,
   monthlySummaryRows,
@@ -65,7 +68,14 @@ export const HistorySummaryTab: React.FC<HistorySummaryTabProps> = ({
           <strong id="historyLifetimeNet" className="history-primary-value" style={{ color: lifetimeNet >= 0 ? 'var(--green)' : 'var(--red)' }}>
             {lifetimeNet >= 0 ? '+' : ''}{formatMoney(lifetimeNet)}
           </strong>
-          <small>Realized cash surplus</small>
+          <small>After direct expenses, settlements, and InstaPay fees</small>
+        </article>
+        <article className="metric history-metric">
+          <span>InstaPay Fees</span>
+          <strong id="historyLifetimeInstaPayFees" className="history-primary-value" style={{ color: 'var(--red)' }}>
+            {formatMoney(totalLifetimeInstaPayFees)}
+          </strong>
+          <small>Recorded separately from expense principal</small>
         </article>
         <article className="metric history-metric">
           <span>Savings Rate</span>
@@ -79,7 +89,7 @@ export const HistorySummaryTab: React.FC<HistorySummaryTabProps> = ({
           <h3 style={{ margin: 0 }}>Monthly income and expenses</h3>
         </div>
         <p style={{ color: 'var(--muted)', fontSize: '13px', margin: '4px 0 12px' }}>
-          Monthly aggregated totals of all confirmed income and actual expenses.
+          Expense totals stay principal-only. InstaPay fees are shown separately and included in net cash surplus.
         </p>
         <div className="table-wrap compact responsive-cards history-summary-table-wrap">
           <table>
@@ -88,6 +98,7 @@ export const HistorySummaryTab: React.FC<HistorySummaryTabProps> = ({
                 <th>Month</th>
                 <th className="number">Income</th>
                 <th className="number">Expenses</th>
+                <th className="number">InstaPay Fees</th>
                 <th className="number">Net</th>
                 <th className="number">Savings Rate</th>
               </tr>
@@ -95,7 +106,7 @@ export const HistorySummaryTab: React.FC<HistorySummaryTabProps> = ({
             <tbody id="historyTable">
               {monthlySummaryRows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={{ textAlign: 'center', padding: '24px', color: 'var(--muted)' }}>
+                  <td colSpan={6} style={{ textAlign: 'center', padding: '24px', color: 'var(--muted)' }}>
                     No actual activity recorded yet. Actualize entries in Cash Flow to populate history.
                   </td>
                 </tr>
@@ -148,6 +159,13 @@ export const HistorySummaryTab: React.FC<HistorySummaryTabProps> = ({
                             </span>
                           )}
                         </div>
+                      </td>
+                      <td
+                        className="number cell-summary-instapay-fees"
+                        style={{ color: row.instapayFees ? 'var(--red)' : 'var(--muted)', fontWeight: 600 }}
+                      >
+                        <span className="summary-mobile-metric-label">InstaPay Fees</span>
+                        <span className="summary-mobile-metric-val">{formatMoney(row.instapayFees || 0)}</span>
                       </td>
                       <td
                         className="number cell-summary-net"

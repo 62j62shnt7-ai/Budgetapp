@@ -49,7 +49,7 @@ const AccountBalanceInput: React.FC<{
 };
 
 export const AccountsView: React.FC = () => {
-  const { accounts, updateAccountBalance, transferAccountFunds, storageAssets, rates, navigateTo } = useBudgetStore(
+  const { accounts, updateAccountBalance, transferAccountFunds, storageAssets, rates, navigateTo, instapayFeeConfig, updateInstaPayFeeConfig } = useBudgetStore(
     useShallow((state) => ({
       accounts: state.accounts,
       updateAccountBalance: state.updateAccountBalance,
@@ -57,6 +57,8 @@ export const AccountsView: React.FC = () => {
       storageAssets: state.storageAssets,
       rates: state.rates,
       navigateTo: state.navigateTo,
+      instapayFeeConfig: state.instapayFeeConfig,
+      updateInstaPayFeeConfig: state.updateInstaPayFeeConfig,
     }))
   );
 
@@ -64,6 +66,18 @@ export const AccountsView: React.FC = () => {
   const [transferTo, setTransferTo] = useState<string>('');
   const [transferAmount, setTransferAmount] = useState<string>('');
   const [transferSuccess, setTransferSuccess] = useState<string | null>(null);
+  const [feeRatePercent, setFeeRatePercent] = useState(String(instapayFeeConfig.rate * 100));
+  const [feeMinimum, setFeeMinimum] = useState(String(instapayFeeConfig.minimum));
+  const [feeMaximum, setFeeMaximum] = useState(String(instapayFeeConfig.maximum));
+  const [feeConfigMessage, setFeeConfigMessage] = useState('');
+  const [previousFeeConfig, setPreviousFeeConfig] = useState(instapayFeeConfig);
+  if (instapayFeeConfig !== previousFeeConfig) {
+    setPreviousFeeConfig(instapayFeeConfig);
+    setFeeRatePercent(String(instapayFeeConfig.rate * 100));
+    setFeeMinimum(String(instapayFeeConfig.minimum));
+    setFeeMaximum(String(instapayFeeConfig.maximum));
+    setFeeConfigMessage('');
+  }
 
   const [storageTransferOpen, setStorageTransferOpen] = useState(false);
   const [storageFxOpen, setStorageFxOpen] = useState(false);
@@ -91,6 +105,18 @@ export const AccountsView: React.FC = () => {
 
   const handleBalanceChange = (id: string, newBalance: number) => {
     updateAccountBalance(id, newBalance);
+  };
+
+  const handleSaveInstaPayConfig = () => {
+    const rate = Number(feeRatePercent) / 100;
+    const minimum = Number(feeMinimum);
+    const maximum = Number(feeMaximum);
+    if (![rate, minimum, maximum].every(Number.isFinite) || rate < 0 || minimum < 0 || maximum < minimum) {
+      setFeeConfigMessage('Enter valid nonnegative values, with the maximum at least the minimum.');
+      return;
+    }
+    updateInstaPayFeeConfig({ rate, minimum, maximum, currency: 'EGP' });
+    setFeeConfigMessage('Fee rule saved. It applies to new payments only.');
   };
 
   const handleTransfer = (e: React.FormEvent) => {
@@ -273,6 +299,33 @@ export const AccountsView: React.FC = () => {
                 ))}
               </div>
             )}
+          </div>
+        </section>
+
+        <section className="panel" aria-labelledby="instapay-fee-settings-title">
+          <div className="panel-heading">
+            <h3 id="instapay-fee-settings-title" style={{ margin: 0 }}>InstaPay Fee Rule</h3>
+          </div>
+          <p style={{ color: 'var(--muted)', fontSize: '12px', margin: '8px 0 12px' }}>
+            This rule is used for new InstaPay deductions. Saved payments keep their original fee.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px' }}>
+            <label className="transfer-field">
+              <span className="field-label-text">Rate (%)</span>
+              <input className="form-input" aria-label="InstaPay fee rate percent" type="number" min="0" step="0.01" value={feeRatePercent} onChange={(e) => setFeeRatePercent(e.target.value)} />
+            </label>
+            <label className="transfer-field">
+              <span className="field-label-text">Minimum (EGP)</span>
+              <input className="form-input" aria-label="InstaPay minimum fee EGP" type="number" min="0" step="0.01" value={feeMinimum} onChange={(e) => setFeeMinimum(e.target.value)} />
+            </label>
+            <label className="transfer-field">
+              <span className="field-label-text">Maximum (EGP)</span>
+              <input className="form-input" aria-label="InstaPay maximum fee EGP" type="number" min="0" step="0.01" value={feeMaximum} onChange={(e) => setFeeMaximum(e.target.value)} />
+            </label>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px' }}>
+            <button type="button" className="primary-button" onClick={handleSaveInstaPayConfig}>Save Fee Rule</button>
+            {feeConfigMessage && <small role="status" style={{ color: 'var(--muted)' }}>{feeConfigMessage}</small>}
           </div>
         </section>
 

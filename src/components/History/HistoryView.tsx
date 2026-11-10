@@ -335,6 +335,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
       let directExpenses = 0;
       let cardSpends = 0;
       let creditSettled = 0;
+      let instapayFees = 0;
 
       actualEntries.forEach((entry) => {
         // Exclude internal FX conversions and borrowed loan principal from realized earnings/spending
@@ -344,6 +345,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
         if (entry.draws && entry.draws.length > 0) {
           const monthDraws = entry.draws.filter((d) => DateUtils.getMonthKey(d.date) === month);
           const monthTotal = monthDraws.reduce((sum, d) => sum + Number(d.amount || 0), 0);
+          instapayFees += monthDraws.reduce((sum, d) => sum + (Number(d.instapayFeeAmount) || 0), 0);
           if (entry.type === 'income') {
             income += monthTotal;
           } else if (isSwipe) {
@@ -370,7 +372,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
         }
       });
 
-      const net = income - (directExpenses + creditSettled);
+      const net = income - (directExpenses + creditSettled + instapayFees);
       const savingsRate = income > 0 ? Math.round((net / income) * 100) : 0;
 
       return {
@@ -379,6 +381,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
         expenses: directExpenses,
         cardSpends,
         creditSettled,
+        instapayFees,
         net,
         savingsRate,
       };
@@ -389,7 +392,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
   const totalLifetimeExpenses = monthlySummaryRows.reduce((sum, r) => sum + r.expenses, 0);
   const totalLifetimeCardSpends = monthlySummaryRows.reduce((sum, r) => sum + (r.cardSpends || 0), 0);
   const totalLifetimeCredit = monthlySummaryRows.reduce((sum, r) => sum + (r.creditSettled || 0), 0);
-  const lifetimeNet = totalLifetimeIncome - (totalLifetimeExpenses + totalLifetimeCredit);
+  const totalLifetimeInstaPayFees = monthlySummaryRows.reduce((sum, r) => sum + (r.instapayFees || 0), 0);
+  const lifetimeNet = totalLifetimeIncome - (totalLifetimeExpenses + totalLifetimeCredit + totalLifetimeInstaPayFees);
   const lifetimeSavingsRate = totalLifetimeIncome > 0 ? Math.round((lifetimeNet / totalLifetimeIncome) * 100) : 0;
 
   const allAccounts = Array.from(new Set(actualEntries.map((e) => e.account || 'cash'))).sort();
@@ -730,6 +734,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
           totalLifetimeExpenses={totalLifetimeExpenses}
           totalLifetimeCardSpends={totalLifetimeCardSpends}
           totalLifetimeCredit={totalLifetimeCredit}
+          totalLifetimeInstaPayFees={totalLifetimeInstaPayFees}
           lifetimeNet={lifetimeNet}
           lifetimeSavingsRate={lifetimeSavingsRate}
           monthlySummaryRows={monthlySummaryRows}
