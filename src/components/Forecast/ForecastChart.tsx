@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useLayoutEffect, useId, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import type { CashEntry } from '../../types';
-import { DateUtils, formatMoney } from '../../engine/dateUtils';
+import { DateUtils, formatWholeMoney as formatMoney } from '../../engine/dateUtils';
+import { positionFloatingTooltip } from '../../utils/tooltipPosition';
 
 interface ForecastChartProps {
   entries: CashEntry[];
@@ -393,9 +394,10 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
           0% { opacity: 0.55; r: 6; }
           100% { opacity: 0; r: 13; }
         }
+        /* Tooltip placement is measured in the portal ref; keep this animation opacity-only. */
         @keyframes fcTooltipPop {
-          from { opacity: 0; transform: translateY(4px) scale(0.97); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
+          from { opacity: 0; }
+          to { opacity: 1; }
         }
         .fc-point-enter {
           transform-box: fill-box;
@@ -693,17 +695,51 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
           const topPct = (activeCoord.y / viewBoxH) * 100;
           const pxX = rect.left + (leftPct / 100) * rect.width;
           const pxY = rect.top + (topPct / 100) * rect.height;
-          const xAlign = leftPct < 22 ? '0%' : leftPct > 78 ? '-100%' : '-50%';
-          const yAlign = topPct < 45 ? '16px' : 'calc(-100% - 14px)';
           return (
         <div
           key={hoverIndex}
           className="forecast-tooltip fc-tooltip-pop"
+          ref={(node) => {
+            if (!node) return;
+            const placeTooltip = () => {
+              const chartRect = wrapEl.getBoundingClientRect();
+              const anchorX = chartRect.left + (activeCoord.x / viewBoxW) * chartRect.width;
+              const anchorY = chartRect.top + (activeCoord.y / viewBoxH) * chartRect.height;
+              const currentRect = node.getBoundingClientRect();
+              const position = positionFloatingTooltip(
+                { x: anchorX, y: anchorY },
+                { width: currentRect.width, height: currentRect.height },
+                { width: document.documentElement.clientWidth, height: document.documentElement.clientHeight },
+                topPct < 45
+              );
+              node.style.left = `${position.left}px`;
+              node.style.top = `${position.top}px`;
+              node.style.transform = 'none';
+              node.style.visibility = 'visible';
+            };
+            const sizeObserver = new ResizeObserver(placeTooltip);
+            sizeObserver.observe(node);
+            window.addEventListener('resize', placeTooltip);
+            window.addEventListener('scroll', placeTooltip, true);
+            placeTooltip();
+            void document.fonts.ready.then(placeTooltip);
+            return () => {
+              sizeObserver.disconnect();
+              window.removeEventListener('resize', placeTooltip);
+              window.removeEventListener('scroll', placeTooltip, true);
+            };
+          }}
           style={{
             position: 'fixed',
             left: pxX,
             top: pxY,
-            transform: `translate(${xAlign}, ${yAlign})`,
+            transform: 'none',
+            visibility: 'hidden',
+            boxSizing: 'border-box',
+            maxWidth: `${Math.min(280, Math.max(0, document.documentElement.clientWidth - 16))}px`,
+            maxHeight: `${Math.max(0, document.documentElement.clientHeight - 16)}px`,
+            overflowY: 'auto',
+            whiteSpace: 'normal',
             display: 'block',
           }}
         >

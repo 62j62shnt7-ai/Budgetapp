@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test": "tsx test/verifyMath.mjs && tsx test/testMigrationSafety.mjs && tsx test/testUserJson.mjs && tsx test/testAffectedModalOnly.mjs && tsx test/testUndoRedo.mjs && tsx test/testLoanScaling.mjs && tsx test/testStorageAdapter.mjs && tsx test/testSyncEngine.mjs && tsx test/testInstaPayFees.mjs",
+    "test": "tsx test/verifyMath.mjs && tsx test/testTooltipPosition.mjs && tsx test/testMigrationSafety.mjs && tsx test/testUserJson.mjs && tsx test/testAffectedModalOnly.mjs && tsx test/testUndoRedo.mjs && tsx test/testLoanScaling.mjs && tsx test/testStorageAdapter.mjs && tsx test/testSyncEngine.mjs && tsx test/testInstaPayFees.mjs",
     "test:ui": "node test/ui-audit.mjs",
+    "test:forecast-tooltip": "node test/testForecastTooltip.mjs",
     "test:instapay-ui": "node test/testInstaPayFeesModal.mjs",
     "typecheck": "tsc -b",
     "score": "tsx test/healthReport.mjs",

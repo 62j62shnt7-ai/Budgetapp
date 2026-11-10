@@ -19,7 +19,7 @@ import {
   resolveRateSourceValue,
 } from '../../engine/currency';
 import { isCreditCardExpense } from '../../engine/creditCards';
-import { DateUtils, formatMoney, formatLastUpdated } from '../../engine/dateUtils';
+import { DateUtils, formatWholeMoney as formatMoney, formatLastUpdated } from '../../engine/dateUtils';
 import { ForecastChart } from '../Forecast/ForecastChart';
 import {
   CreditCard,

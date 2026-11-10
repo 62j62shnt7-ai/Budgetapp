@@ -88,13 +88,17 @@ export const DateUtils = {
   },
 };
 
-export const numberFormatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
+export const numberFormatter = new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const wholeNumberFormatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
 export const usdFormatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
 
 export const todayString = DateUtils.todayString;
 
 export const formatMoney = (value: number | string): string =>
-  `${numberFormatter.format(Math.round(Number(value) || 0))} EGP`;
+  `${numberFormatter.format(Number(value) || 0)} EGP`;
+
+export const formatWholeMoney = (value: number | string): string =>
+  `${wholeNumberFormatter.format(Math.round(Number(value) || 0))} EGP`;
 
 export const formatUSD = (value: number | string): string =>
   `$${usdFormatter.format(Number(value) || 0)}`;

@@ -41,8 +41,16 @@ import {
 } from '../src/engine/forecast.ts';
 import { getEffectiveEgpAmount, computeSpreadPct, computeAssetEgpValue, defaultRates, autoFetchLatestRates, getAccountNativeCurrency, convertAmountBetweenCurrencies, getCurrencyRate, getCurrencyRateOr, normalizeCurrencyCode } from '../src/engine/currency.ts';
 import { computeFinancialHealthScore, analyzeSettledMonths } from '../src/engine/healthScore.ts';
-import { DateUtils } from '../src/engine/dateUtils.ts';
+import { DateUtils, formatMoney, formatWholeMoney } from '../src/engine/dateUtils.ts';
 import { calculateJobFinancials } from '../src/engine/jobs.ts';
+
+assert.strictEqual(formatMoney(0.5), '0.5 EGP', 'Money formatting preserves half-pound fees');
+assert.strictEqual(formatMoney(1), '1 EGP', 'Whole-pound amounts do not gain trailing decimals');
+assert.strictEqual(formatMoney(1.23), '1.23 EGP', 'Money formatting preserves piastre precision');
+assert.strictEqual(formatMoney(1500), '1,500 EGP', 'Money formatting retains thousands separators');
+assert.strictEqual(formatMoney(-0.5), '-0.5 EGP', 'Money formatting preserves negative fractional values');
+assert.strictEqual(formatWholeMoney(0.5), '1 EGP', 'Dashboard whole-pound formatting rounds half pounds');
+assert.strictEqual(formatWholeMoney(1.23), '1 EGP', 'Dashboard whole-pound formatting omits piastres');
 import { useBudgetStore } from '../src/store/useBudgetStore.ts';
 import {
   buildEntryDeleteOptions,
