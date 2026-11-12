@@ -65,7 +65,7 @@ export const HistorySummaryTab: React.FC<HistorySummaryTabProps> = ({
         </article>
         <article className="metric history-metric">
           <span>Lifetime Net</span>
-          <strong id="historyLifetimeNet" className="history-primary-value" style={{ color: lifetimeNet >= 0 ? 'var(--green)' : 'var(--red)' }}>
+          <strong id="historyLifetimeNet" className="history-primary-value history-net-value" style={{ color: lifetimeNet >= 0 ? 'var(--green)' : 'var(--red)' }}>
             {lifetimeNet >= 0 ? '+' : ''}{formatMoney(lifetimeNet)}
           </strong>
           <small>After direct expenses, settlements, and InstaPay fees</small>

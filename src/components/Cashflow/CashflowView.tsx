@@ -42,6 +42,8 @@ import {
   CheckCircle2,
   Landmark,
   Check,
+  Lock,
+  Unlock,
 } from 'lucide-react';
 import { loadStorageSync, saveStorage } from '../../utils/storageAdapter';
 import { LedgerFilterBar } from '../Common/LedgerFilterBar';
@@ -183,6 +185,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
   const [highlightTrigger, setHighlightTrigger] = useState(0);
   const [activeCashflowSubTab, setActiveCashflowSubTab] = useState<'forecast' | 'setup'>('forecast');
   const [showDateRangeFilter, setShowDateRangeFilter] = useState(false);
+  const [cashflowAdminUnlocked, setCashflowAdminUnlocked] = useState(false);
 
   // Respond to programmatic navigation intents
   const [prevNav, setPrevNav] = useState(pendingNavigation);
@@ -1077,7 +1080,17 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                   {allDisplayRows.length} {allDisplayRows.length === 1 ? 'entry' : 'entries'}
                 </span>
               </div>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <div className="cashflow-filter-actions">
+                <button
+                  className="ghost-button"
+                  type="button"
+                  aria-label="Cash Flow Admin Mode"
+                  aria-pressed={cashflowAdminUnlocked}
+                  onClick={() => setCashflowAdminUnlocked((unlocked) => !unlocked)}
+                >
+                  {cashflowAdminUnlocked ? <Unlock size={14} /> : <Lock size={14} />}
+                  <span>Admin Mode: {cashflowAdminUnlocked ? 'Unlocked' : 'Locked'}</span>
+                </button>
                 <button
                   className="ghost-button"
                   type="button"
@@ -1101,8 +1114,8 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
 
             {/* Custom Date Range Collapsible */}
             {showDateRangeFilter && (
-              <div className="cashflow-date-range-panel" style={{ display: 'flex', gap: '12px', alignItems: 'center', padding: '10px 14px', background: 'var(--bg-surface-elevated)', borderRadius: '6px', margin: '10px 0', border: '1px solid var(--border-subtle)' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}>
+              <div className="cashflow-date-range-panel">
+                <label className="cashflow-date-range-field">
                   <span>From:</span>
                   <input
                     type="date"
@@ -1111,7 +1124,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                     onChange={(e) => setDateFrom(e.target.value)}
                   />
                 </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}>
+                <label className="cashflow-date-range-field">
                   <span>To:</span>
                   <input
                     type="date"
@@ -1169,7 +1182,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
 
           {/* Forecast Entries Table Panel */}
           <section className="panel cashflow-table-panel" id="forecastEntriesPanel" style={{ marginTop: '18px' }}>
-            <div className="table-wrap responsive-cards">
+            <div className="table-wrap responsive-cards ledger-scroll-region" role="region" aria-label="Cash Flow ledger" tabIndex={0}>
           <table>
             <thead>
               <tr>
@@ -1181,7 +1194,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                 <th className="number">Amount</th>
                 <th className="number" style={{ minWidth: '190px' }}>Actual</th>
                 <th className="number" style={{ minWidth: '110px' }}>Balance After</th>
-                <th style={{ width: '120px', minWidth: '120px' }}></th>
+                {cashflowAdminUnlocked && <th className="cell-actions" scope="col">Actions</th>}
               </tr>
             </thead>
             <tbody>
@@ -1654,7 +1667,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                         );
                       })()}
                     </td>
-                    <td className="cell-actions">
+                    {cashflowAdminUnlocked && <td className="cell-actions">
                       {isOpening ? null : (
                         <div className="cell-actions-wrapper">
                           {canFinish && (
@@ -1688,6 +1701,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                             return (
                               <button
                                 className="delete-button"
+                                type="button"
                                 style={{ position: 'relative' }}
                                 title={hasAffected ? 'Delete entry (has affected linked records)' : 'Delete entry'}
                                 onClick={(ev) => {
@@ -1707,7 +1721,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                           })()}
                         </div>
                       )}
-                    </td>
+                    </td>}
                   </tr>
                 );
               })}

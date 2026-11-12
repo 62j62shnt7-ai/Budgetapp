@@ -832,7 +832,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
             </article>
             <article className="metric history-metric">
               <span>Filtered Net</span>
-              <strong className="history-primary-value" style={{ color: filteredNet >= 0 ? 'var(--green)' : 'var(--red)' }}>
+              <strong className="history-primary-value history-net-value" style={{ color: filteredNet >= 0 ? 'var(--green)' : 'var(--red)' }}>
                 {filteredNet >= 0 ? '+' : ''}{formatMoney(filteredNet)}
               </strong>
               <small>Income minus expenses</small>
@@ -898,7 +898,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
               Detailed record of every planned entry that has had an actual amount spent or received.
             </p>
 
-            <div className="table-wrap responsive-cards">
+            <div className="table-wrap responsive-cards ledger-scroll-region" role="region" aria-label="History transactions" tabIndex={0}>
               <table>
                 <thead>
                   <tr>
@@ -910,7 +910,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                     <th className="number">Forecast</th>
                     <th className="number">Actual</th>
                     <th className="number">Variance</th>
-                    <th style={{ width: '40px' }}></th>
+                    <th className="cell-actions" scope="col">Actions</th>
                   </tr>
                 </thead>
                 <tbody>

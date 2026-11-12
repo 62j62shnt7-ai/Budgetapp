@@ -11,10 +11,11 @@ import {
   CreditCard, 
   PlusCircle, 
   MinusCircle,
-  Landmark,
   Coins,
   Briefcase,
   TrendingUp,
+  History,
+  AlertTriangle,
   X 
 } from 'lucide-react';
 import { executeAppRefresh } from '../../utils/appRefresh';
@@ -126,7 +127,8 @@ export const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
   });
 
   const secondaryViews: Array<{ id: ViewTab; label: string; icon: React.ReactNode }> = [
-    { id: 'accounts', label: 'Accounts', icon: <Landmark size={18} color="#38bdf8" /> },
+    { id: 'history', label: 'History', icon: <History size={18} color="#a78bfa" /> },
+    { id: 'deficits', label: 'Deficits', icon: <AlertTriangle size={18} color="#fb7185" /> },
     { id: 'storage', label: 'Storage', icon: <Coins size={18} color="#fbbf24" /> },
     { id: 'jobs', label: 'Jobs', icon: <Briefcase size={18} color="#a855f7" /> },
     { id: 'rates', label: 'Rates', icon: <TrendingUp size={18} color="#34d399" /> },
@@ -164,7 +166,7 @@ export const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
           <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '8px' }}>
             More Views
           </span>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px' }}>
             {secondaryViews.map((tab) => {
               const isActive = activeTab === tab.id;
               return (

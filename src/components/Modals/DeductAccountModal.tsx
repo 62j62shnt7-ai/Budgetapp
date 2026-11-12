@@ -409,7 +409,7 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
       )}
 
       {!isInstaPayRefund && canUseInstaPay && (
-        <div style={{ background: 'var(--surface-soft)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--line)', marginBottom: '12px' }}>
+        <div className="instapay-fee-panel" style={{ background: 'var(--surface-soft)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--line)', marginBottom: '12px' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0, cursor: 'pointer' }}>
             <input
               type="checkbox"
@@ -420,7 +420,7 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
             <span>Include InstaPay transfer fee</span>
           </label>
           {includeInstaPayFee && (
-            <div role="status" style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '3px 12px', marginTop: '8px', fontSize: '12px' }}>
+            <div className="instapay-fee-breakdown" role="status" style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '3px 12px', marginTop: '8px', fontSize: '12px' }}>
               <span>Expense payment</span><strong>{formatMoney(actualAmount)}</strong>
               <span>InstaPay fee</span><strong>{formatMoney(instapayFeeAmount)}</strong>
               <span style={{ fontWeight: 700 }}>Bank deduction</span><strong>{formatMoney(bankDeductionTotal)}</strong>

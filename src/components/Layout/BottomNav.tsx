@@ -2,7 +2,7 @@ import React from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { getSyncStatusPresentation } from '../../utils/syncPresentation';
-import { LayoutDashboard, TrendingUp, AlertTriangle, History, MoreHorizontal, Plus } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, Landmark, MoreHorizontal, Plus } from 'lucide-react';
 
 interface BottomNavProps {
   onOpenMobileMenu: () => void;
@@ -48,7 +48,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ onOpenMobileMenu, onOpenQu
         <div className="bottom-nav-icon">
           <LayoutDashboard size={19} />
         </div>
-        <span className="bottom-nav-label">Dashboard</span>
+        <span className="bottom-nav-label">Home</span>
       </button>
 
       <button
@@ -60,15 +60,15 @@ export const BottomNav: React.FC<BottomNavProps> = ({ onOpenMobileMenu, onOpenQu
         <div className="bottom-nav-icon">
           <TrendingUp size={19} />
         </div>
-        <span className="bottom-nav-label">Cash Flow</span>
+        <span className="bottom-nav-label">Cashflow</span>
       </button>
 
       <button
         type="button"
         className="bottom-nav-item bottom-nav-fab"
         onClick={onOpenQuickAdd}
-        aria-label="Quick Add transaction"
-        title="Quick Add transaction"
+        aria-label="Add expense"
+        title="Add expense"
       >
         <div className="bottom-nav-fab-btn">
           <Plus size={22} strokeWidth={2.5} />
@@ -78,31 +78,19 @@ export const BottomNav: React.FC<BottomNavProps> = ({ onOpenMobileMenu, onOpenQu
 
       <button
         type="button"
-        className={`bottom-nav-item ${activeTab === 'deficits' ? 'active' : ''}`}
-        onClick={() => setActiveTab('deficits')}
-        aria-current={activeTab === 'deficits' ? 'page' : undefined}
+        className={`bottom-nav-item ${activeTab === 'accounts' ? 'active' : ''}`}
+        onClick={() => setActiveTab('accounts')}
+        aria-current={activeTab === 'accounts' ? 'page' : undefined}
       >
         <div className="bottom-nav-icon">
-          <AlertTriangle size={19} />
+          <Landmark size={19} />
         </div>
-        <span className="bottom-nav-label">Deficits</span>
+        <span className="bottom-nav-label">Accounts</span>
       </button>
 
       <button
         type="button"
-        className={`bottom-nav-item ${activeTab === 'history' ? 'active' : ''}`}
-        onClick={() => setActiveTab('history')}
-        aria-current={activeTab === 'history' ? 'page' : undefined}
-      >
-        <div className="bottom-nav-icon">
-          <History size={19} />
-        </div>
-        <span className="bottom-nav-label">History</span>
-      </button>
-
-      <button
-        type="button"
-        className={`bottom-nav-item ${['accounts', 'storage', 'jobs', 'rates'].includes(activeTab) ? 'active' : ''}`}
+        className={`bottom-nav-item ${['deficits', 'history', 'storage', 'jobs', 'rates'].includes(activeTab) ? 'active' : ''}`}
         onClick={onOpenMobileMenu}
         aria-label="More views"
       >

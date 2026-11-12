@@ -323,7 +323,7 @@ export const Topbar: React.FC<TopbarProps> = ({
               onClick={() => onOpenEntryModal('income')}
             >
               <Plus size={15} />
-              <span className="topbar-btn-label">Inc</span>
+              <span className="topbar-btn-label">Add Income</span>
               <kbd className="kbd-badge kbd-subtle">I</kbd>
             </button>
 
@@ -335,7 +335,7 @@ export const Topbar: React.FC<TopbarProps> = ({
               onClick={() => onOpenEntryModal('expense')}
             >
               <Plus size={15} />
-              <span className="topbar-btn-label">Exp</span>
+              <span className="topbar-btn-label">Add Expense</span>
               <kbd className="kbd-badge kbd-on-primary">E</kbd>
             </button>
           </div>

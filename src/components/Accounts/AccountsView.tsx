@@ -3,7 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
 import { formatMoney } from '../../engine/dateUtils';
 import { formatNativeCurrency, inferAssetLocation, storageValue } from '../../engine/currency';
-import { ArrowRightLeft, Coins, Landmark, Banknote } from 'lucide-react';
+import { ArrowRightLeft, Coins, Landmark, Banknote, Lock, Unlock } from 'lucide-react';
 import { StorageTransferModal } from '../Modals/StorageTransferModal';
 import { StorageFxModal } from '../Modals/StorageFxModal';
 
@@ -70,6 +70,7 @@ export const AccountsView: React.FC = () => {
   const [feeMinimum, setFeeMinimum] = useState(String(instapayFeeConfig.minimum));
   const [feeMaximum, setFeeMaximum] = useState(String(instapayFeeConfig.maximum));
   const [feeConfigMessage, setFeeConfigMessage] = useState('');
+  const [instapayAdminUnlocked, setInstapayAdminUnlocked] = useState(false);
   const [previousFeeConfig, setPreviousFeeConfig] = useState(instapayFeeConfig);
   if (instapayFeeConfig !== previousFeeConfig) {
     setPreviousFeeConfig(instapayFeeConfig);
@@ -154,7 +155,7 @@ export const AccountsView: React.FC = () => {
                       <span className="account-badge" aria-hidden="true">
                         <Landmark size={18} style={{ color: 'var(--brand-primary, #6366f1)' }} />
                       </span>
-                      <div>
+                      <div className="account-identity">
                         <strong
                           className="account-title history-summary-clickable-row"
                           style={{ cursor: 'pointer' }}
@@ -302,33 +303,6 @@ export const AccountsView: React.FC = () => {
           </div>
         </section>
 
-        <section className="panel" aria-labelledby="instapay-fee-settings-title">
-          <div className="panel-heading">
-            <h3 id="instapay-fee-settings-title" style={{ margin: 0 }}>InstaPay Fee Rule</h3>
-          </div>
-          <p style={{ color: 'var(--muted)', fontSize: '12px', margin: '8px 0 12px' }}>
-            This rule is used for new InstaPay deductions. Saved payments keep their original fee.
-          </p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px' }}>
-            <label className="transfer-field">
-              <span className="field-label-text">Rate (%)</span>
-              <input className="form-input" aria-label="InstaPay fee rate percent" type="number" min="0" step="0.01" value={feeRatePercent} onChange={(e) => setFeeRatePercent(e.target.value)} />
-            </label>
-            <label className="transfer-field">
-              <span className="field-label-text">Minimum (EGP)</span>
-              <input className="form-input" aria-label="InstaPay minimum fee EGP" type="number" min="0" step="0.01" value={feeMinimum} onChange={(e) => setFeeMinimum(e.target.value)} />
-            </label>
-            <label className="transfer-field">
-              <span className="field-label-text">Maximum (EGP)</span>
-              <input className="form-input" aria-label="InstaPay maximum fee EGP" type="number" min="0" step="0.01" value={feeMaximum} onChange={(e) => setFeeMaximum(e.target.value)} />
-            </label>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px' }}>
-            <button type="button" className="primary-button" onClick={handleSaveInstaPayConfig}>Save Fee Rule</button>
-            {feeConfigMessage && <small role="status" style={{ color: 'var(--muted)' }}>{feeConfigMessage}</small>}
-          </div>
-        </section>
-
         {/* Transfer & FX Panel */}
         <section className="panel">
           <div className="panel-heading">
@@ -405,22 +379,59 @@ export const AccountsView: React.FC = () => {
             </div>
           </div>
         </section>
-      </div>
 
-      <section className="panel" style={{ marginTop: '18px' }}>
-        <div className="panel-heading">
-          <h3 style={{ margin: 0 }}>Quick Summary</h3>
-        </div>
-        <div className="summary-block" style={{ padding: '16px 0 0' }}>
-          <span style={{ fontSize: '13px', color: 'var(--muted)' }}>Combined Liquid Operating Balance</span>
-          <strong id="totalOpeningBalance" style={{ display: 'block', fontSize: '1.75rem', fontWeight: 800, color: 'var(--ink)', margin: '4px 0' }}>
-            {formatMoney(totalOpening)}
-          </strong>
-          <p style={{ fontSize: '12.5px', color: 'var(--muted)', margin: 0 }}>
-            Aggregated sum of all registered EGP liquid bank accounts. Foreign currencies are tracked safely in the Storage tab.
+        <section className="panel" aria-labelledby="instapay-fee-settings-title">
+          <div className="panel-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
+            <h3 id="instapay-fee-settings-title" style={{ margin: 0 }}>InstaPay Fee Rule</h3>
+            <button
+              type="button"
+              className="ghost-button"
+              aria-label="InstaPay Admin Mode"
+              aria-pressed={instapayAdminUnlocked}
+              onClick={() => setInstapayAdminUnlocked((unlocked) => !unlocked)}
+            >
+              {instapayAdminUnlocked ? <Unlock size={14} /> : <Lock size={14} />}
+              <span>Admin Mode: {instapayAdminUnlocked ? 'Unlocked' : 'Locked'}</span>
+            </button>
+          </div>
+          <p style={{ color: 'var(--muted)', fontSize: '12px', margin: '8px 0 12px' }}>
+            This rule is used for new InstaPay deductions. Saved payments keep their original fee.
           </p>
-        </div>
-      </section>
+          <div className="instapay-fee-fields" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px' }}>
+            <label className="transfer-field">
+              <span className="field-label-text">Rate (%)</span>
+              <input className="form-input" aria-label="InstaPay fee rate percent" type="number" min="0" step="0.01" value={feeRatePercent} disabled={!instapayAdminUnlocked} onChange={(e) => setFeeRatePercent(e.target.value)} />
+            </label>
+            <label className="transfer-field">
+              <span className="field-label-text">Minimum (EGP)</span>
+              <input className="form-input" aria-label="InstaPay minimum fee EGP" type="number" min="0" step="0.01" value={feeMinimum} disabled={!instapayAdminUnlocked} onChange={(e) => setFeeMinimum(e.target.value)} />
+            </label>
+            <label className="transfer-field">
+              <span className="field-label-text">Max fee (EGP)</span>
+              <input className="form-input" aria-label="InstaPay maximum fee EGP" type="number" min="0" step="0.01" value={feeMaximum} disabled={!instapayAdminUnlocked} onChange={(e) => setFeeMaximum(e.target.value)} />
+            </label>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px' }}>
+            <button type="button" className="primary-button" disabled={!instapayAdminUnlocked} onClick={handleSaveInstaPayConfig}>Save Fee Rule</button>
+            {feeConfigMessage && <small role="status" style={{ color: 'var(--muted)' }}>{feeConfigMessage}</small>}
+          </div>
+        </section>
+
+        <section className="panel account-summary-panel">
+          <div className="panel-heading">
+            <h3 style={{ margin: 0 }}>Quick Summary</h3>
+          </div>
+          <div className="summary-block" style={{ padding: '16px 0 0' }}>
+            <span style={{ fontSize: '13px', color: 'var(--muted)' }}>Combined Liquid Operating Balance</span>
+            <strong id="totalOpeningBalance" style={{ display: 'block', fontSize: '1.75rem', fontWeight: 800, color: 'var(--ink)', margin: '4px 0' }}>
+              {formatMoney(totalOpening)}
+            </strong>
+            <p style={{ fontSize: '12.5px', color: 'var(--muted)', margin: 0 }}>
+              Aggregated sum of all registered EGP liquid bank accounts. Foreign currencies are tracked safely in the Storage tab.
+            </p>
+          </div>
+        </section>
+      </div>
 
       {/* Storage Modals */}
       <StorageTransferModal

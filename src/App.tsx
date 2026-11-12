@@ -554,7 +554,7 @@ export const App: React.FC = () => {
       {/* Mobile Bottom Navigation Bar */}
       <BottomNav
         onOpenMobileMenu={() => setActionSheetOpen(true)}
-        onOpenQuickAdd={() => setQuickAddOpen(true)}
+        onOpenQuickAdd={() => handleOpenEntryModal('expense')}
       />
 
       {/* Global Command Palette (⌘K / Ctrl+K) */}

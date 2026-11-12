@@ -17,6 +17,9 @@ console.log(`Auditing with data from: ${dataPath}`);
 // Optional second argument: prefix for the screenshot filenames, so a run
 // against different data does not overwrite the committed reference set.
 const shotPrefix = process.argv[3] || '';
+const auditTheme = process.env.BUDGET_AUDIT_THEME === 'light' ? 'light' : 'dark';
+const useBuiltApp = process.env.BUDGET_AUDIT_DIST === '1';
+const appUrl = 'http://localhost:5173';
 
 function checkServer(url) {
   return new Promise((resolve) => {
@@ -75,12 +78,12 @@ async function launchBrowser() {
 }
 
 async function run() {
-  const screenshotDir = 'test/screenshots';
+  const screenshotDir = process.env.BUDGET_AUDIT_SCREENSHOTS || 'test/screenshots';
   if (!fs.existsSync(screenshotDir)) {
     fs.mkdirSync(screenshotDir, { recursive: true });
   }
 
-  const serverProcess = await ensureServer(5173);
+  const serverProcess = useBuiltApp ? null : await ensureServer(5173);
   let browser;
 
   try {
@@ -97,15 +100,29 @@ async function run() {
   for (const vp of testViewports) {
     console.log(`\n=== Testing Viewport: ${vp.name} (${vp.width}x${vp.height}) ===`);
     const context = await browser.newContext({
-      viewport: { width: vp.width, height: vp.height }
+      viewport: { width: vp.width, height: vp.height },
+      serviceWorkers: 'block',
     });
+    if (useBuiltApp) {
+      const dist = path.resolve('dist');
+      assert.ok(fs.existsSync(path.join(dist, 'index.html')), 'Build the app before auditing dist');
+      await context.route('**/*', async (route) => {
+        const url = new URL(route.request().url());
+        if (url.origin !== appUrl) return route.abort();
+        const file = path.resolve(dist, '.' + (url.pathname === '/' ? '/index.html' : url.pathname));
+        if (!file.startsWith(dist + path.sep) || !fs.existsSync(file)) return route.fulfill({ status: 404 });
+        return route.fulfill({ path: file });
+      });
+    }
     const page = await context.newPage();
 
-    // Navigate to app
-    await page.goto('http://localhost:5173', { waitUntil: 'networkidle' });
+    // Seed before the app initializes IndexedDB and theme preferences.
+    const seedUrl = appUrl + '/__audit_seed';
+    await page.route(seedUrl, (route) => route.fulfill({ contentType: 'text/html', body: '<!doctype html>' }));
+    await page.goto(seedUrl);
 
     // Seed localStorage with sample data
-    await page.evaluate((data) => {
+    await page.evaluate(({ data, theme }) => {
       const STORAGE_KEYS = {
         salary: 'budget-control-salary-pattern',
         entries: 'budget-control-cash-entries',
@@ -145,28 +162,29 @@ async function run() {
       localStorage.setItem(STORAGE_KEYS.creditDueMonths, JSON.stringify(payload.creditDueMonths || {}));
       localStorage.setItem(STORAGE_KEYS.creditSettlementOverrides, JSON.stringify(payload.creditSettlementOverrides || {}));
       localStorage.setItem(STORAGE_KEYS.salaryAnchor, JSON.stringify(payload.salaryAnchorMonth || ''));
-      localStorage.setItem(STORAGE_KEYS.theme, 'dark');
+      localStorage.setItem(STORAGE_KEYS.theme, JSON.stringify(theme));
       localStorage.setItem('budget-control-seed-version', 'blank-template-v2');
       localStorage.setItem('budget-control-salary-materialized', 'true');
-    }, sampleData);
+    }, { data: sampleData, theme: auditTheme });
 
-    // Reload with seeded data
-    await page.reload({ waitUntil: 'networkidle' });
+    await page.goto(appUrl, { waitUntil: 'networkidle' });
+    await page.waitForFunction((theme) => document.documentElement.dataset.theme === theme, auditTheme, { timeout: 5000 });
     await page.waitForTimeout(300);
 
     const tabs = ['dashboard', 'deficits', 'cashflow', 'history', 'accounts', 'storage', 'jobs', 'rates'];
+    const primaryMobileLabels = { dashboard: 'Home', cashflow: 'Cashflow', accounts: 'Accounts' };
+    const moreViewLabels = { deficits: 'Deficits', history: 'History', storage: 'Storage', jobs: 'Jobs', rates: 'Rates' };
 
     for (const tab of tabs) {
       if (vp.width > 768) {
         const sidebarButton = page.locator(`.sidebar button[data-view="${tab}"]`);
         await sidebarButton.click();
-      } else if (['dashboard', 'cashflow', 'deficits', 'history'].includes(tab)) {
-        const label = tab === 'cashflow' ? 'Cash Flow' : tab[0].toUpperCase() + tab.slice(1);
+      } else if (primaryMobileLabels[tab]) {
+        const label = primaryMobileLabels[tab];
         await page.getByRole('navigation', { name: 'Mobile primary navigation' }).getByRole('button', { name: label, exact: true }).click();
       } else {
-        const labels = { accounts: 'Accounts', storage: 'Storage', jobs: 'Jobs', rates: 'Rates' };
         await page.getByRole('button', { name: 'More views' }).click();
-        await page.getByRole('dialog', { name: 'Menu & Quick Actions' }).getByRole('button', { name: labels[tab], exact: true }).click();
+        await page.getByRole('dialog', { name: 'Menu & Quick Actions' }).getByRole('button', { name: moreViewLabels[tab], exact: true }).click();
       }
 
       await page.evaluate(() => window.scrollTo(0, 0));
@@ -215,7 +233,48 @@ async function run() {
       }
       if (tab === 'cashflow') {
         assert.equal(elementBounds.periodControlsOverflow, false, `${vp.name} Cashflow period controls exceed their container`);
+        const adminToggle = page.getByRole('button', { name: 'Cash Flow Admin Mode', exact: true });
+        const cashflowLedger = page.getByRole('region', { name: 'Cash Flow ledger' });
+        const finish = cashflowLedger.locator('.finish-loan-btn').first();
+        const remove = cashflowLedger.locator('.delete-button').first();
+        assert.equal(await finish.count(), 0);
+        assert.equal(await remove.count(), 0);
+        await adminToggle.click();
+        assert.equal(await finish.isEnabled(), true);
+        assert.equal(await remove.isEnabled(), true);
+        if (vp.name === 'desktop-wide') {
+          const actionBounds = await page.locator('.cashflow-view .table-wrap').evaluate((ledger) => {
+            const visibleRight = ledger.getBoundingClientRect().left + ledger.clientLeft + ledger.clientWidth;
+            return ['.delete-button', '.finish-loan-btn'].map((selector) => {
+              const button = ledger.querySelector(selector);
+              const bounds = button?.getBoundingClientRect();
+              return { selector, visible: Boolean(bounds && bounds.width > 0 && bounds.right <= visibleRight + 1) };
+            });
+          });
+          for (const action of actionBounds) {
+            assert.equal(action.visible, true, `Wide Cash Flow ledger should show ${action.selector} without horizontal scrolling`);
+          }
+        }
+        await adminToggle.click();
+        assert.equal(await finish.count(), 0);
+        assert.equal(await remove.count(), 0);
       }
+      if (vp.width > 768 && (tab === 'cashflow' || tab === 'history')) {
+        if (tab === 'history') {
+          await page.getByRole('tab', { name: 'Transactions', exact: true }).click();
+        }
+        const ledgerName = tab === 'history' ? 'History transactions' : 'Cash Flow ledger';
+        const ledger = page.getByRole('region', { name: ledgerName });
+        const headers = await ledger.locator(':scope > table > thead th').evaluateAll((cells) =>
+          cells.filter((cell) => cell.getBoundingClientRect().width > 0).map((cell) => cell.textContent.trim())
+        );
+        assert.deepEqual(headers, tab === 'history'
+          ? ['Date', 'Category', 'Account', 'Type', 'Source', 'Forecast', 'Actual', 'Variance', 'Actions']
+          : ['Date', 'Category', 'Account', ...(vp.width >= 1500 ? ['Type'] : []),
+            ...(vp.width >= 1800 ? ['Source'] : []), 'Amount', 'Actual', 'Balance After'],
+        `${vp.name}/${tab} must show the expected ledger columns`);
+      }
+
       if (tab === 'dashboard' && vp.width <= 360) {
         assert.equal(elementBounds.dashboardRowOverflow, false, `${vp.name} Dashboard summary text exceeds its row`);
       }
@@ -321,7 +380,7 @@ async function run() {
         );
         await page.keyboard.press('Escape');
         await entryDialog.waitFor({ state: 'detached' });
-        assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'Add Expense');
+        assert.equal(await addExpenseButton.evaluate((button) => button === document.activeElement), true);
       }
     }
 
@@ -338,4 +397,7 @@ async function run() {
 console.log('UI Audit Complete.');
 }
 
-run().catch(console.error);
+run().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

@@ -613,7 +613,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
         </div>
 
         {type === 'expense' && (
-          <label>
+          <label className="entry-payment-mode">
             Payment / Credit Mode
             <select value={creditType} onChange={(e) => handleCreditTypeChange(e.target.value)}>
               <option value="">Direct (Bank account)</option>
@@ -623,6 +623,50 @@ export const EntryModal: React.FC<EntryModalProps> = ({
               <option value="cib">Card Bill Settlement: Pay CIB Card (Deducts from account)</option>
             </select>
           </label>
+        )}
+
+        <div className="entry-money-fields" style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '10px' }}>
+          <label>
+            Currency
+            <select value={currency} onChange={(e) => handleCurrencyChange(e.target.value)}>
+              <option value="EGP">EGP (Local)</option>
+              <option value="USD">USD ($)</option>
+              <option value="EUR">EUR (€)</option>
+              <option value="SAR">SAR (﷼)</option>
+              <option value="AED">AED (د.إ)</option>
+              <option value="GBP">GBP (£)</option>
+            </select>
+          </label>
+
+          <label className="entry-amount-field">
+            {isCardExpense ? `Swiped Amount (${currency})` : `Amount (${currency})`}
+            <input
+              name="amount"
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              min="0.01"
+              required
+              placeholder="0.00"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+            />
+          </label>
+        </div>
+
+        {numericAmount > 0 && (
+          currency !== accountNativeCurrency ? (
+            <small style={{ color: 'var(--muted)', fontSize: '12px', margin: '-4px 0 0', display: 'block' }}>
+              ≈ {accountNativeCurrency === 'EGP' ? formatMoney(accountEquivalent) : formatNativeCurrency(accountEquivalent, accountNativeCurrency)} in {accountDisplayName} (FX: {accountPairRate.toFixed(2)})
+              {accountNativeCurrency !== 'EGP' && currency !== 'EGP' && (
+                <span> · Local: {formatMoney(egpEquivalent)}</span>
+              )}
+            </small>
+          ) : currency !== 'EGP' ? (
+            <small style={{ color: 'var(--muted)', fontSize: '12px', margin: '-4px 0 0', display: 'block' }}>
+              ≈ {formatMoney(egpEquivalent)} (FX: {fxRate.toFixed(2)})
+            </small>
+          ) : null
         )}
 
         {entryToEdit?.id.startsWith('credit-settlement-') && (
@@ -904,7 +948,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
           <option value="Fuel" />
         </datalist>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+        <div className="entry-account-type-fields">
           <label>
             Account / Destination
             <select
@@ -960,50 +1004,6 @@ export const EntryModal: React.FC<EntryModalProps> = ({
             </select>
           </label>
         </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '10px' }}>
-          <label>
-            Currency
-            <select value={currency} onChange={(e) => handleCurrencyChange(e.target.value)}>
-              <option value="EGP">EGP (Local)</option>
-              <option value="USD">USD ($)</option>
-              <option value="EUR">EUR (€)</option>
-              <option value="SAR">SAR (﷼)</option>
-              <option value="AED">AED (د.إ)</option>
-              <option value="GBP">GBP (£)</option>
-            </select>
-          </label>
-
-          <label>
-            {isCardExpense ? `Swiped Amount (${currency})` : `Amount (${currency})`}
-            <input
-              name="amount"
-              type="number"
-              inputMode="decimal"
-              step="0.01"
-              min="0.01"
-              required
-              placeholder="0.00"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-            />
-          </label>
-        </div>
-
-        {numericAmount > 0 && (
-          currency !== accountNativeCurrency ? (
-            <small style={{ color: 'var(--muted)', fontSize: '12px', margin: '-4px 0 0', display: 'block' }}>
-              ≈ {accountNativeCurrency === 'EGP' ? formatMoney(accountEquivalent) : formatNativeCurrency(accountEquivalent, accountNativeCurrency)} in {accountDisplayName} (FX: {accountPairRate.toFixed(2)})
-              {accountNativeCurrency !== 'EGP' && currency !== 'EGP' && (
-                <span> · Local: {formatMoney(egpEquivalent)}</span>
-              )}
-            </small>
-          ) : currency !== 'EGP' ? (
-            <small style={{ color: 'var(--muted)', fontSize: '12px', margin: '-4px 0 0', display: 'block' }}>
-              ≈ {formatMoney(egpEquivalent)} (FX: {fxRate.toFixed(2)})
-            </small>
-          ) : null
-        )}
 
         {isCardExpense ? (
           <div
