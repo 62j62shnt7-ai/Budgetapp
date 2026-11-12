@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Modern Financial Dashboard — Design Tokens & Core Theme
+   Modern Financial Dashboard - Design Tokens & Core Theme
    ========================================================================== */
 
 :root,
@@ -1173,7 +1173,7 @@ dialog.modern-top-layer-dialog[open]::backdrop {
 }
 
 /* ==========================================================================
-   Fintech Precision Typography — Tabular Figures & Numerics
+   Fintech Precision Typography - Tabular Figures & Numerics
    ========================================================================== */
 
 .tabular-nums,
@@ -2686,7 +2686,7 @@ dialog.modern-top-layer-dialog .dialog-actions button {
     font-size: 12px !important;
   }
 
-  /* Segmented Controls on Mobile — Full Width, Clear Tabs */
+  /* Segmented Controls on Mobile - Full Width, Clear Tabs */
 
   .jobs-tabs-header {
     display: flex !important;
@@ -3845,9 +3845,9 @@ dialog.modern-top-layer-dialog .dialog-actions button {
   .table-wrap.responsive-cards .inline-actual-input {
     width: 100% !important;
     max-width: 100% !important;
-    min-height: 36px !important;
+    min-height: 44px !important;
     padding: 6px 12px !important;
-    font-size: 13.5px !important;
+    font-size: 16px !important;
     border-radius: 8px !important;
     box-sizing: border-box !important;
   }
@@ -4533,7 +4533,7 @@ body.sidebar-collapsed .sidebar-sync-button {
   }
 }
 
-/* Progressive table rendering — the table renders a window of rows and this
+/* Progressive table rendering - the table renders a window of rows and this
    control extends it, keeping long ledgers (a year of forecast rows) from
    producing a 30,000px page on mobile. */
 
@@ -4693,7 +4693,7 @@ body.sidebar-collapsed .sidebar-sync-button {
   /* "Manage Data" and "Take loan" keep their labels only once the whole action
      row genuinely fits. Measured: the row needs ~1077px of content, which the
      topbar only supplies at >=1600px viewport. At 1281-1540px their labels pushed
-     "+ Income" and "+ Expense" — the two primary actions — past the right edge. */
+     "+ Income" and "+ Expense" - the two primary actions - past the right edge. */
 
 @media (max-width: 1599px) and (min-width: 769px) {
     .top-actions-operations #openDataToolsBtn .topbar-btn-label,
@@ -4953,7 +4953,7 @@ body.sidebar-collapsed .sidebar-sync-button {
     min-width: 120px !important;
     box-sizing: border-box !important;
     text-align: right !important;
-    font-size: 12px !important;
+    font-size: 16px !important;
     padding: 5px 8px !important;
     height: 32px !important;
     border-radius: 8px !important;
@@ -5445,7 +5445,7 @@ body.sidebar-collapsed .sidebar-sync-button {
 }
 
 /* ==========================================================================
-   Jobs & Project Tracker — Modern Refined Aesthetics
+   Jobs & Project Tracker - Modern Refined Aesthetics
    ========================================================================== */
 
 /* Top KPI Grid */
@@ -5989,7 +5989,7 @@ body.sidebar-collapsed .sidebar-sync-button {
   margin-top: 4px;
 }
 
-/* Clean Full-Width Tables — NO mini-scrollbars */
+/* Clean Full-Width Tables - NO mini-scrollbars */
 
 .jobs-clean-table-wrap {
   width: 100%;
@@ -6939,7 +6939,7 @@ body.sidebar-collapsed .sidebar-sync-button {
   }
 }
 
-/* Global Command Palette (⌘K / Ctrl+K) */
+/* Global Command Palette (?K / Ctrl+K) */
 
 .command-palette-dialog .dialog-shell {
   padding: 0;
@@ -8790,3 +8790,4 @@ button.primary-button.cashflow-add-btn > span {
     display: none;
   }
 }
+
