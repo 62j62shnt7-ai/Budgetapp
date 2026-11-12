@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore, type ViewTab } from '../../store/useBudgetStore';
 import { useAppUpdateStatus } from '../../hooks/useAppUpdateStatus';
@@ -17,6 +17,7 @@ import {
 
 import { executeAppRefresh } from '../../utils/appRefresh';
 import { requestAppConfirm, showAppNotice } from '../Common/UndoToast';
+import { Modal } from '../Common/Modal';
 
 interface TopbarProps {
   onOpenEntryModal: (type: 'expense' | 'income') => void;
@@ -47,6 +48,8 @@ export const Topbar: React.FC<TopbarProps> = ({
   const {
     theme,
     setTheme,
+    accent,
+    setAccent,
     activeTab,
     driveUser,
     driveAutoSync,
@@ -61,6 +64,8 @@ export const Topbar: React.FC<TopbarProps> = ({
     useShallow((state) => ({
       theme: state.theme,
       setTheme: state.setTheme,
+      accent: state.accent,
+      setAccent: state.setAccent,
       activeTab: state.activeTab,
       driveUser: state.driveUser,
       driveAutoSync: state.driveAutoSync,
@@ -74,6 +79,7 @@ export const Topbar: React.FC<TopbarProps> = ({
     }))
   );
   const updateStatus = useAppUpdateStatus();
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
   const {
     label: syncLabel,
     pillClass: syncPillClass,
@@ -245,13 +251,12 @@ export const Topbar: React.FC<TopbarProps> = ({
               className="ghost-button"
               id="themeToggle"
               type="button"
-              aria-pressed={theme === 'dark'}
-              aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
-              title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
-              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              aria-label="Appearance settings"
+              title="Appearance settings"
+              onClick={() => setAppearanceOpen(true)}
             >
-              {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
-              <span className="topbar-btn-label">{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
+              {theme === 'light' ? <Moon size={15} /> : <Sun size={15} />}
+              <span className="topbar-btn-label">Appearance</span>
             </button>
 
             <button
@@ -341,6 +346,29 @@ export const Topbar: React.FC<TopbarProps> = ({
           </div>
         </div>
       </header>
+      <Modal isOpen={appearanceOpen} onClose={() => setAppearanceOpen(false)} title="Appearance" className="appearance-modal">
+        <section className="appearance-section">
+          <h3>Theme</h3>
+          <div className="appearance-options" role="group" aria-label="Theme">
+            {(['light', 'dark', 'oled'] as const).map((mode) => (
+              <button key={mode} type="button" className={theme === mode ? 'appearance-option selected' : 'appearance-option'} aria-pressed={theme === mode} onClick={() => setTheme(mode)}>
+                {mode === 'oled' ? 'OLED' : mode === 'dark' ? 'Dark' : 'Light'}
+              </button>
+            ))}
+          </div>
+        </section>
+        <section className="appearance-section">
+          <h3>Accent color</h3>
+          <div className="accent-options" role="group" aria-label="Accent color">
+            {([
+              ['blue', '#2563eb'], ['teal', '#0f9b8e'], ['amber', '#d97706'],
+              ['rose', '#e11d48'], ['purple', '#7c3aed'],
+            ] as const).map(([name, color]) => (
+              <button key={name} type="button" className={accent === name ? 'accent-swatch selected' : 'accent-swatch'} style={{ '--swatch-color': color } as React.CSSProperties} aria-label={name} aria-pressed={accent === name} onClick={() => setAccent(name)} />
+            ))}
+          </div>
+        </section>
+      </Modal>
     </>
   );
 };

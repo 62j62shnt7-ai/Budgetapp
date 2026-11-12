@@ -2,8 +2,6 @@ import React, { useEffect, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore, type ViewTab } from '../../store/useBudgetStore';
 import { 
-  Sun, 
-  Moon, 
   RotateCw, 
   RotateCcw,
   Cloud, 
@@ -47,6 +45,8 @@ export const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
   const { 
     theme, 
     setTheme, 
+    accent,
+    setAccent,
     driveUser, 
     driveAutoSync, 
     driveSyncStatus, 
@@ -62,6 +62,8 @@ export const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
     useShallow((state) => ({
       theme: state.theme,
       setTheme: state.setTheme,
+      accent: state.accent,
+      setAccent: state.setAccent,
       driveUser: state.driveUser,
       driveAutoSync: state.driveAutoSync,
       driveSyncStatus: state.driveSyncStatus,
@@ -375,20 +377,21 @@ export const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
             </div>
           </button>
 
-          {/* Theme Switcher */}
-          <button
-            type="button"
-            className="action-sheet-btn"
-            onClick={() => {
-              setTheme(theme === 'dark' ? 'light' : 'dark');
-            }}
-          >
-            {theme === 'dark' ? <Sun size={20} color="#f59e0b" /> : <Moon size={20} color="#6366f1" />}
-            <div className="action-sheet-btn-text">
-              <strong>{theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}</strong>
-              <span>Currently using {theme} appearance</span>
-            </div>
-          </button>
+          <div className="mobile-theme-options" role="group" aria-label="Appearance mode">
+            {(['light', 'dark', 'oled'] as const).map((mode) => (
+              <button key={mode} type="button" aria-pressed={theme === mode} onClick={() => setTheme(mode)}>
+                {mode === 'oled' ? 'OLED' : mode === 'dark' ? 'Dark' : 'Light'}
+              </button>
+            ))}
+          </div>
+          <div className="mobile-accent-options" role="group" aria-label="Accent color">
+            {([
+              ['blue', '#2563eb'], ['teal', '#0f9b8e'], ['amber', '#d97706'],
+              ['rose', '#e11d48'], ['purple', '#7c3aed'],
+            ] as const).map(([name, color]) => (
+              <button key={name} type="button" aria-label={name} aria-pressed={accent === name} title={name} onClick={() => setAccent(name)} style={{ backgroundColor: color }} />
+            ))}
+          </div>
 
           {/* Refresh & Update */}
           <button

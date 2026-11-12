@@ -19,7 +19,8 @@ import type { GoogleDriveUser } from '../../services/googleDriveClient';
 import type { SyncConflictPayload } from '../../types';
 
 export interface UISlice {
-  theme: 'dark' | 'light';
+  theme: 'dark' | 'light' | 'oled';
+  accent: 'blue' | 'teal' | 'amber' | 'rose' | 'purple';
   activeTab: ViewTab;
   pendingNavigation: NavigationIntent | null;
   sidebarCollapsed: boolean;
@@ -29,7 +30,8 @@ export interface UISlice {
   expenseMixCollapsed: boolean;
   historyAnalyticsCollapsed: boolean;
 
-  setTheme: (theme: 'dark' | 'light') => void;
+  setTheme: (theme: 'dark' | 'light' | 'oled') => void;
+  setAccent: (accent: UISlice['accent']) => void;
   setActiveTab: (tab: ViewTab) => void;
   navigateTo: (tab: ViewTab, filters?: NavigationIntent['filters']) => void;
   clearPendingNavigation: () => void;

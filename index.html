@@ -24,12 +24,15 @@
           var t = localStorage.getItem('budget-control-theme');
           if (t) {
             var parsed = JSON.parse(t);
-            if (parsed === 'light' || parsed === 'dark') {
-              document.documentElement.setAttribute('data-theme', parsed);
+            if (parsed === 'light' || parsed === 'dark' || parsed === 'oled') {
+              document.documentElement.setAttribute('data-theme', parsed === 'light' ? 'light' : 'dark');
+              document.documentElement.setAttribute('data-oled', String(parsed === 'oled'));
               var m = document.querySelector('meta[name="theme-color"]');
               if (m) m.setAttribute('content', parsed === 'dark' ? '#000000' : '#f8fafc');
             }
           }
+          var accent = localStorage.getItem('budget-control-accent');
+          if (accent) document.documentElement.setAttribute('data-accent', JSON.parse(accent));
         } catch (e) {}
       })();
     </script>

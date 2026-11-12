@@ -33,6 +33,7 @@ export const STORAGE_KEYS = {
   deletedForecasts: 'budget-control-deleted-forecasts',
   archivedEntries: 'budget-control-archived-entries',
   theme: 'budget-control-theme',
+  accent: 'budget-control-accent',
   gistToken: 'budget-control-gist-token',
   gistId: 'budget-control-gist-id',
   gistAutoSync: 'budget-control-gist-autosync',

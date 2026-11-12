@@ -486,7 +486,7 @@ export const createSyncSlice: SliceCreator<SyncSlice> = (set, get) => {
             updates.deletedForecasts = storedData[STORAGE_KEYS.deletedForecasts] as string[];
           }
           if (storedData[STORAGE_KEYS.theme]) {
-            updates.theme = storedData[STORAGE_KEYS.theme] as 'dark' | 'light';
+            updates.theme = storedData[STORAGE_KEYS.theme] as 'dark' | 'light' | 'oled';
           }
           if (storedData[STORAGE_KEYS.sidebarCollapsed] !== undefined) {
             updates.sidebarCollapsed = Boolean(storedData[STORAGE_KEYS.sidebarCollapsed]);

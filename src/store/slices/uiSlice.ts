@@ -2,7 +2,8 @@ import type { SliceCreator, UISlice } from './types';
 import { STORAGE_KEYS, loadStorage, saveStorage } from './common';
 
 export const createUISlice: SliceCreator<UISlice> = (set, get) => ({
-  theme: loadStorage<'dark' | 'light'>(STORAGE_KEYS.theme, 'dark'),
+  theme: loadStorage<'dark' | 'light' | 'oled'>(STORAGE_KEYS.theme, 'dark'),
+  accent: loadStorage<UISlice['accent']>(STORAGE_KEYS.accent, 'blue'),
   activeTab: 'dashboard',
   pendingNavigation: null,
   sidebarCollapsed: loadStorage<boolean>(STORAGE_KEYS.sidebarCollapsed, false),
@@ -20,13 +21,22 @@ export const createUISlice: SliceCreator<UISlice> = (set, get) => ({
       } catch {}
     }
     if (typeof document !== 'undefined') {
-      document.documentElement.setAttribute('data-theme', theme);
+      document.documentElement.setAttribute('data-theme', theme === 'light' ? 'light' : 'dark');
+      document.documentElement.setAttribute('data-oled', String(theme === 'oled'));
       const metaTheme = document.querySelector('meta[name="theme-color"]');
       if (metaTheme) {
-        metaTheme.setAttribute('content', theme === 'dark' ? '#000000' : '#f8fafc');
+        metaTheme.setAttribute('content', theme === 'light' ? '#f8fafc' : '#000000');
       }
     }
     set({ theme });
+  },
+
+  setAccent: (accent) => {
+    saveStorage(STORAGE_KEYS.accent, accent);
+    if (typeof document !== 'undefined') {
+      document.documentElement.setAttribute('data-accent', accent);
+    }
+    set({ accent });
   },
 
   setActiveTab: (activeTab) => set({ activeTab }),

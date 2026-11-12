@@ -56,7 +56,8 @@ import type { CashEntry, InstaPayRefund, JobItem, Installment } from './types';
 export const App: React.FC = () => {
   const { 
     activeTab, 
-    theme, 
+    theme,
+    accent,
     sidebarCollapsed, 
     toggleSidebar, 
     closeMobileSidebar, 
@@ -65,6 +66,7 @@ export const App: React.FC = () => {
     useShallow((state) => ({
       activeTab: state.activeTab,
       theme: state.theme,
+      accent: state.accent,
       sidebarCollapsed: state.sidebarCollapsed,
       toggleSidebar: state.toggleSidebar,
       closeMobileSidebar: state.closeMobileSidebar,
@@ -137,15 +139,20 @@ export const App: React.FC = () => {
 
   // Apply theme to document and update mobile status bar / browser chrome
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.setAttribute('data-theme', theme === 'light' ? 'light' : 'dark');
+    document.documentElement.setAttribute('data-oled', String(theme === 'oled'));
     try {
       localStorage.setItem('budget-control-theme', JSON.stringify(theme));
     } catch {}
     const metaTheme = document.querySelector('meta[name="theme-color"]');
     if (metaTheme) {
-      metaTheme.setAttribute('content', theme === 'dark' ? '#000000' : '#f8fafc');
+      metaTheme.setAttribute('content', theme === 'light' ? '#f8fafc' : '#000000');
     }
   }, [theme]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-accent', accent);
+  }, [accent]);
 
   // Initialize high-capacity IndexedDB storage and persistent undo history
   useEffect(() => {
