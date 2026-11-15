@@ -7630,6 +7630,31 @@ dialog select,
   border-radius: 12px;
 }
 
+.history-phase-two .history-table-panel {
+  min-width: 0;
+}
+
+.history-phase-two .history-table-panel .ledger-scroll-region {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.history-phase-two .history-table-panel .ledger-scroll-region > table {
+  min-width: 1050px;
+}
+
+.history-ledger-scroll-hint {
+  margin: 0 0 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: right;
+}
+
+@media (max-width: 768px) {
+  .history-ledger-scroll-hint { display: none; }
+  .history-phase-two .history-table-panel .ledger-scroll-region > table { min-width: 0; }
+}
+
 .deficits-phase-two .history-summary-clickable-row:focus-visible,
 .cashflow-phase-two .history-summary-clickable-row:focus-visible,
 .history-phase-two .history-summary-clickable-row:focus-visible {
@@ -8858,14 +8883,14 @@ button.primary-button.cashflow-add-btn > span {
     scrollbar-color: var(--text-muted) var(--bg-surface);
   }
 
-  .ledger-scroll-region > table > :is(thead, tbody) > tr > .cell-actions {
+  .cashflow-view .ledger-scroll-region > table > :is(thead, tbody) > tr > .cell-actions {
     position: sticky;
     right: 0;
     background: var(--bg-surface);
     box-shadow: -1px 0 var(--border-subtle);
   }
 
-  .ledger-scroll-region > table > thead > tr > th.cell-actions {
+  .cashflow-view .ledger-scroll-region > table > thead > tr > th.cell-actions {
     z-index: 2;
   }
 }
@@ -8874,10 +8899,19 @@ button.primary-button.cashflow-add-btn > span {
   .cashflow-view .table-wrap .cell-type {
     display: none;
   }
+
 }
 
 @media (769px <= width < 1800px) {
   .cashflow-view .table-wrap .cell-source {
+    display: none;
+  }
+
+  .history-view .ledger-scroll-region > table {
+    min-width: 900px;
+  }
+
+  .history-view .ledger-scroll-region .cell-source {
     display: none;
   }
 }

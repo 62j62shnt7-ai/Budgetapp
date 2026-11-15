@@ -1007,7 +1007,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
               Detailed record of every planned entry that has had an actual amount spent or received.
             </p>
 
-            <div className="table-wrap responsive-cards ledger-scroll-region" role="region" aria-label="History transactions" tabIndex={0}>
+            <p className="history-ledger-scroll-hint">Scroll horizontally to see all transaction columns →</p>
+            <div className="table-wrap responsive-cards ledger-scroll-region" role="region" aria-label="History transactions, scroll horizontally for more columns" tabIndex={0}>
               <table>
                 <thead>
                   <tr>
@@ -1015,17 +1016,17 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                     <th>Category</th>
                     <th>Account</th>
                     <th>Type</th>
-                    <th>Source</th>
+                    <th className="cell-source">Source</th>
                     <th className="number">Forecast</th>
                     <th className="number">Actual</th>
                     <th className="number">Variance</th>
-                    <th className="cell-actions" scope="col">Actions</th>
+                    {isAdminUnlocked && <th className="cell-actions" scope="col">Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {filteredEntries.length === 0 ? (
                     <tr>
-                      <td colSpan={9} style={{ textAlign: 'center', padding: '24px', color: 'var(--muted)' }}>
+                      <td colSpan={isAdminUnlocked ? 9 : 8} style={{ textAlign: 'center', padding: '24px', color: 'var(--muted)' }}>
                         No validated entries match the current filter selection.
                       </td>
                     </tr>
@@ -1127,7 +1128,10 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                               <button
                                 type="button"
                                 className="ghost-button history-draws-toggle-btn"
-                                style={{ display: 'inline-flex', alignItems: 'center', marginTop: '4px', padding: '2px 8px', fontSize: '11px', borderRadius: '6px' }}
+                                aria-label={isDrawsExpanded ? 'Hide payment breakdown' : 'Show payment breakdown'}
+                                aria-expanded={isDrawsExpanded}
+                                title={isDrawsExpanded ? 'Hide payment breakdown' : 'Show payment breakdown'}
+                                style={{ display: 'inline-flex', alignItems: 'center', marginTop: '4px', padding: '2px 6px', fontSize: '11px', borderRadius: '6px' }}
                                 onClick={() => setExpandedDraws((current) => {
                                   const next = new Set(current);
                                   if (next.has(entryId)) next.delete(entryId);
@@ -1135,7 +1139,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                                   return next;
                                 })}
                               >
-                                {isDrawsExpanded ? '▴ Hide payment breakdown' : '▾ Show payment breakdown'}
+                                {isDrawsExpanded ? '▴' : '▾'}
                               </button>
                             )}
                           </td>
@@ -1417,8 +1421,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                               {varianceText}
                             </span>
                           </td>
-                          <td className="cell-actions">
-                            {!hasMultipleDraws && paymentParts.filter((part) => !part.requested || isAdminUnlocked).map((part) => (
+                          {isAdminUnlocked && <td className="cell-actions">
+                            {!hasMultipleDraws && paymentParts.map((part) => (
                               <button key={part.date} type="button" className="ghost-button" onClick={() => openHomePayment(entry, part)}>
                                 {part.requested ? 'Edit Paid from Home' : 'Paid from Home'}
                               </button>
@@ -1496,54 +1500,12 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                                   );
                                 })()}
                               </div>
-                            ) : isFxConversionEntry ? (
-                              <button
-                                className="ghost-button history-clear-btn"
-                                type="button"
-                                disabled
-                                style={{ position: 'relative', opacity: 0.4, cursor: 'not-allowed' }}
-                                title="Not applicable — this is a completed FX conversion, not a planned entry."
-                              >
-                                Clear
-                              </button>
-                            ) : (
-                              (() => {
-                                const hasClearAffected = hasEntryClearAffectedParties(entry, {
-                                  installments,
-                                  storageAssets,
-                                  partTimeJobs,
-                                  accounts,
-                                  entryActuals,
-                                  entryActualDates,
-                                });
-                                return (
-                                  <button
-                                    className="ghost-button history-clear-btn"
-                                    type="button"
-                                    style={{ position: 'relative' }}
-                                    title={hasClearAffected ? 'Clear recorded actual (has affected linked records)' : 'Reset actual amount to 0'}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleClearActual(entry);
-                                    }}
-                                  >
-                                    Clear
-                                    {hasClearAffected && (
-                                      <span
-                                        className="affected-parties-dot"
-                                        style={{ top: '4px', right: '4px' }}
-                                        title="Has affected linked records"
-                                      />
-                                    )}
-                                  </button>
-                                );
-                              })()
-                            )}
-                          </td>
+                            ) : null}
+                          </td>}
                         </tr>
                         {showPaymentBreakdown && isDrawsExpanded && (
                           <tr className="history-draws-subrow">
-                            <td colSpan={9} className="cell-draws-details" style={{ padding: '0 16px 12px 36px', background: 'var(--surface-subtle, rgba(0,0,0,0.02))' }}>
+                            <td colSpan={isAdminUnlocked ? 9 : 8} className="cell-draws-details" style={{ padding: '0 16px 12px 36px', background: 'var(--surface-subtle, rgba(0,0,0,0.02))' }}>
                               <div style={{ marginTop: '8px' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '12px', marginBottom: '8px', fontSize: '12px' }}>
                                   <span>Payment breakdown for {entry.category || 'Expense'}</span>
@@ -1601,7 +1563,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                                               {getAccountLabel(drawAccount)}
                                             </span>
                                             {funding && renderHomeFunding(funding)}
-                                            {paymentParts.filter((part) => part.drawIndex === index && (!part.requested || isAdminUnlocked)).map((part) => (
+                                            {isAdminUnlocked && paymentParts.filter((part) => part.drawIndex === index).map((part) => (
                                               <button key={index} type="button" className="ghost-button" onClick={() => openHomePayment(entry, part)}>
                                                 {part.requested ? 'Edit Paid from Home' : 'Paid from Home'}
                                               </button>
