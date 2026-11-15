@@ -29,6 +29,8 @@ export interface EntryDraw {
   id?: string;
   date: string;
   amount: number;
+  /** Portion of this payment funded by the month's Home spending. */
+  paidFromHome?: number;
   note?: string;
   tag?: string;
   account?: string;
@@ -92,6 +94,8 @@ export interface CashEntry {
   originalAmount?: number;
   fxRateAtEntry?: number;
   actualAmount?: number;
+  /** Home-funded principal for a payment recorded without draws. */
+  paidFromHome?: number;
   actualDate?: string;
   loanId?: string;
   jobId?: string;
@@ -363,6 +367,7 @@ export interface NavigationIntent {
     tag?: string;
     account?: string;
     highlightId?: string;
+    openHomeAllocation?: boolean;
   };
 }
 

@@ -5,6 +5,7 @@ import { DateUtils } from '../engine/dateUtils';
 import { mergeSalaryForecast, buildSalaryEntries, buildInstallmentEntries } from '../engine/salaryAndInstallments';
 import { buildCreditDueEntries } from '../engine/creditCards';
 import { getActiveForecastEntries, calculateForecast, getDeficitPeriods, type DailyDeficitPeriod } from '../engine/forecast';
+import { buildHomeAllocations, projectHomeActuals } from '../engine/homeAllocations';
 import type { CashEntry, MonthlyForecast } from '../types';
 
 export interface ForecastInputsResult {
@@ -72,12 +73,16 @@ export function useForecastCandidates(forecastRangeMonths: number = 12): Forecas
       creditSettlementOverrides: creditSettlementOverrides || {},
     });
 
+    const ledger = [...entries, ...archivedEntries].filter((entry) => !deletedForecasts.includes(entry.id));
+    const forecastActuals = projectHomeActuals(
+      entryActuals, ledger, buildHomeAllocations(ledger, entryActuals, entryActualDates)
+    );
     const candidateEntries = getActiveForecastEntries(
       [...(entries || []), ...salaryEntries],
       installmentEntries,
       creditDueEntries,
       deletedForecasts || [],
-      entryActuals || {}
+      forecastActuals
     );
 
     // Clamp candidate entries to the active forecast horizon so salary and installment horizons match

@@ -44,6 +44,7 @@ src/
 │   ├── dateUtils.ts          # Date parsing, formatting, addMonths, daysBetween, money formatters
 │   ├── forecast.ts           # Forecast, deficit detection, spend simulation, actual-amount resolution
 │   ├── healthScore.ts        # Financial health score + settled-month analysis + smart insights
+│   ├── homeAllocations.ts   # Net Home actuals by payment month using confirmed allocations
 │   ├── jobs.ts               # Job invoicing math, job currency formatting
 │   ├── migration.ts          # Legacy backup → v2 payload migration (import path)
 │   ├── salaryAndInstallments.ts # Salary matrix + installment schedule generation & progress

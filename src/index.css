@@ -7860,8 +7860,9 @@ dialog.modern-top-layer-dialog :focus-visible,
   gap: 8px;
 }
 
-.history-phase-two .history-primary-amount {
-  font-size: inherit;
+.history-phase-two .history-expense-summary .history-primary-amount {
+  color: var(--red);
+  font-size: clamp(1rem, 2.5vw, 1.25rem);
   font-weight: inherit;
   white-space: nowrap;
 }
@@ -8879,5 +8880,33 @@ button.primary-button.cashflow-add-btn > span {
   .cashflow-view .table-wrap .cell-source {
     display: none;
   }
+}
+
+.history-home-funding {
+  display: inline-block;
+  margin-inline-start: 0.35em;
+  padding: 0.1em 0.45em;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border-subtle));
+  border-radius: 0.4em;
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+  font-size: 0.8em;
+  font-weight: 600;
+}
+
+button.history-home-funding {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  color: inherit;
+  cursor: pointer;
+}
+
+button.history-home-funding:hover {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+button.history-home-funding:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 

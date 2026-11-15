@@ -1,13 +1,15 @@
 import React, { useState, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useBudgetStore } from '../../store/useBudgetStore';
-import { formatMoney } from '../../engine/dateUtils';
+import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { getCurrencyRateOr, formatNativeCurrency, getAccountNativeCurrency, convertAmountBetweenCurrencies, normalizeCurrencyCode } from '../../engine/currency';
-import type { CashEntry, InstaPayRefund } from '../../types';
+import type { CashEntry, EntryDraw, InstaPayRefund } from '../../types';
 import { Modal } from '../Common/Modal';
 import { resolveSettlementAccountKey } from '../../engine/creditDueAlerts';
 import { calculateInstaPayFee } from '../../engine/instapayFees';
 import { isCreditCardExpense } from '../../engine/creditCards';
+import { buildHomeAllocations, getHomePaymentParts, splitHomePayment, summarizeHomeAllocations } from '../../engine/homeAllocations';
+import { getEntryActualAmount } from '../../engine/forecast';
 import { Banknote, ArrowLeftRight } from 'lucide-react';
 
 interface DeductAccountModalProps {
@@ -29,6 +31,8 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
     accounts,
     entries,
     archivedEntries,
+    entryActuals,
+    entryActualDates,
     storageAssets,
     rates,
     depositToStorageAsset,
@@ -46,6 +50,8 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
       accounts: state.accounts,
       entries: state.entries,
       archivedEntries: state.archivedEntries,
+      entryActuals: state.entryActuals,
+      entryActualDates: state.entryActualDates,
       storageAssets: state.storageAssets,
       rates: state.rates,
       depositToStorageAsset: state.depositToStorageAsset,
@@ -68,6 +74,7 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
   const [customFxRate, setCustomFxRate] = useState<string>('');
   const [customEgpAmount, setCustomEgpAmount] = useState<string>('');
   const [includeInstaPayFee, setIncludeInstaPayFee] = useState(false);
+  const [homeAmountInput, setHomeAmountInput] = useState<string | null>(null);
 
   const isIncome = entry?.type === 'income';
   const isInstaPayRefund = actualAmount < 0 && Boolean(refunds?.length);
@@ -190,6 +197,7 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
       setCustomFxRate(String(defaultRate));
       setCustomEgpAmount(String(actualAmount));
       setIncludeInstaPayFee(false);
+      setHomeAmountInput(null);
     }
   }
 
@@ -206,6 +214,67 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
     ? calculateInstaPayFee(actualAmount, instapayFeeConfig)
     : 0;
   const bankDeductionTotal = Math.round(((Number(customEgpAmount) || actualAmount) + instapayFeeAmount) * 100) / 100;
+
+  const currentEntry = entries.find((row) => row.id === entry.id) ??
+    archivedEntries.find((row) => row.id === entry.id) ?? entry;
+  const latestDraw = currentEntry.draws?.at(-1);
+  const paymentAmount = Math.round(actualAmount * 100) / 100;
+  const paymentDate = latestDraw?.date || entryActualDates[entry.id] || currentEntry.actualDate || currentEntry.date;
+  const homePaymentDraft: EntryDraw = {
+    ...latestDraw,
+    date: paymentDate,
+    amount: paymentAmount,
+    account: 'none',
+    tag: tag.trim(),
+  };
+  const priorPaid = Math.round((getEntryActualAmount(currentEntry, entryActuals) - paymentAmount) * 100) / 100;
+  const canSplitPayment = !isIncome && !isForeign && paymentAmount > 0 && priorPaid >= 0
+    && (!latestDraw || (!latestDraw.paidFromHome && !latestDraw.paymentMethod && latestDraw.amount === paymentAmount))
+    && getHomePaymentParts({ ...currentEntry, draws: [homePaymentDraft] }, entryActuals, entryActualDates).length > 0;
+  const homeAdjustment = canSplitPayment
+    ? summarizeHomeAllocations(buildHomeAllocations([...entries, ...archivedEntries], entryActuals, entryActualDates))
+      .get(DateUtils.getMonthKey(paymentDate))
+    : undefined;
+  const maxHomeAmount = Math.min(paymentAmount,
+    Math.round(((homeAdjustment?.capacity ?? 0) - (homeAdjustment?.total ?? 0)) * 100) / 100);
+  const homeAmount = Number(homeAmountInput);
+  const bankPortion = Math.round((paymentAmount - homeAmount) * 100) / 100;
+  const splitFeeRule = bankPortion > 0 && canUseInstaPay && includeInstaPayFee ? instapayFeeConfig : undefined;
+  const splitFee = splitFeeRule ? calculateInstaPayFee(bankPortion, splitFeeRule) : 0;
+  const validHomeAmount = Number.isFinite(homeAmount) && homeAmount > 0 && homeAmount <= maxHomeAmount &&
+    Math.round(homeAmount * 100) / 100 === homeAmount && (bankPortion === 0 || Boolean(accounts[selectedAccountId]));
+
+  const handlePayFromHome = () => {
+    if (!validHomeAmount) return;
+    runTransaction(`Pay from Home: ${entry.category}`, () => {
+      const previousDraws = (currentEntry.draws ?? []).slice(0, -1)
+        .map((draw) => ({ ...draw, account: draw.account || currentEntry.account }));
+      if (!latestDraw && priorPaid > 0) {
+        previousDraws.push({
+          date: entry.actualDate || paymentDate,
+          account: currentEntry.account,
+          amount: priorPaid,
+          tag: currentEntry.tag,
+          paidFromHome: currentEntry.paidFromHome,
+        });
+      }
+      const draws = splitHomePayment(
+        { ...homePaymentDraft, id: homePaymentDraft.id || `draw-${crypto.randomUUID()}` },
+        homeAmount, selectedAccountId, splitFeeRule
+      );
+      if (bankPortion > 0) {
+        const balance = useBudgetStore.getState().accounts[selectedAccountId].balance;
+        updateAccountBalance(selectedAccountId, balance - bankPortion - splitFee);
+      }
+      updateEntry(entry.id, {
+        account: bankPortion > 0 ? selectedAccountId : 'none',
+        tag: tag.trim(),
+        paidFromHome: undefined,
+        draws: [...previousDraws, ...draws],
+      });
+    });
+    onClose();
+  };
 
   const handleForeignAmountChange = (val: string) => {
     setCustomFxRate(val);
@@ -243,7 +312,9 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
     updateEntry(entry.id, {
       tag: trimmedTag,
       account: 'none',
-      ...(updatedDraws.length > 1 ? { draws: updatedDraws } : { draws: undefined }),
+      ...(updatedDraws.length > 1 || updatedDraws.some((draw) => draw.paidFromHome)
+        ? { draws: updatedDraws }
+        : { draws: undefined }),
       ...(isSettlement
         ? { isClosed: entry.isClosed ?? true }
         : {}),
@@ -340,7 +411,9 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
     updateEntry(entry.id, {
       tag: trimmedTag,
       ...(accountName ? { account: accountName } : {}),
-      ...(updatedDraws.length > 1 ? { draws: updatedDraws } : { draws: undefined }),
+      ...(updatedDraws.length > 1 || updatedDraws.some((draw) => draw.paidFromHome)
+        ? { draws: updatedDraws }
+        : { draws: undefined }),
       ...(isSettlement ? { isClosed: entry.isClosed ?? true } : {}),
     });
     });
@@ -419,7 +492,7 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
             />
             <span>Include InstaPay transfer fee</span>
           </label>
-          {includeInstaPayFee && (
+          {includeInstaPayFee && homeAmountInput === null && (
             <div className="instapay-fee-breakdown" role="status" style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '3px 12px', marginTop: '8px', fontSize: '12px' }}>
               <span>Expense payment</span><strong>{formatMoney(actualAmount)}</strong>
               <span>InstaPay fee</span><strong>{formatMoney(instapayFeeAmount)}</strong>
@@ -564,13 +637,53 @@ export const DeductAccountModal: React.FC<DeductAccountModalProps> = ({
         ))}
       </datalist>
 
+      {homeAmountInput !== null && (
+        <div className="form-group">
+          <label htmlFor="deduct-home-amount">Amount paid from Home (EGP)</label>
+          <input
+            id="deduct-home-amount"
+            type="number"
+            className="form-input"
+            min="0.01"
+            max={maxHomeAmount}
+            step="0.01"
+            value={homeAmountInput}
+            onChange={(event) => setHomeAmountInput(event.target.value)}
+          />
+          <p>Available from Home for this payment · {formatMoney(maxHomeAmount)}</p>
+          {validHomeAmount && (
+            <p role="status">
+              {bankPortion > 0
+                ? `${targetAccountLabel} deduction · ${formatMoney(bankPortion + splitFee)}${splitFee ? ` (includes ${formatMoney(splitFee)} InstaPay fee)` : ''}`
+                : 'Bank deduction · 0 EGP'}
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="dialog-actions" style={{ marginTop: '18px', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-        <button className="ghost-button" type="button" onClick={handleSaveWithoutDeposit}>
-          {isInstaPayRefund ? 'Keep Bank Balance' : `Don't ${isIncome ? 'deposit' : 'deduct'}`}
-        </button>
-        <button className="primary-button" type="button" onClick={handleDepositAndSave}>
-          {isInstaPayRefund ? 'Refund & Save' : isIncome ? `Deposit to ${targetAccountLabel} & Save` : `Deduct from ${targetAccountLabel} & Save`}
-        </button>
+        {homeAmountInput !== null ? (
+          <>
+            <button className="ghost-button" type="button" onClick={() => setHomeAmountInput(null)}>Back</button>
+            <button className="primary-button" type="button" disabled={!validHomeAmount} onClick={handlePayFromHome}>
+              Save payment
+            </button>
+          </>
+        ) : (
+          <>
+            {maxHomeAmount > 0 && (
+              <button className="ghost-button" type="button" onClick={() => setHomeAmountInput(String(maxHomeAmount))}>
+                Paid from Home
+              </button>
+            )}
+            <button className="ghost-button" type="button" onClick={handleSaveWithoutDeposit}>
+              {isInstaPayRefund ? 'Keep Bank Balance' : `Don't ${isIncome ? 'deposit' : 'deduct'}`}
+            </button>
+            <button className="primary-button" type="button" onClick={handleDepositAndSave}>
+              {isInstaPayRefund ? 'Refund & Save' : isIncome ? `Deposit to ${targetAccountLabel} & Save` : `Deduct from ${targetAccountLabel} & Save`}
+            </button>
+          </>
+        )}
       </div>
     </Modal>
   );

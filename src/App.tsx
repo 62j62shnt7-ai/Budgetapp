@@ -599,6 +599,8 @@ export const App: React.FC = () => {
 
       <EntryModal
         isOpen={entryModalOpen}
+        allowHomePayment={activeTab === 'cashflow'}
+        allowFundingCorrection={activeTab === 'history'}
         initialType={entryModalType}
         entryToEdit={entryToEdit}
         onClose={() => setEntryModalOpen(false)}

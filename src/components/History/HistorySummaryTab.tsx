@@ -111,7 +111,7 @@ export const HistorySummaryTab: React.FC<HistorySummaryTabProps> = ({
                   </td>
                 </tr>
               ) : (
-                monthlySummaryRows.map((row) => {
+                monthlySummaryRows.toSorted((a, b) => b.month.localeCompare(a.month)).map((row) => {
                   const rateBadgeClass =
                     row.savingsRate >= 20 ? 'favorable' : row.savingsRate >= 0 ? 'neutral' : 'unfavorable';
                   return (

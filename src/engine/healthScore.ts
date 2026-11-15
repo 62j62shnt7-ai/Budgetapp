@@ -8,6 +8,7 @@
 //   4. Savings & Reserve Target (0-25 pts)
 // ==========================================================================
 import { DateUtils } from './dateUtils';
+import { buildHomeAllocations, getHomePlanAmount, indexHomeFunding } from './homeAllocations';
 import { groupByMonth, getEntryActualAmount, isLoanInflow } from './forecast';
 import { computeSettlementUncovered, isCreditDueLumpSum } from './creditCards';
 import type {
@@ -360,6 +361,8 @@ export function analyzeSettledMonths(params: {
   const settledMonths = Array.from(monthCandidates)
     .sort()
     .slice(-Math.max(1, maxMonths));
+  const homeAllocations = buildHomeAllocations(countableEntries, entryActuals, entryActualDates);
+  const homeFundedEntries = indexHomeFunding(homeAllocations).entries;
 
   const realizedAmountForMonth = (entry: CashEntry, month: string): number => {
     if (isCreditDueLump(entry)) {
@@ -385,11 +388,16 @@ export function analyzeSettledMonths(params: {
         const uncoveredVal = uncovered !== undefined ? Math.min(Number(entry.amount) || 0, uncovered) : (Number(entry.amount) || 0);
         return sum + Math.max(0, uncoveredVal);
       }
-      return sum + Math.max(0, Number(entry.amount) || 0);
+      const plan = entry.isClosed && homeFundedEntries.has(entry.id)
+        ? entry.initialAmount ?? entry.amount : getHomePlanAmount(entry);
+      return sum + Math.max(0, Number(plan) || 0);
     }, 0);
     const realizedExpense = countableEntries
       .filter((entry) => entry.type === 'expense')
-      .reduce((sum, entry) => sum + realizedAmountForMonth(entry, month), 0);
+      .reduce((sum, entry) => {
+        const allocated = homeAllocations.get(entry.id)?.find((row) => row.month === month)?.total ?? 0;
+        return Math.round((sum + realizedAmountForMonth(entry, month) - allocated) * 100) / 100;
+      }, 0);
     const realizedIncome = countableEntries
       .filter((entry) => entry.type === 'income')
       .reduce((sum, entry) => sum + realizedAmountForMonth(entry, month), 0);

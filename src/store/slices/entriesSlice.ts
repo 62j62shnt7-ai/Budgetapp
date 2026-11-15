@@ -11,6 +11,7 @@ import { inferTag } from '../../engine/tags';
 import { isOngoingEntry, isLoanInflow } from '../../engine/forecast';
 import { calculateJobFinancials } from '../../engine/jobs';
 import { calculateInstaPayFee } from '../../engine/instapayFees';
+import { getHomePlanAmount, isHomeExpense } from '../../engine/homeAllocations';
 import {
   isLumpCreditDueForAccount,
   isCreditSettlementRow,
@@ -628,17 +629,18 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
         if (isCardSwipe) {
           // Credit card swipes are immediate 1-click transactions; do not generate synthetic partial draw tranches
           draws = draws.length > 1 ? draws : [];
-        } else if (!isLoan && !isSplit && draws.length === 0 && !entry.keepOngoing) {
+        } else if (!isLoan && !isSplit && draws.length === 0 && !entry.keepOngoing && !(isHomeExpense(entry) && prevActual > 0)) {
           // Standard 1-click expense/income payment: record actual directly without fabricating a 1-item draws array.
           draws = [];
         } else {
           if (draws.length === 0 && prevActual > 0) {
             draws.push({
               id: `draw-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-              date: entry.actualDate || entry.date || actDate,
+              date: get().entryActualDates[entryId] || entry.actualDate || entry.date || actDate,
               amount: prevActual,
               tag: entry.tag || '',
               account: entry.account || 'hsbc',
+              paidFromHome: entry.paidFromHome,
             });
           }
 
@@ -677,8 +679,8 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
         }
 
         // If draws has <= 1 item and is not a loan facility or split entry, strip the redundant draws array
-        const hasInstaPayDraw = draws.some((draw) => draw.paymentMethod === 'instapay' || draw.instapayFeeAmount !== undefined);
-        if (draws.length <= 1 && !isLoan && !isSplit && !entry.keepOngoing && !hasInstaPayDraw) {
+        const hasPaymentDetails = draws.some((draw) => draw.paymentMethod === 'instapay' || draw.instapayFeeAmount !== undefined || draw.paidFromHome);
+        if (draws.length <= 1 && !isLoan && !isSplit && !entry.keepOngoing && !hasPaymentDetails) {
           draws = [];
         }
 
@@ -686,6 +688,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
           ...entry,
           actualAmount: amount,
           actualDate: actDate,
+          paidFromHome: draws.length || amount <= 0 ? undefined : entry.paidFromHome,
           draws: draws.length > 0 ? draws : undefined,
         };
         updatedEntries = [...get().entries];
@@ -704,16 +707,17 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
           let draws = Array.isArray(entry.draws) ? [...entry.draws] : [];
           if (isCardSwipe) {
             draws = draws.length > 1 ? draws : [];
-          } else if (!isLoan && !isSplit && draws.length === 0 && !entry.keepOngoing) {
+          } else if (!isLoan && !isSplit && draws.length === 0 && !entry.keepOngoing && !(isHomeExpense(entry) && prevActual > 0)) {
             draws = [];
           } else {
             if (draws.length === 0 && prevActual > 0) {
               draws.push({
                 id: `draw-${Date.now()}-0`,
-                date: entry.actualDate || entry.date || actDate,
+                date: get().entryActualDates[entryId] || entry.actualDate || entry.date || actDate,
                 amount: prevActual,
                 tag: entry.tag || '',
                 account: entry.account || 'hsbc',
+                paidFromHome: entry.paidFromHome,
               });
             }
 
@@ -751,8 +755,8 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
             }
           }
 
-          const hasInstaPayDraw = draws.some((draw) => draw.paymentMethod === 'instapay' || draw.instapayFeeAmount !== undefined);
-          if (draws.length <= 1 && !isLoan && !isSplit && !entry.keepOngoing && !hasInstaPayDraw) {
+          const hasPaymentDetails = draws.some((draw) => draw.paymentMethod === 'instapay' || draw.instapayFeeAmount !== undefined || draw.paidFromHome);
+          if (draws.length <= 1 && !isLoan && !isSplit && !entry.keepOngoing && !hasPaymentDetails) {
             draws = [];
           }
 
@@ -760,6 +764,7 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
             ...entry,
             actualAmount: amount,
             actualDate: actDate,
+            paidFromHome: draws.length || amount <= 0 ? undefined : entry.paidFromHome,
             draws: draws.length > 0 ? draws : undefined,
           };
           updatedArchived = [...get().archivedEntries];
@@ -872,6 +877,8 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
             ? (existingDraws.map((d) => d.date).filter(Boolean).sort().slice(-1)[0] || entry.actualDate || entry.date)
             : undefined,
           draws: keepDraws ? existingDraws : [],
+          paidFromHome: undefined,
+          amount: getHomePlanAmount(entry),
           isClosed: false,
         };
         if (keepDraws && existingDraws.length > 0) {
@@ -895,6 +902,8 @@ export const createEntriesSlice: SliceCreator<EntriesSlice> = (set, get) => ({
             ? (existingDraws.map((d) => d.date).filter(Boolean).sort().slice(-1)[0] || entry.actualDate || entry.date)
             : undefined,
           draws: keepDraws ? existingDraws : [],
+          paidFromHome: undefined,
+          amount: getHomePlanAmount(entry),
           isClosed: false,
         };
         if (keepDraws && existingDraws.length > 0) {

@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { inferTag, useBudgetStore } from '../../store/useBudgetStore';
-import { calculateCreditSettlementDate, getCreditCycleHint, isCreditCardExpense } from '../../engine/creditCards';
+import { calculateCreditSettlementDate, getCreditCycleHint, isCreditCardExpense, isCreditSettlementRow } from '../../engine/creditCards';
 import { normalizeCurrencyCode, getCurrencyRateOr, formatNativeCurrency, getAccountNativeCurrency, convertAmountBetweenCurrencies } from '../../engine/currency';
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
-import { getEntryActualAmount, isLoanInflow, findLinkedLoanRepayment, calculateLoanRepaymentScale } from '../../engine/forecast';
+import { getEntryActualAmount, getEntryActualDate, isLoanInflow, findLinkedLoanRepayment, calculateLoanRepaymentScale } from '../../engine/forecast';
 import { buildInstaPayRefunds } from '../../engine/instapayFees';
+import { buildHomeAllocations, getHomePlanAmount, isHomeExpense, splitHomePayment, summarizeHomeAllocations } from '../../engine/homeAllocations';
 import type { CashEntry, EntryDraw, InstaPayRefund, PlannedSplit } from '../../types';
 import { AffectedRecordsModal, type AffectedPartyOption } from './AffectedRecordsModal';
 import {
@@ -27,6 +28,8 @@ interface EntryModalProps {
   isOpen: boolean;
   initialType?: 'expense' | 'income';
   entryToEdit?: CashEntry | null;
+  allowHomePayment?: boolean;
+  allowFundingCorrection?: boolean;
   onClose: () => void;
   onDeductPrompt?: (entry: CashEntry, actualAmount: number, refunds?: InstaPayRefund[]) => void;
 }
@@ -35,6 +38,8 @@ export const EntryModal: React.FC<EntryModalProps> = ({
   isOpen,
   initialType = 'expense',
   entryToEdit,
+  allowHomePayment = false,
+  allowFundingCorrection = false,
   onClose,
   onDeductPrompt,
 }) => {
@@ -55,6 +60,8 @@ export const EntryModal: React.FC<EntryModalProps> = ({
     runTransaction,
     rates,
     entryActuals,
+    entryActualDates,
+    deletedForecasts,
     partTimeJobs,
     storageAssets,
     accounts,
@@ -75,6 +82,8 @@ export const EntryModal: React.FC<EntryModalProps> = ({
       runTransaction: state.runTransaction,
       rates: state.rates,
       entryActuals: state.entryActuals,
+      entryActualDates: state.entryActualDates,
+      deletedForecasts: state.deletedForecasts,
       partTimeJobs: state.partTimeJobs,
       storageAssets: state.storageAssets,
       accounts: state.accounts,
@@ -99,6 +108,10 @@ export const EntryModal: React.FC<EntryModalProps> = ({
   const [currency, setCurrency] = useState<string>('EGP');
   const [amount, setAmount] = useState<string>('');
   const [actualAmount, setActualAmount] = useState<string>('');
+  const [paidFromHome, setPaidFromHome] = useState(false);
+  const [linkHistoricalPayment, setLinkHistoricalPayment] = useState(false);
+  const [homeAmount, setHomeAmount] = useState<string | null>(null);
+  const [homePaymentError, setHomePaymentError] = useState('');
   const [recalcStatus, setRecalcStatus] = useState<string>('');
   const [statementNote, setStatementNote] = useState<string>('');
   const [seriesEditMode, setSeriesEditMode] = useState<'single' | 'future'>('single');
@@ -171,6 +184,10 @@ export const EntryModal: React.FC<EntryModalProps> = ({
 
   if (prevEntryKey !== currentEntryKey) {
     setPrevEntryKey(currentEntryKey);
+    setPaidFromHome(false);
+    setLinkHistoricalPayment(false);
+    setHomeAmount(null);
+    setHomePaymentError('');
     if (activeEntry) {
       const entryCurr = activeEntry.currency || 'EGP';
       setCreditType(activeEntry.creditType || '');
@@ -427,9 +444,98 @@ export const EntryModal: React.FC<EntryModalProps> = ({
     ? creditSettlementDate || calculateCreditSettlementDate(date, creditType.includes('cib') ? 'cib' : 'hsbc')
     : '';
 
+  const previousActual = activeEntry ? getEntryActualAmount(activeEntry, entryActuals) : 0;
+  const canCorrectFunding = allowFundingCorrection && activeEntry?.type === 'expense' &&
+    previousActual > 0 && (activeEntry.currency ?? 'EGP') === 'EGP' &&
+    !activeEntry.locked && !activeEntry.conversionType && !activeEntry.storageAssetId &&
+    !isCreditCardExpense(activeEntry) && !isCreditSettlementRow(activeEntry) &&
+    (activeEntry.draws?.length ?? 0) <= 1 &&
+    !activeEntry.draws?.some((draw) => draw.storageAssetId || draw.paymentMethod || draw.instapayFeeAmount !== undefined);
+  const resolvedActual = isCardExpense
+    ? egpEquivalent
+    : (actualAmount ? (sameHistoricalCurrency && Number(actualAmount) === Math.round(previousActual / fxRate * 100) / 100 ? previousActual : Math.round(Number(actualAmount) * fxRate * 100) / 100) : undefined);
+  const addedActual = Math.round(((resolvedActual ?? 0) - previousActual) * 100) / 100;
+  const isNewSeries = !entryToEdit && isRecurring && recurringCount > 1;
+  const getWeeklyDate = (index: number) => {
+    const occurrence = new Date(date);
+    const offset = (recurringDayOfWeek - occurrence.getDay() + 7) % 7;
+    occurrence.setDate(occurrence.getDate() + offset + index * (recurringFrequency === 'biweekly' ? 14 : 7));
+    return DateUtils.formatDateObj(occurrence);
+  };
+  const homePaymentDate = DateUtils.todayString();
+  const supportsHomePayment = allowHomePayment && type === 'expense' && currency === 'EGP' &&
+    !isSettlement && !isCardExpense && category.trim().toLowerCase() !== 'home' &&
+    !activeEntry?.locked && !activeEntry?.conversionType && !activeEntry?.excludeFromForecast &&
+    !isCreditCardExpense({ type, category, account, creditType, date, amount: egpEquivalent, id: activeEntry?.id ?? '' });
+  const canLinkHistoricalPayment = canCorrectFunding && account === 'none' && resolvedActual === previousActual &&
+    activeEntry.category.trim().toLowerCase() !== 'home' &&
+    !activeEntry.paidFromHome && !activeEntry.draws?.some((draw) => draw.paidFromHome);
+  const allocationDate = canLinkHistoricalPayment
+    ? getEntryActualDate(activeEntry, entryActualDates)
+    : homePaymentDate;
+  const homeAdjustment = (supportsHomePayment && addedActual > 0) || canLinkHistoricalPayment
+    ? summarizeHomeAllocations(buildHomeAllocations(
+      [...entries, ...archivedEntries].filter((entry) => !deletedForecasts.includes(entry.id)),
+      entryActuals, entryActualDates
+    )).get(DateUtils.getMonthKey(allocationDate))
+    : undefined;
+  const availableHome = Math.round(((homeAdjustment?.capacity ?? 0) - (homeAdjustment?.total ?? 0)) * 100) / 100;
+  const maxHomePayment = Math.max(0, Math.min(addedActual, availableHome));
+  const historicalHomeAmount = Math.min(previousActual, availableHome);
+  const homePrincipal = homeAmount === null ? maxHomePayment : Number(homeAmount);
+  const bankRemainder = Math.round((addedActual - homePrincipal) * 100) / 100;
+  const bankKey = account.trim().toLowerCase();
+  const canDeductRemainder = Boolean(accounts[bankKey]) && accountNativeCurrency === 'EGP';
+  const useHomePayment = supportsHomePayment && paidFromHome;
+
+  const validateHomePayment = () => {
+    if (!useHomePayment) return true;
+    if (!Number.isFinite(homePrincipal) || homePrincipal <= 0 ||
+      Math.round(homePrincipal * 100) / 100 !== homePrincipal || homePrincipal > maxHomePayment) {
+      setHomePaymentError(maxHomePayment > 0
+        ? `Enter a Home amount up to ${formatMoney(maxHomePayment)}.`
+        : 'Enter a new payment amount with Home spending available in that month.');
+      return false;
+    }
+    if (bankRemainder > 0 && !canDeductRemainder) {
+      setHomePaymentError('Select an EGP bank account for the remaining amount.');
+      return false;
+    }
+    return true;
+  };
+
+  const saveHomePayment = (id: string) => {
+    const previousDraws: EntryDraw[] = (activeEntry?.draws ?? []).map((draw) => ({
+      ...draw,
+      account: draw.account || activeEntry?.account,
+    }));
+    if (activeEntry && previousActual > 0 && previousDraws.length === 0) {
+      previousDraws.push({
+        date: getEntryActualDate(activeEntry, entryActualDates),
+        amount: previousActual,
+        account: activeEntry.account,
+        tag: activeEntry.tag,
+        paidFromHome: activeEntry.paidFromHome,
+      });
+    }
+    const draws = splitHomePayment({
+      id: `draw-${crypto.randomUUID()}`, date: homePaymentDate, amount: addedActual, tag: tag.trim() || undefined,
+    }, homePrincipal, bankKey);
+    const state = useBudgetStore.getState();
+    if (bankRemainder > 0) state.updateAccountBalance(bankKey, state.accounts[bankKey].balance - bankRemainder);
+    updateEntry(id, {
+      account: bankRemainder > 0 ? bankKey : 'none',
+      actualAmount: resolvedActual,
+      actualDate: homePaymentDate,
+      paidFromHome: undefined,
+      draws: [...previousDraws, ...draws],
+    });
+    state.settleJobForecastPayment(id, resolvedActual ?? 0, false);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!numericAmount || numericAmount <= 0) return;
+    if (!numericAmount || numericAmount <= 0 || !validateHomePayment()) return;
 
     const shouldPromptDeduct = Boolean(onDeductPrompt) && !isCardExpense;
 
@@ -440,15 +546,13 @@ export const EntryModal: React.FC<EntryModalProps> = ({
       ? (creditType.includes('cib') ? 'CIB Credit' : 'HSBC Credit')
       : account.trim() || (creditType === 'cib' ? 'cib' : 'hsbc');
 
-    const previousActual = entryToEdit ? getEntryActualAmount(entryToEdit, entryActuals) : 0;
-    const resolvedActual = isCardExpense
-      ? egpEquivalent
-      : (actualAmount ? (sameHistoricalCurrency && Number(actualAmount) === Math.round(previousActual / fxRate * 100) / 100 ? previousActual : Math.round(Number(actualAmount) * fxRate * 100) / 100) : undefined);
-    const resolvedActualDate = isCardExpense
-      ? date
-      : actualAmount
-        ? (entryToEdit && resolvedActual === previousActual && entryToEdit.actualDate ? entryToEdit.actualDate : date)
-        : undefined;
+    const resolvedActualDate = canCorrectFunding && chosenAccount === 'none' && resolvedActual === previousActual
+      ? getEntryActualDate(activeEntry, entryActualDates)
+      : isCardExpense
+        ? date
+        : actualAmount
+          ? (entryToEdit && resolvedActual === previousActual && entryToEdit.actualDate ? entryToEdit.actualDate : date)
+          : undefined;
 
     const preservedSource = entryToEdit && entryToEdit.source !== 'credit card' && entryToEdit.source !== 'recurring credit'
       ? entryToEdit.source
@@ -487,11 +591,27 @@ export const EntryModal: React.FC<EntryModalProps> = ({
           });
         } else {
           const entryFields = { ...baseEntry };
+          const homeAllocation = canLinkHistoricalPayment && linkHistoricalPayment && historicalHomeAmount > 0
+            ? historicalHomeAmount : undefined;
+          if (canCorrectFunding && chosenAccount === 'none' && activeEntry.draws?.length === 1) {
+            const draw = activeEntry.draws[0];
+            entryFields.draws = [{
+              ...draw,
+              account: 'none',
+              ...(homeAllocation !== undefined && { paidFromHome: homeAllocation }),
+            }];
+          } else if (homeAllocation !== undefined) {
+            entryFields.paidFromHome = homeAllocation;
+          }
           delete entryFields.actualAmount;
           delete entryFields.actualDate;
-          updateEntry(entryToEdit.id, newActual === previousActual ? baseEntry : entryFields, seriesEditMode);
+          updateEntry(entryToEdit.id, newActual === previousActual
+            ? { ...baseEntry, ...entryFields }
+            : entryFields, seriesEditMode);
         }
-        if (newActual > 0 && (newActual !== previousActual || entryToEdit.id.startsWith('credit-settlement-'))) {
+        if (useHomePayment) {
+          saveHomePayment(entryToEdit.id);
+        } else if (newActual > 0 && (newActual !== previousActual || entryToEdit.id.startsWith('credit-settlement-'))) {
           recordActual(entryToEdit.id, newActual, resolvedActualDate || date, {
             tag: baseEntry.tag,
             account: baseEntry.account,
@@ -501,7 +621,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
           clearActual(entryToEdit.id);
         }
       });
-      if (shouldPromptDeduct && newActual !== previousActual && onDeductPrompt) {
+      if (!useHomePayment && shouldPromptDeduct && newActual !== previousActual && onDeductPrompt) {
         const originalDraws = entryToEdit.draws || [];
         const refunds = newActual < previousActual && originalDraws.some((draw) => draw.paymentMethod === 'instapay')
           ? buildInstaPayRefunds(originalDraws, previousActual - newActual, entryToEdit.account || chosenAccount)
@@ -510,7 +630,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
       }
     } else {
       const newActual = resolvedActual ?? 0;
-      if (isRecurring && recurringCount > 1) {
+      if (isNewSeries) {
         runTransaction(`Add Recurring (${recurringCount}x): ${normalizedCategory}`, () => {
           const seriesId = generateSeriesId();
           let firstCreatedId = '';
@@ -525,12 +645,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
               const safeDay = Math.min(d, daysInTargetMonth);
               recDate = `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(safeDay).padStart(2, '0')}`;
             } else if (recurringFrequency === 'weekly' || recurringFrequency === 'biweekly') {
-              const dObj = new Date(date);
-              const baseDay = dObj.getDay();
-              const target = recurringDayOfWeek;
-              const offset = (target - baseDay + 7) % 7;
-              dObj.setDate(dObj.getDate() + offset + i * (recurringFrequency === 'biweekly' ? 14 : 7));
-              recDate = DateUtils.formatDateObj(dObj);
+              recDate = getWeeklyDate(i);
             }
 
             const isFirst = i === 0;
@@ -545,7 +660,9 @@ export const EntryModal: React.FC<EntryModalProps> = ({
             });
             if (isFirst) {
               firstCreatedId = createdId;
-              if (newActual > 0) {
+              if (useHomePayment) {
+                saveHomePayment(createdId);
+              } else if (newActual > 0) {
                 recordActual(createdId, newActual, recDate, {
                   tag: baseEntry.tag,
                   account: baseEntry.account,
@@ -554,9 +671,13 @@ export const EntryModal: React.FC<EntryModalProps> = ({
               }
             }
           }
-          if (newActual > 0 && shouldPromptDeduct && onDeductPrompt && firstCreatedId) {
+          if (!useHomePayment && newActual > 0 && shouldPromptDeduct && onDeductPrompt && firstCreatedId) {
             onDeductPrompt({ ...baseEntry, id: firstCreatedId }, newActual);
           }
+        });
+      } else if (useHomePayment) {
+        runTransaction(`Add Expense: ${normalizedCategory}`, () => {
+          saveHomePayment(addEntry(baseEntry));
         });
       } else {
         const createdId = addEntry(baseEntry);
@@ -966,6 +1087,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
                     </option>
                   ))}
               </optgroup>
+              {canCorrectFunding && <option value="none">No bank deduction</option>}
 
               {type === 'expense' && (
                 <optgroup label="Credit Cards">
@@ -985,6 +1107,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
               {/* Preserve existing account if editing older historical entry */}
               {Boolean(
                 account &&
+                !(canCorrectFunding && account === 'none') &&
                 !accounts[account.toLowerCase()] &&
                 !['HSBC Credit', 'CIB Credit'].includes(account) &&
                 !storageAssets.some((a) => a.id === account || a.name.toLowerCase() === account.toLowerCase())
@@ -994,7 +1117,26 @@ export const EntryModal: React.FC<EntryModalProps> = ({
                 </optgroup>
               )}
             </select>
+            {canCorrectFunding && account === 'none' && (
+              <small>Funding label only. Review any bank deduction separately.</small>
+            )}
           </label>
+          {canLinkHistoricalPayment && (
+            <div className="entry-field entry-option-card">
+              <label className="check-row">
+                <input
+                  type="checkbox"
+                  checked={linkHistoricalPayment && historicalHomeAmount > 0}
+                  disabled={historicalHomeAmount <= 0}
+                  onChange={(event) => setLinkHistoricalPayment(event.target.checked)}
+                />
+                Paid from Home
+              </label>
+              <small>{historicalHomeAmount > 0
+                ? `${formatMoney(historicalHomeAmount)} from Home · ${DateUtils.getMonthKey(allocationDate)}`
+                : 'No Home spending is available in the payment month.'}</small>
+            </div>
+          )}
 
           <label id="typeField" className="entry-field">
             Type
@@ -1038,9 +1180,70 @@ export const EntryModal: React.FC<EntryModalProps> = ({
                 min="0"
                 placeholder={currency !== 'EGP' ? '0.00 if not paid yet' : '0 if not paid yet'}
                 value={actualAmount}
-                onChange={(e) => setActualAmount(e.target.value)}
+                onChange={(e) => {
+                  setActualAmount(e.target.value);
+                  setHomePaymentError('');
+                }}
               />
             </label>
+            {supportsHomePayment && (
+              <div className="entry-field entry-option-card">
+                <label className="check-row">
+                  <input
+                    type="checkbox"
+                    checked={paidFromHome}
+                    onChange={(event) => {
+                      setPaidFromHome(event.target.checked);
+                      setHomeAmount(null);
+                      setHomePaymentError('');
+                    }}
+                  />
+                  Paid from Home
+                </label>
+                {paidFromHome && (
+                  <>
+                    {homeAmount !== null && (
+                      <label>
+                        Amount paid from Home (EGP)
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          min="0.01"
+                          step="0.01"
+                          value={homeAmount}
+                          onChange={(event) => {
+                            setHomeAmount(event.target.value);
+                            setHomePaymentError('');
+                          }}
+                        />
+                      </label>
+                    )}
+                    <small>
+                      {maxHomePayment > 0
+                        ? `Available from Home for this payment · ${formatMoney(maxHomePayment)}`
+                        : 'Enter a new actual amount for a month with available Home spending.'}
+                    </small>
+                    {homeAmount === null && maxHomePayment > 0 && (
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        onClick={() => setHomeAmount(String(maxHomePayment))}
+                      >
+                        Change Home amount
+                      </button>
+                    )}
+                    {homePrincipal > 0 && homePrincipal <= maxHomePayment && (
+                      <p role="status">
+                        {bankRemainder === 0 ? 'Bank deduction · 0 EGP' : canDeductRemainder
+                          ? `${accountDisplayName} deduction · ${formatMoney(bankRemainder)}`
+                          : `Select an EGP bank account for the remaining ${formatMoney(bankRemainder)}.`}
+                      </p>
+                    )}
+                    {homePaymentError && <p role="alert">{homePaymentError}</p>}
+                  </>
+                )}
+              </div>
+            )}
             {Number(actualAmount) > 0 && (
               currency !== accountNativeCurrency ? (
                 <small style={{ color: 'var(--muted)', fontSize: '12px', margin: '-4px 0 0', display: 'block' }}>
@@ -1304,9 +1507,10 @@ export const EntryModal: React.FC<EntryModalProps> = ({
               }}
               title="Finish and close this entry at current actual amount"
               onClick={() => {
+                if (!validateHomePayment()) return;
                 const currentActualEgp = getEntryActualAmount(activeEntry || entryToEdit, entryActuals);
                 const inputActual = Number(actualAmount) || 0;
-                const finalActualEgp = currency !== 'EGP'
+                const finalActualEgp = useHomePayment ? (resolvedActual ?? 0) : currency !== 'EGP'
                   ? Math.round(inputActual * fxRate * 100) / 100 || currentActualEgp
                   : inputActual || currentActualEgp;
 
@@ -1314,13 +1518,22 @@ export const EntryModal: React.FC<EntryModalProps> = ({
                 const baseDisbursement = Number(targetEntry.initialAmount || targetEntry.amount || 0);
 
                 runTransaction(`Finish Entry: ${targetEntry.category}`, () => {
+                  if (useHomePayment) saveHomePayment(entryToEdit.id);
                   updateEntry(
                     entryToEdit.id,
                     {
                       isClosed: true,
                       keepOngoing: false,
-                      actualAmount: finalActualEgp > 0 ? finalActualEgp : undefined,
-                      amount: finalActualEgp > 0 ? finalActualEgp : entryToEdit.amount,
+                      ...(!useHomePayment && {
+                        actualAmount: finalActualEgp > 0 ? finalActualEgp : undefined,
+                        actualDate: finalActualEgp > 0
+                          ? (finalActualEgp === currentActualEgp
+                              ? getEntryActualDate(targetEntry, entryActualDates)
+                              : DateUtils.todayString())
+                          : undefined,
+                      }),
+                      amount: isHomeExpense(targetEntry) ? getHomePlanAmount(targetEntry)
+                        : finalActualEgp > 0 ? finalActualEgp : entryToEdit.amount,
                       initialAmount: baseDisbursement,
                     },
                     'single',

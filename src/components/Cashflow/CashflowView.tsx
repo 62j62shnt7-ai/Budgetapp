@@ -32,6 +32,7 @@ import {
 import { DateUtils, formatMoney } from '../../engine/dateUtils';
 import { formatNativeCurrency, getCurrencyRateOr } from '../../engine/currency';
 import { getEntryTags } from '../../engine/tags';
+import { buildHomeAllocations, getHomePlanAmount, indexHomeFunding, isHomeExpense, projectHomeActuals } from '../../engine/homeAllocations';
 import {
   Plus,
   Calendar,
@@ -317,6 +318,12 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     };
   };
 
+  const { homeFunding, forecastActuals } = React.useMemo(() => {
+    const ledger = [...entries, ...archivedEntries].filter((entry) => !deletedForecasts.includes(entry.id));
+    const allocations = buildHomeAllocations(ledger, entryActuals, entryActualDates);
+    return { homeFunding: indexHomeFunding(allocations), forecastActuals: projectHomeActuals(entryActuals, ledger, allocations) };
+  }, [entries, archivedEntries, deletedForecasts, entryActuals, entryActualDates]);
+
   const handleActualSpend = (entry: CashEntry, addedAmount: number, currentActual: number) => {
     const newActual = currentActual + addedAmount;
     recordActual(entry.id, newActual, DateUtils.todayString());
@@ -365,10 +372,11 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
       ? Math.round(entry.originalAmount * fxRate)
       : Number(entry.amount || 0);
 
-    if (newActual >= effectivePlannedAmount && effectivePlannedAmount > 0 && !entry.isClosed) {
+    const actualAgainstPlan = getEntryActualAmount(entry, forecastActuals) + addedAmount;
+    if (actualAgainstPlan >= effectivePlannedAmount && effectivePlannedAmount > 0 && !entry.isClosed) {
       setExactDecisionData({
         entry,
-        actualAmount: newActual,
+        actualAmount: actualAgainstPlan,
         plannedAmount: effectivePlannedAmount,
         linkedRepayment: getLinkedRepaymentOption(entry, newActual),
       });
@@ -437,7 +445,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
         {
           isClosed: true,
           keepOngoing: false,
-          amount: actualAmount,
+          amount: isHomeExpense(entry) ? getHomePlanAmount(entry) : actualAmount,
           initialAmount: baseDisbursement,
         },
         'single',
@@ -537,18 +545,18 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     const candidateList = candidates
       .filter((entry) => !entry.isClosed)
       .filter((entry) => {
-        const actual = getEntryActualAmount(entry, entryActuals);
+        const actual = getEntryActualAmount(entry, forecastActuals);
         if (actual <= 0) return true;
         if ((entry as CashEntry & { keepOngoing?: boolean }).keepOngoing) return true;
         if ((entry.splitCount && entry.splitCount > 1) || (entry.plannedSplits && entry.plannedSplits.length > 1)) return true;
-        return isPartialTracked(entry) && getRemainingForecastAmount(entry, entryActuals) > 0;
+        return isPartialTracked(entry) && getRemainingForecastAmount(entry, forecastActuals) > 0;
       });
     const rows = getActiveForecastEntries(
       [...entries, ...salary],
       installment,
       credit,
       deletedForecasts,
-      entryActuals,
+      forecastActuals,
     );
     // Expand candidateList for table view so split ghost rows show on their respective dates
     const expandedCandidateList = candidateList.flatMap((entry) => {
@@ -560,15 +568,15 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
         entry.subcategory === 'Loan Repayment' ||
         Boolean(entry.loanId && entry.type === 'expense');
 
-      const isOverdueInc = entry.type === 'income' && !isOngoingEntry(entry, entryActuals);
+      const isOverdueInc = entry.type === 'income' && !isOngoingEntry(entry, forecastActuals);
       const hasSplits =
         !isStrict &&
         !isOverdueInc &&
         ((entry.splitCount && entry.splitCount > 1) || (entry.plannedSplits && entry.plannedSplits.length > 1));
 
       if (hasSplits) {
-        const remaining = isPartialTracked(entry) && getEntryActualAmount(entry, entryActuals) > 0
-          ? getRemainingForecastAmount(entry, entryActuals)
+        const remaining = isPartialTracked(entry) && getEntryActualAmount(entry, forecastActuals) > 0
+          ? getRemainingForecastAmount(entry, forecastActuals)
           : Number(entry.amount || 0);
         let effDate = entry.date;
         const today = DateUtils.todayString();
@@ -613,6 +621,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     entryActualDates,
     creditSettlementOverrides,
     deletedForecasts,
+    forecastActuals,
   ]);
 
   const creditFundingAlertsMap = React.useMemo(() => {
@@ -739,7 +748,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
       return Number(e.amount || 0);
     }
     if (isPartialTracked(e)) {
-      return getRemainingForecastAmount(e, entryActuals);
+      return getRemainingForecastAmount(e, forecastActuals);
     }
     return Number(e.amount || 0);
   };
@@ -1220,31 +1229,36 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                   ? 'Add actual'
                   : 'Add spend';
                 const actualValue = getEntryActualAmount(parentEntry, entryActuals);
+                const budgetActual = getEntryActualAmount(parentEntry, forecastActuals);
+                const isHome = isHomeExpense(parentEntry);
                 const plannedAmt = Number(
                   parentEntry.amount ??
                   (parentEntry as CashEntry & { plannedAmount?: number }).plannedAmount ??
                   0
                 );
                 const isSplitSlice = Boolean(e.parentEntryId || (e.splitTotalCount && e.splitTotalCount > 1));
-                const remainingAmt = isSplitSlice ? Number(e.amount || 0) : Math.max(0, plannedAmt - actualValue);
-                const isFull = plannedAmt > 0 && actualValue >= plannedAmt;
+                const remainingBudget = isHome
+                  ? getRemainingForecastAmount(parentEntry, forecastActuals)
+                  : Math.max(0, plannedAmt - actualValue);
+                const remainingAmt = isSplitSlice ? Number(e.amount || 0) : remainingBudget;
+                const isFull = plannedAmt > 0 && budgetActual >= plannedAmt;
                 const isPartial = isPartialTracked(parentEntry);
                 const isPastDate = Boolean(e.date && e.date < DateUtils.todayString());
                 // Credit settlements are single-dated due rows (overdue or upcoming):
                 // they never represent an ongoing budget, so never badge them ongoing
                 // even when the due date has passed or a payment was recorded.
                 const isOverdueIncome = e.type === 'income' && !isOngoingEntry(e, entryActuals);
-                const isCompletedSplitContainer = isSplitSlice && actualValue >= plannedAmt && remainingAmt <= 0 && Boolean(parentEntry.keepOngoing);
+                const isCompletedSplitContainer = isSplitSlice && budgetActual >= plannedAmt && remainingAmt <= 0 && Boolean(parentEntry.keepOngoing);
                 // An active split slice is currently underway when actual drawing has started on the entry
                 // and this slice is the active head tranche (or if its scheduled date has passed and it carried forward)
-                const isActiveDrawingSlice = isSplitSlice && actualValue > 0 && actualValue < plannedAmt && (e.date <= DateUtils.todayString() || e.id === parentEntry.id);
+                const isActiveDrawingSlice = isSplitSlice && actualValue > 0 && budgetActual < plannedAmt && (e.date <= DateUtils.todayString() || e.id === parentEntry.id);
                 const displayPlannedAmt = isCompletedSplitContainer
                   ? Number(parentEntry.amount || plannedAmt)
                   : (isSplitSlice ? Number(e.amount || 0) : plannedAmt);
                 const ongoing = (!isSplitSlice || isCompletedSplitContainer || isActiveDrawingSlice)
                   && !(isCreditSettlement || isCreditDueLumpSum(e))
                   && !isOverdueIncome
-                  && (isOngoingEntry(parentEntry, entryActuals) || (isPartial && !parentEntry.isClosed && (actualValue > 0 || isPastDate)));
+                  && (isOngoingEntry(parentEntry, forecastActuals) || (isPartial && !parentEntry.isClosed && (actualValue > 0 || isPastDate)));
                 const canFinish = !parentEntry.isClosed && !isOpening && (actualValue > 0 || isPastDate || isLoan || ongoing || (isPartial && remainingAmt > 0));
                 const actualDate = actualValue > 0 ? getEntryActualDate(parentEntry, entryActualDates) : '';
                 const origStartDate = parentEntry.date || e.date;
@@ -1360,6 +1374,23 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                       >
                         {e.category}
                       </strong>
+                      {Array.from(homeFunding.entries.get(parentEntry.id)?.values() ?? [], (funding) => (
+                        <button
+                          key={funding.month}
+                          type="button"
+                          className="history-home-funding"
+                          aria-label={`From Home · ${formatMoney(funding.amount)} · Open ${funding.month} allocation`}
+                          onKeyDown={(event) => event.stopPropagation()}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            useBudgetStore.getState().navigateTo('history', {
+                              month: funding.month, highlightId: funding.homeEntryId, openHomeAllocation: true,
+                            });
+                          }}
+                        >
+                          <Check size={11} aria-hidden="true" /> From Home · {formatMoney(funding.amount)}
+                        </button>
+                      ))}
                       {isDeficit && (
                         <span
                           className="deficit-badge active"
@@ -1647,8 +1678,11 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                                 ? `Paid so far: ${formatMoney(actualValue)} ${isFull ? '(Settled in full)' : `(Remaining due: ${formatMoney(remainingAmt)})`}`
                                 : isForeign
                                 ? `Spent so far: ${formatNativeCurrency(Math.round((actualValue / (e.fxRateAtEntry || getCurrencyRateOr(rates, e.currency, 1))) * 100) / 100, e.currency)} (≈ ${formatMoney(actualValue)}) ${isFull ? '(Full budget reached · Ongoing)' : `(Remaining: ≈ ${formatMoney(remainingAmt)})`}`
-                                : `Spent so far: ${formatMoney(actualValue)} ${isFull ? '(Full budget reached · Ongoing)' : `(Remaining: ${formatMoney(remainingAmt)})`}`}
+                                : `${isHome ? 'Net Home spending' : 'Spent so far'}: ${formatMoney(budgetActual)} ${isFull ? '(Full budget reached · Ongoing)' : `(Remaining: ${formatMoney(isHome ? remainingBudget : remainingAmt)})`}`}
                             </small>
+                          )}
+                          {isHome && actualValue > budgetActual && (
+                            <small className="actual-spend-note">Payments recorded · {formatMoney(actualValue)} · Allocated to other expenses · {formatMoney(actualValue - budgetActual)}</small>
                           )}
                         </div>
                       )}
@@ -1680,7 +1714,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                                 ev.stopPropagation();
                                 setExactDecisionData({
                                   entry: parentEntry,
-                                  actualAmount: actualValue,
+                                  actualAmount: budgetActual,
                                   plannedAmount: Number(parentEntry.amount || 0),
                                   linkedRepayment: getLinkedRepaymentOption(parentEntry, actualValue),
                                 });

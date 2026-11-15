@@ -12,6 +12,7 @@ import {
 import { buildInstallmentEntries } from '../../engine/salaryAndInstallments';
 import { isLoanInflow } from '../../engine/forecast';
 import { getEntryTags } from '../../engine/tags';
+import { apportionHomeReduction, buildHomeAllocations, getHomePaymentParts, getHomePlanAmount, homePaymentKey, indexHomeFunding, isHomeExpense, projectHomeActuals, summarizeHomeAllocations } from '../../engine/homeAllocations';
 import type { CashEntry } from '../../types';
 import { Lock, Unlock, Trash2, RotateCcw, CreditCard, Landmark, Banknote, Tag, Check, X } from 'lucide-react';
 import { HistorySummaryTab } from './HistorySummaryTab';
@@ -25,10 +26,13 @@ import {
 } from '../../utils/affectedRecords';
 import { loadStorageSync, saveStorage } from '../../utils/storageAdapter';
 import { LedgerFilterBar } from '../Common/LedgerFilterBar';
+import { Modal } from '../Common/Modal';
 
 interface HistoryViewProps {
   onEditEntry?: (entry: CashEntry) => void;
 }
+
+const getAccountLabel = (account: string) => account.toLowerCase() === 'none' ? 'No bank deduction' : account.toUpperCase();
 
 export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
   const {
@@ -79,6 +83,9 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
 
   const [deleteEntryTarget, setDeleteEntryTarget] = useState<CashEntry | null>(null);
   const [clearEntryTarget, setClearEntryTarget] = useState<CashEntry | null>(null);
+  const [homePayment, setHomePayment] = useState<{ entry: CashEntry; drawIndex?: number } | null>(null);
+  const [homePaymentAmount, setHomePaymentAmount] = useState('');
+  const [homePaymentError, setHomePaymentError] = useState('');
 
   const initialMonth = pendingNavigation?.tab === 'history' && pendingNavigation.filters?.month
     ? pendingNavigation.filters.month
@@ -114,11 +121,16 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
   const [searchTerm, setSearchTerm] = useState<string>(
     pendingNavigation?.tab === 'history' && pendingNavigation.filters?.search ? pendingNavigation.filters.search : ''
   );
-  const [expandedDraws, setExpandedDraws] = useState<Set<string>>(new Set());
-
   const initialHighlightId = pendingNavigation?.tab === 'history' && pendingNavigation.filters?.highlightId
     ? pendingNavigation.filters.highlightId
     : null;
+  const initialAllocationMonth = pendingNavigation?.tab === 'history' && pendingNavigation.filters?.openHomeAllocation
+    ? pendingNavigation.filters.month
+    : undefined;
+  const [expandedDraws, setExpandedDraws] = useState<Set<string>>(
+    () => new Set(initialAllocationMonth && initialHighlightId ? [initialHighlightId] : [])
+  );
+  const [allocationMonthToOpen, setAllocationMonthToOpen] = useState(initialAllocationMonth);
   const [highlightedEntryId, setHighlightedEntryId] = useState<string | null>(initialHighlightId);
   const [highlightTrigger, setHighlightTrigger] = useState(0);
 
@@ -138,9 +150,14 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
       if (f.month || f.highlightId || f.category || f.search || f.type || f.account || f.tag) {
         setActiveHistoryTab('transactions');
       }
-      if (f.highlightId) {
-        setHighlightedEntryId(f.highlightId);
+      const targetId = f.highlightId;
+      if (targetId) {
+        setHighlightedEntryId(targetId);
         setHighlightTrigger((c) => c + 1);
+        setAllocationMonthToOpen(f.openHomeAllocation ? f.month : undefined);
+        if (f.openHomeAllocation) {
+          setExpandedDraws((previous) => new Set(previous).add(targetId));
+        }
       }
     }
   }
@@ -153,6 +170,13 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
 
   useEffect(() => {
     if (!highlightedEntryId) return;
+    if (allocationMonthToOpen) {
+      const details = document.getElementById(`history-home-allocation-${allocationMonthToOpen}-${highlightedEntryId}`);
+      if (details instanceof HTMLDetailsElement) {
+        details.open = true;
+        details.querySelector('summary')?.focus({ preventScroll: true });
+      }
+    }
 
     const scrollToTarget = () => {
       const row =
@@ -182,7 +206,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
       clearTimeout(timer);
       clearTimeout(clearGlowTimer);
     };
-  }, [highlightedEntryId, highlightTrigger]);
+  }, [highlightedEntryId, highlightTrigger, allocationMonthToOpen]);
 
   // Analytics UI state
   const [groupBy, setGroupBy] = useState<'category' | 'tag'>(() =>
@@ -328,6 +352,73 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
   // - cardSpends: credit card swipes
   // - creditSettled: credit settlements paid
   // - net: income - (directExpenses + creditSettled)
+  const homeAllocations = React.useMemo(
+    () => buildHomeAllocations(actualEntries, entryActuals, entryActualDates),
+    [actualEntries, entryActuals, entryActualDates]
+  );
+  const homeAdjustmentByMonth = React.useMemo(
+    () => summarizeHomeAllocations(homeAllocations),
+    [homeAllocations]
+  );
+  const homeFunding = React.useMemo(() => indexHomeFunding(homeAllocations), [homeAllocations]);
+  const netHomeActuals = React.useMemo(
+    () => projectHomeActuals(entryActuals, actualEntries, homeAllocations),
+    [entryActuals, actualEntries, homeAllocations]
+  );
+
+  const renderHomeFunding = (funding: { homeEntryId: string; month: string; amount: number }) => (
+    <button
+      key={funding.month}
+      type="button"
+      className="history-home-funding"
+      aria-label={`From Home · ${formatMoney(funding.amount)} · Open ${funding.month} allocation`}
+      onKeyDown={(event) => event.stopPropagation()}
+      onClick={() => useBudgetStore.getState().navigateTo('history', {
+        month: funding.month, highlightId: funding.homeEntryId, openHomeAllocation: true,
+      })}
+    >
+      From Home · {formatMoney(funding.amount)}
+    </button>
+  );
+
+  const openHomePayment = (entry: CashEntry, part: ReturnType<typeof getHomePaymentParts>[number]) => {
+    setHomePayment({ entry, drawIndex: part.drawIndex });
+    setHomePaymentAmount(String(Math.min(part.amount, part.requested || part.amount)));
+    setHomePaymentError('');
+  };
+
+  const saveHomePayment = (amount: number) => {
+    if (!homePayment) return;
+    const state = useBudgetStore.getState();
+    const ledger = [...state.entries, ...state.archivedEntries];
+    const entry = ledger.find((row) => row.id === homePayment.entry.id);
+    const part = entry && getHomePaymentParts(entry, state.entryActuals, state.entryActualDates)
+      .find((row) => row.drawIndex === homePayment.drawIndex);
+    if (!entry || entry !== homePayment.entry || !part) {
+      setHomePaymentError('This payment has changed. Reopen it to try again.');
+      return;
+    }
+    const month = DateUtils.getMonthKey(part.date);
+    const key = homePaymentKey(entry.id, part.drawIndex);
+    const adjustment = homeAdjustmentByMonth.get(month);
+    const alreadyAllocated = homeFunding.payments.get(key)?.amount ?? 0;
+    const available = Math.round(((adjustment?.capacity ?? 0) - (adjustment?.total ?? 0) + alreadyAllocated) * 100) / 100;
+    if (!Number.isFinite(amount) || amount < 0 || amount > part.amount || amount > available) {
+      setHomePaymentError(`Enter an amount up to ${formatMoney(Math.min(part.amount, available))}.`);
+      return;
+    }
+    const paidFromHome = amount ? Math.round(amount * 100) / 100 : undefined;
+    const updates = part.drawIndex === undefined
+      ? { paidFromHome }
+      : { draws: entry.draws?.map((draw, index) => index === part.drawIndex ? { ...draw, paidFromHome } : draw) };
+    state.updateEntry(entry.id, updates);
+    setHomePayment(null);
+  };
+
+  const editingHomeEntry = homePayment?.entry;
+  const editingHomePart = editingHomeEntry && getHomePaymentParts(editingHomeEntry, entryActuals, entryActualDates)
+    .find((part) => part.drawIndex === homePayment?.drawIndex);
+
   // - savingsRate: income > 0 ? Math.round((net / income) * 100) : 0
   const monthlySummaryRows = React.useMemo(() => {
     return orderedMonths.map((month) => {
@@ -372,6 +463,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
         }
       });
 
+      const allocated = homeAdjustmentByMonth.get(month)?.total ?? 0;
+      directExpenses = Math.round((directExpenses - allocated) * 100) / 100;
       const net = income - (directExpenses + creditSettled + instapayFees);
       const savingsRate = income > 0 ? Math.round((net / income) * 100) : 0;
 
@@ -386,7 +479,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
         savingsRate,
       };
     });
-  }, [orderedMonths, actualEntries, getEntryActualAmount, getEntryActualDate]);
+  }, [orderedMonths, actualEntries, getEntryActualAmount, getEntryActualDate, homeAdjustmentByMonth]);
 
   const totalLifetimeIncome = monthlySummaryRows.reduce((sum, r) => sum + r.income, 0);
   const totalLifetimeExpenses = monthlySummaryRows.reduce((sum, r) => sum + r.expenses, 0);
@@ -396,7 +489,10 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
   const lifetimeNet = totalLifetimeIncome - (totalLifetimeExpenses + totalLifetimeCredit + totalLifetimeInstaPayFees);
   const lifetimeSavingsRate = totalLifetimeIncome > 0 ? Math.round((lifetimeNet / totalLifetimeIncome) * 100) : 0;
 
-  const allAccounts = Array.from(new Set(actualEntries.map((e) => e.account || 'cash'))).sort();
+  const allAccounts = Array.from(new Set(actualEntries.flatMap((entry) => [
+    entry.account || 'cash',
+    ...(entry.draws ?? []).map((draw) => draw.account || entry.account || 'cash'),
+  ]))).sort();
   const getEffectiveEntryTags = React.useCallback((entry: CashEntry): string[] => {
     const tags = getEntryTags(entry);
     if (isCreditCardExpense(entry) && !tags.some((t) => t.toLowerCase() === 'credit swipes')) {
@@ -491,6 +587,14 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
     return entry.category || 'General Expenses';
   };
 
+  const getVisibleHomeAdjustments = (entry: CashEntry) =>
+    selectedAccount === 'all' && selectedTag === 'all'
+      ? (homeAllocations.get(entry.id) ?? [])
+        .filter((row) => row.total > 0 && (selectedMonth === 'all' || row.month === selectedMonth))
+      : [];
+  const getHomeReduction = (entry: CashEntry) =>
+    getVisibleHomeAdjustments(entry).reduce((sum, row) => Math.round((sum + row.total) * 100) / 100, 0);
+
   // Helper for filtered entry amount
   const getFilteredEntryAmount = (entry: CashEntry): number => {
     const totalActual = getEntryActualAmount(entry);
@@ -545,18 +649,18 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
         matchedAny = true;
       });
 
-      if (matchedAny) return trancheSum;
+      if (matchedAny) return Math.round((trancheSum - getHomeReduction(entry)) * 100) / 100;
 
       // If no individual draw matched, but no draw-specific filters (month, tag, account) were specified,
       // fall back to totalActual so the entry is never incorrectly dropped.
       if (selectedMonth === 'all' && selectedTag === 'all' && selectedAccount === 'all') {
-        return totalActual;
+        return Math.round((totalActual - getHomeReduction(entry)) * 100) / 100;
       }
       return 0;
     }
 
     // For validated entries without draws that passed filteredEntries:
-    return totalActual;
+    return Math.round((totalActual - getHomeReduction(entry)) * 100) / 100;
   };
 
   const filteredEntries = actualEntries.filter((entry) => {
@@ -674,6 +778,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
   const groups: Record<string, { name: string; count: number; total: number; type: 'income' | 'expense' }> = {};
   filteredEntries.forEach((e) => {
     if (groupBy === 'tag' && e.draws && e.draws.length > 0) {
+      const tagAmounts: Record<string, number> = {};
       e.draws.forEach((draw) => {
         if (selectedMonth !== 'all' && DateUtils.getMonthKey(draw.date) !== selectedMonth) return;
         const tag = draw.tag?.trim() || e.tag?.trim() || 'Untagged';
@@ -685,7 +790,11 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
         groups[key].count += 1;
         const drawAmt = Number(draw.amount) || 0;
         groups[key].total += drawAmt;
+        tagAmounts[key] = (tagAmounts[key] ?? 0) + drawAmt;
       });
+      for (const [key, reduction] of apportionHomeReduction(getHomeReduction(e), tagAmounts)) {
+        groups[key].total = Math.round((groups[key].total - reduction) * 100) / 100;
+      }
       return;
     }
     const name = groupBy === 'category' ? getSmartGroupBucket(e) : (e.tag?.trim() || 'Untagged');
@@ -924,9 +1033,30 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                     filteredEntries.map((entry) => {
                       const actual = getEntryActualAmount(entry);
                       const actDate = getEntryActualDate(entry);
-                      const plannedVal = Number(entry.amount) || 0;
                       const entryId = entry.id;
-                      const hasMultipleDraws = Boolean(entry.draws && entry.draws.length > 1);
+                      const fundingByMonth = homeFunding.entries.get(entryId);
+                      const isHome = isHomeExpense(entry);
+                      const plannedVal = Number(
+                        entry.isClosed && fundingByMonth ? entry.initialAmount ?? entry.amount : getHomePlanAmount(entry)
+                      ) || 0;
+                      const homeAdjustments = getVisibleHomeAdjustments(entry);
+                      const drawAccounts = [...new Set((entry.draws ?? [])
+                        .map((draw) => (draw.account || entry.account || 'cash').toLowerCase()))];
+                      const displayAccount = drawAccounts[0] ?? entry.account ?? 'cash';
+                      const paymentParts = getHomePaymentParts(entry, entryActuals, entryActualDates);
+                      const visibleFunding = selectedMonth === 'all'
+                        ? Array.from(fundingByMonth?.values() ?? [])
+                        : Array.from(fundingByMonth?.values() ?? []).filter((funding) => funding.month === selectedMonth);
+                      const hasMultipleDraws = (entry.draws?.length ?? 0) > 1;
+                      const showPaymentBreakdown = hasMultipleDraws || homeAdjustments.length > 0;
+                      const netHomeActual = netHomeActuals[entryId] ?? actual;
+                      const hasHomeReduction = isHome && actual !== netHomeActual;
+                      const displayedActual = isHome && (hasHomeReduction || selectedMonth !== 'all')
+                        ? getFilteredEntryAmount(entry) : actual;
+                      const actualAgainstPlan = isHome ? netHomeActual : displayedActual;
+                      const showsGrossHome = isHome && homeAdjustments.length === 0 &&
+                        Boolean(homeAllocations.get(entry.id)?.some((row) => row.total > 0 &&
+                          (selectedMonth === 'all' || row.month === selectedMonth)));
                       const isDrawsExpanded = expandedDraws.has(entryId);
                       // FX-conversion entries are one-time completed transfers, not a
                       // "planned then actualized" forecast item — there's no meaningful
@@ -938,7 +1068,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                       let varianceClass = 'neutral';
                       if (plannedVal > 0) {
                         const roundedPlanned = Math.round(plannedVal * 100) / 100;
-                        const roundedActual = Math.round(actual * 100) / 100;
+                        const roundedActual = Math.round(actualAgainstPlan * 100) / 100;
                         if (entry.type === 'expense') {
                           const diff = Math.round((roundedPlanned - roundedActual) * 100) / 100;
                           if (diff > 0) {
@@ -993,7 +1123,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                         >
                           <td className="cell-date">
                             <strong>{DateUtils.formatDisplayDate(actDate)}</strong>
-                            {hasMultipleDraws && (
+                            {showPaymentBreakdown && (
                               <button
                                 type="button"
                                 className="ghost-button history-draws-toggle-btn"
@@ -1005,7 +1135,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                                   return next;
                                 })}
                               >
-                                {isDrawsExpanded ? '▴ Hide subspends' : `▾ ${entry.draws?.length} subspends`}
+                                {isDrawsExpanded ? '▴ Hide payment breakdown' : '▾ Show payment breakdown'}
                               </button>
                             )}
                           </td>
@@ -1040,6 +1170,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                             >
                               {entry.category}
                             </strong>
+                            {visibleFunding.map(renderHomeFunding)}
                             {entry.currency && entry.currency !== 'EGP' && (
                               <span className="source-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(99, 102, 241, 0.12)', color: 'var(--kpi-indigo, #818cf8)', fontWeight: 700, fontSize: '10px', marginLeft: '4px' }}>
                                 <Banknote size={11} /> {entry.currency}
@@ -1165,15 +1296,19 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                             )}
                           </td>
                           <td className="cell-account">
-                            <span
+                            {drawAccounts.length > 1 ? (
+                              <span className="account-pill" title={drawAccounts.map(getAccountLabel).join(' · ')}>
+                                Mixed accounts
+                              </span>
+                            ) : <span
                               className="account-pill history-summary-clickable-row"
                               style={{
                                 cursor: 'pointer',
-                                border: selectedAccount.toLowerCase() === (entry.account || 'cash').toLowerCase() ? '1px solid var(--brand-primary, #6366f1)' : undefined,
+                                border: selectedAccount.toLowerCase() === displayAccount.toLowerCase() ? '1px solid var(--brand-primary, #6366f1)' : undefined,
                               }}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleAccountFilter(entry.account || 'cash');
+                                handleAccountFilter(displayAccount);
                               }}
                               role="button"
                               tabIndex={0}
@@ -1181,13 +1316,13 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                                 if (e.key === 'Enter' || e.key === ' ') {
                                   e.preventDefault();
                                   e.stopPropagation();
-                                  handleAccountFilter(entry.account || 'cash');
+                                  handleAccountFilter(displayAccount);
                                 }
                               }}
-                              title={`Click to filter entries by account: ${(entry.account || 'cash').toUpperCase()}`}
+                              title={`Click to filter entries by account: ${getAccountLabel(displayAccount)}`}
                             >
-                              {entry.account?.toUpperCase() || 'CASH'}
-                            </span>
+                              {getAccountLabel(displayAccount)}
+                            </span>}
                           </td>
                           <td className="cell-type">
                             <span
@@ -1244,13 +1379,15 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                                 </span>
                               </div>
                             ) : (
-                              <span>{formatMoney(entry.amount)}</span>
+                              <span>{formatMoney(plannedVal)}</span>
                             )}
                           </td>
                           <td className="cell-actual number" style={{ color: entry.type === 'income' ? 'var(--green)' : 'var(--red)', fontWeight: 800 }}>
                             {isAdminUnlocked ? (
                               <div className="history-admin-input-wrap">
-                                <span className="mobile-cell-label">Actual:</span>
+                                <span className={hasHomeReduction ? undefined : 'mobile-cell-label'}>
+                                  {hasHomeReduction ? 'Recorded payments' : 'Actual:'}
+                                </span>
                                 <input
                                   type="number"
                                   min="0"
@@ -1266,12 +1403,14 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                                     }
                                   }}
                                 />
+                                {hasHomeReduction && <small>Net Home spending · {formatMoney(actualAgainstPlan)}</small>}
                               </div>
                             ) : (
                               <span className="history-actual-display" style={{ color: entry.type === 'income' ? 'var(--green)' : 'var(--red)' }}>
-                                {entry.type === 'income' ? '+' : '-'}{formatMoney(actual)}
+                                {entry.type === 'income' ? '+' : '-'}{formatMoney(displayedActual)}
                               </span>
                             )}
+                            {showsGrossHome && !isAdminUnlocked && <small>Recorded payments</small>}
                           </td>
                           <td className="cell-variance number">
                             <span className={`variance-pill ${varianceClass}`}>
@@ -1279,6 +1418,11 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                             </span>
                           </td>
                           <td className="cell-actions">
+                            {!hasMultipleDraws && paymentParts.filter((part) => !part.requested || isAdminUnlocked).map((part) => (
+                              <button key={part.date} type="button" className="ghost-button" onClick={() => openHomePayment(entry, part)}>
+                                {part.requested ? 'Edit Paid from Home' : 'Paid from Home'}
+                              </button>
+                            ))}
                             {isAdminUnlocked ? (
                               <div style={{ display: 'flex', gap: '4px' }}>
                                 {isFxConversionEntry ? (
@@ -1397,13 +1541,13 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                             )}
                           </td>
                         </tr>
-                        {hasMultipleDraws && isDrawsExpanded && (
+                        {showPaymentBreakdown && isDrawsExpanded && (
                           <tr className="history-draws-subrow">
                             <td colSpan={9} className="cell-draws-details" style={{ padding: '0 16px 12px 36px', background: 'var(--surface-subtle, rgba(0,0,0,0.02))' }}>
                               <div style={{ marginTop: '8px' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '12px', marginBottom: '8px', fontSize: '12px' }}>
-                                  <span>Breakdown of {entry.draws?.length} payment tranches for {entry.category || 'Expense'}</span>
-                                  <strong style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>Total spent: {formatMoney(actual)}</strong>
+                                  <span>Payment breakdown for {entry.category || 'Expense'}</span>
+                                  <strong style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>Total spent: {formatMoney(displayedActual)}</strong>
                                 </div>
                                 <div className="table-wrap compact history-subspends-table-wrap">
                                   <table>
@@ -1416,7 +1560,10 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                                       </tr>
                                     </thead>
                                     <tbody>
-                                      {entry.draws?.map((draw, index) => (
+                                      {(entry.draws?.length ? entry.draws : [{ date: actDate, amount: actual, tag: entry.tag, account: entry.account }]).map((draw, index) => {
+                                        const funding = homeFunding.payments.get(homePaymentKey(entryId, index));
+                                        const drawAccount = draw.account || entry.account || 'cash';
+                                        return (
                                         <tr key={`${entryId}-draw-${index}`} className="history-subspend-item-row">
                                           <td className="subspend-cell-date">{DateUtils.formatDisplayDate(draw.date)}</td>
                                           <td className="subspend-cell-tag">
@@ -1438,23 +1585,48 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
                                               style={{
                                                 cursor: 'pointer',
                                                 fontSize: '11px',
-                                                border: selectedAccount.toLowerCase() === (draw.account || entry.account || 'cash').toLowerCase() ? '1px solid var(--brand-primary, #6366f1)' : undefined,
+                                                border: selectedAccount.toLowerCase() === drawAccount.toLowerCase() ? '1px solid var(--brand-primary, #6366f1)' : undefined,
                                               }}
-                                              onClick={() => handleAccountFilter(draw.account || entry.account || 'cash')}
+                                              onClick={() => handleAccountFilter(drawAccount)}
                                               role="button"
                                               tabIndex={0}
                                               onKeyDown={(e) => {
                                                 if (e.key === 'Enter' || e.key === ' ') {
                                                   e.preventDefault();
-                                                  handleAccountFilter(draw.account || entry.account || 'cash');
+                                                  handleAccountFilter(drawAccount);
                                                 }
                                               }}
-                                              title={`Click to filter entries by account: ${(draw.account || entry.account || 'cash').toUpperCase()}`}
+                                              title={`Click to filter entries by account: ${getAccountLabel(drawAccount)}`}
                                             >
-                                              {(draw.account || entry.account || 'cash').toUpperCase()}
+                                              {getAccountLabel(drawAccount)}
                                             </span>
+                                            {funding && renderHomeFunding(funding)}
+                                            {paymentParts.filter((part) => part.drawIndex === index && (!part.requested || isAdminUnlocked)).map((part) => (
+                                              <button key={index} type="button" className="ghost-button" onClick={() => openHomePayment(entry, part)}>
+                                                {part.requested ? 'Edit Paid from Home' : 'Paid from Home'}
+                                              </button>
+                                            ))}
                                           </td>
                                           <td className="number subspend-cell-amount">{formatMoney(Number(draw.amount) || 0)}</td>
+                                        </tr>
+                                        );
+                                      })}
+                                      {homeAdjustments.map((adjustment) => (
+                                        <tr key={adjustment.month} className="history-subspend-item-row">
+                                          <td>{adjustment.month}</td>
+                                          <td colSpan={2}>
+                                            <details id={`history-home-allocation-${adjustment.month}-${entryId}`}>
+                                              <summary><span className="history-home-funding">Allocated to other expenses</span></summary>
+                                              <ul>
+                                                {adjustment.payments.map((payment) => (
+                                                  <li key={payment.key}>
+                                                    {DateUtils.formatDisplayDate(payment.date)} · {payment.category} · {formatMoney(payment.amount)}
+                                                  </li>
+                                                ))}
+                                              </ul>
+                                            </details>
+                                          </td>
+                                          <td className="number subspend-cell-amount">−{formatMoney(adjustment.total)}</td>
                                         </tr>
                                       ))}
                                     </tbody>
@@ -1479,6 +1651,40 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onEditEntry }) => {
             </datalist>
           </section>
         </div>
+      )}
+
+      {homePayment && (
+        <Modal isOpen onClose={() => setHomePayment(null)} title="Paid from Home" subtitle={editingHomeEntry?.category}>
+          <form onSubmit={(event) => {
+            event.preventDefault();
+            saveHomePayment(Number(homePaymentAmount));
+          }}>
+            {editingHomePart && (
+              <p>{DateUtils.formatDisplayDate(editingHomePart.date)} · Payment of {formatMoney(editingHomePart.amount)}</p>
+            )}
+            <div className="form-group">
+              <label htmlFor="history-home-payment-amount">Amount covered by Home (EGP)</label>
+              <input
+                id="history-home-payment-amount"
+                className="form-input"
+                type="number"
+                min="0.01"
+                max={editingHomePart?.amount}
+                step="0.01"
+                required
+                value={homePaymentAmount}
+                onChange={(event) => setHomePaymentAmount(event.target.value)}
+              />
+            </div>
+            {homePaymentError && <p role="alert">{homePaymentError}</p>}
+            <div className="dialog-actions">
+              {Boolean(editingHomePart?.requested) && (
+                <button type="button" className="ghost-button" onClick={() => saveHomePayment(0)}>Remove allocation</button>
+              )}
+              <button type="submit" className="primary-button">Save allocation</button>
+            </div>
+          </form>
+        </Modal>
       )}
 
       {/* Affected Records Modal for Entry Deletion */}

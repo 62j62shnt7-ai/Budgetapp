@@ -87,7 +87,7 @@ export function getRemainingForecastAmount(
   if (entry && entry.isClosed) return 0;
   const actualAmount = getEntryActualAmount(entry, entryActuals);
   if (isPartialTracked(entry) && actualAmount > 0) {
-    return Math.max(0, Number(entry.amount || 0) - actualAmount);
+    return Math.max(0, Math.round((Number(entry.amount || 0) - actualAmount) * 100) / 100);
   }
   return Number(entry.amount || 0);
 }
